@@ -7,6 +7,10 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## ROCOF calculated channel (2026-10-12, `feature/calculated-channel-rocof`)
+
+Implemented in an isolated worktree off `origin/main` (d8ffed2); **not merged, not deployed, awaiting owner UAT.** Decision record: DEC-190 (`[PROPOSAL]`, id chosen to avoid DEC-184..189 on sibling branches). Calculation: `ROCOF[i] = (h2*s1 + h1*s2)/(h1+h2)` on the actual timestamps (unequal-spacing 3-point formula), one-sided secant at segment ends, never across invalid data; optional centred moving average (time window, zero phase). UI: Calculated Channels -> "ROCOF" card (after Subtraction): "Input: Frequency (Hz)" with frequency channels listed first, Smoothing (None / Centered moving average + window in ms), fixed unit `Hz/s`, "Calculate anyway" for non-frequency inputs. Code: `evaluate_rocof()` in `app/domain/calculated_channel.py`; wiring in `calculated_channel_service.py`; errors `rocof_override_required` / `rocof_insufficient_data` / `invalid_rocof_smoothing`. Tests: `backend/tests/test_calculated_channel_rocof.py`, `browser-tests/calculated-channel-rocof.spec.js`. For UAT: use a real recorder frequency channel, compare raw vs smoothed, and try a channel with a gap / NaNs. Running the browser spec beside another agent's servers: use `PW_BACKEND_PORT=8110 PW_FRONTEND_PORT=8111 CORS_ORIGINS=http://127.0.0.1:8111,http://localhost:8111` (the spec routes `config.js` itself).
+
 ## Relay import + Oscillation integration (2026-10-11)
 
 `feature/distance-relay-import` (Slices 1-8A, plus the R-X viewport controls and

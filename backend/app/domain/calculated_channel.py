@@ -33,13 +33,16 @@ OP_MULTIPLY_CONSTANT = "multiply_constant"
 OP_ADDITION = "addition"
 OP_SUBTRACTION = "subtraction"
 OP_RMS = "rms"
+OP_ROCOF = "rocof"
 
 #: Exactly one channel input (Multiply also takes a scalar `constant`
 #: parameter alongside its one channel input -- section 28). RMS
 #: (Phase 5B, DEC-048) joins this group: exactly one channel input plus a
 #: scalar `nominal_frequency_hz` parameter, the same "1 input + 1 scalar
 #: parameter" shape as Multiply by Constant.
-UNARY_OPERATIONS = frozenset({OP_REVERSE_POLARITY, OP_ABSOLUTE_VALUE, OP_MULTIPLY_CONSTANT, OP_RMS})
+#: ROCOF (DEC-190) joins this group too: exactly one frequency channel
+#: input, with optional scalar smoothing parameters.
+UNARY_OPERATIONS = frozenset({OP_REVERSE_POLARITY, OP_ABSOLUTE_VALUE, OP_MULTIPLY_CONSTANT, OP_RMS, OP_ROCOF})
 #: Two or more ordered channel inputs (section 8/30/31 -- never hard-coded
 #: to exactly two).
 MULTI_OPERATIONS = frozenset({OP_ADDITION, OP_SUBTRACTION})
@@ -54,6 +57,39 @@ MAX_NOMINAL_FREQUENCY_HZ = 1000.0
 #: RMS" to be meaningful at all (owner section 41: "do not calculate a
 #: misleading RMS from 2-3 points/cycle").
 MIN_SAMPLES_PER_CYCLE = 4
+
+# ---- ROCOF (DEC-190): Rate of Change of Frequency ----
+#
+# See evaluate_rocof() below for the algorithm. These are the named,
+# explicitly revisitable limits it (and its service-level validation) use.
+
+#: Fixed output unit of every ROCOF channel.
+ROCOF_UNIT = "Hz/s"
+#: The differentiation / boundary / smoothing identifiers recorded in
+#: every ROCOF channel's `parameters`, so a stored channel always states
+#: exactly how it was produced (a future differently-shaped ROCOF
+#: estimator cannot be confused with this one by operation name alone).
+ROCOF_METHOD_NONUNIFORM_CENTRAL = "nonuniform_central_difference"
+ROCOF_BOUNDARY_ONE_SIDED = "one_sided_secant"
+ROCOF_SMOOTHING_NONE = "none"
+ROCOF_SMOOTHING_MOVING_AVERAGE = "centered_moving_average"
+ROCOF_ALL_SMOOTHING = frozenset({ROCOF_SMOOTHING_NONE, ROCOF_SMOOTHING_MOVING_AVERAGE})
+#: A sampling interval longer than this multiple of the recording's own
+#: median valid interval is a DISCONTINUITY (a recording gap), never
+#: differentiated across. Conservative on purpose: a legitimately slower
+#: section of a multi-rate recording more than 10x slower than the median
+#: is also treated as a gap (its ROCOF stays blank -- visible and safe,
+#: never a silently wrong value).
+ROCOF_GAP_FACTOR = 10.0
+#: Fewer samples than this cannot produce a meaningful derivative profile.
+ROCOF_MIN_SAMPLES = 3
+#: A smoothing window must span at least this many median sample
+#: intervals, otherwise "smoothing" would average a single sample and be
+#: a misleading no-op.
+ROCOF_MIN_SMOOTHING_INTERVALS = 2
+#: Absorbs floating-point noise in window-boundary comparisons only
+#: (same role as RMS's `_BOUNDARY_EPS`).
+_ROCOF_BOUNDARY_EPS = 1e-9
 
 #: Deliberately tight -- section 11 of the owner's time-alignment
 #: guardrail: "do not use a loose tolerance that could incorrectly treat
@@ -436,6 +472,162 @@ def evaluate_rms(time: np.ndarray, values: np.ndarray, nominal_frequency_hz: flo
         count = i - lo + 1
         out[i] = np.sqrt(running_sumsq / count)
     return out
+
+
+def _rocof_valid_intervals(time: np.ndarray, values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-interval `(dt, secant_slope, ok)` for `evaluate_rocof()`.
+
+    Interval `k` (between samples `k` and `k+1`) is usable (`ok`) only if
+    both timestamps are finite and strictly increasing (`dt > 0` -- which
+    rejects duplicate AND non-monotonic timestamps), both frequency
+    samples are finite, and `dt` is not a recording discontinuity
+    (`dt <= ROCOF_GAP_FACTOR x median(valid dt)`). The slope is
+    `(f[k+1] - f[k]) / dt` where `ok`, else 0 (never read).
+    """
+    dt = np.diff(time)
+    finite_values = np.isfinite(values)
+    with np.errstate(invalid="ignore"):
+        basic = np.isfinite(dt) & (dt > 0) & finite_values[:-1] & finite_values[1:]
+    slope = np.zeros(dt.shape[0], dtype=np.float64)
+    if not basic.any():
+        return dt, slope, basic
+    median_dt = float(np.median(dt[basic]))
+    ok = basic & (dt <= ROCOF_GAP_FACTOR * median_dt)
+    slope[ok] = np.diff(values)[ok] / dt[ok]
+    return dt, slope, ok
+
+
+def rocof_median_interval(time: np.ndarray, values: np.ndarray) -> float | None:
+    """Median of the usable sampling intervals (seconds), or `None` if
+    there is none -- used by the service to validate a smoothing window
+    against the recording's real sample spacing."""
+    dt, _, ok = _rocof_valid_intervals(np.asarray(time, dtype=np.float64), np.asarray(values, dtype=np.float64))
+    return float(np.median(dt[ok])) if ok.any() else None
+
+
+def evaluate_rocof(
+    time: np.ndarray, values: np.ndarray, smoothing_window_s: float | None = None
+) -> np.ndarray:
+    """ROCOF(t) = df/dt in Hz/s from a frequency channel in Hz sampled at
+    `time` (seconds). Output has the SAME LENGTH as the input (verbatim
+    `time`/`reference_source_id` inheritance, like RMS).
+
+    **Interior samples -- unequal-spacing central difference.** With
+    `h1 = t[i]-t[i-1]`, `h2 = t[i+1]-t[i]` and the adjacent secant slopes
+    `s1 = (f[i]-f[i-1])/h1`, `s2 = (f[i+1]-f[i])/h2`:
+
+        ROCOF[i] = (h2*s1 + h1*s2) / (h1 + h2)
+
+    This is the second-order three-point derivative for arbitrary
+    spacing (exact for any quadratic f). For uniform spacing it reduces
+    exactly to `(f[i+1]-f[i-1]) / (t[i+1]-t[i-1])`, but the simplified
+    `(f[i+1]-f[i-1])/(t[i+1]-t[i-1])` form is NOT used for irregular
+    timestamps: there it is only first-order accurate and silently biased
+    by (h2 - h1) * f'' / 2 (e.g. 2.0 for f = t^2 with h1=1, h2=3).
+
+    **Boundaries / discontinuities -- one-sided secant.** A sample with
+    a usable interval on one side only (first/last sample, or next to a
+    gap / invalid sample) uses that single secant slope
+    `(f[1]-f[0])/(t[1]-t[0])` (first-order accurate, exact for linear f).
+    The derivative is NEVER calculated across an unusable interval: a
+    non-finite sample or timestamp, a duplicate or decreasing timestamp
+    (`dt <= 0`), or a gap longer than `ROCOF_GAP_FACTOR x` the median
+    interval -- each splits the record into independent segments.
+    Samples with no usable adjacent interval are NaN.
+
+    **Optional smoothing** (`smoothing_window_s`, seconds): a centred,
+    time-based moving average of the raw ROCOF -- zero phase shift. It
+    never averages across a segment boundary, and the window is clamped
+    symmetrically to the distance to the segment ends, so the effective
+    window narrows to zero at segment edges (edge samples stay raw).
+    `None` leaves the result unsmoothed. Time-based (uses the real
+    timestamps), cumulative-sum implementation, O(N log N), no Python
+    loop.
+    """
+    t = np.asarray(time, dtype=np.float64)
+    f = np.asarray(values, dtype=np.float64)
+    n = t.shape[0]
+    out = np.full(n, np.nan, dtype=np.float64)
+    if n < 2:
+        return out
+
+    dt, slope, ok = _rocof_valid_intervals(t, f)
+    left = np.zeros(n, dtype=bool)
+    left[1:] = ok
+    right = np.zeros(n, dtype=bool)
+    right[:-1] = ok
+    h_left = np.zeros(n)
+    h_left[1:] = np.where(ok, dt, 0.0)
+    s_left = np.zeros(n)
+    s_left[1:] = slope
+    h_right = np.zeros(n)
+    h_right[:-1] = np.where(ok, dt, 0.0)
+    s_right = np.zeros(n)
+    s_right[:-1] = slope
+
+    both = left & right
+    out[both] = (h_right[both] * s_left[both] + h_left[both] * s_right[both]) / (h_left[both] + h_right[both])
+    only_left = left & ~right
+    out[only_left] = s_left[only_left]
+    only_right = right & ~left
+    out[only_right] = s_right[only_right]
+
+    if smoothing_window_s is None or not ok.any():
+        return out
+    return _rocof_smooth(out, ok, dt, left, right, float(smoothing_window_s))
+
+
+def _rocof_smooth(
+    rocof: np.ndarray, ok: np.ndarray, dt: np.ndarray, left: np.ndarray, right: np.ndarray, window_s: float
+) -> np.ndarray:
+    """Centred time-window moving average of `rocof` within each segment
+    (maximal run of usable intervals). See evaluate_rocof().
+
+    Segments are separated on a surrogate time axis `key` (cumulative
+    usable `dt`, plus a small fixed jump across each unusable interval),
+    which is strictly increasing even when the real timestamps are not
+    (duplicates / backwards steps). That keeps one global vectorized
+    `searchsorted` valid, and the jump keeps magnitudes (and so float
+    resolution) bounded by the recording duration. Window half-widths are
+    clamped to the segment ends, so a window never reaches another
+    segment.
+    """
+    n = rocof.shape[0]
+    eps = min(_ROCOF_BOUNDARY_EPS, 0.25 * float(dt[ok].min()))
+    jump = 10.0 * eps
+    key = np.concatenate(([0.0], np.cumsum(np.where(ok, dt, jump))))
+
+    idx = np.arange(n)
+    seg_start = np.maximum.accumulate(np.where(right & ~left, idx, -1))
+    seg_end = np.minimum.accumulate(np.where(left & ~right, idx, n)[::-1])[::-1]
+    valid = left | right
+    seg_start = np.where(valid, seg_start, idx)
+    seg_end = np.where(valid, np.minimum(seg_end, n - 1), idx)
+
+    half = np.minimum(0.5 * window_s, np.minimum(key - key[seg_start], key[seg_end] - key))
+    half = np.where(valid, half, 0.0)
+    lo = np.searchsorted(key, key - half - eps, side="left")
+    hi = np.searchsorted(key, key + half + eps, side="right")
+
+    # Mean-removed cumulative sum keeps the running total small, so the
+    # window means stay accurate for very long recordings.
+    offset = float(rocof[valid].mean())
+    cumulative = np.concatenate(([0.0], np.cumsum(np.where(valid, rocof - offset, 0.0))))
+    smoothed = np.full(n, np.nan, dtype=np.float64)
+    smoothed[valid] = offset + (cumulative[hi] - cumulative[lo])[valid] / (hi - lo)[valid]
+    return smoothed
+
+
+def rocof_smoothing_window_valid(window_ms: object) -> bool:
+    """A smoothing window (milliseconds) must be a finite positive
+    number; `bool` is rejected explicitly (same reasoning as
+    nominal_frequency_valid())."""
+    return bool(
+        isinstance(window_ms, (int, float))
+        and not isinstance(window_ms, bool)
+        and np.isfinite(window_ms)
+        and window_ms > 0
+    )
 
 
 def nominal_frequency_valid(nominal_frequency_hz: float) -> bool:

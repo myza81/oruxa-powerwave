@@ -379,7 +379,7 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
 // Owner UAT: the operation picker is name-only, compact, two columns with
 // Line-to-Line full width. Cosmetic only -- selection behaviour unchanged.
 test.describe("Calculated Channel operation picker", () => {
-  test("seven name-only cards; selection and the L-L workflow still work", async ({ page }) => {
+  test("eight name-only cards; selection and the L-L workflow still work", async ({ page }) => {
     await uploadFixture(page);
     await page.locator("#mainNavCalculatedChannelsBtn").click();
     await page.locator("#wwCcNewChannelBtn").click();
@@ -388,7 +388,7 @@ test.describe("Calculated Channel operation picker", () => {
     const cards = page.locator("#wwCcOperationCards .ww-cc-operation-card");
     await expect(cards).toHaveText([
       "Reverse Polarity", "Absolute Value", "Multiply by Constant", "RMS",
-      "Addition", "Subtraction", "Line-to-Line Voltage (L-L)",
+      "Addition", "Subtraction", "ROCOF", "Line-to-Line Voltage (L-L)",
     ]);
     await expect(cards.locator("*")).toHaveCount(0); // no description/arity lines
     await expect(page.locator("#wwCcDrawer")).not.toContainText("Define the operation and inputs");
@@ -407,7 +407,7 @@ test.describe("Calculated Channel operation picker", () => {
     }
     expect(boxes[0].y).toBe(boxes[1].y);
     expect(boxes[1].x).toBeGreaterThan(boxes[0].x);
-    expect(boxes[6].w).toBeGreaterThan(boxes[0].w * 1.9);
+    expect(boxes[7].w).toBeGreaterThan(boxes[0].w * 1.9);
     const drawerBody = page.locator("#wwCcDrawer .ww-cc-drawer-body");
     expect(await drawerBody.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
@@ -430,9 +430,9 @@ test.describe("Calculated Channel operation picker", () => {
     await expect(page.locator('#wwCcOperationCards [aria-pressed="true"]')).toHaveCount(1);
     await expect(page.locator("#wwCcBuilderTitle")).toHaveText("Absolute Value");
 
-    await cards.nth(6).focus();
+    await cards.nth(7).focus();
     await page.keyboard.press("Enter");
-    await expect(cards.nth(6)).toHaveAttribute("aria-pressed", "true");
+    await expect(cards.nth(7)).toHaveAttribute("aria-pressed", "true");
     await expect(cards.nth(1)).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#wwCcBuilderTitle")).toHaveText("Line-to-Line Voltage (L-L)");
     await expect(page.locator("#wwCcLlContextSelect")).toBeVisible();

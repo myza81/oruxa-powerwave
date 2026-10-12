@@ -77,13 +77,16 @@ class CalculatedChannelCreateRequest(BaseModel):
 
     `parameters` is operation-specific -- `multiply_constant` reads
     `{"constant": <finite number>}`; `rms` (Phase 5B) reads
-    `{"nominal_frequency_hz": <finite number>}`; every other operation
-    ignores it. Section 74: no free-form formula text anywhere in this
+    `{"nominal_frequency_hz": <finite number>}`; `rocof` (DEC-190) reads
+    the optional `{"smoothing": "none" | "centered_moving_average",
+    "smoothing_window_ms": <positive number, only with a moving
+    average>}` (default: unsmoothed); every other operation ignores it. Section 74: no free-form formula text anywhere in this
     shape.
 
-    `override` (Phase 5B, DEC-048) only matters for `rms`: the engineer's
-    explicit "Calculate anyway" acknowledgement when RMS eligibility is
-    not `suitable`. A strongly-typed top-level field, deliberately not
+    `override` (Phase 5B, DEC-048) only matters for `rms` and `rocof`
+    (DEC-190): the engineer's explicit "Calculate anyway" acknowledgement
+    when RMS eligibility / ROCOF frequency-input eligibility is not
+    `suitable`. A strongly-typed top-level field, deliberately not
     buried inside the loosely-typed `parameters` dict -- it is a
     cross-cutting safety flag the backend must independently validate,
     never a math parameter. Ignored (never trusted as an eligibility
@@ -109,7 +112,9 @@ class CalculatedChannelCreateRequest(BaseModel):
     """
 
     name: str
-    operation: Literal["reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction", "rms"]
+    operation: Literal[
+        "reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction", "rms", "rocof"
+    ]
     inputs: list[ChannelRefIn]
     parameters: dict = {}
     override: bool = False
