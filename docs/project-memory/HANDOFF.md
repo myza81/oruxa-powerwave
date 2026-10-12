@@ -7,6 +7,17 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-12** (DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated))
 
+## Slice 9 -- Apply Settings (2026-10-12, `feature/slice9-apply-relay-settings`)
+
+Implemented DEC-188: **Apply Settings** in the relay review (shown only when the backend-derived readiness is
+*Ready to apply*) calls `POST /api/v1/relay-import/review/apply`, which re-derives the reviewed model and returns a
+controlled four-slot payload; the browser writes it into the existing Distance Protection state/inputs and the normal
+handlers redraw the R-X plane. One-way, re-Apply overwrites, failure is atomic, nothing is persisted. Disabled extra
+zones are ignored operationally; an enabled unrepresentable zone (e.g. Zone P) keeps the review Not ready. Also fixed
+the R-X polygon guards so a 0 Ω Left Resistive Reach draws. **Stopped at the owner-UAT gate; Slice 10 not started.**
+See RELAY_IMPORT_ARCHITECTURE.md "Slice 9" and DISTANCE_PROTECTION_ANALYSIS.md "Applying imported relay settings".
+Test note: a stale server on :8000 serves old code; run the browser specs with `PW_BACKEND_PORT=8010`.
+
 ## Relay import + Oscillation integration (2026-10-11)
 
 `feature/distance-relay-import` (Slices 1-8A, plus the R-X viewport controls and

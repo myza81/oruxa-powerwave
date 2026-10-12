@@ -281,8 +281,10 @@ class TestExtractionReview:
         for label in labels:
             assert not re.search(r"apply|accept|populate|generate|auto-?fill", label, re.I), label
         js = _review_js(source)
-        # The review's own entry controls are written (a prefilled editor); the manual form never is.
-        assert "wwDistance" not in js
+        # Slice 9: the review reaches the manual form through ONE entry point (it validates the
+        # backend payload and writes the same state manual entry uses); nothing else.
+        assert js.count("wwDistanceApplyImportedSettings") == 1
+        assert "wwDistance" not in js.replace("wwDistanceApplyImportedSettings", "")
         for forbidden in ("wwDistanceState", "wwDistanceZone", "wwDistanceHandleZoneSettingChanged", "wwDistanceRenderPlot"):
             assert forbidden not in js, forbidden
 
@@ -336,7 +338,7 @@ class TestReviewConfirmation:
     def test_validation_is_asked_of_the_backend_with_the_original_context(self):
         js = _review_js(_source())
         assert '"/api/v1/relay-import/review/validate"' in js
-        for needle in ("validation_context: review.validation_context", "confirmed:", "manual:", "left_unresolved:"):
+        for needle in ("validation_context: state.review.validation_context", "confirmed:", "manual:", "left_unresolved:"):
             assert needle in js, needle
         # the page never computes readiness or counts itself
         assert not re.search(r"readiness\.status\s*=[^=]", js)

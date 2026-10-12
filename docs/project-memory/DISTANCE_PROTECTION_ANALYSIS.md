@@ -634,6 +634,16 @@ V/I/R/X/|Z|/angle results themselves are input-source-specific. See
 `browser-tests/distance_protection_analysis.spec.js`'s own "Recording/
 Manual state isolation" suite for the end-to-end proof.
 
+## Applying imported relay settings (DEC-188)
+
+A reviewed relay import (Import Relay Settings) can be applied with **Apply Settings** once the review reads *Ready to
+apply*. The backend returns the four-slot payload (see RELAY_IMPORT_ARCHITECTURE.md "Slice 9"); the frontend writes it into
+`wwDistanceState` (characteristic, output impedance basis, `zones`) and the inputs, then runs the same handlers manual edits
+use (`wwDistanceHandleCharacteristicChanged`, `wwDistanceRenderPlot`). The geometry is therefore identical to typing the same
+values. Disabled zones are applied as disabled with their geometry cleared; a Left Resistive Reach of `0` is valid and draws
+the left boundary through the origin of the rotated frame. Applied values are ordinary editable inputs; Apply again overwrites
+them. Nothing is stored; a refresh clears everything.
+
 ## Known limitations / explicitly deferred (not this slice)
 
 - No AG/BG/CG ground loops, no residual-current (k0)/zero-sequence

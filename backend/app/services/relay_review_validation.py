@@ -19,12 +19,14 @@ Protection form.
 from __future__ import annotations
 
 from app.domain.relay_import.canonical_codec import SnapshotError, decode_model
+from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel
+from app.domain.relay_import.engine_adapter import EngineAdaptation
 from app.domain.relay_import.raw_document import RawRelayDocument, SourceFormat
 from app.domain.relay_import.review_state import ReviewDecisionError, ReviewDecisions, apply_review
 from app.services.relay_extraction_review import ExtractionReview, build_extraction_review
 from app.services.relay_interpretation_summary import engine_adaptation
 
-__all__ = ["InvalidReviewError", "validate_review"]
+__all__ = ["InvalidReviewError", "reviewed_state", "validate_review"]
 
 #: The review state needs no source lines (the browser already holds them), so
 #: the raw document is empty: item sources come back empty and are not used.
@@ -35,15 +37,25 @@ class InvalidReviewError(ValueError):
     """The validation context or a decision is not acceptable. Safe to show."""
 
 
-def validate_review(context: dict, decisions: ReviewDecisions) -> ExtractionReview:
+def reviewed_state(
+    context: dict, decisions: ReviewDecisions
+) -> tuple[CanonicalDistanceProtectionModel, EngineAdaptation, ExtractionReview]:
+    """Re-derive everything from the original interpretation and the decisions:
+    the effective model, the engine adaptation (re-run) and the review state.
+    Nothing the browser computed is trusted. Shared by validation and Apply."""
     try:
         original = decode_model(context)
         effective = apply_review(original, decisions)
     except (SnapshotError, ReviewDecisionError) as exc:
         raise InvalidReviewError(str(exc)) from exc
-    review = build_extraction_review(effective, _NO_DOCUMENT, engine_adaptation(effective), not_interpreted=0)
+    adaptation = engine_adaptation(effective)
+    review = build_extraction_review(effective, _NO_DOCUMENT, adaptation, not_interpreted=0)
     _refuse_confirming_engine_limits(review, decisions)
-    return review
+    return effective, adaptation, review
+
+
+def validate_review(context: dict, decisions: ReviewDecisions) -> ExtractionReview:
+    return reviewed_state(context, decisions)[2]
 
 
 def _refuse_confirming_engine_limits(review: ExtractionReview, decisions: ReviewDecisions) -> None:

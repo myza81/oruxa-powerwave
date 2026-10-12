@@ -227,6 +227,40 @@ class ReviewStateOut(ReviewStateFieldsOut):
     items: list[ReviewItemStateOut] = []
 
 
+_Ohm = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class ApplyZoneOut(BaseModel):
+    """One slot of the existing Distance Protection form. ``None`` = not configured.
+    Only the fields the selected characteristic reads are filled."""
+
+    slot: Literal["zone1", "zone2", "zone3", "zone4"]
+    #: Canonical zone shown in the slot (``zone4`` is the Reverse Zone).
+    zone_id: str | None = None
+    enabled: bool
+    direction: Literal["forward", "reverse"]
+    delay_s: _Ohm | None = None
+    #: Reach angle (°) -- distinct from every reach in ohms.
+    characteristic_angle_deg: Annotated[float, Field(allow_inf_nan=False)] | None = None
+    #: Mho |Z| reach (Ω).
+    reach_ohm: _Ohm | None = None
+    #: Quadrilateral reactive reach (Ω).
+    reactive_reach_ohm: _Ohm | None = None
+    #: Right Resistive Reach (+R), Ω.
+    resistive_reach_forward_ohm: _Ohm | None = None
+    #: Left Resistive Reach (−R), Ω. ``0.0`` is a valid setting.
+    resistive_reach_reverse_ohm: _Ohm | None = None
+
+
+class ApplySettingsOut(BaseModel):
+    """Slice 9: the controlled apply payload -- exactly what the Distance Protection
+    form can hold, nothing from the uploaded document or the canonical model."""
+
+    characteristic: Literal["mho", "quadrilateral"]
+    impedance_basis: Literal["primary", "secondary"]
+    zones: Annotated[list[ApplyZoneOut], Field(min_length=4, max_length=4)]
+
+
 class RelayImportUploadOut(BaseModel):
     filename: str
     source_format: str

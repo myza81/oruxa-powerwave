@@ -277,10 +277,11 @@ class TestNoPersistence:
     def test_there_is_no_review_endpoint_that_reads_stored_state(self):
         from app.api.v1.relay_import import router
 
-        # Slice 8 adds one endpoint, and it is stateless: the interpretation arrives in the request.
+        # Slices 8-9 add two endpoints, both stateless: the interpretation arrives in the request.
         assert {r.path for r in router.routes} == {
             "/api/v1/relay-import/upload",
             "/api/v1/relay-import/review/validate",
+            "/api/v1/relay-import/review/apply",
         }
 
     def test_review_schema_has_no_apply_semantics(self):

@@ -6,7 +6,7 @@ interpretation profile, read-only Extraction Review, review confirmation / resol
 and **integrated into `main`** (2026-10-11) on top of the completed Oscillation Analysis Phase 1
 baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
-is identification-only; auto-population / Apply (Slice 9) are later slices and **not started**. Approval record:
+is identification-only; **Slice 9 (Apply Settings, DEC-188) is implemented and awaiting owner UAT**. Approval record:
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -990,6 +990,35 @@ not started and nothing is applied.
   and not mapped from a profile"; **Edit** / **Clear** restore manual entry / Missing.
 * **Tests.** `backend/tests/test_relay_review_suggestion.py`;
   `browser-tests/distance_resistive_reach_ux.spec.js` (plus renamed assertions in the review specs).
+
+## Slice 9 -- Apply Settings (DEC-188)
+
+Status: **Implemented / Awaiting owner UAT.** Pipeline end: `... -> Review -> Confirm / Resolve -> Apply -> Distance Protection form`.
+
+```text
+original interpretation + decisions            (sent by the browser, stateless)
+      -> reviewed_state()                       decode, apply_review, engine_adaptation (re-run), review/readiness
+      -> readiness must be exactly "ready"      else 409 apply_not_ready
+      -> build_apply_plan()                     domain/relay_import/apply_settings.py
+      -> ApplySettingsOut                       schemas/relay_import.py   (409/422/400 on refusal; never partial)
+      -> wwDistanceApplyImportedSettings()      frontend: validate whole payload, then write form state + inputs
+      -> existing change handlers               field visibility, analysis request, wwDistanceRenderPlot()
+```
+
+* **Endpoint:** `POST /api/v1/relay-import/review/apply`, same body as `review/validate`. Code: `services/relay_apply_settings.py`
+  (readiness gate), `domain/relay_import/apply_settings.py` (plan + form-slot limits). No relay-family knowledge, no math.
+* **Payload boundary:** `characteristic`, `impedance_basis`, four slots with `enabled`, `direction`, `delay_s`,
+  `characteristic_angle_deg`, `reach_ohm` (Mho) or `reactive_reach_ohm` + `resistive_reach_forward_ohm` (+R) +
+  `resistive_reach_reverse_ohm` (-R). Finite, non-negative; `0.0` valid. No document, raw-setting or provenance data.
+* **Form slots:** Zone 1-3 (forward) and the Reverse Zone (reverse). `form_slot_reasons()` is merged into
+  `relay_interpretation_summary.engine_adaptation()` so review readiness and Apply cannot disagree: an *enabled* zone whose
+  canonical id does not belong to its slot (a fifth zone such as Zone P, or Zone P sitting in an empty fourth slot) or whose direction
+  contradicts the slot is `ZONE_SLOT_UNSUPPORTED` (category Unsupported, blocks). A disabled zone is preserved canonically and not applied.
+* **Equivalence:** the payload is the engine adapter's own `ZoneSettings`, reshaped; the form then feeds the unchanged
+  manual endpoints. Imported and hand-typed identical values give identical engine input and R-X geometry (tested).
+* **Re-Apply / failure / lifecycle:** overwrite, not merge; the R-X view resets to automatic; a failed or malformed Apply changes
+  nothing and the review is re-validated. State lives in the tab only; one-way (later form edits never flow back).
+* **Out of scope:** extra-zone cards, other relay profiles, persistence, export, write-back.
 
 ## Intentionally unresolved in Slice 1
 

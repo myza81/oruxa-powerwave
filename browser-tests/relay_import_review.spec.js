@@ -317,7 +317,7 @@ test("readiness moves Not ready -> Ready after confirmation -> Ready to apply, l
   await expect(readiness(page)).toContainText("Readiness: Not ready");
   await resolveAllBlockers(page);
   await expect(readiness(page)).toContainText("Readiness: Ready to apply");
-  await expect(readiness(page)).toContainText("Nothing has been applied. Applying settings is not available yet.");
+  await expect(readiness(page)).toContainText("Apply Settings copies these reviewed settings into the Distance Protection analysis.");
   await expect(page.locator("#wwRelayReviewEngine")).toContainText("Compatible with the current engine");
   expect((await counts(page)).blocking).toBe(0);
   // undoing one confirmation drops it back to waiting on confirmation

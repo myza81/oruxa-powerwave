@@ -8800,6 +8800,10 @@
             cursor: pointer;
         }
         :is(.ww-rr-btn):hover { border-color: var(--accent); }
+        :is(.ww-rr-apply) { margin-top: 6px; padding: 3px 12px; font-size: 0.74rem; font-weight: 600; background: var(--accent); color: var(--panel); border-color: var(--accent); }
+        :is(.ww-rr-apply):disabled { opacity: 0.6; cursor: default; }
+        :is(.ww-rr-apply-status) { margin-top: 4px; font-size: 0.72rem; }
+        :is(.ww-rr-apply-status)[data-kind="error"] { color: var(--error); }
         :is(.ww-rr-btn):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         :is(.ww-rr-bulk) { margin-top: 4px; }
         :is(.ww-rr-resolve) { display: flex; margin: 0 0 6px; padding: 4px 0; font-size: 0.72rem; }
@@ -54670,7 +54674,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwDistanceQuadrilateralSvg(zoneKey, z, toSvg) {
             if (!z.enabled || !Number.isFinite(z.characteristicAngleDeg) || !Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
                 !Number.isFinite(z.resistiveForwardOhm) || z.resistiveForwardOhm <= 0 ||
-                !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm <= 0) return "";
+                !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm < 0) return "";
             const theta = (z.characteristicAngleDeg * Math.PI) / 180;
             const cosT = Math.cos(theta), sinT = Math.sin(theta);
             // Inverse of x' = R cosT + X sinT, r' = R sinT - X cosT:
@@ -54724,7 +54728,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (!Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
                 !Number.isFinite(z.resistiveForwardOhm) || z.resistiveForwardOhm <= 0 ||
-                !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm <= 0) return null;
+                !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm < 0) return null;
             const cosT = Math.cos(theta), sinT = Math.sin(theta);
             const corners = [
                 [0, -z.resistiveReverseOhm], [0, z.resistiveForwardOhm],
@@ -55079,6 +55083,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             reviewBuilt: false,
             reviewError: "",
             reviewController: null,
+            // Slice 9 Apply Settings: {kind: "ok" | "error", text} after an attempt (tab memory only).
+            applyBusy: false,
+            applyMessage: null,
             error: "",
             controller: null,
         };
@@ -55095,6 +55102,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             state.reviewBusy = false;
             state.reviewBuilt = false;
             state.reviewError = "";
+            state.applyBusy = false;
+            state.applyMessage = null;
             state.interpretationStatus = "";
             state.zoneCount = 0;
             state.mappedCount = 0;
@@ -55675,7 +55684,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (r.status === "ready") {
                 box.appendChild(wwRrEl("div", "",
                     "Every value is mapped, a confirmed assumption or resolved, and the current engine accepts them."));
-                box.appendChild(wwRrEl("div", "ww-rr-dim", "Nothing has been applied. Applying settings is not available yet."));
+                box.appendChild(wwRrEl("div", "ww-rr-dim",
+                    "Apply Settings copies these reviewed settings into the Distance Protection analysis. "
+                    + "You can edit them there afterwards."));
+                const apply = wwRrEl("button", "ww-rr-btn ww-rr-apply", "Apply Settings");
+                apply.type = "button";
+                apply.id = "wwRelayReviewApply";
+                apply.disabled = state.applyBusy;
+                apply.addEventListener("click", () => wwRrApply());
+                box.appendChild(apply);
+            }
+            if (state.applyMessage) {
+                const msg = wwRrEl("div", "ww-rr-apply-status", state.applyMessage.text);
+                msg.id = "wwRelayReviewApplyStatus";
+                msg.dataset.kind = state.applyMessage.kind;
+                msg.setAttribute("role", "status");
+                box.appendChild(msg);
             }
             return box;
         }
@@ -55767,6 +55791,52 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return !!body && Array.isArray(body.items) && !!body.readiness && typeof body.readiness === "object"
                 && Object.prototype.hasOwnProperty.call(WW_RR_READINESS_LABELS, body.readiness.status);
         }
+        function wwRrPayload() {
+            const state = wwRelayImportState;
+            const d = state.decisions;
+            return {
+                validation_context: state.review.validation_context,
+                confirmed: [...d.confirmed],
+                manual: [...d.manual].map(([item_id, value]) => ({ item_id, value })),
+                left_unresolved: [...d.left],
+                suggested: [...d.suggested],
+            };
+        }
+        // Slice 9. The backend re-derives the reviewed model and readiness from the original
+        // interpretation and these decisions, and returns only a complete form payload (or an
+        // error). The form is written only after the whole payload has been checked, so a
+        // failed Apply leaves the form and the R-X plot exactly as they were.
+        async function wwRrApply() {
+            const state = wwRelayImportState;
+            if (!state.review || state.applyBusy || state.reviewBusy) return;
+            state.applyBusy = true;
+            state.applyMessage = null;
+            wwRrRefreshAll();
+            let message = { kind: "error", text: "The settings could not be applied. Nothing was changed." };
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/relay-import/review/apply", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(wwRrPayload()),
+                });
+                let body = null;
+                try { body = await response.json(); } catch (parseError) { /* non-JSON error body */ }
+                if (response.ok && wwDistanceApplyImportedSettings(body)) {
+                    message = { kind: "ok", text: "Relay settings applied to Distance Protection analysis." };
+                } else if (!response.ok && body && body.detail && typeof body.detail.message === "string") {
+                    message = { kind: "error", text: body.detail.message + " Nothing was changed." };
+                }
+            } catch (networkError) {
+                message = { kind: "error", text: "Could not reach the server. Nothing was changed." };
+            }
+            state.applyBusy = false;
+            state.applyMessage = message;
+            if (message.kind === "error") {
+                // Readiness may have changed: re-check so the review shows what must be resolved.
+                await wwRrCommit(() => {});
+                state.applyMessage = message;
+            }
+            wwRelayImportRender();
+        }
         // Asks the backend to re-evaluate the current decisions (stateless: the original
         // interpretation travels with the request). `version` is this decision change's
         // number; the answer is applied only if it is still the newest. Resolves {ok, message}
@@ -55777,13 +55847,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const controller = new AbortController();
             state.reviewController = controller;
             const d = state.decisions;
-            const payload = {
-                validation_context: review.validation_context,
-                confirmed: [...d.confirmed],
-                manual: [...d.manual].map(([item_id, value]) => ({ item_id, value })),
-                left_unresolved: [...d.left],
-                suggested: [...d.suggested],
-            };
+            const payload = wwRrPayload();
             const stale = () => state.review !== review || state.reviewVersion !== version;
             let result = { ok: false, message: "The review could not be checked. Your latest change was not kept." };
             try {
@@ -55821,6 +55885,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const state = wwRelayImportState;
             if (!state.review) return { ok: false };
             if (state.reviewController) state.reviewController.abort();
+            state.applyMessage = null;
             mutate(state.decisions);
             const version = ++state.reviewVersion;
             state.reviewBusy = true;
@@ -56213,11 +56278,47 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 setChecked("wwDistance" + part + "Enabled", z.enabled);
                 setVal("wwDistance" + part + "DelayInput", z.delaySeconds === null ? "" : z.delaySeconds);
                 setVal("wwDistance" + part + "AngleInput", z.characteristicAngleDeg === null ? "" : z.characteristicAngleDeg);
-                if (z.reachOhm !== null) setVal("wwDistance" + part + "ReachInput", z.reachOhm);
-                if (z.reactiveReachOhm !== null) setVal("wwDistance" + part + "ReactiveReachInput", z.reactiveReachOhm);
-                if (z.resistiveForwardOhm !== null) setVal("wwDistance" + part + "ResistiveForwardInput", z.resistiveForwardOhm);
-                if (z.resistiveReverseOhm !== null) setVal("wwDistance" + part + "ResistiveReverseInput", z.resistiveReverseOhm);
+                const blank = (v) => (v === null ? "" : v);
+                setVal("wwDistance" + part + "ReachInput", blank(z.reachOhm));
+                setVal("wwDistance" + part + "ReactiveReachInput", blank(z.reactiveReachOhm));
+                setVal("wwDistance" + part + "ResistiveForwardInput", blank(z.resistiveForwardOhm));
+                setVal("wwDistance" + part + "ResistiveReverseInput", blank(z.resistiveReverseOhm));
             }
+        }
+        // Relay Import Slice 9: the backend apply payload is written into the SAME state and
+        // inputs that manual entry uses, then the same change handlers redraw. Nothing here
+        // computes geometry. The payload is validated completely before anything is touched
+        // (atomic); returns false, leaving the form unchanged, if it is not well formed.
+        // Re-applying overwrites every field the payload covers; it never merges with earlier edits.
+        function wwDistanceApplyImportedSettings(payload) {
+            const num = (v) => (v === null ? null : (typeof v === "number" && Number.isFinite(v) ? v : undefined));
+            if (!payload || !Array.isArray(payload.zones) || payload.zones.length !== WW_DISTANCE_ZONE_KEYS.length) return false;
+            if (payload.characteristic !== "mho" && payload.characteristic !== "quadrilateral") return false;
+            if (payload.impedance_basis !== "primary" && payload.impedance_basis !== "secondary") return false;
+            const zones = {};
+            for (let i = 0; i < WW_DISTANCE_ZONE_KEYS.length; i += 1) {
+                const key = WW_DISTANCE_ZONE_KEYS[i];
+                const z = payload.zones[i];
+                if (!z || z.slot !== key || typeof z.enabled !== "boolean" || (z.direction !== "forward" && z.direction !== "reverse")) return false;
+                const next = {
+                    enabled: z.enabled, direction: z.direction,
+                    delaySeconds: num(z.delay_s), characteristicAngleDeg: num(z.characteristic_angle_deg),
+                    reachOhm: num(z.reach_ohm), reactiveReachOhm: num(z.reactive_reach_ohm),
+                    resistiveForwardOhm: num(z.resistive_reach_forward_ohm), resistiveReverseOhm: num(z.resistive_reach_reverse_ohm),
+                };
+                if (Object.values(next).some((v) => v === undefined)) return false;
+                zones[key] = next;
+            }
+            wwDistanceState.characteristic = payload.characteristic;
+            wwDistanceState.settings.outputBasis = payload.impedance_basis;
+            wwDistanceState.zones = zones;
+            wwDistanceState.view = null; // automatic view, so the applied zones are in frame
+            wwDistanceSyncSettingsFields();
+            wwDistanceHandleCharacteristicChanged(); // field visibility + the normal re-request
+            wwDistanceRenderPlot();
+            const plot = document.getElementById("wwDistanceSvg");
+            if (plot && plot.scrollIntoView) plot.scrollIntoView({ block: "nearest" });
+            return true;
         }
         function wwDistanceSyncSettingsFields() {
             const s = wwDistanceState.settings;

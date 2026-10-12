@@ -26608,3 +26608,25 @@ Status: Implemented (`feature/distance-resistive-reach-ux`); awaiting owner UAT.
 **Arbitrary zones.** The canonical model keeps any number of zones (`zones` is an open tuple); only the engine adapter limits the *active* zones to its four slots, and says so explicitly rather than truncating. The manual Distance Protection screen is unchanged (Zone 1-3 + Reverse Zone); a relay file with no Zone P shows no Zone P review section.
 
 Tests: `backend/tests/test_relay_defeated_zone_delay.py` (rule, precedence, thresholds, P441 sample, override, no OEM/engine logic); updated expectations in `test_relay_extraction_review.py`, `test_relay_inactive_zone_readiness.py`, `test_relay_review_state.py`.
+
+
+## DEC-188 -- Apply Settings (Slice 9): a backend-authoritative, one-way copy of the reviewed relay settings into the existing Distance Protection form
+
+Date: 2026-10-12
+Status: Implemented (`feature/slice9-apply-relay-settings`); awaiting owner UAT. Follows DEC-184 to DEC-187. Owner-directed scope.
+
+**Decision.** A ready relay review can be applied to the Distance Protection analysis with one **Apply Settings** action. The imported values enter the *same* form state and inputs that manual entry uses and the *same* change handlers redraw the R-X plane; there is no second plotting or calculation path and no "imported relay plot".
+
+**Backend-authoritative.** `POST /api/v1/relay-import/review/apply` is stateless like review validation: it takes the original interpretation and the review decisions, re-applies them (confirmations, accepted suggestions, manual resolutions), re-runs the zone-status rules and the engine adapter, re-derives readiness, and refuses unless readiness is exactly **Ready to apply** (`409 apply_not_ready`; an unrepresentable model is `422 apply_unsupported`; a bad context or decision is `400 invalid_review`). The browser's displayed review JSON is never copied into the form. Either a complete payload or an error is returned -- never a partial payload.
+
+**Payload boundary.** `ApplySettingsOut` carries only what the current form can hold: `characteristic`, `impedance_basis`, and four slots (`zone1`..`zone4`; `zone4` is the Reverse Zone) each with `enabled`, `direction`, `delay_s`, `characteristic_angle_deg` and the characteristic's reach fields (`reach_ohm` for Mho; `reactive_reach_ohm`, Right Resistive Reach `+R`, Left Resistive Reach `-R` for a quadrilateral). Values are finite and non-negative; `0.0` is valid (a Left reach of 0 draws the boundary at R = 0). No document text, raw settings, provenance or canonical model leave the backend. Phase-earth settings are not part of the payload because the form and engine are phase-phase only.
+
+**Zones.** The canonical model keeps any number of zones. Disabled/inactive zones (including a 10 s-defeated Zone P) are preserved canonically, ignored operationally and never block; their geometry is not applied and nothing is fabricated for them. An *enabled* zone the form cannot show -- a fifth zone, a zone whose canonical id does not belong in its slot, or a direction that contradicts the slot (Zones 1-3 forward, Reverse Zone reverse) -- makes the review Not ready (`ZONE_SLOT_UNSUPPORTED`, category Unsupported); it is never dropped and never moved into the Reverse Zone slot. The slot limits sit in the same adaptation the review uses, so the button can never be offered for a model Apply would refuse. The 10 s distance-zone rule (DEC-187) is unchanged: explicit status wins, and the engine never learns the heuristic.
+
+**One-way, deterministic.** Review -> Apply -> analysis form. After Apply the form is ordinary editable state; later edits are not pushed back. Apply again overwrites every field the payload covers with the latest validated review values (no field-by-field merge with manual edits) and resets the R-X view to automatic. A failed Apply (server refusal, network failure or a malformed payload, which is validated whole before any write) leaves the form and plot unchanged, shows the message and re-checks the review. Provenance (Mapped / Assumption / Missing resolved manually / suggestion accepted) stays in the review; Apply converts nothing into Mapped.
+
+**No persistence.** Nothing is stored in the database, files, localStorage, sessionStorage or IndexedDB; a refresh clears the import and the applied settings.
+
+**Incidental fix.** The quadrilateral SVG/bounds guards in `frontend/index.html` still rejected a Left Resistive Reach of 0 (the engine was fixed in the zero-left-reach commit); they now accept 0 so an applied or typed 0 Ω draws.
+
+Tests: `backend/tests/test_relay_apply_settings.py`; `browser-tests/relay_import_apply.spec.js`.

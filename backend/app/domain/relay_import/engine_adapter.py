@@ -67,6 +67,7 @@ _ENGINE_CHARACTERISTIC = {
 class UnsupportedCode(StrEnum):
     NO_ZONES = "no_zones"
     TOO_MANY_ZONES = "too_many_zones"
+    ZONE_SLOT_UNSUPPORTED = "zone_slot_unsupported"
     BASIS_UNRESOLVED = "basis_unresolved"
     BASIS_MISMATCH = "basis_mismatch"
     CHARACTERISTIC_UNRESOLVED = "characteristic_unresolved"
