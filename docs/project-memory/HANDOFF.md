@@ -4,8 +4,8 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
-Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
+Last updated: **2026-10-12** (DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Waveform toolbar refinement: Synchronize Sources removed, t0 migrated))
 
 ## Relay import + Oscillation integration (2026-10-11)
 
@@ -30,6 +30,19 @@ non-authoritative **0.00 Ω** suggestion for a *Missing* Left reach in the relay
 (DEC-185; RELAY_IMPORT_ARCHITECTURE.md "Review UX fix"). Never auto-applied; recorded as
 `SUGGESTION_ACCEPTED`, distinct from a typed value; category stays Missing; backend validation
 decides readiness. **Slice 9 has not started.** The engine now accepts a left reach of exactly 0 (valid; negative invalid; unset = not configured).
+
+## Pre-Slice-9: disabled-zone readiness and Zone P defaulting (2026-10-12, DEC-186)
+
+Settings of an authoritatively disabled zone no longer block readiness: the review marks them
+`not_required` ("Not required while zone is disabled"), keeps their Missing/Conflict/Unreadable
+category, drops them from the open Missing/Unreadable counts and offers/accepts no 0.00 Ω suggestion
+for them. Blocking is still decided from the adapter's canonical dependencies, so a value an enabled
+zone shares or needs still blocks. A Zone P that is genuinely absent from a cleanly read P441 sheet
+defaults to Disabled as an **Assumption** (`ProvenanceOrigin.DEFAULT_ASSUMPTION`, no confirmation,
+non-blocking); a Zone P that is merely undecoded (the current sample) stays Missing and blocking, and
+an unreadable/partial/warned source never establishes absence. Engine and zone geometry untouched.
+Tests: `backend/tests/test_relay_inactive_zone_readiness.py`, `browser-tests/relay_import_inactive_zone.spec.js`.
+**Slice 9 has not started.**
 
 ## Relay import Slice 8A (2026-10-11, `feature/distance-relay-import`)
 

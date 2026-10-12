@@ -61,7 +61,9 @@ class TestOffer:
     def test_nothing_else_is_ever_suggested(self, model):
         _, items = _state(model)
         offered = {i for i, item in items.items() if item.suggestion}
-        assert offered == {REVERSE.format(z) for z in ("Z1", "Z2", "Z3", "Z4", "ZP")}
+        # Z4 is defeated in the sample: its Left reach is not required, so nothing is offered for it
+        assert offered == {REVERSE.format(z) for z in ("Z1", "Z2", "Z3", "ZP")}
+        assert items[REVERSE.format("Z4")].not_required and items[REVERSE.format("Z4")].suggestion is None
         assert items[ZP_STATUS].category == "missing" and items[ZP_STATUS].suggestion is None
         assert suggestion_spec("zones[Z1].resistive_reach.phase_phase") is None
         assert suggestion_spec("transformers.voltage_base_v") is None

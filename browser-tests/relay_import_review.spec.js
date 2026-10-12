@@ -235,13 +235,13 @@ test("the summary names the uncertainty categories; conflict and unreadable appe
   await reviewP441(page);
   const summary = page.locator("#wwRelayReviewSummary .ww-rr-counts");
   await expect(summary).toContainText("30 assumptions");
-  await expect(summary).toContainText("21 missing");
+  await expect(summary).toContainText("18 missing"); // Zone 4 is defeated: its 3 missing values are not required
   await expect(summary).toContainText("0 unsupported"); // this sheet has no per-loop tilt rows
   await expect(summary).not.toContainText("to confirm");
   await expect(summary).not.toContainText("unresolved");
   await expect(summary).not.toContainText("conflict");
   await expect(summary).not.toContainText("unreadable");
-  await expect(page.locator("#wwRelayImportSummary")).toContainText("30 assumptions · 21 missing · 4 blocking settings");
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("30 assumptions · 18 missing · 4 blocking settings");
 });
 
 test("each uncertain row is classified by why it is uncertain, with the reason in its Source", async ({ page }) => {

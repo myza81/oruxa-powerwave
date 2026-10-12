@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
 
 #: Mapped / To confirm / Confirmed / Unresolved / Resolved manually. Separate from
 #: the interpretation ``status``, which a confirmation never rewrites.
-ReviewStatusName = Literal["mapped", "to_confirm", "confirmed", "unresolved", "resolved_manually"]
+#: ``assumed`` is an Assumption Oruxa made because the source is silent (e.g. an absent
+#: optional zone); it is shown as an Assumption but never awaits confirmation.
+ReviewStatusName = Literal["mapped", "to_confirm", "assumed", "confirmed", "unresolved", "resolved_manually"]
 
 
 #: Slice 8A presentation category: how an item's uncertainty is explained, kept apart
@@ -80,6 +82,9 @@ class ReviewItemOut(BaseModel):
     category: CategoryName = "mapped"
     #: The engine adapter's message when it refuses or cannot use this value.
     engine_reason: str | None = None
+    #: Unresolved, zone-local and in a disabled zone no enabled function needs: visible, not a blocker.
+    not_required: bool = False
+    not_required_reason: str | None = None
 
 
 class ReviewGroupOut(BaseModel):
@@ -89,6 +94,8 @@ class ReviewGroupOut(BaseModel):
     state_label: str | None = None
     state_status: Literal["mapped", "inferred", "unresolved"] | None = None
     state_review_status: ReviewStatusName | None = None
+    #: Helper text for a zone whose state Oruxa assumed.
+    state_note: str | None = None
     items: list[ReviewItemOut] = []
 
 
@@ -139,6 +146,9 @@ class ReviewStateFieldsOut(BaseModel):
     #: Unresolved values the current engine adapter needs (a subset of the above).
     #: Blocking *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
+    #: Unresolved values of a disabled zone that no enabled function needs; not in the
+    #: Missing / Unreadable counts and never blocking.
+    not_required_count: int
     #: Slice 8A presentation counts (see `CategoryName`).
     assumption_count: int
     missing_count: int
@@ -205,6 +215,8 @@ class ReviewItemStateOut(BaseModel):
     engine_reason: str | None = None
     suggestion: ReviewSuggestionOut | None = None
     resolution_origin: Literal["manual", "suggestion"] | None = None
+    not_required: bool = False
+    not_required_reason: str | None = None
 
 
 class ReviewStateOut(ReviewStateFieldsOut):

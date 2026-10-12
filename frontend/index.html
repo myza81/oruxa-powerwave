@@ -55238,6 +55238,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 engine_reason: s ? s.engine_reason : item.engine_reason,
                 suggestion: s ? s.suggestion : item.suggestion,
                 resolution_origin: s ? s.resolution_origin : item.resolution_origin,
+                not_required: s ? !!s.not_required : !!item.not_required,
+                not_required_reason: s ? s.not_required_reason : item.not_required_reason,
             };
         }
         // Only an Assumption can be confirmed (never a missing, conflicting, unsupported or
@@ -55269,7 +55271,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else if (view.left_unresolved) {
                 labelled("Left unresolved", "by you, for this import session");
             }
-            if (wwRrIsLeftReach(item)) box.appendChild(wwRrEl("div", "ww-rr-dim", WW_RR_LEFT_REACH_HELP));
+            if (view.not_required) {
+                labelled("Not required", "this zone is disabled, so the finding is kept for transparency and does not block");
+            }
+            if (wwRrIsLeftReach(item) && !view.not_required) box.appendChild(wwRrEl("div", "ww-rr-dim", WW_RR_LEFT_REACH_HELP));
             // A decision replaces the chip's wording; the original classification stays traceable.
             if (kind.label !== WW_RR_CATEGORY_LABELS[kind.category]) labelled("Classified as", WW_RR_CATEGORY_LABELS[kind.category]);
             // The profile's own reasoning is always kept: confirming never hides the assumption.
@@ -55418,9 +55423,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 li.dataset.review = view.review_status;
                 li.dataset.category = view.category;
                 li.dataset.blocking = view.blocking ? "true" : "false";
+                li.dataset.notRequired = view.not_required ? "true" : "false";
                 value.textContent = view.value_text === null ? "Not available" : view.value_text;
                 if (view.value_text === null) value.dataset.empty = "true"; else delete value.dataset.empty;
                 chips.replaceChildren(wwRrStatusChip(view));
+                if (view.not_required) chips.appendChild(wwRrEl("span", "ww-rr-dim ww-rr-notreq", "· " + (view.not_required_reason || "Not required while zone is disabled")));
                 const offered = view.review_status === "unresolved" && !!view.suggestion;
                 offer.hidden = !offered;
                 if (offered) {
@@ -55487,12 +55494,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRrUi.groups.push(() => {
                     const view = wwRrView(statusItem);
                     state.textContent = " — " + (view.value_text === null
-                        ? "Status " + wwRrChipKind(view).label.toLowerCase() : view.value_text);
+                        ? "Status " + wwRrChipKind(view).label.toLowerCase() : view.value_text)
+                        + (view.review_status === "assumed" ? " · " + wwRrChipKind(view).label : "");
                     state.dataset.status = wwRrChipKind(view).style;
                 });
                 wwRrUi.groups[wwRrUi.groups.length - 1]();
             }
             details.appendChild(summary);
+            // Why Oruxa assumed the zone's state (an optional zone absent from the source).
+            if (group.state_note) details.appendChild(wwRrEl("div", "ww-rr-dim ww-rr-state-note", group.state_note));
             const list = wwRrEl("ul", "ww-rr-items");
             group.items.forEach((item) => list.appendChild(wwRrItem(item)));
             details.appendChild(list);
@@ -55553,7 +55563,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 unresolved_count: num(src.unresolved_count), blocking_count: num(src.blocking_count),
                 assumption_count: num(src.assumption_count), missing_count: num(src.missing_count),
                 conflict_count: num(src.conflict_count), unsupported_count: num(src.unsupported_count),
-                unreadable_count: num(src.unreadable_count),
+                unreadable_count: num(src.unreadable_count), not_required_count: num(src.not_required_count),
                 readiness, engine, blocking_issues: issues,
             };
         }

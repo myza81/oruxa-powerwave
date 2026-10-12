@@ -35,7 +35,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
     item_label,
 )
-from app.domain.relay_import.engine_adapter import EngineAdaptation, UnsupportedCode
+from app.domain.relay_import.engine_adapter import EngineAdaptation, UnsupportedCode, zone_active
 from app.domain.relay_import.provenance import (
     MappingStatus,
     Provenance,
@@ -197,6 +197,7 @@ class ReviewDecisions:
     suggested: frozenset[str] = frozenset()
 
 
+_ZONE_ID = re.compile(r"^zones[[](?P<zone>[^]]+)[]]")
 _TOKEN = re.compile(r"\[[^\]]*\]|[^.\[\]]+")
 
 
@@ -275,6 +276,9 @@ def apply_review(
     or two contradictory decisions about one item."""
     index = dict(model.iter_sourced())
     overlay: dict[str, Sourced] = {}
+    # A zone that is authoritatively disabled needs none of its own settings, so there is
+    # nothing to suggest for it (the decisions are validated against the model as read).
+    inactive = {z.zone_id for z in model.zones if zone_active(z) is False}
 
     def claim(path: str) -> Sourced:
         if path not in index:
@@ -310,6 +314,9 @@ def apply_review(
             raise ReviewDecisionError("No suggestion is available for this value.")
         if sourced.is_resolved:
             raise ReviewDecisionError("Only a missing value can take a suggestion.")
+        zone = _ZONE_ID.match(path)
+        if zone and zone["zone"] in inactive:
+            raise ReviewDecisionError("This value is not required while its zone is disabled.")
         if sourced.provenance.cause not in (None, UnresolvedCause.MISSING):
             raise ReviewDecisionError("A suggestion is offered only for a value missing from the source.")
         overlay[path] = _suggestion_accepted(sourced, spec)

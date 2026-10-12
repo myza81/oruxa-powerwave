@@ -126,6 +126,8 @@ def _review_state_out(review: ExtractionReview) -> ReviewStateOut:
             engine_reason=item.engine_reason,
             suggestion=item.suggestion,
             resolution_origin=item.resolution_origin,
+            not_required=item.not_required,
+            not_required_reason=item.not_required_reason,
         )
         for group in full.groups
         for item in group.items

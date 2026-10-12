@@ -29,6 +29,10 @@ class ProvenanceOrigin(StrEnum):
     #: Slice 8: set by the user while reviewing an import (a confirmation or a
     #: manual resolution). Session-only; never a statement about the profile.
     SESSION_REVIEW = "session_review"
+    #: Oruxa assumed a value because the source states nothing about it (e.g. an optional
+    #: zone that is absent from a reliably read document). Not read from the source, so
+    #: it cites none; an Assumption that needs no confirmation and never blocks.
+    DEFAULT_ASSUMPTION = "default_assumption"
 
 
 class MappingStatus(StrEnum):
@@ -143,6 +147,8 @@ class Sourced(Generic[T]):
     def needs_confirmation(self) -> bool:
         """Inferred and not yet confirmed by the user in this session."""
         p = self.provenance
+        if p.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+            return False
         confirmed = p.review is not None and p.review.status is ReviewStatus.CONFIRMED
         return p.status is MappingStatus.INFERRED and not confirmed
 
@@ -168,6 +174,22 @@ def mapped(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile
 def inferred(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile_version: str,
              raw_value: str | float | None = None, notes: tuple[str, ...] = ()) -> Sourced[T]:
     return Sourced(value, Provenance(MappingStatus.INFERRED, sources, profile_id, profile_version, raw_value, notes))
+
+
+def assumed_default(value: T, *, profile_id: str, profile_version: str, reason: str) -> Sourced[T]:
+    """A value Oruxa assumes because the source is silent about it: status inferred
+    (never mapped), origin ``default_assumption``, no source setting cited. It is
+    shown as an Assumption but needs no confirmation (see `Sourced.needs_confirmation`)."""
+    return Sourced(
+        value,
+        Provenance(
+            MappingStatus.INFERRED,
+            profile_id=profile_id,
+            profile_version=profile_version,
+            notes=(reason,),
+            origin=ProvenanceOrigin.DEFAULT_ASSUMPTION,
+        ),
+    )
 
 
 def manual(value: T, *, raw_value: str | float | None = None) -> Sourced[T]:

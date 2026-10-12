@@ -33,6 +33,7 @@ own mapped / inferred / unresolved, and a confirmation leaves the category alone
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from app.domain.relay_import.canonical_distance import (
@@ -46,8 +47,8 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
     item_label,
 )
-from app.domain.relay_import.engine_adapter import EngineAdaptation
-from app.domain.relay_import.provenance import MappingStatus, ReviewStatus, Sourced, SourceRef
+from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_active
+from app.domain.relay_import.provenance import MappingStatus, ProvenanceOrigin, ReviewStatus, Sourced, SourceRef
 from app.domain.relay_import.review_state import (
     ResolutionKind,
     ResolutionSpec,
@@ -61,6 +62,8 @@ from app.domain.relay_import.review_state import (
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 NOT_STATED = "No value is stated in the document."
+NOT_REQUIRED_REASON = "Not required while zone is disabled"
+_ZONE_PATH = re.compile(r"^zones\[(?P<zone>[^\]]+)\]\.(?P<rest>.+)$")
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,12 @@ class ReviewItem:
     #: The adapter's own message when the current engine refuses (or cannot use) this
     #: value; ``None`` otherwise. Describes the engine, not the document.
     engine_reason: str | None = None
+    #: True for an unresolved zone-local setting of a zone that is authoritatively
+    #: disabled and that no enabled function needs: the finding stays visible but is not a
+    #: blocker and gets no suggestion. Never set for the zone's own status.
+    not_required: bool = False
+    #: Why it is not required (shown beside the category); ``None`` unless ``not_required``.
+    not_required_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +163,8 @@ class ReviewGroup:
     state_status: str | None = None
     #: Slice 8: the zone state in review vocabulary (see `ReviewItem.review_status`).
     state_review_status: str | None = None
+    #: Helper text for a zone whose state Oruxa assumed (e.g. an absent optional zone).
+    state_note: str | None = None
     items: tuple[ReviewItem, ...] = ()
 
 
@@ -224,6 +235,9 @@ class ExtractionReview:
     #: Unresolved values the current engine adapter needs (a subset of the unresolved).
     #: These are *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
+    #: Unresolved values that belong only to a disabled zone and are therefore not required.
+    #: They are excluded from the Missing / Unreadable counts and never block.
+    not_required_count: int
     #: Slice 8A presentation counts, per canonical value. Assumptions still awaiting
     #: confirmation; open Missing / Unreadable values; every Conflict and Unsupported
     #: value (an engine limit is not cleared by a decision about the value).
@@ -333,6 +347,8 @@ def _review_status(sourced: Sourced) -> str:
     p = sourced.provenance
     record = p.review
     if record is None:
+        if p.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+            return "assumed"
         return _REVIEW_STATUS_BY_MAPPING[p.status]
     if record.status is ReviewStatus.CONFIRMED:
         return "confirmed"
@@ -405,10 +421,25 @@ class _Builder:
         document: RawRelayDocument,
         blocking: frozenset[str] = frozenset(),
         limits: dict[str, tuple[str, str]] | None = None,
+        inactive_zones: frozenset[str] = frozenset(),
     ) -> None:
         self._raw: dict[str, RawSetting] = {s.setting_id: s for s in document.settings}
         self._blocking = blocking
         self._limits = limits or {}
+        self._inactive = inactive_zones
+
+    def _not_required(self, path: str | None, sourced: Sourced) -> bool:
+        """Zone-local, unresolved, in an authoritatively disabled zone, and not a canonical
+        dependency of the adapter (``blocking``). Decided from the canonical path, never from
+        the section the row is shown under, so a value an enabled function needs still blocks."""
+        match = _ZONE_PATH.match(path or "")
+        return bool(
+            match
+            and match["zone"] in self._inactive
+            and not match["rest"] == "status"
+            and not sourced.is_resolved
+            and path not in self._blocking
+        )
 
     def source(self, ref) -> ReviewSource:
         raw = self._raw.get(ref.setting_id)
@@ -448,6 +479,7 @@ class _Builder:
         review_status = _review_status(sourced)
         limit = self._limits.get(path) if path else None
         category = _category(sourced, limit)
+        not_required = self._not_required(path, sourced)
         return ReviewItem(
             key=key,
             label=label,
@@ -466,7 +498,9 @@ class _Builder:
             left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
             user_value_text=record.user_value_text if record else None,
             resolution=_resolution(path, sourced, category),
-            suggestion=_suggestion(path, sourced, category),
+            suggestion=None if not_required else _suggestion(path, sourced, category),
+            not_required=not_required,
+            not_required_reason=NOT_REQUIRED_REASON if not_required else None,
             resolution_origin=_resolution_origin(sourced),
             category=category,
             engine_reason=limit[1] if limit else None,
@@ -608,6 +642,8 @@ def _zone_state(zone: DistanceZone) -> tuple[str, str, str]:
     if not status.is_resolved:
         return "Status unresolved", _interpretation_status(status), _review_status(status)
     label = _STATUS_LABELS.get(str(_enum_str(status.value)), "Unknown")
+    if status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+        label = label.split(" / ")[0]  # Oruxa's assumption, not a relay "Defeated" statement
     return label, _interpretation_status(status), _review_status(status)
 
 
@@ -683,7 +719,15 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
             items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u))
 
     state_label, state_status, state_review = _zone_state(zone)
-    return ReviewGroup(f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, tuple(items))
+    note = None
+    if zone.status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+        note = (
+            f"{name} was not found in the uploaded relay settings. "
+            "Oruxa assumes this optional zone is disabled."
+        )
+    return ReviewGroup(
+        f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, note, tuple(items)
+    )
 
 
 def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup | None:
@@ -729,7 +773,8 @@ def build_extraction_review(
     *,
     not_interpreted: int,
 ) -> ExtractionReview:
-    b = _Builder(document, blocking_paths(adaptation), engine_limits(adaptation))
+    inactive = frozenset(z.zone_id for z in model.zones if zone_active(z) is False)
+    b = _Builder(document, blocking_paths(adaptation), engine_limits(adaptation), inactive)
     groups = [_relay_group(b, model), _transformer_group(b, model), _line_group(b, model)]
     groups += [_zone_group(b, z) for z in model.zones]
     comp = _compensation_group(b, model)
@@ -741,10 +786,12 @@ def build_extraction_review(
     def count(status: str) -> int:
         return sum(1 for item in counted if item.review_status == status)
 
-    def in_category(category: str, *review_statuses: str) -> int:
+    def in_category(category: str, *review_statuses: str, required_only: bool = False) -> int:
         return sum(
             1 for item in counted
-            if item.category == category and (not review_statuses or item.review_status in review_statuses)
+            if item.category == category
+            and (not review_statuses or item.review_status in review_statuses)
+            and not (required_only and item.not_required)
         )
 
     blocking_unresolved = sum(1 for item in counted if item.blocking)
@@ -762,15 +809,16 @@ def build_extraction_review(
         mapped_count=sum(1 for item in counted if item.review_status == "mapped" and item.category == "mapped"),
         to_confirm_count=pending,
         assumption_count=in_category("assumption", "to_confirm"),
-        missing_count=in_category("missing", "unresolved"),
+        missing_count=in_category("missing", "unresolved", required_only=True),
         conflict_count=in_category("conflict"),
         unsupported_count=in_category("unsupported"),
-        unreadable_count=in_category("unreadable", "unresolved"),
+        unreadable_count=in_category("unreadable", "unresolved", required_only=True),
         unresolved_count=count("unresolved"),
         not_interpreted_count=not_interpreted,
         confirmed_count=count("confirmed"),
         resolved_manually_count=count("resolved_manually"),
         blocking_count=blocking_unresolved,
+        not_required_count=sum(1 for item in counted if item.not_required),
         readiness=ReviewReadiness(readiness.value, pending, blocking_unresolved),
         blocking_issues=tuple(
             ReviewBlockingIssue(issue.message, issue.zone_ids, issue.paths) for issue in blocking_issues(adaptation)

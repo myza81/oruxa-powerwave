@@ -26571,3 +26571,21 @@ gained `suggested[]`); the adapter re-runs and the blocker clears or returns. Th
 mathematical engine is **not** changed to hide missing data.
 
 **Engine amendment (2026-10-12).** `quadrilateral_zone_operated()` now treats the left reach as a magnitude: unset = not configured (never read as 0), `0.0` = valid (left boundary at r' = 0, inclusive like every other boundary), `> 0` unchanged, `< 0` or non-finite = invalid. Generic; no origin- or relay-specific case. Adapter readiness and engine behaviour now agree (`tests/test_distance_zero_left_reach.py`, incl. review overlay → adapter → engine).
+
+
+## DEC-186 -- Settings of a disabled zone never block readiness; an absent optional Zone P defaults to Disabled as an Assumption
+
+Date: 2026-10-12
+Status: Implemented (`feature/distance-resistive-reach-ux`); awaiting owner UAT. Follows DEC-185.
+
+**Readiness rule.** A setting blocks only if it is required by an *enabled* protection function, or required to determine whether that function is enabled. Enabled zone + required setting missing/invalid = blocking; authoritatively `Disabled` / `Inactive` zone + zone-local setting missing/invalid = **not required**; unknown zone state = the status itself blocks. The engine adapter already skipped geometry for a disabled zone; the review layer now states it: an unresolved zone-local item of a disabled zone gets `not_required` (reason "Not required while zone is disabled"), keeps its category (Missing / Conflict / Unreadable) and its notes, is never Blocking, is excluded from the Missing / Unreadable counts (`not_required_count` carries it) and gets no suggestion. Nothing is deleted or hidden.
+
+**Shared settings.** Decided from the canonical path the adapter depends on (`blocking_paths`), never from the section a row is shown under. A path the adapter needs stays blocking even inside a disabled zone's group; a value shared by an enabled and a disabled zone (P441 R3Ph-R4Ph for Z3/Z4) blocks through the enabled zone only. A zone's own `status` is never "not required".
+
+**Zone P absent.** If an optional zone is genuinely absent from a reliably read source, its state defaults to Disabled, recorded as an **Assumption**: status `inferred` (never `mapped`), new origin `ProvenanceOrigin.DEFAULT_ASSUMPTION`, no source cited, reason "Zone P not found in uploaded relay settings". It is non-blocking and needs **no confirmation** (`Sourced.needs_confirmation` is False for that origin; review status `assumed`). Review wording: "Zone P — Disabled · Assumption" with "Zone P was not found in the uploaded relay settings. Oruxa assumes this optional zone is disabled." It is never worded as the relay file saying Disabled/Defeated.
+
+**Absent is not unknown.** Any Zone P-specific setting (reach, resistive reaches, timer, compensation, direction) or any textual mention of Zone P in the source means Zone P is *observed*: its state is then taken only from a mapped state or the user, otherwise it stays Missing and blocks. The current P441 sample contains Zone P values with no decoded state, so it is **not** defaulted.
+
+**Extraction-quality safeguard (P441 profile).** Absence is concluded only when the Distance Protection function and the neighbouring zones' reaches were read cleanly and the extractor raised no warning. An empty, partial, unreadable, conflicting or warned source leaves the state unresolved.
+
+**Unchanged.** Engine geometry and the DEC-185 left-reach rule (`None` not configured, `0.0` valid, positive valid, negative/non-finite invalid). An *enabled* Zone P (or any fifth zone) is still reported as not ready: the four-zone engine cannot represent it. The 0.00 Ω suggestion is neither offered nor accepted (`apply_review` refuses it) for a disabled zone; it stays for enabled zones.

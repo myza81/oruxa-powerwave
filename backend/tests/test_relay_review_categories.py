@@ -65,7 +65,8 @@ class TestP441Classification:
 
     def test_counts_use_the_new_categories(self, model):
         r = _review(model)
-        assert (r.mapped_count, r.assumption_count, r.missing_count) == (32, 36, 10)
+        assert (r.mapped_count, r.assumption_count, r.missing_count) == (32, 36, 9)  # Z4 is defeated: its missing Left reach is not required
+        assert r.not_required_count == 1
         assert (r.conflict_count, r.unsupported_count, r.unreadable_count) == (0, 4, 0)
 
     def test_every_inferred_value_is_an_assumption_with_its_reason(self, model):
@@ -275,7 +276,7 @@ class TestConfirmation:
         item = _by_path(r)[REVERSE.format("Z1")]
         assert item.review_status == "resolved_manually" and item.user_value_text == "2.5 Ω"
         assert item.category == "missing"  # the original classification stays traceable
-        assert r.missing_count == 9 and r.blocking_count == 3
+        assert r.missing_count == 8 and r.blocking_count == 3
 
 
 class TestReadinessIsUnchanged:

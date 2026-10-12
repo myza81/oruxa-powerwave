@@ -81,8 +81,9 @@ test("review: the suggestion is offered only for the left reach, never for Zone 
     await expect(row(page, key).getByRole("button", { name: /^Use / })).toHaveCount(0);
   }
   for (const text of await offers.allInnerTexts()) expect(text).toContain("0.00 Ω");
-  // Only the left-reach rows (Zones 1-4 and Zone P) carry an offer.
-  await expect(panel(page).getByRole("button", { name: /^Use / })).toHaveCount(5);
+  // Only the left-reach rows a function needs (Zones 1-3, and Zone P while its state is unknown)
+  // carry an offer; Zone 4 is defeated, so its Left Resistive Reach is not required.
+  await expect(panel(page).getByRole("button", { name: /^Use / })).toHaveCount(4);
 });
 
 test("review: accepting the suggestion resolves it as Suggested, keeps Missing in the Source, and Clear restores it", async ({ page }) => {

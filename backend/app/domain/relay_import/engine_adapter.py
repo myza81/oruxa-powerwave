@@ -225,6 +225,13 @@ def _status(zone: DistanceZone) -> bool | None:
     return None
 
 
+def zone_active(zone: DistanceZone) -> bool | None:
+    """Whether the zone is in service: True enabled, False authoritatively disabled /
+    inactive, None not established. A disabled zone's own settings are not required by
+    the engine; an unknown state is itself a blocker."""
+    return _status(zone)
+
+
 def _known_direction(zone: DistanceZone) -> str | None:
     d = zone.direction
     if d.is_resolved and d.value is ZoneDirection.FORWARD:
