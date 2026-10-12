@@ -725,13 +725,13 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     note = None
     if is_defeated_delay_assumption(zone.status):
         note = (
-            "Zone status was not explicitly decoded. Oruxa interprets the 10.0 s operating delay "
+            "Zone status was not explicitly decoded. The 10.0 s operating delay is interpreted "
             "as a defeated/inactive distance zone. Its extracted settings are kept for reference."
         )
     elif zone.status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
         note = (
             f"{name} was not found in the uploaded relay settings. "
-            "Oruxa assumes this optional zone is disabled."
+            "This optional zone is assumed to be disabled."
         )
     return ReviewGroup(
         f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, note, tuple(items)

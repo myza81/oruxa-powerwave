@@ -199,7 +199,7 @@ class TestZonePAbsent:
         group = next(g for g in review.groups if g.id == "zone-ZP")
         assert group.state_label == "Disabled" and group.state_review_status == "assumed"
         assert group.state_note == (
-            "Zone P was not found in the uploaded relay settings. Oruxa assumes this optional zone is disabled."
+            "Zone P was not found in the uploaded relay settings. This optional zone is assumed to be disabled."
         )
         # the findings are preserved (Missing) but none is a blocker
         zp_items = [i for i in group.items if i.item_id and i.primary and i.item_id != ZP_STATUS]

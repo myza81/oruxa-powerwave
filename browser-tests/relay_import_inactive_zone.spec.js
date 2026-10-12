@@ -62,7 +62,7 @@ test("an absent Zone P is assumed Disabled: an Assumption with helper text, noth
   await review(page, { drop: ["301D", "3020", "3023"] });
   await expect(zoneP(page).locator("> summary")).toContainText("Zone P — Disabled · Assumption");
   await expect(zoneP(page).locator(".ww-rr-state-note")).toHaveText(
-    "Zone P was not found in the uploaded relay settings. Oruxa assumes this optional zone is disabled.",
+    "Zone P was not found in the uploaded relay settings. This optional zone is assumed to be disabled.",
   );
   const status = row(page, "zone.ZP.status");
   await expect(status).toHaveAttribute("data-category", "assumption");

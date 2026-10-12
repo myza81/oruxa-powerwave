@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
 
 #: Mapped / To confirm / Confirmed / Unresolved / Resolved manually. Separate from
 #: the interpretation ``status``, which a confirmation never rewrites.
-#: ``assumed`` is an Assumption Oruxa made because the source is silent (e.g. an absent
+#: ``assumed`` is an Assumption made because the source is silent (e.g. an absent
 #: optional zone); it is shown as an Assumption but never awaits confirmation.
 ReviewStatusName = Literal["mapped", "to_confirm", "assumed", "confirmed", "unresolved", "resolved_manually"]
 
@@ -36,7 +36,7 @@ class ReviewSourceOut(BaseModel):
 
 
 class ReviewSuggestionOut(BaseModel):
-    """A neutral value Oruxa offers for a missing item. Never applied automatically."""
+    """A neutral value that is offered for a missing item. Never applied automatically."""
 
     value_text: str
     rationale: str
@@ -94,7 +94,7 @@ class ReviewGroupOut(BaseModel):
     state_label: str | None = None
     state_status: Literal["mapped", "inferred", "unresolved"] | None = None
     state_review_status: ReviewStatusName | None = None
-    #: Helper text for a zone whose state Oruxa assumed.
+    #: Helper text for a zone whose state was assumed.
     state_note: str | None = None
     items: list[ReviewItemOut] = []
 
@@ -198,7 +198,7 @@ class ReviewValidationIn(BaseModel):
     confirmed: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
     manual: list[ReviewManualResolutionIn] = Field(default=[], max_length=2000)
     left_unresolved: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
-    #: Missing items whose Oruxa suggestion the user explicitly accepted.
+    #: Missing items whose suggested value the user explicitly accepted.
     suggested: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
 
 

@@ -26630,3 +26630,5 @@ Status: Implemented (`feature/slice9-apply-relay-settings`); awaiting owner UAT.
 **Incidental fix.** The quadrilateral SVG/bounds guards in `frontend/index.html` still rejected a Left Resistive Reach of 0 (the engine was fixed in the zero-left-reach commit); they now accept 0 so an applied or typed 0 Ω draws.
 
 Tests: `backend/tests/test_relay_apply_settings.py`; `browser-tests/relay_import_apply.spec.js`.
+
+**Copy amendment (2026-10-12).** User-facing text no longer names the product: the visible wording of the reasons and notes quoted in DEC-185 to DEC-187 is now neutral (e.g. "The 10.0 s operating delay is interpreted as a defeated/inactive distance zone.", "Suggested value: 0.00 Ω", "This optional zone is assumed to be disabled."). Meaning and provenance (`suggestion`, `manual`, `mapped`, `assumption`) are unchanged; the historical wording above is kept as the record. `backend/tests/test_user_facing_copy.py` guards shipped frontend text and relay-review responses; repository/package/path identifiers and code comments are intentionally exempt.

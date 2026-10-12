@@ -8715,6 +8715,7 @@
         :is(.ww-rr-state)[data-status="conflict"] { color: var(--error); }
         :is(.ww-rr-state)[data-status="unsupported"] { color: var(--text-dim); }
         :is(.ww-rr-state)[data-status="unreadable"] { color: var(--warn); }
+        :is(.ww-rr-state-note) { margin: 0; padding: 6px 10px 2px; line-height: 1.35; }
         :is(.ww-rr-items) { list-style: none; margin: 0; padding: 0 10px 6px; }
         :is(.ww-rr-item) { border-top: 1px solid var(--panel-border); }
         :is(.ww-rr-row) {
@@ -55182,7 +55183,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             unsupported: "Why unsupported", unreadable: "Why unreadable", mapped: "Note",
         };
         const WW_RR_CATEGORY_HELP = {
-            conflict: "Oruxa did not choose between the conflicting source values.",
+            conflict: "No choice was made between the conflicting source values.",
             unsupported: "This is a limit of the current software, not something to confirm.",
             unreadable: "Provide a clearer source document, or enter the value manually where that is offered.",
         };
@@ -55269,7 +55270,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
             if (view.review_status === "resolved_manually" && view.resolution_origin === "suggestion") {
                 labelled("Source value", "unavailable / " + WW_RR_CATEGORY_LABELS[kind.category].toLowerCase());
-                labelled("Oruxa suggestion", (view.user_value_text || view.value_text || "") + " \u2014 accepted by you, for this import session only");
+                labelled("Suggested value", (view.user_value_text || view.value_text || "") + " \u2014 accepted by you, for this import session only");
                 labelled("Not", "the relay's setting, and not mapped from a profile");
             } else if (view.review_status === "resolved_manually") {
                 labelled("Source value", "unavailable / unresolved");
@@ -56430,7 +56431,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // DevTools always agree.
         document.documentElement.dataset.build = buildVersion();
         console.log(
-            "Oruxa Powerwave — " + (window.POWERWAVE_CONFIG && window.POWERWAVE_CONFIG.environment || "development") +
+            "Powerwave — " + (window.POWERWAVE_CONFIG && window.POWERWAVE_CONFIG.environment || "development") +
             " — build " + buildVersion()
         );
         document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();

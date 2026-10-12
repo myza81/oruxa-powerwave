@@ -6,7 +6,7 @@
 //   Forward/Reverse resistive wording is gone, the Reverse Zone keeps its name,
 //   and the left-hand field is never prefilled.
 // * Relay review: the imported P441 sheet states no left-hand reach, so it is
-//   Missing and blocking. Oruxa offers 0.00 Ω; nothing is applied until the user
+//   Missing and blocking. a 0.00 Ω value is offered; nothing is applied until the user
 //   chooses "Use 0.00 Ω". The accepted suggestion keeps the Missing cause visible,
 //   is not a source/profile value, and Clear restores Missing / blocking.
 
@@ -97,7 +97,7 @@ test("review: accepting the suggestion resolves it as Suggested, keeps Missing i
   await expect(row(page, key).locator(".ww-rr-offer")).toBeHidden();
   await button(page, "Source of Zone 1 " + LEFT).click();
   const prov = row(page, key).locator(".ww-rr-prov");
-  await expect(prov).toContainText("Oruxa suggestion: 0.00 Ω");
+  await expect(prov).toContainText("Suggested value: 0.00 Ω");
   await expect(prov).toContainText("accepted by you");
   await expect(prov).toContainText("Source value: unavailable / missing");
   await expect(prov).toContainText("Classified as: Missing");

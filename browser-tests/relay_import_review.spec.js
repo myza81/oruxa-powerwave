@@ -292,7 +292,7 @@ test("a conflicting source value is a Conflict: no Confirm, no typed value, and 
   await expect(row(page, "zone.Z1.timer").getByRole("button", { name: /^(Confirm|Resolve|Edit)/ })).toHaveCount(0);
   await row(page, "zone.Z1.timer").getByRole("button", { name: "Source of Zone 1 Time Delay" }).click();
   await expect(row(page, "zone.Z1.timer")).toContainText("Why conflicting: 300E tZ1: conflicting duplicate entries");
-  await expect(row(page, "zone.Z1.timer")).toContainText("Oruxa did not choose between the conflicting source values.");
+  await expect(row(page, "zone.Z1.timer")).toContainText("No choice was made between the conflicting source values.");
 });
 
 test("a value that could not be read is Unreadable: no Confirm, and the row suggests a clearer source", async ({ page }) => {
@@ -433,7 +433,7 @@ test("a refused decision is rolled back and says so", async ({ page }) => {
   await expect(page.locator("#wwRelayReviewNotice")).toBeEmpty();
 });
 
-test("there is no Apply anywhere, and the manual Distance Protection form is never touched", async ({ page }) => {
+test("reaching Ready to apply (Slice 9) offers only Apply Settings and never touches the form by itself", async ({ page }) => {
   await openDistance(page);
   const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
   const before = [];
@@ -445,7 +445,9 @@ test("there is no Apply anywhere, and the manual Distance Protection form is nev
   await expect(readiness(page)).toContainText("Readiness: Ready to apply");
   const labels = await page.locator("#wwRelayImportPanel button").allTextContents();
   expect(labels.length).toBeGreaterThan(5);
-  for (const label of labels) expect(label).not.toMatch(/apply|populate|generate|plot|auto-?fill|use these/i);
+  // Apply Settings is the one explicit action; nothing else populates, generates or plots.
+  for (const label of labels) expect(label).not.toMatch(/populate|generate|plot|auto-?fill|use these/i);
+  expect(labels.filter((label) => /apply/i.test(label))).toEqual(["Apply Settings"]);
   const after = [];
   for (const sel of inputs) after.push(await page.locator(sel).inputValue());
   expect(after).toEqual(before);

@@ -917,10 +917,10 @@ uncertain instead of asking everything to be confirmed. Six compact categories
 | Category | Meaning | User action |
 |---|---|---|
 | **Mapped** | read, and the mapping is deterministic | none (read-only) |
-| **Assumption** | the source value **was read**, but Oruxa made an engineering assumption to interpret it (direction from family convention, characteristic from the setting family, reach angle = line angle) | expert may Confirm / Undo; bulk "Confirm all assumptions (N)" |
+| **Assumption** | the source value **was read**, but an engineering assumption was made to interpret it (direction from family convention, characteristic from the setting family, reach angle = line angle) | expert may Confirm / Undo; bulk "Confirm all assumptions (N)" |
 | **Missing** | a value the workflow needs is not in the source | manual value only where the canonical type/unit is known |
 | **Conflict** | source values/statements disagree, or contradict the printed range/unit; none is chosen | none (the competing choices are not offered) |
-| **Unsupported** | Oruxa understands it, but the current engine/model cannot represent or use it (Zone P as a fifth zone, a lenticular characteristic, a per-loop tilt) | none -- a limit of the software, never confirmed away |
+| **Unsupported** | the software understands it, but the current engine/model cannot represent or use it (Zone P as a fifth zone, a lenticular characteristic, a per-loop tilt) | none -- a limit of the software, never confirmed away |
 | **Unreadable** | the text could not be read reliably (empty cell, not a plain number) | clearer source, or manual value where offered |
 
 Not every uncertainty is a question for the user; only an Assumption is confirmable.
@@ -986,7 +986,7 @@ not started and nothing is applied.
 * **UI.** Missing row: "This value was not found in the relay setting file. Suggested for
   visualization: 0.00 Ω. …" with **Use 0.00 Ω** and **Enter manually** (the existing Resolve
   editor; its aria-label stays "Resolve …"). Accepted: chip **Resolved · Suggested**, Source
-  shows "Oruxa suggestion: 0.00 Ω — accepted by you …" and "Not the relay's setting,
+  shows "Suggested value: 0.00 Ω — accepted by you …" and "Not the relay's setting,
   and not mapped from a profile"; **Edit** / **Clear** restore manual entry / Missing.
 * **Tests.** `backend/tests/test_relay_review_suggestion.py`;
   `browser-tests/distance_resistive_reach_ux.spec.js` (plus renamed assertions in the review specs).

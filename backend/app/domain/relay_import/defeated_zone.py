@@ -38,7 +38,7 @@ from app.domain.relay_import.provenance import (
 DEFEATED_ZONE_DELAY_S = 10.0
 
 DEFEATED_ZONE_REASON = (
-    "No explicit zone status was available. Oruxa interprets a 10.0 s operating delay "
+    "No explicit zone status was available. The 10.0 s operating delay is interpreted "
     "as a defeated/inactive distance zone."
 )
 
