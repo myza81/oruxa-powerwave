@@ -302,13 +302,14 @@ class TestCanonicalModelIsNotLimitedToFourZones:
         model = manual_to_canonical(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=zones)
         assert [z.zone_id for z in model.zones] == [f"Z{i}" for i in range(1, 8)]
 
-    def test_engine_refuses_only_enabled_zones_beyond_its_four_slots(self):
-        zones = tuple(ZoneSettings(i < 4, 5.0, None, None, None, 75.0, 0.0) for i in range(5))
-        a = adapt_to_engine(manual_to_canonical(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=zones), engine_basis=SEC)
-        assert a.supported and len(a.zones) == 4
-        zones = tuple(ZoneSettings(True, 5.0, None, None, None, 75.0, 0.0) for _ in range(5))
-        a = adapt_to_engine(manual_to_canonical(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=zones), engine_basis=SEC)
-        assert not a.supported and UnsupportedCode.TOO_MANY_ZONES in {r.code for r in a.reasons}
+    def test_zone_count_is_not_an_engine_limit(self):
+        """Slice 10: a fifth (or seventh) zone is adapted like any other; only an
+        incomplete zone is refused, never the count."""
+        for count in (5, 7):
+            zones = tuple(ZoneSettings(True, 5.0, None, None, None, 75.0, 0.0) for _ in range(count))
+            a = adapt_to_engine(manual_to_canonical(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=zones), engine_basis=SEC)
+            assert a.supported and len(a.zones) == count and len(a.zone_ids) == count
+            assert all(z.enabled for z in a.zones)
 
 
 # ---------------------------------------------------------------------------

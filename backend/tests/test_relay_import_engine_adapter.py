@@ -210,9 +210,8 @@ class TestSupportedImport:
         a = adapt_to_engine(model_of(import_zone("Z1"), import_zone("Z2")), engine_basis=SEC)
         assert a.supported and a.characteristic == CHARACTERISTIC_QUADRILATERAL
         assert a.zones[0] == ZoneSettings(True, None, 6.0, 4.0, 2.0, 80.0, 0.15)
-        assert a.zones[2] == ZoneSettings()  # unused slot
-        assert a.zones[3] == DEFAULT_ZONE4  # unused fourth slot: disabled, reverse-facing
-        assert a.zone_ids == ("Z1", "Z2", None, None)
+        # exactly one engine setting per canonical zone: nothing is padded to a fixed count
+        assert len(a.zones) == 2 and a.zone_ids == ("Z1", "Z2")
 
     def test_supported_mho_import(self):
         z = import_zone(char=CharacteristicType.MHO)
@@ -220,12 +219,19 @@ class TestSupportedImport:
         assert a.supported and a.characteristic == CHARACTERISTIC_MHO
         assert a.zones[0].reach_ohm == 6.0 and a.zones[0].characteristic_angle_deg == 80.0
 
-    def test_extra_disabled_zones_are_allowed_and_enabled_extras_refused(self):
+    def test_extra_zones_are_adapted_like_any_other(self):
         zs = [import_zone(f"Z{i}") for i in range(1, 5)]
         off = import_zone("Z5", status=m(ZoneStatus.INACTIVE), direction=m(ZoneDirection.INACTIVE))
-        assert adapt_to_engine(model_of(*zs, off), engine_basis=SEC).supported
-        a = adapt_to_engine(model_of(*zs, import_zone("Z5")), engine_basis=SEC)
-        assert not a.supported and UnsupportedCode.TOO_MANY_ZONES in codes(a)
+        a = adapt_to_engine(model_of(*zs, off), engine_basis=SEC)
+        assert a.supported and a.zone_ids == ("Z1", "Z2", "Z3", "Z4", "Z5") and a.zones[4].enabled is False
+        a = adapt_to_engine(model_of(*zs, import_zone("Z5"), import_zone("ZP")), engine_basis=SEC)
+        assert a.supported and a.zone_ids[-2:] == ("Z5", "ZP") and a.zones[4].enabled and a.zones[5].enabled
+
+    def test_an_incomplete_extra_zone_is_refused_for_what_it_lacks_not_for_its_number(self):
+        zs = [import_zone(f"Z{i}") for i in range(1, 5)]
+        a = adapt_to_engine(model_of(*zs, import_zone("ZP", reach=unresolved())), engine_basis=SEC)
+        assert not a.supported and codes(a) == {UnsupportedCode.REACH_UNRESOLVED}
+        assert all(r.zone_id == "ZP" for r in a.reasons)
 
     def test_earth_only_data_is_preserved_and_reported_not_used(self):
         z = import_zone(
@@ -345,7 +351,7 @@ class TestUnsupportedFailsSafe:
             model_of(import_zone("A", phase_timer_s=m(0.1)), import_zone("B", phase_timer_s=m(0.2)), import_zone("C", phase_timer_s=m(0.3))),
             engine_basis=SEC,
         )
-        assert [z.delay_s for z in a.zones[:3]] == [0.1, 0.2, 0.3] and a.zone_ids == ("A", "B", "C", None)
+        assert [z.delay_s for z in a.zones] == [0.1, 0.2, 0.3] and a.zone_ids == ("A", "B", "C")
 
 
 # --- architecture guards ----------------------------------------------------

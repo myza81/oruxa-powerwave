@@ -6,7 +6,7 @@ interpretation profile, read-only Extraction Review, review confirmation / resol
 and **integrated into `main`** (2026-10-11) on top of the completed Oscillation Analysis Phase 1
 baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
-is identification-only; **Slice 9 (Apply Settings, DEC-188) is implemented and awaiting owner UAT**. Approval record:
+is identification-only; **Slice 9 (Apply Settings, DEC-188) and Slice 10 (Dynamic Distance Zones, DEC-189) are implemented and awaiting owner UAT**. Approval record:
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -167,15 +167,15 @@ Manual form (flat API params -> ZoneSettings)      [transitional boundary]
   picks a value to make conversion succeed, and reports *all* problems.
   `allow_incomplete_zones=True` (manual form only) passes a blank reach as
   absent (`None`), which the engine already treats as Not Operated.
-- **Engine capability** (updated with the Reverse Zone enhancement): exactly four
-  zone slots in order, each with an explicit direction (forward or reverse);
+- **Engine capability** (updated with the Reverse Zone enhancement and again by Slice 10, DEC-189): any number of
+  zones, each with a stable key and an explicit direction (forward or reverse);
   one characteristic (mho or quadrilateral) for all zones; phase-phase loops
   only; forward and reverse directional geometry only (non-directional,
   unknown or unresolved directions are still refused); one delay and one shared
   angle per zone; zone ohms compared in the selected impedance basis. A reverse
   zone is the characteristic rotated 180° about the origin; it is unrelated to a
-  quadrilateral's reverse *resistive* reach. The canonical model itself still
-  allows any number of zones - four is only what the engine evaluates.
+  quadrilateral's reverse *resistive* reach. The canonical model allows any number of zones and, since
+  Slice 10, so does the engine: zone count is not a capability limit.
 - **Supported canonical fields:** zone status (enabled / disabled / inactive),
   forward or reverse direction, phase-phase operation, polar reach (→ mho `reach_ohm` or
   quadrilateral `reactive_reach_ohm`, angle → shared characteristic angle),
@@ -1007,10 +1007,10 @@ original interpretation + decisions            (sent by the browser, stateless)
 
 * **Endpoint:** `POST /api/v1/relay-import/review/apply`, same body as `review/validate`. Code: `services/relay_apply_settings.py`
   (readiness gate), `domain/relay_import/apply_settings.py` (plan + form-slot limits). No relay-family knowledge, no math.
-* **Payload boundary:** `characteristic`, `impedance_basis`, four slots with `enabled`, `direction`, `delay_s`,
+* **Payload boundary (superseded by Slice 10 -- see below; the payload is now the complete zone list under stable ids, no `slot`):** `characteristic`, `impedance_basis`, four slots with `enabled`, `direction`, `delay_s`,
   `characteristic_angle_deg`, `reach_ohm` (Mho) or `reactive_reach_ohm` + `resistive_reach_forward_ohm` (+R) +
   `resistive_reach_reverse_ohm` (-R). Finite, non-negative; `0.0` valid. No document, raw-setting or provenance data.
-* **Form slots:** Zone 1-3 (forward) and the Reverse Zone (reverse). `form_slot_reasons()` is merged into
+* **Form slots (removed by Slice 10):** Zone 1-3 (forward) and the Reverse Zone (reverse). `form_slot_reasons()` was merged into
   `relay_interpretation_summary.engine_adaptation()` so review readiness and Apply cannot disagree: an *enabled* zone whose
   canonical id does not belong to its slot (a fifth zone such as Zone P, or Zone P sitting in an empty fourth slot) or whose direction
   contradicts the slot is `ZONE_SLOT_UNSUPPORTED` (category Unsupported, blocks). A disabled zone is preserved canonically and not applied.
@@ -1043,4 +1043,37 @@ operating delay of exactly 10.0 s as **Disabled · Assumption** (origin `DEFAULT
 provenance preserved). It runs after profile interpretation, is vendor-neutral and distance-zone-only, and is absent from the OEM
 profiles and the engine. This supersedes the earlier statements in this document that the P441 sample's Zone P is unresolved/blocking
 (the profile still reports it unresolved; the generic step then disables it). Explicit status wins; other delays stay unresolved; an
-assumed status can be overridden in review; an enabled Zone P (fifth zone) is reported as unsupported by the four-zone engine.
+assumed status can be overridden in review; an enabled Zone P (fifth zone) was reported as unsupported by the four-zone engine until Slice 10 (DEC-189), after which it is validated like any other zone.
+
+## Slice 10 -- Dynamic Distance Zones (DEC-189)
+
+Status: **Implemented / Awaiting owner UAT.** Removes the four-slot ceiling of Slice 9: the reviewed model's complete zone collection
+is applied, displayed and plotted.
+
+```text
+canonical model (any number of zones)
+      -> adapt_to_engine()        one engine ZoneSettings per canonical zone (zones + zone_ids, same length/order)
+      -> readiness                the adapter alone decides; there is no separate form-slot check any more
+      -> build_apply_plan()       ApplyPlan.zones: every zone, in order, {id, display_name, enabled, direction, geometry}
+      -> ApplySettingsOut         schemas/relay_import.py   (no `slot`; at least one zone, no upper bound)
+      -> wwDistanceApplyImportedSettings()   validate whole payload; rebuild the zone collection; render cards/plot/legend
+      -> GET .../distance-protection[-locus] and .../distance-protection-manual   with ?zones=<JSON list>
+```
+
+* **Removed:** `ENGINE_ZONE_COUNT`, `UnsupportedCode.TOO_MANY_ZONES`, `UnsupportedCode.ZONE_SLOT_UNSUPPORTED`, `APPLY_SLOTS`,
+  `form_slot_reasons()`. `EngineAdaptation.zones` is a tuple of any length (no padding with `DEFAULT_ZONE4`).
+* **Identity:** the canonical zone id (`Z1`, `ZP`, `ZX7`, ...) is the zone's identity and travels as `id`; `display_name` is the source's own
+  label. Position carries no meaning (shuffling the model changes only the display order).
+* **Payload:** a zone that is disabled is present with `enabled: false`, no geometry and a delay only if the source states one; its
+  `direction` is `null` when the source does not state it. An enabled zone always states a forward/reverse direction. The payload still
+  carries no document, raw-setting or provenance data.
+* **Browser mapping:** `Z1`..`Z4` fill the four standard cards (so the existing Zone 1-3 and Reverse Zone behaviour is preserved); any other
+  *enabled* id gets an extra card keyed `z_<slug>`; a disabled non-standard zone has no card. Apply rebuilds the collection from the
+  standard defaults plus the payload, so a re-Apply removes zones that are gone and updates the same id in place.
+* **Direction and characteristic:** each zone's own direction decides its geometry (forward, or reverse = rotated 180 degrees); the
+  characteristic is still one per analysis and only Mho / Quadrilateral are drawable. A model with any other characteristic is not
+  applicable -- readiness blocks Apply and the adapter reports `CHARACTERISTIC_UNSUPPORTED` for that zone.
+* **The P441 sample** is unchanged: Zone 4 and Zone P stay Disabled (DEC-187). Overriding Zone P to Enabled blocks only for the missing
+  phase-phase and Left Resistive Reach values, and applies as a fifth card once they are resolved.
+* **Out of scope (unchanged):** a second relay family, a manual "add zone" editor, per-zone characteristics, non-directional zones,
+  persistence, write-back.

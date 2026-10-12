@@ -20,7 +20,6 @@ import logging
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from app.domain.relay_import.apply_settings import form_slot_reasons
 from app.domain.relay_import.canonical_codec import encode_model
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel, SettingBasis
 from app.domain.relay_import.engine_adapter import EngineAdaptation, adapt_to_engine
@@ -90,16 +89,13 @@ def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int,
 
 
 def engine_adaptation(model: CanonicalDistanceProtectionModel) -> EngineAdaptation:
-    """The existing engine adapter run read-only against the model's own basis, plus the
-    Distance Protection form's own slot limits (Slice 9) so that review readiness and
-    Apply Settings can never disagree."""
+    """The existing engine adapter run read-only against the model's own basis. Review
+    readiness and Apply Settings both read this one result, so they can never disagree
+    (Slice 10: there is no longer a separate form-slot check -- the zones the analysis
+    receives are exactly the zones the adapter accepted, whatever their number)."""
     basis = model.transformers.setting_basis
     engine_basis = basis.value.value if basis.is_resolved and basis.value is not SettingBasis.UNKNOWN else "secondary"
-    adaptation = adapt_to_engine(model, engine_basis=engine_basis)
-    slot_reasons = form_slot_reasons(model)
-    if not slot_reasons:
-        return adaptation
-    return replace(adaptation, supported=False, reasons=(*adaptation.reasons, *slot_reasons))
+    return adapt_to_engine(model, engine_basis=engine_basis)
 
 
 def _engine_warnings(adaptation: EngineAdaptation) -> tuple[str, ...]:

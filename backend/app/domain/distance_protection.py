@@ -12,8 +12,8 @@ distance relay would see for a selected phase-phase loop --
 
 -- via full complex phasor subtraction and division (never derived from
 scalar RMS magnitudes alone), then evaluates that loop impedance against
-up to four independently-configured protection zones (three forward, plus
-one explicit reverse-direction zone), each using
+any number of independently-configured protection zones (each with its own
+stable key and its own forward/reverse direction), each using
 either a Mho (circular) or a Quadrilateral (polygonal) characteristic.
 This is calculation + visualization only -- explicitly NOT full relay
 logic. See module footer for the complete non-scope boundary.
@@ -84,6 +84,7 @@ from __future__ import annotations
 
 import cmath
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from app.domain.calculated_channel import ChannelRef
@@ -240,6 +241,10 @@ ZONE_KEY_1 = "zone1"
 ZONE_KEY_2 = "zone2"
 ZONE_KEY_3 = "zone3"
 ZONE_KEY_4 = "zone4"
+#: The keys of the manual form's standard zone slots. They are ordinary zone
+#: keys like any other -- nothing in the engine treats them specially; the
+#: collection an analysis receives may hold any number of zones under any
+#: unique keys (Slice 10).
 ZONE_KEYS = (ZONE_KEY_1, ZONE_KEY_2, ZONE_KEY_3, ZONE_KEY_4)
 
 #: Zone DIRECTION -- the whole characteristic faces forward (the default,
@@ -474,6 +479,68 @@ class ZoneResult:
     direction: str = DIRECTION_FORWARD
 
 
+@dataclass(frozen=True, slots=True)
+class NamedZone:
+    """A zone's stable key paired with its configuration. The key is the zone's
+    identity (it is echoed back in `ZoneResult.zone_key`); its position in a
+    collection and its direction carry no identity. Any number of zones may be
+    evaluated, under any unique keys."""
+
+    key: str
+    settings: ZoneSettings
+
+
+def evaluate_zones(point: ImpedancePoint | None, *, characteristic: str, zones: Sequence[NamedZone]) -> tuple[ZoneResult, ...]:
+    """Every zone evaluated completely independently, in the order given. The
+    one generic zone loop: nothing here knows how many zones there are."""
+    return tuple(
+        ZoneResult(
+            zone_key=z.key, enabled=z.settings.enabled,
+            state=evaluate_zone_state(point, characteristic=characteristic, zone=z.settings),
+            delay_s=z.settings.delay_s, direction=z.settings.direction,
+        )
+        for z in zones
+    )
+
+
+def collect_zones(
+    zones: Sequence[NamedZone] | None,
+    zone1: ZoneSettings | None = None, zone2: ZoneSettings | None = None, zone3: ZoneSettings | None = None,
+    zone4: ZoneSettings | None = None,
+) -> tuple[NamedZone, ...]:
+    """The one zone collection an analysis evaluates.
+
+    `zones` is the generic form. `zone1`..`zone4` are the manual form's standard
+    slots, kept as a compatibility spelling: they are folded into the same
+    collection (the fourth defaults to its disabled Reverse Zone setting). The two
+    spellings are mutually exclusive, and keys must be unique."""
+    legacy = (zone1, zone2, zone3, zone4)
+    if zones is not None:
+        if any(z is not None for z in legacy):
+            raise TypeError("pass either `zones` or the standard zone1..zone4 slots, not both")
+        collected = tuple(zones)
+    else:
+        if zone1 is None or zone2 is None or zone3 is None:
+            raise TypeError("zone1, zone2 and zone3 are required when `zones` is not given")
+        collected = tuple(
+            NamedZone(key, settings)
+            for key, settings in zip(ZONE_KEYS, (zone1, zone2, zone3, zone4 if zone4 is not None else DEFAULT_ZONE4))
+        )
+    keys = [z.key for z in collected]
+    if len(set(keys)) != len(keys):
+        raise ValueError("zone keys must be unique")
+    return collected
+
+
+def _fill_standard_slots(result) -> None:
+    """Expose the standard zone1..zone4 attributes from the generic `zones` tuple
+    (matched by key, never by position) so older consumers keep working."""
+    by_key = {z.zone_key: z for z in result.zones}
+    for key in ZONE_KEYS:
+        if getattr(result, key) is None:
+            setattr(result, key, by_key.get(key))
+
+
 # ---------------------------------------------------------------------------
 # Recording mode -- a concrete, Distance-Protection-owned result shape
 # (never persisted), mirroring `app.domain.impedance.
@@ -522,9 +589,15 @@ class DistanceAnalysisResult:
     zone2: ZoneResult | None = None
     zone3: ZoneResult | None = None
     zone4: ZoneResult | None = None
+    #: Every evaluated zone, in order, keyed by its stable `zone_key` (Slice 10). The
+    #: standard zone1..zone4 attributes above mirror the entries with those keys.
+    zones: tuple[ZoneResult, ...] = ()
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+
+    def __post_init__(self) -> None:
+        _fill_standard_slots(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,8 +653,13 @@ class ManualDistanceResult:
     zone2: ZoneResult | None = None
     zone3: ZoneResult | None = None
     zone4: ZoneResult | None = None
+    #: Every evaluated zone, in order (see `DistanceAnalysisResult.zones`).
+    zones: tuple[ZoneResult, ...] = ()
     reason_code: str | None = None
     message: str = ""
+
+    def __post_init__(self) -> None:
+        _fill_standard_slots(self)
 
 
 #: The fourth manual slot when a caller (e.g. an older client) supplies no
@@ -603,10 +681,11 @@ def evaluate_manual_distance(
     ct_secondary: float | None,
     impedance_basis: str,
     characteristic: str,
-    zone1: ZoneSettings,
-    zone2: ZoneSettings,
-    zone3: ZoneSettings,
-    zone4: ZoneSettings = DEFAULT_ZONE4,
+    zones: Sequence[NamedZone] | None = None,
+    zone1: ZoneSettings | None = None,
+    zone2: ZoneSettings | None = None,
+    zone3: ZoneSettings | None = None,
+    zone4: ZoneSettings | None = None,
 ) -> ManualDistanceResult:
     """Normalizes both Voltage legs and both Current legs to Secondary-
     canonical (reusing `convert_manual_magnitude_to_secondary()`
@@ -621,18 +700,13 @@ def evaluate_manual_distance(
     partial-role tolerance" precedent for a V/I pair, extended to four
     legs here."""
 
-    def _zone_out(key: str, settings: ZoneSettings, point: ImpedancePoint | None) -> ZoneResult:
-        return ZoneResult(
-            zone_key=key, enabled=settings.enabled, state=evaluate_zone_state(point, characteristic=characteristic, zone=settings),
-            delay_s=settings.delay_s, direction=settings.direction,
-        )
+    evaluated_zones = collect_zones(zones, zone1, zone2, zone3, zone4)
 
     def _missing_with_zones(status: str, reason_code: str | None = None, message: str = "") -> ManualDistanceResult:
         return ManualDistanceResult(
             status=status, loop_label=loop_label, reason_code=reason_code, message=message,
             characteristic=characteristic,
-            zone1=_zone_out(ZONE_KEY_1, zone1, None), zone2=_zone_out(ZONE_KEY_2, zone2, None), zone3=_zone_out(ZONE_KEY_3, zone3, None),
-            zone4=_zone_out(ZONE_KEY_4, zone4, None),
+            zones=evaluate_zones(None, characteristic=characteristic, zones=evaluated_zones),
         )
 
     if not (v1_input.enabled and v1_input.magnitude is not None and v2_input.enabled and v2_input.magnitude is not None
@@ -685,8 +759,7 @@ def evaluate_manual_distance(
         resistance_ohm=point_out.resistance_ohm, reactance_ohm=point_out.reactance_ohm,
         magnitude_ohm=point_out.magnitude_ohm, angle_deg=point_out.angle_deg,
         characteristic=characteristic,
-        zone1=_zone_out(ZONE_KEY_1, zone1, point_out), zone2=_zone_out(ZONE_KEY_2, zone2, point_out), zone3=_zone_out(ZONE_KEY_3, zone3, point_out),
-        zone4=_zone_out(ZONE_KEY_4, zone4, point_out),
+        zones=evaluate_zones(point_out, characteristic=characteristic, zones=evaluated_zones),
         message="Manual loop impedance evaluated.",
     )
 

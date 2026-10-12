@@ -9,10 +9,10 @@ engine's capability. It contains no relay-family knowledge (that lives in
 relay profiles) and the engine knows nothing about this module.
 
 Current engine capability (see DISTANCE_PROTECTION_ANALYSIS.md):
-- exactly four zone slots, in order (zone1..zone4); each slot carries an
-  explicit direction, so any slot can be forward or reverse (the manual UI
-  presents slots 1-3 as forward and slot 4 as the Reverse Zone, but the
-  engine does not tie a slot to a direction);
+- any number of zones, in the model's order. Zone count is not a capability
+  limit: every zone is adapted by the same rules, identified by its canonical
+  zone id (never by its position), and each carries its own explicit direction,
+  forward or reverse (the engine ties no zone to a direction);
 - ONE characteristic for the whole analysis (mho or quadrilateral);
 - phase-phase loops only; forward and reverse directional geometry only --
   non-directional, unknown or unresolved directions are refused;
@@ -33,7 +33,6 @@ from enum import StrEnum
 from app.domain.distance_protection import (
     CHARACTERISTIC_MHO,
     CHARACTERISTIC_QUADRILATERAL,
-    DEFAULT_ZONE4,
     DIRECTION_FORWARD,
     DIRECTION_REVERSE,
     ZoneSettings,
@@ -46,9 +45,6 @@ from app.domain.relay_import.canonical_distance import (
     ZoneDirection,
     ZoneStatus,
 )
-
-#: The engine evaluates exactly this many zones.
-ENGINE_ZONE_COUNT = 4
 
 #: Canonical path of the setting basis (see `UnsupportedReason.paths`).
 BASIS_PATH = "transformers.setting_basis"
@@ -66,8 +62,6 @@ _ENGINE_CHARACTERISTIC = {
 
 class UnsupportedCode(StrEnum):
     NO_ZONES = "no_zones"
-    TOO_MANY_ZONES = "too_many_zones"
-    ZONE_SLOT_UNSUPPORTED = "zone_slot_unsupported"
     BASIS_UNRESOLVED = "basis_unresolved"
     BASIS_MISMATCH = "basis_mismatch"
     CHARACTERISTIC_UNRESOLVED = "characteristic_unresolved"
@@ -104,9 +98,10 @@ class EngineAdaptation:
 
     supported: bool
     characteristic: str | None = None
-    zones: tuple[ZoneSettings, ZoneSettings, ZoneSettings, ZoneSettings] | None = None
-    #: Canonical zone_id feeding each engine slot (None = unused slot).
-    zone_ids: tuple[str | None, ...] = ()
+    #: One engine setting per canonical zone, in the model's order.
+    zones: tuple[ZoneSettings, ...] | None = None
+    #: The canonical zone_id of each entry of `zones` (same length, same order).
+    zone_ids: tuple[str, ...] = ()
     reasons: tuple[UnsupportedReason, ...] = ()
     #: Canonical information preserved in the model but not used by the
     #: engine (e.g. earth timer, compensation) -- informational only.
@@ -154,15 +149,7 @@ def adapt_to_engine(
             "no CT/VT conversion is performed here.",
             paths=(BASIS_PATH,),
         )
-    extra_enabled = [z for z in model.zones[ENGINE_ZONE_COUNT:] if _status(z) is not False]
-    if extra_enabled:
-        fail(
-            UnsupportedCode.TOO_MANY_ZONES,
-            f"The engine evaluates {ENGINE_ZONE_COUNT} zones; "
-            f"{', '.join(z.zone_id for z in extra_enabled)} cannot be represented.",
-            paths=tuple(zone_path(z, "status") for z in extra_enabled),
-        )
-    slots = model.zones[:ENGINE_ZONE_COUNT]
+    slots = model.zones
 
     # --- characteristic: one for the whole analysis -------------------------
     considered = [z for z in slots if _status(z) is True] or list(slots)
@@ -200,16 +187,11 @@ def adapt_to_engine(
     if reasons:
         return EngineAdaptation(False, reasons=tuple(reasons), warnings=tuple(warnings))
 
-    while len(built) < ENGINE_ZONE_COUNT:
-        # The engine's own disabled default slot (the fourth slot defaults
-        # to its disabled, reverse-facing manual default).
-        built.append(DEFAULT_ZONE4 if len(built) == ENGINE_ZONE_COUNT - 1 else ZoneSettings())
-    zone_ids = tuple(z.zone_id for z in slots) + (None,) * (ENGINE_ZONE_COUNT - len(slots))
     return EngineAdaptation(
         True,
         characteristic=_ENGINE_CHARACTERISTIC[characteristic_type],
-        zones=(built[0], built[1], built[2], built[3]),
-        zone_ids=zone_ids,
+        zones=tuple(built),
+        zone_ids=tuple(z.zone_id for z in slots),
         warnings=tuple(warnings),
     )
 
@@ -233,7 +215,8 @@ def zone_active(zone: DistanceZone) -> bool | None:
     return _status(zone)
 
 
-def _known_direction(zone: DistanceZone) -> str | None:
+def zone_direction(zone: DistanceZone) -> str | None:
+    """The zone's direction when the model states a forward or reverse one, else None."""
     d = zone.direction
     if d.is_resolved and d.value is ZoneDirection.FORWARD:
         return DIRECTION_FORWARD
@@ -256,12 +239,12 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     if status is False:
         # No geometry is evaluated for a disabled/inactive zone; its
         # direction is carried only when it is a direction the engine knows.
-        return ZoneSettings(enabled=False, delay_s=delay, direction=_known_direction(zone) or DIRECTION_FORWARD)
+        return ZoneSettings(enabled=False, delay_s=delay, direction=zone_direction(zone) or DIRECTION_FORWARD)
 
     # direction: the engine models forward and reverse directional geometry.
     # Non-directional, unknown and unresolved directions are refused, never
     # guessed.
-    direction = _known_direction(zone)
+    direction = zone_direction(zone)
     if direction is None:
         d = zone.direction
         shown = d.value.value if d.is_resolved else "unresolved"

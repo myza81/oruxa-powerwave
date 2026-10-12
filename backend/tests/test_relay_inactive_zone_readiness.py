@@ -270,17 +270,25 @@ class TestZonePExplicitState:
         assert not items["zones[ZP].reach"].blocking and not items[ZP_STATUS].blocking
         assert review.blocking_count == 0 and review.engine.status == "ready"
 
-    def test_an_explicitly_enabled_zone_p_is_not_ready_in_the_four_zone_engine(self, sample):
+    def test_an_explicitly_enabled_zone_p_is_validated_like_any_zone(self, sample):
         review, items = _review(sample, manual=_left_reaches(*Z123) | {ZP_STATUS: "enabled"})
         assert review.engine.status == "not_ready" and review.readiness.status == "not_ready"
-        assert any("cannot be represented" in issue.message and "ZP" in issue.message for issue in review.blocking_issues)
+        # blocked for the value it lacks, never for being a fifth zone
+        assert any("Left Resistive Reach" in issue.message and issue.zone_ids == ("ZP",) for issue in review.blocking_issues)
+        assert not any("cannot be represented" in issue.message for issue in review.blocking_issues)
         # the zone is required, not waved through
         assert not items["zones[ZP].reach"].not_required
+
+    def test_an_enabled_zone_p_with_its_left_reach_resolved_is_applicable(self, sample):
+        """Slice 10: nothing but missing values stands between an enabled fifth zone and Apply."""
+        review, _ = _review(sample, manual=_left_reaches(*Z123, "ZP") | {ZP_STATUS: "enabled"})
+        assert review.engine.status == "ready" and review.blocking_count == 0
 
     def test_an_explicit_zone_p_state_from_the_file_is_not_replaced_by_the_default(self, sample):
         enabled = _with_zone(sample, "ZP", status=_mapped_status(ZoneStatus.ENABLED))
         assert zone_active(enabled.zone("ZP")) is True
-        assert not adapt_to_engine(enabled, engine_basis="secondary").supported
+        a = adapt_to_engine(enabled, engine_basis="secondary")
+        assert not a.supported and not any("cannot be represented" in r.message for r in a.reasons)
 
     def test_the_adapter_still_treats_none_and_zero_left_reach_as_before(self, sample):
         """DEC-185 engine rule (5102cc7) is untouched: None = not configured, 0.0 = valid."""

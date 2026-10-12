@@ -233,14 +233,17 @@ _Ohm = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 
 
 class ApplyZoneOut(BaseModel):
-    """One slot of the existing Distance Protection form. ``None`` = not configured.
-    Only the fields the selected characteristic reads are filled."""
+    """One zone of the applied collection. ``None`` = not configured. Only the fields
+    the selected characteristic reads are filled."""
 
-    slot: Literal["zone1", "zone2", "zone3", "zone4"]
-    #: Canonical zone shown in the slot (``zone4`` is the Reverse Zone).
-    zone_id: str | None = None
+    #: The stable canonical zone id (e.g. ``Z1``, ``ZP``) -- the zone's identity. Never
+    #: its position in the list.
+    id: Annotated[str, Field(min_length=1)]
+    #: The label to show for the zone (the source's own name for it).
+    display_name: Annotated[str, Field(min_length=1)]
     enabled: bool
-    direction: Literal["forward", "reverse"]
+    #: ``None`` only for a *disabled* zone whose direction the source does not state.
+    direction: Literal["forward", "reverse"] | None = None
     delay_s: _Ohm | None = None
     #: Reach angle (°) -- distinct from every reach in ohms.
     characteristic_angle_deg: Annotated[float, Field(allow_inf_nan=False)] | None = None
@@ -255,12 +258,14 @@ class ApplyZoneOut(BaseModel):
 
 
 class ApplySettingsOut(BaseModel):
-    """Slice 9: the controlled apply payload -- exactly what the Distance Protection
-    form can hold, nothing from the uploaded document or the canonical model."""
+    """The controlled apply payload -- exactly what the Distance Protection analysis
+    needs, nothing from the uploaded document or the canonical model. Slice 10: ``zones``
+    is the complete zone collection of the reviewed model (any number, in the model's
+    order, disabled zones included and flagged); it is never truncated to a fixed count."""
 
     characteristic: Literal["mho", "quadrilateral"]
     impedance_basis: Literal["primary", "secondary"]
-    zones: Annotated[list[ApplyZoneOut], Field(min_length=4, max_length=4)]
+    zones: Annotated[list[ApplyZoneOut], Field(min_length=1)]
 
 
 class RelayImportUploadOut(BaseModel):

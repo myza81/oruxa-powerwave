@@ -385,8 +385,6 @@ def blocking_paths(adaptation: EngineAdaptation) -> frozenset[str]:
 
 #: Adapter reasons that say the engine cannot represent / use a value it understands.
 _CAPABILITY_CODES = frozenset({
-    UnsupportedCode.TOO_MANY_ZONES,
-    UnsupportedCode.ZONE_SLOT_UNSUPPORTED,
     UnsupportedCode.BASIS_MISMATCH,
     UnsupportedCode.CHARACTERISTIC_UNSUPPORTED,
     UnsupportedCode.CHARACTERISTIC_MIXED,

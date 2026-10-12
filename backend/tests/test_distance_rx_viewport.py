@@ -211,3 +211,37 @@ def test_fit_view_stays_square_with_a_reverse_zone():
     v = fit({"zone1": _quad(10, 4, 2), "zone2": _zone(enabled=False), "zone3": _zone(enabled=False),
              "zone4": _rev(_quad(6, 3, 3))}, "quadrilateral")
     assert set(v) == {"centerR", "centerX", "half"}
+
+
+# --- Slice 10: Fit Zones walks the whole zone collection, whatever the keys ---------------------
+
+
+def test_fit_zones_includes_a_fifth_zone_under_any_key():
+    off = _zone(enabled=False)
+    base = fit({"zone1": _quad(10, 4, 2), "zone2": off, "zone3": off, "zone4": off}, "quadrilateral")
+    with_fifth = fit({"zone1": _quad(10, 4, 2), "zone2": off, "zone3": off, "zone4": off, "z_zp": _quad(40, 30, 0)}, "quadrilateral")
+    assert with_fifth["half"] > base["half"]
+    # the fifth zone alone defines the view when it is the only one drawn
+    alone = fit({"z_zp": _quad(40, 30, 0, characteristicAngleDeg=90)}, "quadrilateral")
+    assert alone["centerR"] == pytest.approx(15.0) and alone["centerX"] == pytest.approx(20.0)
+    assert alone["half"] == pytest.approx(20 * 1.2)  # X span 40 is the larger axis
+
+
+def test_fit_zones_includes_an_extra_reverse_zone_and_ignores_a_disabled_extra_zone():
+    forward = {"zone1": _quad(10, 4, 2)}
+    reverse = dict(forward, z_zr=_rev(_quad(10, 4, 2)))
+    assert fit(reverse, "quadrilateral")["half"] > fit(forward, "quadrilateral")["half"]
+    # a disabled zone never affects the fit, however large its stored numbers
+    big_but_off = dict(forward, z_off=_quad(1000, 1000, 1000, enabled=False))
+    assert fit(big_but_off, "quadrilateral") == fit(forward, "quadrilateral")
+
+
+def test_fit_zones_is_independent_of_zone_order():
+    zones = {"a": _quad(10, 4, 2), "b": _quad(20, 5, 1, characteristicAngleDeg=75), "c": _rev(_quad(8, 3, 3))}
+    reordered = {"c": zones["c"], "a": zones["a"], "b": zones["b"]}
+    assert fit(zones, "quadrilateral") == fit(reordered, "quadrilateral")
+
+
+def test_fit_zones_with_no_drawable_zone_is_null_for_any_collection():
+    assert fit({"zone1": _zone(enabled=False), "z_zp": _zone(enabled=False)}, "mho") is None
+    assert fit({}, "mho") is None

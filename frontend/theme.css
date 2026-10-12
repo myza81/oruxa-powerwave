@@ -140,6 +140,17 @@
     --ww-dist-card-zone2: #7185a6;
     --ww-dist-card-zone3: #94a3b8;
     --ww-dist-card-zone4: #c7cdd6;
+
+    /* Distance Protection extra zones (a relay with more zones than the four standard
+       cards): a deterministic rotation of six distinct hues, used by index in the order
+       the extra zones appear. Zone identity never relies on colour alone -- every plotted
+       zone is also named in the R-X legend and its Zone state row. */
+    --ww-dist-zone-extra1: #b45309;
+    --ww-dist-zone-extra2: #be185d;
+    --ww-dist-zone-extra3: #4d7c0f;
+    --ww-dist-zone-extra4: #0369a1;
+    --ww-dist-zone-extra5: #6d28d9;
+    --ww-dist-zone-extra6: #a16207;
 }
 
 :root[data-theme="dark"] {
@@ -222,6 +233,14 @@
     --ww-dist-card-zone2: #7189ae;
     --ww-dist-card-zone3: #566a88;
     --ww-dist-card-zone4: #46546b;
+
+    /* Extra-zone rotation, dark surface: the same six hues, brightened for contrast. */
+    --ww-dist-zone-extra1: #fbbf24;
+    --ww-dist-zone-extra2: #f472b6;
+    --ww-dist-zone-extra3: #a3e635;
+    --ww-dist-zone-extra4: #38bdf8;
+    --ww-dist-zone-extra5: #c4b5fd;
+    --ww-dist-zone-extra6: #facc15;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

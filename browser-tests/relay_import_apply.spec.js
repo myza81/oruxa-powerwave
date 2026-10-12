@@ -1,5 +1,6 @@
-// Slice 9 -- Apply Settings: the reviewed P441 sample is copied into the existing
-// Distance Protection form and the normal R-X rendering path draws it. Runs against LOCAL code.
+// Slice 9 / 10 -- Apply Settings: the reviewed P441 sample is copied into the Distance Protection
+// analysis (its complete zone collection) and the normal R-X rendering path draws it. Runs against
+// LOCAL code. Extra/dynamic zones are covered by distance_dynamic_zones.spec.js.
 //
 // * Apply Settings exists only while the backend-derived readiness is "Ready to apply".
 // * The values land in the same inputs/state manual entry uses; Zone 4 (defeated) and the
@@ -95,6 +96,9 @@ test("Apply populates Zones 1-3, keeps Zone 4 and Zone P out, and redraws the R-
   await expect(page.locator("#wwDistanceZone4Enabled")).not.toBeChecked();
   await expect(polygon(page, 4)).toHaveCount(0);
   await expect(page.locator("#wwDistanceSvg polygon.ww-dist-zone-boundary")).toHaveCount(3);
+  // the disabled Zone P is preserved by the backend but gets no card: the form keeps its four standard cards
+  await expect(page.locator("#wwDistancePanel .ww-dist-zone-card")).toHaveCount(4);
+  await expect(page.locator("#wwDistancePanel [data-zone-dynamic]")).toHaveCount(0);
   await expect(input(page, 4, "ResistiveReverse")).toHaveValue("");
 });
 
@@ -174,7 +178,7 @@ test("a malformed apply payload is rejected whole and changes nothing", async ({
   await page.route("**/api/v1/relay-import/review/apply", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ characteristic: "quadrilateral", impedance_basis: "secondary", zones: [{ slot: "zone1", enabled: true, direction: "forward", reactive_reach_ohm: "x" }] }),
+      body: JSON.stringify({ characteristic: "quadrilateral", impedance_basis: "secondary", zones: [{ id: "Z1", display_name: "Zone 1", enabled: true, direction: "forward", reactive_reach_ohm: "x" }] }),
     }),
   );
   await applyBtn(page).click();

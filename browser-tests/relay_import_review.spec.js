@@ -331,23 +331,27 @@ test("readiness moves Not ready -> Ready after confirmation -> Ready to apply, l
   await expect(page.locator("#wwRelayImportSummary")).not.toContainText("blocking");
 });
 
-test("Zone P enabled is accepted as an answer but leaves the import not ready for the current engine", async ({ page }) => {
+test("Zone P enabled is an ordinary answer: it is then held to the same rules as any other zone", async ({ page }) => {
   await reviewP441(page);
   await page.locator("#wwRelayReviewConfirmAll").click();
   await resolveAllBlockers(page, "enabled");
-  // an answer the engine cannot take is shown as Unsupported, not as a settled "Resolved manually"
-  await expect(chip(page, "zone.ZP.status")).toHaveText("Unsupported");
+  // Slice 10: an enabled fifth zone is not an engine limit. The answer is a settled manual resolution ...
+  await expect(chip(page, "zone.ZP.status")).toHaveText("Resolved manually");
   await expect(row(page, "zone.ZP.status").locator(".ww-rr-value")).toHaveText("Enabled");
-  await expect(row(page, "zone.ZP.status").getByRole("button", { name: /^Confirm/ })).toHaveCount(0);
-  await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText("1 unsupported");
-  await row(page, "zone.ZP.status").getByRole("button", { name: "Source of Zone P Status" }).click();
-  await expect(row(page, "zone.ZP.status")).toContainText("Why unsupported: The engine evaluates 4 zones; ZP cannot be represented.");
-  await expect(row(page, "zone.ZP.status")).toContainText("User resolution: Enabled");
+  await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText("0 unsupported");
+  // ... and the zone is blocked only for the values this sheet does not give it, never for its number
   await expect(readiness(page)).toContainText("Readiness: Not ready");
-  await expect(readiness(page)).toContainText("cannot take these settings yet");
-  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("No value in this review can clear it");
+  const blocking = page.locator("#wwRelayReviewBlocking");
+  await expect(blocking).toContainText("The Right Resistive Reach (+R) is unresolved. (ZP)");
+  await expect(blocking).toContainText("Zone P Phase-Phase Resistive Reach");
+  await expect(blocking).not.toContainText("cannot be represented");
+  await expect(blocking).not.toContainText("limit of the current engine");
   // the zone is kept; its header follows the answer
   await expect(page.locator('#wwRelayReviewPanel details[data-group="zone-ZP"] > summary')).toContainText("Zone P — Enabled");
+  // giving it the missing values makes the import ready like any other
+  await resolveNumber(page, "zone.ZP.rr.pp", "Zone P Phase-Phase Resistive Reach", 4);
+  await resolveNumber(page, "zone.ZP.rr.reverse", "Zone P Left Resistive Reach (−R)", 0);
+  await expect(readiness(page)).toContainText("Readiness: Ready to apply");
   // and the user can change their mind
   await resolveZoneP(page, "disabled");
   await expect(readiness(page)).toContainText("Readiness: Ready to apply");

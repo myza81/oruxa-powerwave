@@ -173,7 +173,7 @@ class TestDistanceZoneSettingsGrid:
         never suppress Zone 2/3 because Zone 1 operates."""
         source = _source()
         fn = _function_body(source, "function wwDistanceRenderZoneStateList", "function wwDistanceRenderResult")
-        assert "for (const key of WW_DISTANCE_ZONE_KEYS)" in fn
+        assert "for (const key of wwDistanceZoneKeys())" in fn  # the live collection, not a fixed list
         assert "break" not in fn
         assert "return" not in fn.split("for (const key")[1].split("}")[0]
 
@@ -335,7 +335,7 @@ class TestDistanceResetStateWiring:
         fn = _function_body(source, "function wwDistanceResetState", "// ------------------------------------------------------------------\n        // Init")
         assert 'wwDistanceState.loop = "AB";' in fn
         assert 'wwDistanceState.characteristic = "mho";' in fn
-        assert "wwDistanceState.zones = {" in fn
+        assert "wwDistanceState.zones = wwDistanceStandardZones();" in fn  # drops every extra zone
 
 
 class TestDistanceRXViewportControls:
@@ -391,20 +391,27 @@ class TestReverseZoneSlot:
     def test_reverse_zone_is_a_fixed_direction_slot_not_a_dropdown(self):
         source = _source()
         assert 'id="wwDistanceZone4DirectionSelect"' not in source
-        assert 'direction: "reverse"' in _function_body(source, "const wwDistanceState = {", "latestResult: null")
-        # direction is never sent as a request parameter
+        assert "zones: wwDistanceStandardZones()," in _function_body(source, "const wwDistanceState = {", "latestResult: null")
+        assert 'direction: "reverse"' in _function_body(source, "function wwDistanceStandardZones()", "const wwDistanceState = {")
+        # Slice 10: direction is a property of every zone, so it travels with each zone of the generic list
         params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
-        assert "direction" not in params
+        assert 'direction: z.direction === "reverse" ? "reverse" : "forward"' in params
 
-    def test_zone_params_cover_zone4_through_the_shared_key_list(self):
+    def test_zone_params_cover_every_zone_through_the_live_collection(self):
         params = _function_body(_source(), "function wwDistanceZoneParams()", "// The ONE place that dispatches")
-        assert "for (const key of WW_DISTANCE_ZONE_KEYS)" in params
+        assert "for (const key of wwDistanceZoneKeys())" in params
+        assert "WW_DISTANCE_ZONE_KEYS" not in params
+        assert "JSON.stringify(zones)" in params  # one generic `zones` parameter, any number of zones
 
     def test_zone_state_list_and_result_wiring_include_zone4(self):
         source = _source()
         assert 'zone4: "Reverse Zone"' in source
-        assert source.count("zone4: result.zone4") == 4
-        assert 'for (const key of ["zone4", "zone3", "zone2", "zone1"])' in source  # draw order
+        # results are read by zone key from the response's `zones` list, never by fixed field names
+        assert source.count("wwDistanceZoneResultMap(result)") >= 4
+        assert "zone4: result.zone4" not in source
+        # draw order: one generic loop, last zone first
+        assert "for (const key of wwDistanceZoneKeys().reverse())" in source
+        assert 'for (const key of ["zone4", "zone3", "zone2", "zone1"])' not in source
 
     def test_geometry_is_rotated_180_not_mirrored(self):
         source = _source()
@@ -427,7 +434,8 @@ class TestReverseZoneDelayDefault:
         assert "value=" not in card and 'placeholder="not set"' in card
         assert 'delaySeconds: null, characteristicAngleDeg: null, direction: "reverse"' in source
         params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
-        assert 'else if (key !== "zone4")' in params
+        assert 'else if (wwDistanceZoneDefaultsOnBlank(key)) dto.delay_s = 0;' in params  # zones 1-3 only
+        assert 'const WW_DISTANCE_DEFAULTED_ZONE_KEYS = ["zone1", "zone2", "zone3"];' in source
         assert "delay not configured" in source
 
 
@@ -437,20 +445,22 @@ class TestDistanceZoneDefaults:
         assert 'id="wwDistanceZone1DelayInput" min="0" step="0.01" value="0"' in source
         assert 'id="wwDistanceZone2DelayInput" min="0" step="0.01" value="0.45"' in source
         assert 'id="wwDistanceZone3DelayInput" min="0" step="0.01" value="3"' in source
-        # initial state and the reset state agree
-        assert source.count("zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 })") == 2
-        assert source.count("zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.45 })") == 2
-        assert source.count("zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 3 })") == 2
+        # initial state and the reset state agree by construction: both come from ONE definition
+        assert source.count("zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 })") == 1
+        assert source.count("zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.45 })") == 1
+        assert source.count("zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 3 })") == 1
+        assert source.count("zones: wwDistanceStandardZones(),") == 1
+        assert source.count("wwDistanceState.zones = wwDistanceStandardZones();") == 1
 
     def test_reverse_zone_has_no_engineering_defaults(self):
         source = _source()
-        assert source.count('{ delaySeconds: null, characteristicAngleDeg: null, direction: "reverse" }') == 2
+        assert source.count('{ delaySeconds: null, characteristicAngleDeg: null, direction: "reverse" }') == 1
         angle = _function_body(source, 'id="wwDistanceZone4AngleInput"', "</label>")
         assert "value=" not in angle and 'placeholder="not set"' in angle
         for field in ("Reach", "ReactiveReach", "ResistiveForward", "ResistiveReverse"):
             assert "value=" not in _function_body(source, f'id="wwDistanceZone4{field}Input"', "</label>")
         params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
-        assert 'else if (key !== "zone4") params[key + "_characteristic_angle_deg"] = "90"' in params
+        assert 'else if (wwDistanceZoneDefaultsOnBlank(key)) dto.characteristic_angle_deg = 90;' in params
 
 
 class TestDistanceSettingLabels:
@@ -488,3 +498,70 @@ class TestDistanceZoneCardColors:
 
         vals = [css.rsplit(f"--ww-dist-card-zone{n}: ", 1)[1][:7] for n in (1, 2, 3, 4)]
         assert [lum(v) for v in vals] == sorted((lum(v) for v in vals), reverse=True)
+
+
+class TestDynamicZonesSlice10:
+    """Slice 10 -- zone count is not a special limitation. Behaviour is covered by
+    browser-tests/distance_dynamic_zones.spec.js; these guard the structure."""
+
+    def test_no_fixed_four_zone_lists_outside_the_standard_slot_definition(self):
+        source = _source()
+        # the standard slots are defined once, and only the init wiring uses the list
+        assert source.count('["zone1", "zone2", "zone3", "zone4"]') == 1
+        assert source.count("WW_DISTANCE_ZONE_KEYS") == 2  # definition + standard-card wiring at init
+        assert "zone3: result.zone3" not in source
+
+    def test_every_piece_of_zone_code_walks_the_live_collection(self):
+        source = _source()
+        for fn, nxt in (
+            ("function wwDistanceUpdateCharacteristicFieldsVisibility", "function wwDistanceZoneIdPart"),
+            ("function wwDistanceDefaultView", "function wwDistanceFitZonesView"),
+            ("function wwDistanceSyncZoneFields", "// Each card's inputs write into the zone of the same key."),
+            ("function wwDistanceRenderZoneLegend", "// ---- Input Source (Recording/Manual)"),
+        ):
+            assert "wwDistanceZoneKeys()" in _function_body(source, fn, nxt), fn
+        fit = _function_body(source, "function wwDistanceFitView", "// Zoom about the current viewport centre")
+        assert "for (const key of Object.keys(zones))" in fit
+
+    def test_apply_matches_zones_by_stable_id_and_rebuilds_the_collection(self):
+        source = _source()
+        fn = _function_body(source, "function wwDistanceApplyImportedSettings", "function wwDistanceSyncSettingsFields")
+        assert 'const WW_DISTANCE_STANDARD_ZONE_IDS = { Z1: "zone1", Z2: "zone2", Z3: "zone3", Z4: "zone4" };' in source
+        assert "const zones = wwDistanceStandardZones();" in fn  # nothing from an earlier Apply survives
+        assert "wwDistanceState.zones = zones;" in fn
+        assert "wwDistanceDynamicZoneKey(z.id)" in fn  # identity from the id, never from the position
+        assert "slot" not in fn and "payload.zones.length !==" not in fn  # no fixed-slot assumption
+        # a repeated id is malformed
+        assert "seenIds.has(z.id)" in fn
+
+    def test_extra_zones_get_cards_with_the_same_ids_and_wiring_as_the_standard_ones(self):
+        source = _source()
+        card = _function_body(source, "const WW_DISTANCE_ZONE_CARD_FIELDS", "// Brings the card area in line with the zone collection")
+        assert 'id("Enabled")' in card
+        for suffix in ("DelayInput", "AngleInput", "ReachInput", "ReactiveReachInput", "ResistiveForwardInput", "ResistiveReverseInput"):
+            assert f'"{suffix}"' in card, suffix
+        assert "insertAdjacentHTML" not in card  # built with DOM calls: labels are text, never markup
+        render = _function_body(source, "function wwDistanceRenderZoneCards", "function wwDistanceSyncZoneFields")
+        assert "wwDistanceWireZoneCard(key)" in render and "card.remove()" in render  # stale cards are removed
+
+    def test_boundaries_carry_their_zone_key_and_reverse_zones_are_dashed_by_direction(self):
+        source = _source()
+        assert ".ww-dist-zone-boundary--reverse { stroke-dasharray: 5 3; }" in source
+        attrs = _function_body(source, "function wwDistanceBoundaryAttrs", "function wwDistanceMhoCircleSvg")
+        assert 'z.direction === "reverse"' in attrs and 'data-zone-key="' in attrs
+        # the zone-4 rule no longer makes a zone dashed: direction does
+        assert ".ww-dist-zone-boundary--zone4 { stroke: var(--ww-dist-zone4); }" in source
+
+    def test_extra_zone_palette_exists_in_both_themes_and_rotates(self):
+        css = (FRONTEND.parent / "theme.css").read_text(encoding="utf-8")
+        for n in range(1, 7):
+            assert css.count(f"--ww-dist-zone-extra{n}:") == 2  # light + dark
+        source = _source()
+        assert "% WW_DISTANCE_EXTRA_COLOR_COUNT) + 1" in source  # modulo rotation beyond six extras
+
+    def test_there_is_a_legend_so_colour_is_not_the_only_cue(self):
+        source = _source()
+        assert 'id="wwDistanceZoneLegend"' in source
+        legend = _function_body(source, "function wwDistanceRenderZoneLegend", "// ---- Input Source (Recording/Manual)")
+        assert "wwDistanceZoneBounds(z, wwDistanceState.characteristic)" in legend  # only zones that are drawn
+        assert '" (reverse)"' in legend

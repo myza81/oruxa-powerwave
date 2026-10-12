@@ -515,8 +515,8 @@ reverse zone, etc., and no OEM naming is assumed.
 - **Manual → canonical → adapter → engine.** The four manual zones go through
   `manual_to_canonical()` (Z4 gets `ZoneDirection.REVERSE`) and
   `adapt_to_engine()`; the bridge is not bypassed.
-- **Canonical model is not limited to four zones.** Four is the engine/manual
-  presentation only; `CanonicalDistanceProtectionModel.zones` stays arbitrary.
+- **Canonical model is not limited to four zones.** Four is the manual form's starting set only;
+  `CanonicalDistanceProtectionModel.zones` stays arbitrary and, since Slice 10, so does the engine (see [Dynamic zones](#dynamic-zones-slice-10-dec-189)).
 - **Outputs / viewport.** Zone 4 reports Enabled, Operated / Not Operated and
   the configured delay like the other zones, is drawn dashed in its own colour,
   and is included in Fit Zones (its negative-R/negative-X extent) and the
@@ -574,7 +574,8 @@ DistanceAnalysisResultOut / ManualDistanceResultOut
 ├── voltage_unit, current_unit
 ├── resistance_ohm / reactance_ohm / magnitude_ohm / angle_deg   (nullable)
 ├── characteristic              "mho" | "quadrilateral"
-├── zone1 / zone2 / zone3 / zone4: ZoneResultOut      (zone4 = Reverse Zone; optional)
+├── zones: ZoneResultOut[]    (Slice 10: every evaluated zone, request order, each echoing its key)
+├── zone1 / zone2 / zone3 / zone4: ZoneResultOut      (mirrors of the entries with those keys; zone4 = Reverse Zone; optional)
 │     ├── zone_key              "zone1" | "zone2" | "zone3" | "zone4"
 │     ├── direction             "forward" (zones 1-3) | "reverse" (zone4)
 │     ├── enabled
@@ -637,12 +638,38 @@ Manual state isolation" suite for the end-to-end proof.
 ## Applying imported relay settings (DEC-188)
 
 A reviewed relay import (Import Relay Settings) can be applied with **Apply Settings** once the review reads *Ready to
-apply*. The backend returns the four-slot payload (see RELAY_IMPORT_ARCHITECTURE.md "Slice 9"); the frontend writes it into
+apply*. The backend returns the reviewed model's complete zone list (Slice 10; see RELAY_IMPORT_ARCHITECTURE.md "Slice 10" -- Slice 9
+returned four fixed slots); the frontend writes it into
 `wwDistanceState` (characteristic, output impedance basis, `zones`) and the inputs, then runs the same handlers manual edits
 use (`wwDistanceHandleCharacteristicChanged`, `wwDistanceRenderPlot`). The geometry is therefore identical to typing the same
 values. Disabled zones are applied as disabled with their geometry cleared; a Left Resistive Reach of `0` is valid and draws
 the left boundary through the origin of the rotated frame. Applied values are ordinary editable inputs; Apply again overwrites
 them. Nothing is stored; a refresh clears everything.
+
+## Dynamic zones (Slice 10, DEC-189)
+
+Zone count is not a limitation. The analysis evaluates, displays and plots **any number of zones**, each identified by a stable key and
+carrying its own direction; the four manual slots below are only the form's *starting* zone set.
+
+- **Request.** `distance-protection`, `distance-protection-locus` and `distance-protection-manual` accept an optional
+  `zones` query parameter: a JSON list of `{key, enabled, direction, delay_s, characteristic_angle_deg, reach_ohm | reactive_reach_ohm,
+  resistive_reach_forward_ohm, resistive_reach_reverse_ohm}` (key `[A-Za-z0-9_.-]{1,64}`, unique, at most 64; anything else is a 422).
+  When given it replaces `zone1_*..zone4_*`, which still work unchanged for older clients. The browser sends only `zones`.
+- **Response.** `zones: ZoneResultOut[]` lists every evaluated zone in request order, each echoing its key. `zone1..zone4` remain and
+  mirror the entries with those keys (null when absent).
+- **Engine.** `NamedZone(key, settings)`, `evaluate_zones()` (the one generic loop) and `collect_zones()`. Each zone is evaluated
+  completely independently of the others, of its position and of its name; direction (forward / reverse = 180 degrees) is read from the
+  zone's own settings. No `if zone_number == ...` anywhere.
+- **UI.** The state holds an ordered collection (`wwDistanceState.zones`): the four standard zones first, then extra zones from an Apply
+  (`dynamic: true`, with the source's `zoneId` and `label`). Cards, Zone state rows, plot, legend, Fit Zones and the default view all walk
+  that collection. The manual form still starts with only Zone 1, Zone 2, Zone 3 and the Reverse Zone; extra cards exist only after an Apply
+  and only for *enabled* zones (a disabled zone is preserved by the backend but has no card, boundary, legend entry or effect on Fit Zones).
+  Extra cards use the source's own label (`Zone P`, `Backup 7`), never "Zone 5".
+- **Re-Apply** rebuilds the collection from the standard defaults plus the payload (atomically; a malformed payload changes nothing), so
+  stale extra cards/boundaries/state rows disappear and the same id is updated, never duplicated. Reset also drops all extra zones.
+- **Colours / legend.** Standard zones keep their tokens; extra zones rotate through `--ww-dist-zone-extra1..6` (light and dark);
+  reverse-facing zones are dashed; a legend lists every plotted zone ("(reverse)" where relevant) so colour is never the only cue.
+- **Zone-state semantics are unchanged**: Operated / Not Operated is pure geometry; the delay is configuration only.
 
 ## Known limitations / explicitly deferred (not this slice)
 

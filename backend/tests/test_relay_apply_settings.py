@@ -1,4 +1,5 @@
-"""Slice 9: Apply Settings -- backend-authoritative apply of a reviewed relay import."""
+"""Apply Settings (Slice 9) and its Slice 10 generalisation: a backend-authoritative apply of a
+reviewed relay import, carrying the complete zone collection (any number of zones)."""
 
 from __future__ import annotations
 
@@ -10,7 +11,6 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.relay_import.apply_settings import form_slot_reasons
 from app.domain.relay_import.canonical_distance import ZoneStatus
 from app.domain.relay_import.defeated_zone import infer_defeated_zones
 from app.domain.relay_import.provenance import MappingStatus, Provenance, ProvenanceOrigin, Sourced
@@ -79,7 +79,9 @@ class TestReadinessGate:
         assert r.status_code == 200
         out = r.json()
         assert out["characteristic"] == "quadrilateral" and out["impedance_basis"] in ("primary", "secondary")
-        assert [z["slot"] for z in out["zones"]] == ["zone1", "zone2", "zone3", "zone4"]
+        # every canonical zone, in order, under its stable id -- Zone P included (it is disabled)
+        assert [z["id"] for z in out["zones"]] == ["Z1", "Z2", "Z3", "Z4", "ZP"]
+        assert [z["display_name"] for z in out["zones"]] == ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone P"]
 
     def test_an_undecodable_context_is_refused(self, client, review):
         ctx = dict(review["validation_context"])
@@ -94,21 +96,21 @@ class TestPayload:
 
     def test_zones_1_to_3_populate_and_disabled_zones_do_not(self, client, review):
         out = self._apply(client, review)
-        z1, z2, z3, z4 = out["zones"]
+        z1, z2, z3, z4, zp = out["zones"]
         for z in (z1, z2, z3):
             assert z["enabled"] and z["direction"] == "forward"
             assert z["reactive_reach_ohm"] > 0 and z["resistive_reach_forward_ohm"] > 0
             assert z["reach_ohm"] is None and z["characteristic_angle_deg"] is not None
-        # the sample defeats Zone 4 (the Reverse Zone slot): disabled, no geometry fabricated
-        assert z4["enabled"] is False and z4["direction"] == "reverse"
-        for key in ("reactive_reach_ohm", "resistive_reach_forward_ohm", "resistive_reach_reverse_ohm", "characteristic_angle_deg"):
-            assert z4[key] is None
-        assert "ZP" not in {z["zone_id"] for z in out["zones"]}
+        # the sample defeats Zone 4 and Zone P: preserved, disabled, no geometry fabricated
+        for z, direction in ((z4, "reverse"), (zp, "forward")):
+            assert z["enabled"] is False and z["direction"] == direction
+            for key in ("reactive_reach_ohm", "resistive_reach_forward_ohm", "resistive_reach_reverse_ohm", "characteristic_angle_deg", "reach_ohm"):
+                assert z[key] is None
 
     def test_suggested_zero_left_reach_is_0_0(self, client, review):
         out = self._apply(client, review)
         for z in out["zones"][:3]:
-            assert z["resistive_reach_reverse_ohm"] == 0.0
+            assert z["resistive_reach_reverse_ohm"] == 0.0 and z["enabled"]
         assert '"resistive_reach_reverse_ohm":0.0' in json.dumps(out, separators=(",", ":"))
 
     def test_manual_zero_and_suggested_zero_give_the_same_engine_input(self, client, review):
@@ -127,6 +129,7 @@ class TestPayload:
         decisions = ReviewDecisions(confirmed=frozenset(body["confirmed"]), suggested=frozenset(body["suggested"]))
         _, adaptation, _ = reviewed_state(review["validation_context"], decisions)
         out = client.post(APPLY, json=body).json()
+        assert [z["id"] for z in out["zones"]] == list(adaptation.zone_ids)
         for z, engine in zip(out["zones"], adaptation.zones):
             assert z["enabled"] == engine.enabled
             if engine.enabled:
@@ -138,14 +141,33 @@ class TestPayload:
 
 
 class TestZonesAndRules:
-    def test_enabled_zone_p_blocks_apply(self, client, review):
+    def test_enabled_zone_p_without_its_left_reach_blocks_apply(self, client, review):
         body = _ready_body(review)
         body["confirmed"] = [p for p in body["confirmed"] if p != ZP_STATUS]
         body["manual"] = [{"item_id": ZP_STATUS, "value": "enabled"}]
         state = client.post(VALIDATE, json=body).json()
         assert state["readiness"]["status"] == "not_ready"
+        assert any("Left Resistive Reach" in i["message"] for i in state["blocking_issues"])
         r = client.post(APPLY, json=body)
         assert r.status_code == 409 and set(r.json()) == {"detail"}
+
+    def test_enabled_zone_p_with_a_complete_geometry_is_applied_as_a_fifth_zone(self, client, review):
+        """Slice 10: nothing but missing values stands between an enabled fifth zone and Apply."""
+        body = _ready_body(review)
+        body["confirmed"] = [p for p in body["confirmed"] if p != ZP_STATUS]
+        body["suggested"] = [*body["suggested"], REVERSE.format("ZP")]
+        body["manual"] = [{"item_id": ZP_STATUS, "value": "enabled"}]
+        state = client.post(VALIDATE, json=body).json()
+        assert state["readiness"]["status"] == "ready", state["blocking_issues"]
+        r = client.post(APPLY, json=body)
+        assert r.status_code == 200
+        zones = {z["id"]: z for z in r.json()["zones"]}
+        assert list(zones) == ["Z1", "Z2", "Z3", "Z4", "ZP"]
+        zp = zones["ZP"]
+        assert zp["enabled"] and zp["display_name"] == "Zone P" and zp["direction"] == "forward"
+        assert zp["reactive_reach_ohm"] is not None and zp["resistive_reach_forward_ohm"] is not None
+        assert zp["resistive_reach_reverse_ohm"] == 0.0 and zp["delay_s"] == 10.0
+        assert zones["Z4"]["enabled"] is False  # untouched
 
     def test_inferred_disabled_zone_p_does_not_block(self, client, review):
         """The 10 s rule disabled Zone P, so it is respected during Apply."""
@@ -160,17 +182,6 @@ class TestZonesAndRules:
         explicit = Sourced(ZoneStatus.ENABLED, Provenance(MappingStatus.MAPPED, origin=ProvenanceOrigin.MANUAL_ENTRY))
         zones = tuple(replace(z, status=explicit) if z.zone_id == "ZP" else z for z in model.zones)
         assert infer_defeated_zones(replace(model, zones=zones)).zone("ZP").status.value is ZoneStatus.ENABLED
-
-    def test_extra_enabled_zone_is_never_remapped_into_the_reverse_slot(self):
-        model = infer_defeated_zones(MicomP441Profile().interpret(make_doc()))
-        enabled = Sourced(ZoneStatus.ENABLED, Provenance(MappingStatus.MAPPED, origin=ProvenanceOrigin.MANUAL_ENTRY))
-        zones = tuple(replace(z, status=enabled) if z.zone_id == "ZP" else z for z in model.zones if z.zone_id != "Z4")
-        reasons = form_slot_reasons(replace(model, zones=zones))
-        assert reasons and reasons[0].zone_id == "ZP"
-
-    def test_the_sample_fits_the_form_slots(self):
-        model = infer_defeated_zones(MicomP441Profile().interpret(make_doc()))
-        assert form_slot_reasons(model) == ()
 
     def test_provenance_stays_distinct_and_is_untouched_by_apply(self, client, review):
         body = _ready_body(review)
@@ -188,8 +199,8 @@ class TestPayloadValidation:
     @pytest.mark.parametrize("bad", [-1.0, math.inf, math.nan])
     def test_schema_rejects_invalid_values(self, field, bad):
         with pytest.raises(Exception):
-            ApplyZoneOut(slot="zone1", enabled=True, direction="forward", **{field: bad})
+            ApplyZoneOut(id="Z1", display_name="Zone 1", enabled=True, direction="forward", **{field: bad})
 
     def test_zero_is_valid(self):
-        z = ApplyZoneOut(slot="zone1", enabled=True, direction="forward", resistive_reach_reverse_ohm=0.0)
+        z = ApplyZoneOut(id="Z1", display_name="Zone 1", enabled=True, direction="forward", resistive_reach_reverse_ohm=0.0)
         assert z.resistive_reach_reverse_ohm == 0.0

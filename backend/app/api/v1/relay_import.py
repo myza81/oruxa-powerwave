@@ -179,12 +179,20 @@ def validate_relay_review(body: ReviewValidationIn) -> ReviewStateOut:
     return _review_state_out(review)
 
 
+def _apply_zone_out(zone) -> ApplyZoneOut:
+    """The wire name of the zone's stable canonical identity is ``id``."""
+    fields = asdict(zone)
+    fields["id"] = fields.pop("zone_id")
+    return ApplyZoneOut(**fields)
+
+
 @router.post("/review/apply", response_model=ApplySettingsOut)
 def apply_relay_review(body: ReviewValidationIn) -> ApplySettingsOut:
-    """Slice 9. Stateless and backend-authoritative: the effective reviewed model is
+    """Slice 9 / 10. Stateless and backend-authoritative: the effective reviewed model is
     re-derived from the original interpretation and the decisions, readiness and the
-    engine adapter are re-run, and only a complete form payload is returned. Nothing is
-    stored; the browser populates its own Distance Protection form with the result."""
+    engine adapter are re-run, and the complete zone collection (any number of zones) is
+    returned. Nothing is stored; the browser populates its own Distance Protection analysis
+    with the result."""
     decisions = _decisions(body)
     try:
         plan = apply_reviewed_settings(body.validation_context, decisions)
@@ -212,5 +220,5 @@ def apply_relay_review(body: ReviewValidationIn) -> ApplySettingsOut:
     return ApplySettingsOut(
         characteristic=plan.characteristic,
         impedance_basis=plan.impedance_basis,
-        zones=[ApplyZoneOut(**asdict(zone)) for zone in plan.zones],
+        zones=[_apply_zone_out(zone) for zone in plan.zones],
     )

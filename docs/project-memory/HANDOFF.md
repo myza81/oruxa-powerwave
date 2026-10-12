@@ -4,8 +4,23 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-12** (DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-12** (Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated))
+
+## Slice 10 -- Dynamic Distance Zones (2026-10-12, `feature/slice10-dynamic-distance-zones`)
+
+Implemented DEC-189: **zone count is no longer a limitation** in Distance Protection analysis. One generic zone collection runs end to end:
+the engine adapter returns one setting per canonical zone (no 4-zone cap, `TOO_MANY_ZONES` / `ZONE_SLOT_UNSUPPORTED` removed); the Apply
+payload is the complete zone list under stable canonical ids with the source's labels (disabled zones included, flagged); the three distance
+endpoints take a generic `zones` JSON parameter (legacy `zoneN_*` kept) and return `zones[]` (legacy `zone1..4` mirrors kept); the engine
+has a generic `evaluate_zones()` loop. In the browser the zone collection is state-driven: the four standard cards stay, each *enabled*
+non-standard zone gets a dynamic card (source label), the plot / legend / Zone state / Fit Zones walk the collection, extra zones rotate
+through six theme colours, reverse-facing zones are dashed, and a re-Apply rebuilds the collection (stale extra zones disappear, the same id
+updates in place). The P441 sample is unchanged (Zone 4 / Zone P Disabled); overriding Zone P to Enabled now needs only its missing
+phase-phase and Left Resistive Reach values. Static frontend tests that pinned the fixed-four internals were rewritten to pin the generic
+mechanisms. **Branch note:** Slice 9 was not yet in `origin/main` when this started (the Slice 9 branch and its predecessors were local
+only), so `feature/slice10-dynamic-distance-zones` is stacked on `feature/slice9-apply-relay-settings`; rebase onto `main` once Slice 9 is
+merged. **Stopped at the owner-UAT gate; Slice 11 not started.** Test note: use `PW_BACKEND_PORT=8010` for the browser specs.
 
 ## Slice 9 -- Apply Settings (2026-10-12, `feature/slice9-apply-relay-settings`)
 

@@ -182,7 +182,7 @@ class TestP441Sample:
         assert items[REVERSE.format("Z1")].suggestion is not None
         assert items[REVERSE.format("ZP")].suggestion is None
 
-    def test_overriding_zone_p_to_enabled_restores_validation_and_engine_limits(self, model):
+    def test_overriding_zone_p_to_enabled_restores_validation(self, model):
         manual = {REVERSE.format(z): 2.5 for z in Z123} | {ZP_STATUS: "enabled"}
         review = validate_review(encode_model(model), ReviewDecisions(manual=manual))
         items = _items(review)
@@ -190,12 +190,17 @@ class TestP441Sample:
         assert not items["zones[ZP].reach"].not_required
         assert not items[REVERSE.format("ZP")].not_required  # required again, shown as missing
         assert review.engine.status == "not_ready" and review.readiness.status == "not_ready"
-        assert any("cannot be represented" in i.message and "ZP" in i.message for i in review.blocking_issues)
+        # Slice 10: Zone P is held to the same rules as every zone -- it is blocked for the value it
+        # lacks (its Left Resistive Reach), never because it is a fifth zone.
+        assert any("Left Resistive Reach" in i.message and i.zone_ids == ("ZP",) for i in review.blocking_issues)
+        assert not any("cannot be represented" in i.message for i in review.blocking_issues)
 
-    def test_the_four_zone_engine_still_refuses_an_enabled_fifth_zone(self, model):
+    def test_an_enabled_fifth_zone_is_refused_only_for_what_it_lacks(self, model):
         zp = replace(model.zone("ZP"), status=_explicit(ZoneStatus.ENABLED))
         enabled = replace(model, zones=tuple(zp if z.zone_id == "ZP" else z for z in model.zones))
-        assert not adapt_to_engine(enabled, engine_basis="secondary").supported
+        a = adapt_to_engine(enabled, engine_basis="secondary")
+        assert not a.supported and {r.zone_id for r in a.reasons} <= {"ZP", "Z1", "Z2", "Z3"}
+        assert not any("cannot be represented" in r.message for r in a.reasons)
 
     def test_canonical_model_keeps_all_five_zones_and_arbitrary_extras(self, model):
         assert [z.zone_id for z in model.zones] == ["Z1", "Z2", "Z3", "Z4", "ZP"]
