@@ -202,7 +202,7 @@ class TestBlockingAndReadiness:
         review, _ = _state(model)
         messages = {i.message for i in review.blocking_issues}
         assert messages == {r.message for r in engine_adaptation(model).reasons}
-        reverse = next(i for i in review.blocking_issues if "reverse" in i.message)
+        reverse = next(i for i in review.blocking_issues if "Left Resistive Reach" in i.message)
         assert set(reverse.zone_ids) == {"Z1", "Z2", "Z3"} and REVERSE.format("Z1") in reverse.item_ids
 
     def test_resolving_the_blockers_makes_it_ready_after_confirmation(self, model):
@@ -239,7 +239,7 @@ class TestBlockingAndReadiness:
     def test_zone_p_disabled_alone_is_still_blocked_by_the_reverse_reach(self, model):
         review, _ = _state(model, manual={ZP_STATUS: "disabled"})
         assert review.readiness.status == "not_ready"
-        assert [i.message for i in review.blocking_issues] == ["The reverse resistive reach is unresolved."]
+        assert [i.message for i in review.blocking_issues] == ["The Left Resistive Reach (−R) is unresolved."]
 
     def test_the_reverse_reach_alone_is_still_blocked_by_zone_p(self, model):
         manual = {REVERSE.format(z): 2.5 for z in ("Z1", "Z2", "Z3")}

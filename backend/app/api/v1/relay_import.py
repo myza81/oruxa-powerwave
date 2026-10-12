@@ -124,6 +124,8 @@ def _review_state_out(review: ExtractionReview) -> ReviewStateOut:
             user_value_text=item.user_value_text,
             category=item.category,
             engine_reason=item.engine_reason,
+            suggestion=item.suggestion,
+            resolution_origin=item.resolution_origin,
         )
         for group in full.groups
         for item in group.items
@@ -144,7 +146,10 @@ def validate_relay_review(body: ReviewValidationIn) -> ReviewStateOut:
             detail=ErrorOut(code="invalid_review", message="An item cannot be resolved twice.").model_dump(),
         )
     decisions = ReviewDecisions(
-        confirmed=frozenset(body.confirmed), manual=manual, left_unresolved=frozenset(body.left_unresolved)
+        confirmed=frozenset(body.confirmed),
+        manual=manual,
+        left_unresolved=frozenset(body.left_unresolved),
+        suggested=frozenset(body.suggested),
     )
     try:
         review = validate_review(body.validation_context, decisions)

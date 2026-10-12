@@ -26532,3 +26532,46 @@ should be collapsible. (5) Known unrelated test issue, recorded only: the Event 
 investigates Event Reconstruction.
 
 Tests: `backend/tests/test_oscillation_summary.py`, `test_frontend_oscillation_analysis_shell.py` (new guard), `test_oscillation_classification.py` (timings key), `browser-tests/oscillation_setup.spec.js`.
+
+
+## DEC-185 -- Quadrilateral resistive reach is Right (+R) / Left (−R); a missing Left reach may take an explicit, non-authoritative 0.00 Ω suggestion
+
+Date: 2026-10-12
+Status: Implemented (`feature/distance-resistive-reach-ux`); awaiting owner UAT.
+
+**Terminology (vendor-neutral UI).** The quadrilateral's two resistive boundaries are
+named by *side*, not by direction: **Right Resistive Reach (+R)** (was "Forward /
+Resistive reach forward") and **Left Resistive Reach (−R)** (was "Reverse /
+Resistive reach reverse"). Applied to the manual Distance Protection form (Zones 1-3 and
+the Reverse Zone card), the relay review labels and the engine-adapter messages.
+Internal and API names (`resistive_reach_forward_ohm`, `resistive_reach_reverse_ohm`,
+`resistive_reach.reverse`, `direction=reverse`) are unchanged. A genuine **Reverse Zone**
+keeps its name: zone *direction* (the whole characteristic faces forward or reverse) is a
+different concept from the quadrilateral's left/right resistive boundaries, and the Left
+reach "does not mean the zone is reverse-directional".
+
+**Suggestion.** When the Left Resistive Reach (−R) of an imported relay is *Missing* (not in
+the file, the profile or a deterministic OEM rule) it stays Missing and blocking. Oruxa
+*offers* — never applies — "Suggested for visualization: 0.00 Ω" (left boundary at
+R = 0): a neutral plotting/analysis starting point, **not** the relay's setting, not a
+utility standard, not profile-derived. It is shown only for that item, only while it is
+Missing (not for a Conflict, Unreadable or engine limit) and for no other field (Zone P,
+CT/VT, timers, direction, characteristic, compensation, unknown OEM fields have none).
+
+**Provenance.** Accepting ("Use 0.00 Ω") is an explicit user resolution recorded as
+`ReviewStatus.SUGGESTION_ACCEPTED` — distinct from `RESOLVED_MANUALLY` (a typed value,
+including a typed `0`). The original interpretation is unchanged (status unresolved, cause
+Missing, category Missing; never Mapped, never profile-mapped, never globally validated);
+the effective value is 0.00 Ω. The chip reads **Resolved · Suggested**; the Source
+keeps "Source value: unavailable / missing". Clear / Enter manually / a typed value replace
+it. Session-only, stateless, never persisted.
+
+**Readiness.** Backend validation stays authoritative (`POST /relay-import/review/validate`
+gained `suggested[]`); the adapter re-runs and the blocker clears or returns. The
+mathematical engine is **not** changed to hide missing data.
+
+**Open engineering finding (not changed here).** `quadrilateral_zone_operated()` requires
+`resistive_reach_reverse_ohm > 0`, so a left reach of exactly 0 (suggested *or* typed) would
+never operate once Apply Settings (Slice 9) exists. Slice 9 must decide: allow `>= 0` for
+the left boundary, or reject/warn on 0 at Apply. The review stage does not call the engine
+geometry.

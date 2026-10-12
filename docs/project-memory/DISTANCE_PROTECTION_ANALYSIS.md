@@ -212,7 +212,7 @@ case — proven in `TestQuadrilateralRotatedAngle` by cross-checking
 against the rotation formula independently at `theta=60°`.
 
 Minimum v1 settings per zone: Enabled, forward reactive reach (Ω),
-forward resistive reach (Ω), reverse resistive reach (Ω),
+Right Resistive Reach (+R) (Ω, `resistive_reach_forward_ohm`), Left Resistive Reach (−R) (Ω, `resistive_reach_reverse_ohm`),
 characteristic/directional angle (°), Configured delay (s).
 `characteristic_angle_deg` is deliberately the SAME shared field Mho
 uses (`ZoneSettings`'s own single angle field) — by this module's own
@@ -481,7 +481,14 @@ reverse zone, etc., and no OEM naming is assumed.
   is the quadrilateral's own second resistive boundary (the negative-R side of a
   *forward*-facing zone). A reverse-direction zone is the entire characteristic
   — reach, angle and both resistive boundaries — facing the opposite way. The
-  Reverse Zone card therefore has its own "Resistive reach reverse" input too.
+  Reverse Zone card therefore has its own Left Resistive Reach (−R) input too.
+- **Resistive reach naming (DEC-185).** The UI calls the two quadrilateral
+  boundaries **Right Resistive Reach (+R)** (`resistive_reach_forward_ohm`) and
+  **Left Resistive Reach (−R)** (`resistive_reach_reverse_ohm`); the old
+  "forward / reverse resistive reach" wording is gone from the UI. This is the
+  quadrilateral's left/right boundary, never the zone's direction. The manual
+  form never prefills the left reach; the relay-import review may *offer* (not
+  apply) a neutral 0.00 Ω visualization suggestion for a missing one.
 - **Geometry = rotation by 180° about the origin** (a point reflection, not a
   mirror of one coordinate): a point `Z` is inside a reverse zone exactly when
   `-Z` is inside the same forward zone. Mho: centre `-(reach/2)∠angle`, same

@@ -43,6 +43,7 @@ from app.domain.relay_import.provenance import (
     ReviewRecord,
     ReviewStatus,
     Sourced,
+    UnresolvedCause,
 )
 
 
@@ -115,6 +116,45 @@ def _number_text(value: float) -> str:
     return str(int(value)) if value == int(value) and abs(value) < 1e15 else f"{value:.10g}"
 
 
+@dataclass(frozen=True)
+class SuggestionSpec:
+    """A neutral, non-authoritative value Oruxa may *offer* for a missing item.
+
+    A suggestion is never applied on its own and is never a source or profile value:
+    the user accepts it explicitly and it is recorded as such. Only the items listed
+    in `_SUGGESTIONS` have one."""
+
+    value: float
+    unit: str
+    #: Text shown as the effective value once accepted.
+    value_text: str
+    #: Why the value is offered (shown beside the offer).
+    rationale: str
+
+
+#: The only suggestion: a missing quadrilateral left-hand resistive reach (-R) may
+#: be placed at R = 0 for plotting/analysis. Not the relay's setting, not a
+#: utility standard and not profile-derived.
+_SUGGESTIONS: tuple[tuple[re.Pattern[str], SuggestionSpec], ...] = (
+    (
+        re.compile(_ZONE + r"resistive_reach\.reverse$"),
+        SuggestionSpec(
+            0.0,
+            "ohm",
+            "0.00 Ω",
+            "Places the left-hand boundary at R = 0. A neutral starting point for plotting "
+            "and analysis; it is not the relay's setting.",
+        ),
+    ),
+)
+
+
+def suggestion_spec(path: str) -> SuggestionSpec | None:
+    """The suggestion Oruxa may offer for the value at ``path`` (if it is missing),
+    or ``None`` -- no other item has one."""
+    return next((spec for pattern, spec in _SUGGESTIONS if pattern.match(path)), None)
+
+
 def _manual_value(path: str, spec: ResolutionSpec, raw: object) -> tuple[object, str]:
     """(canonical value, text shown as the user's resolution) for ``raw``, or
     `ReviewDecisionError`. A blank is not a value and zero is."""
@@ -151,6 +191,10 @@ class ReviewDecisions:
     manual: dict[str, float | str] = field(default_factory=dict)
     #: Unresolved values the user consciously leaves unresolved.
     left_unresolved: frozenset[str] = frozenset()
+    #: Missing values for which the user accepted Oruxa's suggestion (see
+    #: `suggestion_spec`). Distinct from ``manual``: an explicit entry of the same
+    #: number stays a manual resolution.
+    suggested: frozenset[str] = frozenset()
 
 
 _TOKEN = re.compile(r"\[[^\]]*\]|[^.\[\]]+")
@@ -199,6 +243,27 @@ def _resolved_manually(sourced: Sourced, value: object, text: str) -> Sourced:
     )
 
 
+def _suggestion_accepted(sourced: Sourced, spec: SuggestionSpec) -> Sourced:
+    """The suggested value as an effective value. The source interpretation stays
+    unresolved (its cause, sources, raw text and notes are kept); the record says the
+    value is Oruxa's suggestion accepted by the user."""
+    p = sourced.provenance
+    return Sourced(
+        spec.value,
+        Provenance(
+            MappingStatus.RESOLVED_MANUALLY,
+            sources=p.sources,
+            profile_id=p.profile_id,
+            profile_version=p.profile_version,
+            raw_value=p.raw_value,
+            notes=p.notes,
+            origin=ProvenanceOrigin.SESSION_REVIEW,
+            review=ReviewRecord(ReviewStatus.SUGGESTION_ACCEPTED, p.status, user_value_text=spec.value_text),
+            cause=p.cause,
+        ),
+    )
+
+
 def apply_review(
     model: CanonicalDistanceProtectionModel, decisions: ReviewDecisions
 ) -> CanonicalDistanceProtectionModel:
@@ -237,6 +302,17 @@ def apply_review(
             raise ReviewDecisionError("This value cannot be entered manually.")
         value, text = _manual_value(path, spec, decisions.manual[path])
         overlay[path] = _resolved_manually(sourced, value, text)
+
+    for path in sorted(decisions.suggested):
+        sourced = claim(path)
+        spec = suggestion_spec(path)
+        if spec is None:
+            raise ReviewDecisionError("No suggestion is available for this value.")
+        if sourced.is_resolved:
+            raise ReviewDecisionError("Only a missing value can take a suggestion.")
+        if sourced.provenance.cause not in (None, UnresolvedCause.MISSING):
+            raise ReviewDecisionError("A suggestion is offered only for a value missing from the source.")
+        overlay[path] = _suggestion_accepted(sourced, spec)
 
     effective = model
     for path, sourced in overlay.items():

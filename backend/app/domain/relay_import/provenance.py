@@ -68,6 +68,10 @@ class ReviewStatus(StrEnum):
     RESOLVED_MANUALLY = "resolved_manually"
     #: The user looked at an unresolved item and chose to leave it unresolved.
     LEFT_UNRESOLVED = "left_unresolved"
+    #: The user explicitly accepted an Oruxa suggestion for a missing value. Not a
+    #: source value, a profile mapping or the relay's setting: kept apart from
+    #: `RESOLVED_MANUALLY` (a value the user typed) so the two stay distinguishable.
+    SUGGESTION_ACCEPTED = "suggestion_accepted"
 
 
 @dataclass(frozen=True)

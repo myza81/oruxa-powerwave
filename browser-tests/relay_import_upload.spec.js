@@ -555,7 +555,7 @@ test("engine compatibility is separate from interpretation quality and explains 
   await expect(engine).toContainText("Current engine compatibility: Not ready to apply");
   await expect(engine).toContainText("Interpretation succeeded, but the current Distance Protection engine cannot fully apply this scheme yet.");
   await expect(engine).toContainText(/ZP cannot be represented/);
-  await expect(engine).toContainText(/reverse resistive reach is unresolved/);
+  await expect(engine).toContainText(/Left Resistive Reach \(−R\) is unresolved/);
   // It is a note in the review, never an upload error.
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
 });

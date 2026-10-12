@@ -561,7 +561,7 @@ class _Interpreter:
         )
         self.note(
             "Resistive reach is carried as set (phase and earth kept separate); no per-loop or per-phase scaling is applied, "
-            "and no reverse (left-hand) resistive reach is stated by the sheet."
+            "and no Left Resistive Reach (−R) is stated by the sheet."
         )
         ctx.z1_release = tuple(s for s in self.doc.settings if _Z1_RELEASE.search(_entry_text(s)))
         if ctx.z1_release:

@@ -963,6 +963,34 @@ identical to Slice 8 (4 blocking settings, 2 reasons). Open judgement: tilt sett
 are classed Unsupported because neither the canonical model nor the engine has a
 per-loop tilt; the owner may prefer another label.
 
+## Review UX fix -- Left Resistive Reach (−R) and the explicit 0.00 Ω suggestion (DEC-185)
+
+Status: **Implemented / Awaiting owner UAT** (2026-10-12). Review-stage only; Slice 9 has
+not started and nothing is applied.
+
+* **Labels.** `resistive_reach.reverse` is shown as **Left Resistive Reach (−R)** (review
+  row, adapter message "The Left Resistive Reach (−R) is unresolved.", profile note). Canonical
+  and API names are unchanged.
+* **Suggestion** (`review_state.SuggestionSpec`, table `_SUGGESTIONS`, one entry:
+  `zones[*].resistive_reach.reverse` → 0 Ω, text "0.00 Ω"). `ReviewItem.suggestion` is set only
+  while the item is unresolved with category **Missing**; it is never part of the effective
+  model until the user accepts it.
+* **Decision.** `ReviewDecisions.suggested` (API `suggested[]`) → `apply_review` writes the
+  value with `MappingStatus.RESOLVED_MANUALLY`, origin `SESSION_REVIEW` and
+  `ReviewRecord(SUGGESTION_ACCEPTED, original_status=unresolved, user_value_text="0.00 Ω")`;
+  source references, raw text, notes and `cause` (Missing) are kept. Refused (400
+  `invalid_review`) for any other path, a resolved value, a non-Missing cause, or an item that
+  also has a manual/confirm/leave decision.
+* **Output.** `ReviewItem(State)Out.resolution_origin` = `manual` | `suggestion` | null;
+  `review_status` stays `resolved_manually` (counts unchanged), `category` stays `missing`.
+* **UI.** Missing row: "This value was not found in the relay setting file. Suggested for
+  visualization: 0.00 Ω. …" with **Use 0.00 Ω** and **Enter manually** (the existing Resolve
+  editor; its aria-label stays "Resolve …"). Accepted: chip **Resolved · Suggested**, Source
+  shows "Oruxa suggestion: 0.00 Ω — accepted by you …" and "Not the relay's setting,
+  and not mapped from a profile"; **Edit** / **Clear** restore manual entry / Missing.
+* **Tests.** `backend/tests/test_relay_review_suggestion.py`;
+  `browser-tests/distance_resistive_reach_ux.spec.js` (plus renamed assertions in the review specs).
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).

@@ -33,6 +33,13 @@ class ReviewSourceOut(BaseModel):
     source_text: str | None = None
 
 
+class ReviewSuggestionOut(BaseModel):
+    """A neutral value Oruxa offers for a missing item. Never applied automatically."""
+
+    value_text: str
+    rationale: str
+
+
 class ReviewResolutionOut(BaseModel):
     """How the user may supply a value for an unresolved item."""
 
@@ -67,6 +74,9 @@ class ReviewItemOut(BaseModel):
     left_unresolved: bool = False
     user_value_text: str | None = None
     resolution: ReviewResolutionOut | None = None
+    suggestion: ReviewSuggestionOut | None = None
+    #: manual | suggestion: who supplied the effective value of a user-resolved item.
+    resolution_origin: Literal["manual", "suggestion"] | None = None
     category: CategoryName = "mapped"
     #: The engine adapter's message when it refuses or cannot use this value.
     engine_reason: str | None = None
@@ -178,6 +188,8 @@ class ReviewValidationIn(BaseModel):
     confirmed: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
     manual: list[ReviewManualResolutionIn] = Field(default=[], max_length=2000)
     left_unresolved: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
+    #: Missing items whose Oruxa suggestion the user explicitly accepted.
+    suggested: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
 
 
 class ReviewItemStateOut(BaseModel):
@@ -191,6 +203,8 @@ class ReviewItemStateOut(BaseModel):
     user_value_text: str | None = None
     category: CategoryName = "mapped"
     engine_reason: str | None = None
+    suggestion: ReviewSuggestionOut | None = None
+    resolution_origin: Literal["manual", "suggestion"] | None = None
 
 
 class ReviewStateOut(ReviewStateFieldsOut):

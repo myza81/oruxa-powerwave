@@ -315,13 +315,13 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     rr = zone.resistive_reach
     if forward is None and not allow_incomplete:
         fail(
-            UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, "The forward resistive reach is unresolved.", zone,
+            UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, "The Right Resistive Reach (+R) is unresolved.", zone,
             (zone_path(zone, "resistive_reach.phase_phase"), zone_path(zone, "resistive_reach.common")),
         )
         return ZoneSettings()
     if not rr.reverse.is_resolved and not allow_incomplete:
         fail(
-            UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, "The reverse resistive reach is unresolved.", zone,
+            UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, "The Left Resistive Reach (−R) is unresolved.", zone,
             (zone_path(zone, "resistive_reach.reverse"),),
         )
         return ZoneSettings()

@@ -22,6 +22,17 @@ is a real dependency: install requirements before running the backend suite.
 Slices 6-8A remain at their owner UAT gates; the per-slice notes below record
 what each added.
 
+## Distance resistive-reach UX fix (2026-10-12, `feature/distance-resistive-reach-ux`)
+
+Renamed the quadrilateral labels to **Right Resistive Reach (+R)** / **Left Resistive Reach
+(−R)** (UI only; API names unchanged; Reverse Zone untouched) and added the explicit,
+non-authoritative **0.00 Ω** suggestion for a *Missing* Left reach in the relay review
+(DEC-185; RELAY_IMPORT_ARCHITECTURE.md "Review UX fix"). Never auto-applied; recorded as
+`SUGGESTION_ACCEPTED`, distinct from a typed value; category stays Missing; backend validation
+decides readiness. **Slice 9 has not started.** Open finding for Slice 9: the engine rejects a
+left reach of 0 (`quadrilateral_zone_operated` needs `> 0`), so an accepted/typed 0 would never
+operate once applied.
+
 ## Relay import Slice 8A (2026-10-11, `feature/distance-relay-import`)
 
 **Review status semantics**: the broad "To confirm" / "Unresolved" presentation is

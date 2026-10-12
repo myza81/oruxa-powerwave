@@ -61,7 +61,7 @@ async function resolveZoneP(page, choice) {
 }
 async function resolveAllBlockers(page, zoneP = "disabled") {
   for (const [z, n] of [["Z1", "Zone 1"], ["Z2", "Zone 2"], ["Z3", "Zone 3"]]) {
-    await resolveNumber(page, `zone.${z}.rr.reverse`, `${n} Reverse Resistive Reach`, 2.5);
+    await resolveNumber(page, `zone.${z}.rr.reverse`, `${n} Left Resistive Reach (−R)`, 2.5);
   }
   await resolveZoneP(page, zoneP);
 }
@@ -93,7 +93,7 @@ test("manual resolution is offered only where the canonical type is known", asyn
   await reviewP441(page);
   await expect(row(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-review", "unresolved");
   await expect(row(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-category", "missing");
-  await expect(button(page, "Resolve Zone 1 Reverse Resistive Reach")).toHaveCount(1);
+  await expect(button(page, "Resolve Zone 1 Left Resistive Reach (−R)")).toHaveCount(1);
   await expect(button(page, "Resolve Zone P Status")).toHaveCount(1);
   // unknown semantics stay missing, with a reason and no editor
   for (const key of ["base.voltage", "base.current", "relay.version", "line.z1"]) {
@@ -159,7 +159,7 @@ test("Confirm all assumptions shows its count, changes only Assumption rows, and
 test("a manual resolution keeps the source value unavailable and shows the user's value apart", async ({ page }) => {
   await reviewP441(page);
   const before = await counts(page);
-  await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
+  await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
   const form = row(page, "zone.Z1.rr.reverse").locator("form.ww-rr-resolve");
   // a blank is not a value
   await form.getByRole("button", { name: "Set value" }).click();
@@ -170,7 +170,7 @@ test("a manual resolution keeps the source value unavailable and shows the user'
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Resolved manually");
   await expect(row(page, "zone.Z1.rr.reverse").locator(".ww-rr-value")).toHaveText("2.5 Ω");
   await expect(row(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-status", "unresolved");
-  await row(page, "zone.Z1.rr.reverse").getByRole("button", { name: "Source of Zone 1 Reverse Resistive Reach" }).click();
+  await row(page, "zone.Z1.rr.reverse").getByRole("button", { name: "Source of Zone 1 Left Resistive Reach (−R)" }).click();
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Source value: unavailable / unresolved");
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("User resolution: 2.5 Ω");
   const after = await counts(page);
@@ -180,7 +180,7 @@ test("a manual resolution keeps the source value unavailable and shows the user'
   // the original classification stays traceable beside the user's decision
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Classified as: Missing");
   // clear returns it to missing, never to a default
-  await button(page, "Clear the value of Zone 1 Reverse Resistive Reach").click();
+  await button(page, "Clear the value of Zone 1 Left Resistive Reach (−R)").click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
   await expect(row(page, "zone.Z1.rr.reverse").locator(".ww-rr-value")).toHaveText("Not available");
   expect(await counts(page)).toEqual(before);
@@ -188,18 +188,18 @@ test("a manual resolution keeps the source value unavailable and shows the user'
 
 test("an explicit zero is a value; leaving an item unresolved is a decision of its own", async ({ page }) => {
   await reviewP441(page);
-  await resolveNumber(page, "zone.Z4.rr.reverse", "Zone 4 Reverse Resistive Reach", 0);
+  await resolveNumber(page, "zone.Z4.rr.reverse", "Zone 4 Left Resistive Reach (−R)", 0);
   await expect(row(page, "zone.Z4.rr.reverse").locator(".ww-rr-value")).toHaveText("0 Ω");
   await expect(chip(page, "zone.Z4.rr.reverse")).toHaveText("Resolved manually");
 
   const before = await counts(page);
-  await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
-  await button(page, "Leave Zone 1 Reverse Resistive Reach unresolved").click();
+  await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
+  await button(page, "Leave Zone 1 Left Resistive Reach (−R) unresolved").click();
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Left unresolved");
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
   await expect(row(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-blocking", "true"); // still blocks
   expect(await counts(page)).toEqual(before);
-  await button(page, "Undo leaving Zone 1 Reverse Resistive Reach unresolved").click();
+  await button(page, "Undo leaving Zone 1 Left Resistive Reach (−R) unresolved").click();
   await expect(row(page, "zone.Z1.rr.reverse")).not.toContainText("Left unresolved");
 });
 
@@ -215,8 +215,8 @@ test("blocking settings are told apart from missing values that do not block", a
   }
   expect((await counts(page)).blocking).toBe(4);
   const issues = page.locator("#wwRelayReviewBlocking");
-  await expect(issues).toContainText("reverse resistive reach is unresolved");
-  await expect(issues).toContainText("Needs: Zone 1 Reverse Resistive Reach");
+  await expect(issues).toContainText("Left Resistive Reach (−R) is unresolved");
+  await expect(issues).toContainText("Needs: Zone 1 Left Resistive Reach (−R)");
   await expect(issues).toContainText("ZP cannot be represented");
 });
 
@@ -255,7 +255,7 @@ test("each uncertain row is classified by why it is uncertain, with the reason i
   const open = async (key, label) => row(page, key).getByRole("button", { name: `Source of ${label}` }).click();
   await open("zone.Z1.direction", "Zone 1 Direction");
   await expect(row(page, "zone.Z1.direction")).toContainText("Assumption: Zones 1-3 are forward-looking in the P441 family");
-  await open("zone.Z1.rr.reverse", "Zone 1 Reverse Resistive Reach");
+  await open("zone.Z1.rr.reverse", "Zone 1 Left Resistive Reach (−R)");
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Why missing: No value is stated in the document.");
   await open("zone.ZP.status", "Zone P Status");
   await expect(row(page, "zone.ZP.status")).toContainText("Why missing:");
@@ -379,7 +379,7 @@ test("decisions survive closing and reopening the review, and the panel keeps it
 test("Remove, a new upload and a refresh each discard every decision", async ({ page }) => {
   await reviewP441(page);
   await button(page, "Confirm Zone 1 Reach").click();
-  await resolveNumber(page, "zone.Z1.rr.reverse", "Zone 1 Reverse Resistive Reach", 2.5);
+  await resolveNumber(page, "zone.Z1.rr.reverse", "Zone 1 Left Resistive Reach (−R)", 2.5);
   await page.locator("#wwRelayImportRemoveBtn").click();
   await expect(panel(page)).toBeHidden();
   // new upload: nothing carried over
@@ -454,7 +454,7 @@ test("there is no Apply anywhere, and the manual Distance Protection form is nev
 test("the review stays contained at narrow width with an editor open", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await reviewP441(page);
-  await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
+  await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
   await expect(row(page, "zone.Z1.rr.reverse").locator("form.ww-rr-resolve")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);

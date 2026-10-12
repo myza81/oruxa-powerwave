@@ -189,9 +189,9 @@ class TestReviewDto:
         summary, review = _review()
         assert review.interpretation == "reviewable" and review.engine.status == "not_ready"
         messages = [r.message for r in review.engine.reasons]
-        assert any("ZP" in m for m in messages) and any("reverse resistive reach" in m for m in messages)
+        assert any("ZP" in m for m in messages) and any("Left Resistive Reach" in m for m in messages)
         assert len(messages) == len(set(messages))  # identical messages are merged across zones
-        merged = next(r for r in review.engine.reasons if "reverse resistive reach" in r.message)
+        merged = next(r for r in review.engine.reasons if "Left Resistive Reach" in r.message)
         assert len(merged.zone_ids) >= 2
         assert all(w.startswith("Engine: ") for w in summary.warnings if "Engine" in w)
 

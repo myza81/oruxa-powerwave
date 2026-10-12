@@ -56,6 +56,7 @@ from app.domain.relay_import.review_state import (
     compute_readiness,
     engine_limits,
     resolution_spec,
+    suggestion_spec,
 )
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
@@ -83,6 +84,15 @@ class ReviewResolution:
     minimum: float | None = None
     maximum: float | None = None
     options: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class ReviewSuggestion:
+    """A value Oruxa may offer for a missing item. Not a source or profile value and
+    never applied unless the user explicitly accepts it."""
+
+    value_text: str
+    rationale: str
 
 
 @dataclass(frozen=True)
@@ -118,6 +128,11 @@ class ReviewItem:
     user_value_text: str | None = None
     #: Present while the user may supply or change the value.
     resolution: ReviewResolution | None = None
+    #: Present while the item is still missing and Oruxa has a neutral suggestion for it.
+    suggestion: ReviewSuggestion | None = None
+    #: Who supplied the effective value of a user-resolved item: ``manual`` (typed or
+    #: chosen) | ``suggestion`` (an Oruxa suggestion the user accepted); ``None`` otherwise.
+    resolution_origin: str | None = None
     #: Slice 8A. How the uncertainty is *presented*: mapped | assumption | missing |
     #: conflict | unsupported | unreadable. Derived, never stored: the profile's
     #: interpretation status, the unresolved cause and the engine adapter stay
@@ -321,7 +336,7 @@ def _review_status(sourced: Sourced) -> str:
         return _REVIEW_STATUS_BY_MAPPING[p.status]
     if record.status is ReviewStatus.CONFIRMED:
         return "confirmed"
-    if record.status is ReviewStatus.RESOLVED_MANUALLY:
+    if record.status in (ReviewStatus.RESOLVED_MANUALLY, ReviewStatus.SUGGESTION_ACCEPTED):
         return "resolved_manually"
     return "unresolved"
 
@@ -346,6 +361,26 @@ def _category(sourced: Sourced, limit: tuple[str, str] | None) -> str:
         return "assumption"
     cause = sourced.provenance.cause
     return cause.value if cause else "missing"
+
+
+def _resolution_origin(sourced: Sourced) -> str | None:
+    record = sourced.provenance.review
+    if record is None:
+        return None
+    if record.status is ReviewStatus.RESOLVED_MANUALLY:
+        return "manual"
+    if record.status is ReviewStatus.SUGGESTION_ACCEPTED:
+        return "suggestion"
+    return None
+
+
+def _suggestion(path: str | None, sourced: Sourced, category: str) -> ReviewSuggestion | None:
+    """Offered only for a value that is still Missing (never a conflict, an unreadable
+    cell or an engine limit) and only where Oruxa has a specific neutral suggestion."""
+    if path is None or sourced.is_resolved or category != "missing":
+        return None
+    spec = suggestion_spec(path)
+    return ReviewSuggestion(spec.value_text, spec.rationale) if spec else None
 
 
 def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
@@ -431,6 +466,8 @@ class _Builder:
             left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
             user_value_text=record.user_value_text if record else None,
             resolution=_resolution(path, sourced, category),
+            suggestion=_suggestion(path, sourced, category),
+            resolution_origin=_resolution_origin(sourced),
             category=category,
             engine_reason=limit[1] if limit else None,
         )
@@ -617,7 +654,7 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     if quadrilateral or _touched(rr.reverse):
         items.append(
             b.item(
-                f"{pre}.rr.reverse", "Reverse Resistive Reach", name, rr.reverse, unit="ohm",
+                f"{pre}.rr.reverse", "Left Resistive Reach (−R)", name, rr.reverse, unit="ohm",
                 path=f"{zp}.resistive_reach.reverse",
             )
         )
