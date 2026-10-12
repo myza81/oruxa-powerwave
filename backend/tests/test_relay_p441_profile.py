@@ -128,7 +128,10 @@ class TestRouting:
     def test_other_identified_families_are_not_routed_to_p441(self, registry, scheme):
         ident = self._identify(registry, scheme)
         assert ident.status is IdentificationStatus.IDENTIFIED and ident.profile_id != PROFILE_ID
-        assert registry.profile_for(ident) is None
+        # An identified relay with its own interpretation profile (the 7SA511, Slice 11) reaches that
+        # profile; an identification-only family reaches none. Neither ever reaches the P441 profile.
+        routed = registry.profile_for(ident)
+        assert routed is None or routed.profile_id == ident.profile_id != PROFILE_ID
 
     def test_unknown_and_ambiguous_documents_are_not_routed(self, registry):
         assert registry.profile_for(self._identify(registry, "XYZ9000_V1")) is None
@@ -712,9 +715,11 @@ class TestIsolation:
         for forbidden in ("app.storage", "sqlalchemy", "fastapi", "app.services", "distance_protection", "open(", "pypdf"):
             assert forbidden not in text
 
-    def test_profile_is_registered_for_p441_only(self):
+    def test_the_p441_profile_is_registered_once_beside_the_other_interpretation_profiles(self):
         reg = catalogue.build_registry()
-        assert {p.profile_id for p in reg._profiles} == {PROFILE_ID}
+        ids = [p.profile_id for p in reg._profiles]
+        assert ids.count(PROFILE_ID) == 1
+        assert set(ids) == {PROFILE_ID, "siemens-7sa511"}  # Slice 11 added the 7SA511; nothing else has a profile yet
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +728,7 @@ class TestIsolation:
 
 SAMPLE_DIR = os.environ.get("RELAY_SAMPLE_PDF_DIR")
 needs_samples = pytest.mark.skipif(not SAMPLE_DIR, reason="owner sample PDFs are not committed; set RELAY_SAMPLE_PDF_DIR to run")
-OTHER_SAMPLES = ["7sa511", "7sa613", "7sl87", "grl200", "grz100", "rcs", "red670", "rel511", "rel670", "lfzp", "relz100"]
+OTHER_SAMPLES = ["7sa613", "7sl87", "grl200", "grz100", "rcs", "red670", "rel511", "rel670", "lfzp", "relz100"]
 
 
 def real(name):

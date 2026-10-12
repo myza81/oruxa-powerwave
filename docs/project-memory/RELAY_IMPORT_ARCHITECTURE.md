@@ -6,7 +6,7 @@ interpretation profile, read-only Extraction Review, review confirmation / resol
 and **integrated into `main`** (2026-10-11) on top of the completed Oscillation Analysis Phase 1
 baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
-is identification-only; **Slice 9 (Apply Settings, DEC-188) and Slice 10 (Dynamic Distance Zones, DEC-189) are implemented and awaiting owner UAT**. Approval record:
+is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-190) are implemented and awaiting owner UAT**. Approval record:
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -1077,3 +1077,20 @@ canonical model (any number of zones)
   phase-phase and Left Resistive Reach values, and applies as a fifth card once they are resolved.
 * **Out of scope (unchanged):** a second relay family, a manual "add zone" editor, per-zone characteristics, non-directional zones,
   persistence, write-back.
+
+## Slice 11 -- Siemens SIPROTEC 7SA511 profile (DEC-190)
+
+Status: **Implemented / Awaiting owner UAT.** The second real profile; the test of the architecture.
+
+```text
+7SA511 PDF -> generic extractor -> identifier (siemens-7sa511, unchanged) -> Siemens7SA511Profile
+   -> canonical model (6 zones) -> defeated-zone rule (unchanged) -> adapter / review / readiness / Apply (all unchanged)
+   -> dynamic Distance Protection cards -> R-X plot
+```
+
+* **Only new code:** `relay_profiles/siemens_7sa511.py` (+ one registration line). Core, review, Apply and plotting required **no** change. Evidence: `TestIsolation` finds no Siemens name in any relay/distance module outside the profile and the catalogue, nor in `frontend/index.html`; `test_relay_7sa511_workflow.py` drives only generic DTOs through the real analysis engine; the browser spec uses only the P441 review selectors.
+* **Real sample result:** identified (Siemens / SIPROTEC 7SA5 / 7SA511, high); 6 zones; 30 Mapped, 34 Assumption, 25 Missing, 6 blocking before review. All blockers are user-resolvable: the state of Z1, Z2, Z3, Z4, Z1L, plus Z4's undecodable reach (resolved by disabling it). After the user states Z1-Z3 Enabled and Z4/Z1L Disabled, supplies the three delays (the sheet's `Infinity`), takes the 0.00 ohm suggestion for the Left reach and confirms the assumptions, readiness is **Ready to apply** and the unchanged Apply returns Z1 (X 2.74, +R 1.84), Z2 (4.47, 2.12) and Z3 reverse (0.69, 0.46) as quadrilaterals at 90 degrees, secondary basis.
+* **Zone model:** `Z1`, `Z2`, `Z3` (REVERSE -- identity and direction are independent), `Z4` (fault-detection stage: direction + delay only), `Z1B` (explicitly inactive per the sheet), `Z1L` (non-directional). Any number of zones; none squeezed into slots.
+* **Reading rules:** address *and* name must match the table; the printed range supplies the unit (kV -> V is the only conversion); `Infinity` is a readable non-number; scheme notes about a zone are attached to its delay with the raw text kept; a finite delay is not a zone state.
+* **Known generic gaps (reported, not fixed):** rectangular R/X-form reach in the adapter; phase-earth loops preserved but not plotted; assumption-note wording for non-DEC-186/187 assumptions; proposal to extend DEC-187 to an infinite delay.
+* **Not started:** 7SA613, 7SL87, any Siemens family abstraction.
