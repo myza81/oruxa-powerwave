@@ -590,7 +590,7 @@ class TestIsolation:
 
     def test_registered_beside_the_p441_profile_only_through_the_catalogue(self):
         ids = [p.profile_id for p in catalogue.build_registry()._profiles]
-        assert ids == ["schneider-micom-p441", PROFILE_ID]
+        assert ids == ["schneider-micom-p441", PROFILE_ID, "hitachi-red670"]  # Slice 12 added the RED670
 
 
 # ---------------------------------------------------------------------------

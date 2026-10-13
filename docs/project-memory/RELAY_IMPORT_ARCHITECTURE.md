@@ -6,7 +6,7 @@ interpretation profile, read-only Extraction Review, review confirmation / resol
 and **integrated into `main`** (2026-10-11) on top of the completed Oscillation Analysis Phase 1
 baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
-is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-190) are implemented and awaiting owner UAT**. Approval record:
+is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-190/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -1080,7 +1080,7 @@ canonical model (any number of zones)
 
 ## Slice 11 -- Siemens SIPROTEC 7SA511 profile (DEC-190, corrected by DEC-191)
 
-Status: **Implemented / Awaiting owner UAT.** The second real profile; the test of the architecture. `siemens-7sa511-v2` (DEC-191 corrected the v1 reading of the real sheet and added a generic capability).
+Status: **PAUSED / incomplete pending verified source data (DEC-192, 2026-10-13); code unchanged.** Previously: Implemented / Awaiting owner UAT. The second real profile; the test of the architecture. `siemens-7sa511-v2` (DEC-191 corrected the v1 reading of the real sheet and added a generic capability).
 
 ```text
 7SA511 PDF -> generic extractor (column-aware) -> identifier (siemens-7sa511) -> Siemens7SA511Profile
@@ -1096,3 +1096,23 @@ Status: **Implemented / Awaiting owner UAT.** The second real profile; the test 
 * **Reading rules:** address *and* name must match the table; the printed range supplies the unit (kV -> V is the only conversion); a blank setting cell is Missing; an `Infinity` in the value column is a readable non-number, never a delay; notes about a zone become source notes with their source line; a finite delay is not a zone state.
 * **Known generic gaps (reported, not fixed):** phase-earth loops preserved but not plotted; assumption-note wording for non-DEC-186/187 assumptions. (The rectangular R/X gap of DEC-190 is closed by DEC-191; the DEC-187 "infinite delay" proposal is withdrawn.)
 * **Not started:** 7SA613, 7SL87, any Siemens family abstraction.
+
+## Slice 12 -- Hitachi Energy RED670 profile (DEC-192)
+
+Status: **Implemented / Awaiting owner UAT.** The third real profile (`hitachi-red670-v1`); the 7SA511 is paused pending verified source data and nothing of it was reused or changed.
+
+```text
+RED670 PDF -> generic extractor -> identifier (hitachi-red670) -> HitachiRed670Profile
+   -> canonical model (4 zones, explicit R/X) -> defeated-zone rule (unchanged) -> adapter / review / readiness / Apply
+   -> dynamic Distance Protection cards -> R-X plot
+```
+
+* **Generic code changed: none** (registration line only). The review, readiness, Apply, engine and UI treat the RED670 exactly like the P441 and 7SA511; browser spec `relay_import_red670.spec.js` asserts there is no RED670-specific control or script.
+* **Source shape.** Relion 670 sheet: `name | value | range` rows; function-instance headings (`IMP_PROT/DistanceZones/ZMQPDIS:n`); instance-prefixed parameters (`ZM0n-:X1`); channel-numbered CT/VT rows read only from the channels named as phase currents/voltages; page-end scheme requirements kept as zone source notes.
+* **Activation is explicit per zone** (`Operation` + `OperationDir`) and Mapped -- the user is not asked for zone state. Zone 4 on the real sheet is switched off by its own parameters (the page-16 "Zone 4 Inactive" line is a note that agrees).
+* **Geometry is the native explicit R/X** (`X1`, `RFPP` +R, no angle); phase-phase `RFPP`/`tPP`/`OperationPP` and phase-earth `RFPE`/`tPE`/`OperationPE` stay distinct. Timers are `tPP`/`tPE`, read only while the zone's `Timer` switch is ON; an OFF switch leaves the delay Missing.
+* **Left Resistive Reach (-R) is Missing**: the relay forms that boundary with a directional element (`ZDRDIR`), not a resistive reach. The element's rows are cited beside the missing value; the existing explicit 0.00 Ω suggestion (DEC-185) is the user's visualization choice. This is the only blocker on the real sheet.
+* **Assumptions:** primary impedance basis, quadrilateral characteristic, per-loop reading of `RFPP`/`RFPE` (value used as printed, not scaled), VT/UBase units (kV, V), line sequence-impedance naming.
+* **Real sample:** 4 zones; 44 mapped / 18 assumptions / 4 missing; Not ready until the Left (-R) suggestion is taken and assumptions are confirmed, then Ready to apply and plotted (Zones 1-3 enabled, Zone 4 off).
+* **Open generic gaps (reported):** directional-element boundaries; per-loop resistive-reach convention; phase-earth plotting (unchanged); "Disabled / Defeated" wording for a plainly switched-off zone.
+* **Not started:** any further relay profile. See DEC-192 for the full mapped / assumption / missing list.

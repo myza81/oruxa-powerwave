@@ -31,6 +31,7 @@ from app.domain.relay_import.identification import (
     RelayIdentificationDescriptor,
 )
 from app.domain.relay_import.profile import RelayProfileRegistry
+from app.relay_profiles.hitachi_red670 import HitachiRed670Profile
 from app.relay_profiles.micom_p441 import MicomP441Profile
 from app.relay_profiles.siemens_7sa511 import Siemens7SA511Profile
 
@@ -178,7 +179,7 @@ def build_registry() -> RelayProfileRegistry:
     profiles that exist. Only the MiCOM P441 has one (Slice 6, awaiting
     validation); every other catalogued relay is identification-only."""
     return RelayProfileRegistry(
-        profiles=(MicomP441Profile(), Siemens7SA511Profile()),
+        profiles=(MicomP441Profile(), Siemens7SA511Profile(), HitachiRed670Profile()),
         identification_descriptors=IDENTIFICATION_DESCRIPTORS,
         manufacturer_aliases=MANUFACTURER_ALIASES,
     )

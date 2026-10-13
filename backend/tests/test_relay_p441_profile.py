@@ -719,7 +719,7 @@ class TestIsolation:
         reg = catalogue.build_registry()
         ids = [p.profile_id for p in reg._profiles]
         assert ids.count(PROFILE_ID) == 1
-        assert set(ids) == {PROFILE_ID, "siemens-7sa511"}  # Slice 11 added the 7SA511; nothing else has a profile yet
+        assert set(ids) == {PROFILE_ID, "siemens-7sa511", "hitachi-red670"}  # Slice 11 added the 7SA511, Slice 12 the RED670
 
 
 # ---------------------------------------------------------------------------
@@ -728,7 +728,7 @@ class TestIsolation:
 
 SAMPLE_DIR = os.environ.get("RELAY_SAMPLE_PDF_DIR")
 needs_samples = pytest.mark.skipif(not SAMPLE_DIR, reason="owner sample PDFs are not committed; set RELAY_SAMPLE_PDF_DIR to run")
-OTHER_SAMPLES = ["7sa613", "7sl87", "grl200", "grz100", "rcs", "red670", "rel511", "rel670", "lfzp", "relz100"]
+OTHER_SAMPLES = ["7sa613", "7sl87", "grl200", "grz100", "rcs", "rel511", "rel670", "lfzp", "relz100"]  # (the RED670 has its own profile since Slice 12)
 
 
 def real(name):
