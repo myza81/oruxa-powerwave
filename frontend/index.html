@@ -4387,6 +4387,7 @@
             border-radius: calc(var(--radius) - 2px);
             cursor: pointer;
         }
+        .ww-context-menu-item[hidden] { display: none; }
         .ww-context-menu-item:hover, .ww-context-menu-item:focus-visible {
             background: var(--hover-tint);
             outline: none;
@@ -16982,6 +16983,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // recordings keep arriving through wwErNotifyWorkspaceChanged().
         function wwErObserveSignalCatalogue() {
             wwSignalCatalogueSubscribe((event) => {
+                // A rename / colour change repaints the mounted view from the
+                // Waveform-owned resolvers; nothing else about it changes.
+                if (event.type === "presentation") {
+                    if (shell.currentPage === "event-reconstruction") wwErRender();
+                    return;
+                }
                 if (event.origin === "raw") return;
                 const live = new Set(wwErCalculatedChannels().map((c) => c.id));
                 for (const [key, selection] of Object.entries(wwErState.selectedChannels)) {
@@ -31496,7 +31503,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const idx = panel.channels.indexOf(channel);
                     if (idx !== -1) {
                         Plotly.restyle(panel.chartEl, {
-                            name: [wwChannelDisplayName(sourceId, channelName)],
+                            name: [wwChannelDisplayNamePlotly(sourceId, channelName)],
                             hovertemplate: [wwTraceHoverTemplate(channel)],
                             "line.color": [channel.color],
                         }, [idx]);
@@ -31509,6 +31516,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // and any Time-Group-suffix-bearing label, the same existing
             // mechanism topology changes already rely on.
             wwRefreshTimeGroupPanelLabels();
+            // Every OTHER consumer (Calculated Channels page, Event
+            // Reconstruction, Oscillation, ...) is told through the shared
+            // signal catalogue and repaints itself from the resolvers;
+            // this Waveform code never reaches into another page.
+            wwSignalCataloguePublish({
+                type: "presentation",
+                origin: wwIsCalculatedSourceId(sourceId) ? "calculated" : "raw",
+                keys: [wwIsCalculatedSourceId(sourceId) ? "calculated:" + sourceId : "raw:analog:" + wwChannelKey(sourceId, channelName)],
+                channelKey: wwChannelKey(sourceId, channelName),
+            });
         }
 
         function wwSetChannelColorOverride(sourceId, channelName, color) {
@@ -31559,6 +31576,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 unit: row.dataset.unit,
             };
             const menu = document.getElementById("wwChannelContextMenu");
+            // Rename / Change colour apply to every plotted analog channel
+            // (raw or calculated: both are presentation metadata keyed by
+            // wwChannelKey()). Per-Unit Details reads the SOURCE
+            // per-unit-resolution endpoint, which a calculated channel id
+            // does not have, so it is raw-only.
+            menu.querySelector("#wwChannelMenuPerUnitBtn").hidden = wwIsCalculatedSourceId(wwChannelMenuTarget.sourceId);
             menu.hidden = false;
             // Clamp so the menu can never render partly off-screen -- a
             // right-click near the Workspace Sidebar's own right/bottom
@@ -32398,8 +32421,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return { prefix: calc.name.slice(0, calc.name.length - suffix.length), pair: calc.phase_member, phaseDisplay };
         }
 
-        // Calculated-channel name for HTML surfaces.
+        // The user display name of a calculated channel, or null. Presentation
+        // only (wwChannelDisplayName()); calc.name stays the canonical name.
+        function wwCalculatedChannelUserName(calc) {
+            if (!calc) return null;
+            const name = wwChannelDisplayName(calc.id, calc.name);
+            return name !== calc.name ? name : null;
+        }
+
+        // Plain-text display name (native <option>, title / aria-label,
+        // textContent): user display name, else the canonical name.
+        function wwCalculatedChannelDisplayText(calc) {
+            return wwCalculatedChannelUserName(calc) || (calc ? calc.name : "");
+        }
+
+        // Calculated-channel name for HTML surfaces. A user display name wins
+        // verbatim; otherwise system L-L names get the notation.
         function wwCalculatedChannelNameHtml(calc) {
+            const userName = wwCalculatedChannelUserName(calc);
+            if (userName) return escapeHtml(userName);
             const parts = wwLineToLineSystemName(calc);
             return parts ? wwRichLabelHtml(escapeHtml(parts.prefix) + wwLineToLinePairHtml(parts.pair, parts.phaseDisplay)) : escapeHtml(calc ? calc.name : "");
         }
@@ -32409,6 +32449,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // through unchanged, exactly as before. Trace identity stays in
         // uid/meta, never the display name.
         function wwCalculatedChannelNamePlotly(calc) {
+            const userName = wwCalculatedChannelUserName(calc);
+            if (userName) return userName;
             const parts = wwLineToLineSystemName(calc);
             return parts ? parts.prefix + wwLineToLinePairPlotly(parts.pair, parts.phaseDisplay) : (calc ? calc.name : "");
         }
@@ -38790,6 +38832,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         kind: "source", sourceId: signal.sourceId, channelName: signal.name,
                         calculatedChannelId: null, referenceSourceId: signal.sourceId,
                         shortLabel: displayName, shortLabelHtml: wwChannelDisplayNameHtml(signal.sourceId, signal.name),
+                        canonicalLabel: signal.name,
                         pickerLabel: (signal.sourceName ? signal.sourceName + " — " : "") + displayName,
                         unit: signal.unit, group: signal.sourceName || signal.sourceId,
                         engineeringType: signal.engineeringType,
@@ -38799,7 +38842,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return {
                     kind: "calculated", sourceId: null, channelName: null,
                     calculatedChannelId: calc.id, referenceSourceId: calc.reference_source_id,
-                    shortLabel: calc.name, shortLabelHtml: wwCalculatedChannelNameHtml(calc), pickerLabel: calc.name,
+                    shortLabel: wwCalculatedChannelDisplayText(calc), shortLabelHtml: wwCalculatedChannelNameHtml(calc),
+                    pickerLabel: wwCalculatedChannelDisplayText(calc), canonicalLabel: calc.name,
                     unit: calc.unit || "", group: "Calculated Channels",
                     engineeringType: signal.engineeringType,
                 };
@@ -38809,7 +38853,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCcInputDisplayName(inputRef) {
             if (inputRef.kind === "source") return wwChannelDisplayName(inputRef.source_id, inputRef.channel_name);
             const dep = ww.calculatedChannels.get(inputRef.calculated_channel_id);
-            return dep ? dep.name : "(deleted)";
+            return dep ? wwCalculatedChannelDisplayText(dep) : "(deleted)";
         }
 
         // HTML counterpart (DEC-117): a metadata-proven system L-L input
@@ -38869,7 +38913,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return b.llOutput === "all_three" ? "" : wwCcLlDefaultName(wwCcLlSelectedContext(), b.llOutput);
             }
             if (!b.operation || b.inputs.length === 0) return "";
-            const labels = b.inputs.map((i) => i.shortLabel);
+            // The suggested name is PERSISTED as the calculated channel's
+            // canonical backend name, so it is built from the inputs'
+            // canonical names -- never from a user display name (DEC-070).
+            const labels = b.inputs.map((i) => i.canonicalLabel || i.shortLabel);
             let joined;
             if (b.operation === "reverse_polarity") joined = "-" + labels[0];
             else if (b.operation === "absolute_value") joined = "Abs (" + labels[0] + ")";
@@ -40151,10 +40198,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<div class="ww-cc-list-row-unit">' + escapeHtml(calc.unit || "—") + '</div>' +
                     '<div class="ww-cc-list-row-controls">' +
                         '<button type="button" class="ww-icon-btn" data-action="toggle-visibility" aria-pressed="' + isVisible + '" ' +
-                            'title="' + (isVisible ? "Hide" : "Show") + '" aria-label="' + (isVisible ? "Hide " : "Show ") + escapeHtml(calc.name) + '">' +
+                            'title="' + (isVisible ? "Hide" : "Show") + '" aria-label="' + (isVisible ? "Hide " : "Show ") + escapeHtml(wwCalculatedChannelDisplayText(calc)) + '">' +
                             wwCcEyeIconSvg(isVisible) + '</button>' +
                         '<details class="ww-cc-menu">' +
-                            '<summary class="ww-icon-btn" aria-label="More actions for ' + escapeHtml(calc.name) + '" title="More actions">&#8942;</summary>' +
+                            '<summary class="ww-icon-btn" aria-label="More actions for ' + escapeHtml(wwCalculatedChannelDisplayText(calc)) + '" title="More actions">&#8942;</summary>' +
                             '<div class="ww-cc-menu-list">' +
                                 (calc.creation_batch_id ? '<button type="button" class="ww-cc-menu-item" data-action="plot-batch" aria-label="' +
                                     escapeHtml("Plot All (" + WW_LL_NOTATION_PAIRS.map((p) => wwLineToLinePairText(p, wwCalculatedChannelPhaseDisplay(calc))).join(", ") + ")") +
@@ -40221,6 +40268,74 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
+        // Shared Rename / Change colour for a calculated channel
+        // (presentation metadata only, see wwChannelDisplayName()): the
+        // override Map is keyed by wwChannelKey(calc.id, calc.name) --
+        // calc.id is the server-generated, never-reused identity (the name
+        // part is constant because a calculated channel is immutable after
+        // creation), so a deleted-then-recreated channel never inherits an
+        // old override. The Waveform page repaints itself in
+        // wwRefreshChannelPresentation(); this page learns of the change
+        // from the shared signal catalogue ("presentation" event), see
+        // wwCcOnPresentationChanged().
+
+        // Calculated Channels page: manager list (name + dot), the open
+        // builder's input labels / expression / suggested name, and the
+        // Preview traces (restyled in place by uid -- no refetch, no
+        // recompute).
+        function wwCcOnPresentationChanged(event) {
+            wwRenderCalculatedChannelManagerList();
+            wwCcRenderLineToLineResult();
+            const builder = wwCcBuilder;
+            if (builder.operation && builder.inputs.length) {
+                // The builder holds candidate copies taken at pick time;
+                // re-resolve their LABELS (identity fields are unchanged).
+                builder.inputs = builder.inputs.map((input) => wwCcCandidateFromKey(
+                    input.kind + "::" + (input.kind === "source" ? input.sourceId + "::" + input.channelName : input.calculatedChannelId)
+                ) || input);
+                wwCcRenderBuilderFields();
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+            }
+            if (!window.Plotly) return;
+            for (const panel of wwCcPreview.panelsByType.values()) {
+                const traces = (panel.chartEl && panel.chartEl.data) || [];
+                traces.forEach((trace, idx) => {
+                    const calc = ww.calculatedChannels.get(trace.uid);
+                    if (!calc) return;
+                    const unit = (calc.unit || "");
+                    Plotly.restyle(panel.chartEl, {
+                        "line.color": [wwColorForChannel(calc.id, calc.name)],
+                        name: [wwChannelDisplayNamePlotly(calc.id, calc.name) + (unit ? " (" + unit + ")" : "")],
+                    }, [idx]);
+                });
+            }
+        }
+
+        function wwCcObserveSignalCatalogue() {
+            wwSignalCatalogueSubscribe((event) => {
+                if (event.type === "presentation") wwCcOnPresentationChanged(event);
+            });
+        }
+
+        // A deleted calculated channel's id is never reused, so its
+        // presentation entry can only leak; drop it with the channel. Only
+        // called for an EXPLICIT delete or the post-source-removal
+        // reconcile -- never from the wholesale list refresh
+        // (wwCalculatedChannelsReplaceAll), so a transient or partial list
+        // can never wipe valid overrides.
+        function wwDropCalculatedChannelPresentation(calculatedChannelId) {
+            const prefix = calculatedChannelId + "::";
+            for (const key of Array.from(ww.channelPresentationOverrides.keys())) {
+                if (key.indexOf(prefix) === 0) ww.channelPresentationOverrides.delete(key);
+            }
+            if (wwChannelMenuTarget && wwChannelMenuTarget.sourceId === calculatedChannelId) wwCloseChannelContextMenu();
+            const renameInput = document.getElementById("wwChannelRenameInput");
+            if (renameInput && renameInput.dataset.sourceId === calculatedChannelId) wwCloseChannelRenameModal();
+            const colorInput = document.getElementById("wwChannelColorHexInput");
+            if (colorInput && colorInput.dataset.sourceId === calculatedChannelId) wwCloseChannelColorModal();
+        }
+
         function wwToggleCalculatedChannelDisplay(calc) {
             const key = wwChannelKey(calc.id, calc.name);
             if (ww.displayed.has(key)) wwRemoveChannelByKey(key);
@@ -40261,12 +40376,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (wwCalculatedChannelsSidebarRowClickHandler), unaffected.
         function calculatedChannelRowAttrs(calc) {
             const isDisplayed = wwIsAnalogChannelVisible(calc.id, calc.name);
-            const label = (isDisplayed ? "Hide " : "Show ") + calc.name;
+            const label = (isDisplayed ? "Hide " : "Show ") + wwChannelDisplayName(calc.id, calc.name);
             return ' class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
                 ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
                 ' data-channel-kind="analog"' +
                 ' data-source-id="' + escapeHtml(calc.id) + '"' +
+                ' data-source-name="Calculated Channels"' +
                 ' data-channel-name="' + escapeHtml(calc.name) + '"' +
+                ' data-unit="' + escapeHtml(calc.unit || "") + '"' +
                 ' data-calculated-channel-id="' + escapeHtml(calc.id) + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
@@ -40945,6 +41062,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwCalculatedChannelsRemove(calculatedChannelId) {
             if (!ww.calculatedChannels.delete(calculatedChannelId)) return;
+            wwDropCalculatedChannelPresentation(calculatedChannelId);
             wwPublishCalculatedChanges([], [], ["calculated:" + calculatedChannelId]);
         }
 
@@ -40991,7 +41109,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const before = new Set(ww.calculatedChannels.keys());
             await wwFetchCalculatedChannels();
             for (const id of before) {
-                if (!ww.calculatedChannels.has(id)) wwRemoveCalculatedChannelDisplayIfShown(id);
+                if (!ww.calculatedChannels.has(id)) {
+                    wwRemoveCalculatedChannelDisplayIfShown(id);
+                    wwDropCalculatedChannelPresentation(id);
+                }
             }
         }
 
@@ -41399,6 +41520,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const calc = ww.calculatedChannels.get(row.dataset.calculatedChannelId);
             if (calc) wwToggleCalculatedChannelDisplay(calc);
         }
+        // Same shared channel context menu as raw analog rows (Rename /
+        // Change colour); the menu itself decides which items apply.
+        document.getElementById("calculatedChannelsSidebarBody").addEventListener("contextmenu", (event) => {
+            const row = event.target.closest("tr.channel-row--toggle[data-calculated-channel-id]");
+            if (!row) return;
+            event.preventDefault();
+            wwOpenChannelContextMenu(event, row);
+        });
         document.getElementById("calculatedChannelsSidebarBody").addEventListener("click", (event) => {
             // Phase 5A-UAT4 (section 14/15): the top-level "Calculated
             // Channels" and per-type subgroup Show all/Hide all buttons --
@@ -57150,6 +57279,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // navigation (see shellSetCurrentPage()'s own "calculated-
         // channels" branch).
         wwErObserveSignalCatalogue();
+        wwCcObserveSignalCatalogue();
         wwFetchCalculatedChannels();
         shellSetMainSidebarExpanded(shellLoadMainSidebarExpanded());
         document.getElementById("mainSidebarToggleBtn").addEventListener("click", () => {
@@ -57993,7 +58123,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Catalogue events: only a change that affects the selected signal
         // alters the selection; an unrelated add/remove just refreshes the
         // option list.
-        function wwOscOnCatalogueEvent() {
+        function wwOscOnCatalogueEvent(event) {
+            if (event && event.type === "presentation") {
+                // A rename / colour change alters no signal, revision or
+                // analysis -- only the names shown in the selector, the
+                // facts and the Compare list.
+                wwOscRender(true);
+                wwOscRenderCross();
+                return;
+            }
             const state = wwOscState;
             for (const [id, entry] of Array.from(state.derivations)) {
                 if (!wwSignalCatalogueIsCurrent(entry.key, entry.revision)) state.derivations.delete(id);
@@ -58013,9 +58151,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOscRender(true);
         }
 
+        // The user-facing name of a signal: its workspace display name
+        // (presentation only), else the canonical name. Requests and
+        // backend-computed result text keep the canonical name.
+        function wwOscSignalName(signal) {
+            return wwChannelDisplayName(signal.sourceId, signal.name);
+        }
+
         function wwOscRenderOptions(scan) {
             const select = document.getElementById("wwOscSignalSelect");
-            const signature = scan.eligible.map((s) => s.key + "|" + s.revision + "|" + s.name + "|" + s.unit).join("\n")
+            const signature = scan.eligible.map((s) => s.key + "|" + s.revision + "|" + wwOscSignalName(s) + "|" + s.unit).join("\n")
                 + "\n#" + Array.from(scan.recordings.values()).map((r) => r.id + "|" + r.label).join("\n");
             if (signature !== wwOscState.optionsSignature || select.value !== (wwOscState.signalKey || "")) {
                 const fragment = document.createDocumentFragment();
@@ -58034,7 +58179,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         const option = document.createElement("option");
                         option.value = row.signal.key;
                         // Native <option> text cannot carry rich notation: plain channel name.
-                        option.textContent = row.signal.name + (row.signal.unit ? " [" + row.signal.unit + "]" : "");
+                        option.textContent = wwOscSignalName(row.signal) + (row.signal.unit ? " [" + row.signal.unit + "]" : "");
                         group.appendChild(option);
                     }
                     fragment.appendChild(group);
@@ -58074,7 +58219,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const lines = limits.slice(0, WW_OSC_SIGNAL_LIMIT_ROWS).map((r) => {
                 const reason = r.verdict.reason === "timing" ? "Not supported: " + (r.verdict.detail || "timing metadata unavailable")
                     : "Available with a warning (Undefined type)";
-                return r.signal.name + (r.signal.unit ? " [" + r.signal.unit + "]" : "") + " — " + reason;
+                return wwOscSignalName(r.signal) + (r.signal.unit ? " [" + r.signal.unit + "]" : "") + " — " + reason;
             });
             if (limits.length > lines.length) lines.push("Showing " + lines.length + " of " + limits.length + " affected signals");
             return lines;
@@ -58111,7 +58256,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
             const durationS = selected ? selected.summary.durationS : rec.durationS;
             const recommendedMinHz = selected ? selected.summary.recommendedMinHz : rec.recommendedMinHz;
-            if (selected) addFact("Signal", selected.signal.name + (selected.signal.unit ? " [" + selected.signal.unit + "]" : ""));
+            if (selected) addFact("Signal", wwOscSignalName(selected.signal) + (selected.signal.unit ? " [" + selected.signal.unit + "]" : ""));
             if (rec.stationName && rec.stationName !== rec.label) addFact("Station", rec.stationName);
             addFact("Sampling rate", rec.timing ? wwOscFormat(rec.timing.fs) + " Hz" : "—");
             // Three distinct durations for a derived signal: the source recording,
@@ -59358,7 +59503,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         box.type = "checkbox"; box.value = signal.key; box.checked = cx.chosen.has(signal.key);
                         box.disabled = !box.checked && cx.chosen.size >= WW_OSC_CROSS_MAX_OTHERS;
                         const text = document.createElement("span");
-                        text.textContent = signal.name + (signal.unit ? " [" + signal.unit + "]" : "") + " — " + signal.engineeringType
+                        text.textContent = wwOscSignalName(signal) + (signal.unit ? " [" + signal.unit + "]" : "") + " — " + signal.engineeringType
                             + (signal.origin === "calculated" ? " (calculated)" : "");
                         item.append(box, text);
                         group.appendChild(item);

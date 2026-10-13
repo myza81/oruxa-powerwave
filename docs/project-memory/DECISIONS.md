@@ -10224,11 +10224,12 @@ source removal/opening another menu, per the existing per-modal Escape
 convention already used throughout this file.
 
 Explicitly excluded this slice, with reasons found during the audit, not
-merely deferred by default: **calculated channels** — a calculated
-channel's own server-generated id is used AS its `channelName` identity
-(`wwIsCalculatedSourceId()`'s own documented convention, predating this
-feature), so a calculated channel's display name and its identity are
-already the SAME field; extending rename there would need a real design
+merely deferred by default: **calculated channels** — *[SUPERSEDED by
+Amendment 1 below; the identity claim made here was also inaccurate —
+see the correction there.]* A calculated
+channel's own server-generated id was believed to be used AS its
+`channelName` identity, so that its display name and identity were the
+SAME field; extending rename there was thought to need a real design
 decision, not a mechanical reuse of this Map. **Digital channels** —
 share `wwChannelKey()` but render via one shared batched chart, not
 individual Plotly traces; flagged as a plausible low-cost future
@@ -10261,6 +10262,94 @@ invalid-hex/reset-to-exact-original-default/layout-mode-independence),
 and UI behavior (hover, right-click targeting, no-toggle-on-right-click,
 modal pre-fill, Escape dismissal, single-target discipline, Start-New-
 Workspace reset).
+
+### DEC-070 Amendment 1 (2026-10-13) — raw and calculated channels share workspace-level presentation metadata
+
+Status: Approved (owner-directed; implemented on
+`feature/workspace-channel-presentation`).
+
+**Raw and calculated channels share workspace-level presentation
+metadata. Rename/colour affect display only and never alter canonical
+engineering identity or calculation semantics. Consumers resolve
+presentation metadata using stable channel identity.**
+
+```text
+stable channel identity
+    ├── original / canonical name      (never changed)
+    ├── optional display-name override (ww.channelPresentationOverrides)
+    └── optional colour override       (same Map)
+```
+
+*Correction of the identity statement above.* A calculated channel is
+identified by its server-generated, never-reused `id` (`calc-<uuid4>`);
+its dependencies and `ChannelRef(kind="calculated")` use
+`calculated_channel_id`, never a name, and the channel is immutable after
+creation (no PATCH/PUT). On the frontend the Map key is
+`wwChannelKey(calc.id, calc.name)`; the `calc.name` half is constant
+because the channel is immutable, so the key is stable and a deleted
+channel's entry can never be inherited by another (ids are not reused).
+The key was deliberately not refactored to `id` alone: every existing
+consumer (`ww.displayed`, cursor values, trace `meta`) already uses the
+same two-part key. `wwIsCalculatedSourceId()` is only a prefix test on the
+id.
+
+Behaviour:
+
+- **Raw and calculated** channels offer Rename and Change colour through the
+  same Waveform right-click menu; Per-Unit Details stays raw-only (a
+  calculated id has no source per-unit-resolution endpoint).
+- **Propagation.** `wwRefreshChannelPresentation()` repaints the Waveform
+  page and publishes a `type: "presentation"` event on the existing signal
+  catalogue (`origin`, `keys`, `channelKey`). It does not reach into other
+  pages. Mounted consumers subscribe and repaint from the resolvers: the
+  Calculated Channels page (manager list, open builder, Preview traces),
+  Event Reconstruction and Oscillation. A page that is not mounted
+  resolves the current metadata on its next render. No analysis is
+  recreated, reselected or recomputed.
+- **Resolvers.** `wwChannelDisplayName[Html|Plotly]()`,
+  `wwColorForChannel()`, and for calculated channels
+  `wwCalculatedChannelDisplayText/NameHtml/NamePlotly()` (a user display
+  name wins verbatim, otherwise the system name, including DEC-117 L-L
+  notation). Oscillation frontend-owned labels (signal selector, limit
+  lines, Signal fact, Compare list) use `wwOscSignalName()`.
+- **Canonical default names.** A calculated channel's persisted `name` is
+  built from its inputs' CANONICAL names (`canonicalLabel`: the raw
+  channel's source name, or the dependency's own persisted name), never from
+  a user alias: `RMS (JMAH No 1 MW)` is stored even when the source is
+  displayed as `JMAH GT1 Active Power`. The expression preview and pickers
+  still show the aliases. Previously created channels are not migrated
+  (some may already carry an alias in their name; that is left as is).
+- **Lifecycle.** Entries are dropped on an explicit calculated-channel
+  delete and after a source removal cascade
+  (`wwReconcileCalculatedChannelsAfterRemoval`), never by the wholesale
+  list refresh (`wwCalculatedChannelsReplaceAll`), so a transient or
+  partial list cannot wipe valid overrides. A dialog open on the deleted
+  channel is closed; dialogs for other channels are not.
+- **Colour.** An override wins everywhere `wwColorForChannel()` is used,
+  including over the automatic L-L pair colours (DEC-115). Role-based
+  analysis colours are unaffected.
+- **Persistence unchanged.** In-memory, workspace-scoped; lost on reload;
+  cleared by `wwClearWorkspace()`. No localStorage, database or server
+  persistence.
+
+Retains original/canonical names by design: the rename dialog's
+"Original"; source and import metadata; Data Preparation / source columns;
+every backend payload (requests carry `source_id`+`channel_name` or
+`calculated_channel_id`); the persisted calculated name and definition;
+backend-computed analysis output, including the Oscillation results
+(interpretation, evidence cards, "Signal" detail rows), which use the label
+sent with the request; and **Table View**.
+
+*Table View decision.* DEC-079 defines Table View as the read-only
+"canonical" view of one recording's `DisturbanceRecord`, columns labelled
+by the backend with the canonical channel name (`table_service`). It is a
+source-data view, not a workspace presentation surface, so it keeps
+canonical names; pushing aliases into the backend payload was rejected.
+Revisit only if the owner wants aliases there (a frontend-only header
+resolve would be possible).
+
+Tests: `browser-tests/calculated-channel-presentation.spec.js` (6) and
+`browser-tests/channel-presentation-propagation.spec.js` (4).
 
 ## DEC-071 — A minimal, committed real-browser smoke-test foundation (Playwright + local backend/frontend) is added ahead of CSV/Excel ingestion; CI integration deliberately deferred
 
