@@ -201,3 +201,50 @@ class TestANewRelayNeedsOnlyAJsonCatalog:
         monkeypatch.setattr("app.services.relay_import_upload_service.default_registry", lambda: registry)
         with TestClient(create_app(settings)) as c:
             assert upload(c, acme_pdf())["interpretation_status"] == "not_supported"
+
+
+class TestTheKeyAcceptanceNoPythonProfileJsonOnly:
+    """DEC-195's acceptance test: a relay that exists only as a JSON catalog -> the standard review model."""
+
+    def test_no_python_anywhere_knows_the_relay(self):
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        hits = [p.name for p in app_dir.rglob("*") if p.is_file() and p.suffix in (".py", ".json", ".html", ".js")
+                and "acme" in p.read_text(encoding="utf-8", errors="ignore").lower()]
+        assert hits == [], f"the synthetic relay must exist only in the test's JSON, but app/ mentions it: {hits}"
+        assert not list(app_dir.rglob("*acme*"))
+
+    def test_its_profile_is_the_generic_catalog_profile_with_no_hand_written_extension(self, store):
+        from app.domain.parameter_catalog.profile import CatalogProfile
+
+        profile = next(p for p in build_registry(store)._profiles if p.profile_id == "acme-x1")          # noqa: SLF001
+        assert type(profile) is CatalogProfile and profile.extension is None
+
+    def test_raw_parameters_become_canonical_fields_and_the_standard_review_dto(self, client):
+        body = upload(client, acme_pdf())
+        review = body["review"]
+        # extracted raw parameters -> catalog -> canonical fields -> standard review DTO
+        by_id = {i["item_id"]: i for g in review["groups"] for i in g["items"] if i["item_id"]}
+        assert by_id["zones[Z1].x_reach_ohm"]["canonical_id"] == "distance.zone.x_reach"
+        assert by_id["zones[Z1].x_reach_ohm"]["label"] == "Reactive Reach (X)"
+        assert by_id["zones[Z1].x_reach_ohm"]["sources"][0]["name"] == "Z1 X Reach"        # the OEM name: Source only
+        assert by_id["zones[Z2].resistive_reach.phase_phase"]["value_text"] == "7 Ω"
+        assert by_id["zones[Z2].direction"]["value_text"] == "Forward"
+        assert by_id["transformers.vt_primary_v"]["transformation"] == "132 kV → 132000 V"
+
+    def test_the_response_reports_catalog_identity_and_coverage(self, client):
+        body = upload(client, acme_pdf())
+        assert (body["catalog_id"], body["catalog_version"]) == ("acme-x1", "1.0.0")
+        c = body["catalog_coverage"]
+        assert c["extracted_settings"] >= 20 and c["catalog_mapped_settings"] >= 18
+        assert c["extension_interpreted_settings"] == 0                              # no extension exists for this relay
+        assert c["catalog_recognised_settings"] + c["unmapped_settings"] == c["extracted_settings"]
+        assert body["review"]["catalog_coverage"] == c and body["review"]["catalog_id"] == "acme-x1"
+        assert "Hostname" not in json.dumps(c)                                       # counts only, never content
+
+    def test_the_catalog_can_be_dry_run_against_the_pdf_before_it_is_made_available(self, store):
+        from app.services.relay_pdf_extractor import extract_pdf
+        from app.domain.parameter_catalog.dry_run import dry_run
+
+        report = dry_run(store.get("acme-x1"), store.registry, extract_pdf(acme_pdf()).document)
+        assert report.counts()["mapped"] >= 18 and report.counts()["conflict"] == 0
+        assert any(u.name == "Hostname" for u in report.unmapped)
