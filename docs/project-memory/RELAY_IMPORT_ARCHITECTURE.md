@@ -7,6 +7,7 @@ and **integrated into `main`** (2026-10-11) on top of the completed Oscillation 
 baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
 is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-190/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
+**2026-10-13: the RED670 semantics are corrected (DEC-193) and a data-driven Parameter Catalog Foundation is added (DEC-194; last section).**
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -1110,9 +1111,38 @@ RED670 PDF -> generic extractor -> identifier (hitachi-red670) -> HitachiRed670P
 * **Generic code changed: none** (registration line only). The review, readiness, Apply, engine and UI treat the RED670 exactly like the P441 and 7SA511; browser spec `relay_import_red670.spec.js` asserts there is no RED670-specific control or script.
 * **Source shape.** Relion 670 sheet: `name | value | range` rows; function-instance headings (`IMP_PROT/DistanceZones/ZMQPDIS:n`); instance-prefixed parameters (`ZM0n-:X1`); channel-numbered CT/VT rows read only from the channels named as phase currents/voltages; page-end scheme requirements kept as zone source notes.
 * **Activation is explicit per zone** (`Operation` + `OperationDir`) and Mapped -- the user is not asked for zone state. Zone 4 on the real sheet is switched off by its own parameters (the page-16 "Zone 4 Inactive" line is a note that agrees).
-* **Geometry is the native explicit R/X** (`X1`, `RFPP` +R, no angle); phase-phase `RFPP`/`tPP`/`OperationPP` and phase-earth `RFPE`/`tPE`/`OperationPE` stay distinct. Timers are `tPP`/`tPE`, read only while the zone's `Timer` switch is ON; an OFF switch leaves the delay Missing.
-* **Left Resistive Reach (-R) is Missing**: the relay forms that boundary with a directional element (`ZDRDIR`), not a resistive reach. The element's rows are cited beside the missing value; the existing explicit 0.00 Ω suggestion (DEC-185) is the user's visualization choice. This is the only blocker on the real sheet.
-* **Assumptions:** primary impedance basis, quadrilateral characteristic, per-loop reading of `RFPP`/`RFPE` (value used as printed, not scaled), VT/UBase units (kV, V), line sequence-impedance naming.
+* **Geometry is the native explicit R/X** (`X1`, `RFPP / 2` as +R, no angle); `RFPP` is a phase-phase *loop* value so the canonical +R is half of it (raw value and transformation kept in provenance, DEC-193); phase-phase `RFPP`/`tPP`/`OperationPP` and phase-earth `RFPE` (as printed, never halved)/`tPE`/`OperationPE` stay distinct. Timers are `tPP`/`tPE`, read only while the zone's `Timer` switch is ON; an OFF switch leaves the delay Missing.
+* **Left Resistive Reach (-R) is Unsupported (DEC-193)**: the relay forms that boundary with a directional element (`ZDRDIR`), not a resistive reach -- a capability gap of the canonical model. `ArgDir` / `ArgNegRes` are preserved with their raw values; the existing explicit 0.00 Ω suggestion (DEC-185) is offered as a clearly worded *visualization approximation*, never as the relay's geometry. This is the only blocker on the real sheet.
+* **Mapped from documented family semantics (DEC-193):** the `ZMQPDIS` quadrilateral characteristic and the primary impedance basis (`IBase`/`UBase`). **Assumptions:** the RFPP / 2 loop convention (to be confirmed against the Relion 670 manual), VT/UBase units (kV, V), line sequence-impedance naming.
 * **Real sample:** 4 zones; 44 mapped / 18 assumptions / 4 missing; Not ready until the Left (-R) suggestion is taken and assumptions are confirmed, then Ready to apply and plotted (Zones 1-3 enabled, Zone 4 off).
-* **Open generic gaps (reported):** directional-element boundaries; per-loop resistive-reach convention; phase-earth plotting (unchanged); "Disabled / Defeated" wording for a plainly switched-off zone.
+* **Open generic gaps (reported):** directional-element boundaries (a first-class representation is still missing); phase-earth plotting (unchanged); "Disabled / Defeated" wording for a plainly switched-off zone.
 * **Not started:** any further relay profile. See DEC-192 for the full mapped / assumption / missing list.
+
+## Parameter Catalog Foundation (DEC-194; RED670 corrected by DEC-193)
+
+Status: **Foundation implemented / Awaiting owner UAT.** The hand-written profiles are still the production path; the catalog is tested for equivalence beside them and ready to carry a new relay on its own.
+
+```text
+PDF -> generic extractor -> identifier -> OEM Parameter Catalog (JSON) -> generic matcher / transformer
+    -> canonical model -> defeated-zone rule (unchanged) -> adapter / review / readiness / Apply -> generic engine
+```
+
+Code: [backend/app/domain/parameter_catalog/](../../backend/app/domain/parameter_catalog/) (pure domain, no FastAPI / storage imports). Data: [backend/app/data/parameter_catalog/](../../backend/app/data/parameter_catalog/) (with its own README: the format, the lifecycle, how to add a relay).
+
+| Module | Holds |
+|---|---|
+| `registry.py` | the canonical registry loader / validator (`CanonicalRegistry`, `CanonicalParameter`): id, label (+ geometry variants), type, unit, group, order, scope, **engine path** (checked against the model's dataclasses), applicability |
+| `catalog_model.py` | the typed OEM catalog (`Catalog`, `Mapping`, `Selector`, `Step`, `Gate`, `Gap`, ...) and the vocabularies (lifecycle, value sources, authority precedence) |
+| `catalog_validation.py` | strict schema + semantic validation (`parse_catalog`); raises `CatalogValidationError` listing every issue |
+| `transforms.py` | the named transformation primitives and their parameter / type rules (no code from JSON) |
+| `units.py` | unit vocabulary, printed-unit aliases, the listed conversions |
+| `interpreter.py` | the generic matcher / transformer (`CatalogInterpreter`): locate, read, validate, transform, write at the engine path, record provenance, preserve the unmapped |
+| `loader.py` | `load_store` (validate every file, reject the invalid loudly), selection by manufacturer / family / model / firmware / lifecycle, the lock (`check_lock`) |
+| `profile.py` | `CatalogProfile`: a `RelayProfile` backed by one *active* catalog, so a catalog-only relay needs no Python |
+
+* **Roles.** Profiles / extractors parse source structure. The catalog defines OEM parameter meaning. The canonical registry defines application terminology. The review (and so the frontend) is labelled from the registry -- "Reactive Reach (X)", "Right Resistive Reach (+R)", "Phase Time Delay" -- with the OEM's names and codes only under **Source**. The engine consumes the canonical model only. Raw OEM terminology stays in provenance.
+* **Provenance** (`Provenance`): raw value, source page / line, `catalog_id`, `catalog_version`, `canonical_id`, `transformation`, `authority`. The review item DTO and the Source disclosure carry them.
+* **Lifecycle:** `draft -> validated -> tested -> active`; only `active` interprets real imports; locked versions are digest-checked (`catalog.lock.json`).
+* **Equivalence (this slice):** P441 subset (CT/VT, basis, delays, resistive reaches, Zone P direction) and RED670 subset (activation, direction, PP/PE, X1, RFPP, RFPE, gated tPP/tPE, characteristic, basis, ZDRDIR gap, bases, CT/VT, zero-sequence, line impedances) are read by the generic matcher and compared field by field with the hand-written profiles on clean and degraded sheets (`test_parameter_catalog_*_equivalence.py`).
+* **Catalog-only relay:** `test_parameter_catalog_new_relay_by_json.py` drives an "Acme X1" PDF through the real upload API using only a JSON catalog.
+* **Not started:** switching P441 / RED670 production to their catalogs; 7SA511 migration (paused); another relay family; an administrator editor, database storage, online distribution; CSV / Excel / XML import.

@@ -1,0 +1,428 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "schneider-micom-p44x-catalog",
+  "version": "1.0.0",
+  "lifecycle": "tested",
+  "profile_id": "schneider-micom-p441",
+  "registry_version": "1.0.0",
+  "description": "Schneider Electric MiCOM P44x (P441) distance settings, addressed by the relay's own parameter codes: CT/VT ratios, the settings basis, each zone's operating delay and phase / earth resistive reaches, and Zone P's direction. A small, well-understood subset migrated from the hand-written micom-p441-v1 profile and tested for canonical equivalence with it; that profile stays the production path. Everything not listed (reaches that depend on the line angle, residual compensation, zone status from the scheme notes, tilts) is deliberately left to the profile for now and is retained as 'not interpreted' when a document is read through this catalog.",
+  "applicability": {
+    "manufacturer": "Schneider Electric",
+    "family": "MiCOM P44x",
+    "model": "P441",
+    "versions": [
+      "*"
+    ]
+  },
+  "identification": {
+    "model_patterns": [
+      "P441"
+    ],
+    "family_markers": [
+      "MiCOM"
+    ],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])P441(?![A-Za-z0-9])",
+    "parameter_signatures": [
+      {
+        "name": "ddb-numbering",
+        "pattern": "^DDB\\s+\\d+\\s*-\\s*\\d+$",
+        "min_matches": 2
+      }
+    ]
+  },
+  "zones": {
+    "static": [
+      {
+        "id": "Z1",
+        "name": "Zone 1"
+      },
+      {
+        "id": "Z2",
+        "name": "Zone 2"
+      },
+      {
+        "id": "Z3",
+        "name": "Zone 3"
+      },
+      {
+        "id": "Z4",
+        "name": "Zone 4"
+      },
+      {
+        "id": "ZP",
+        "name": "Zone P"
+      }
+    ]
+  },
+  "distance_scope": {
+    "code_prefixes": [
+      "30",
+      "31",
+      "32"
+    ]
+  },
+  "interpretation_notes": [
+    "Zones 3 and 4 share one pair of resistive reaches (R3Ph-R4Ph, R3G-R4G); both zones cite the same settings."
+  ],
+  "mappings": [
+    {
+      "id": "p441.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {
+        "code": "0A07",
+        "name": "Phase CT Primary",
+        "type": "number",
+        "unit": "A",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {
+        "code": "0A08",
+        "name": "Phase CT Sec'y",
+        "type": "number",
+        "unit": "A",
+        "printed_unit": {
+          "policy": "ignore"
+        },
+        "validate": {
+          "allowed_values": [
+            1,
+            5
+          ],
+          "printed_range_pattern": "1\\s*A\\s*/\\s*5\\s*A"
+        }
+      }
+    },
+    {
+      "id": "p441.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {
+        "code": "0A01",
+        "name": "Main VT Primary",
+        "type": "number",
+        "unit": "V",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {
+        "code": "0A02",
+        "name": "Main VT Sec'y",
+        "type": "number",
+        "unit": "V",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.impedance_basis",
+      "canonical": "ct_vt.impedance_basis",
+      "source": {
+        "code": "092E",
+        "name": "Setting Values"
+      },
+      "transform": {
+        "type": "enum",
+        "map": {
+          "secondary": "secondary",
+          "primary": "primary"
+        }
+      },
+      "note": "the relay's 'Setting Values' selection; the 'Measure't Setup' display selections are not the settings basis"
+    },
+    {
+      "id": "p441.delay.z1",
+      "canonical": "distance.zone.common_delay",
+      "zone": "Z1",
+      "source": {
+        "code": "300E",
+        "name": "tZ1",
+        "type": "number",
+        "unit": "s",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.delay.z2",
+      "canonical": "distance.zone.common_delay",
+      "zone": "Z2",
+      "source": {
+        "code": "3014",
+        "name": "tZ2",
+        "type": "number",
+        "unit": "s",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.delay.z3",
+      "canonical": "distance.zone.common_delay",
+      "zone": "Z3",
+      "source": {
+        "code": "301A",
+        "name": "tZ3",
+        "type": "number",
+        "unit": "s",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.delay.z4",
+      "canonical": "distance.zone.common_delay",
+      "zone": "Z4",
+      "source": {
+        "code": "301C",
+        "name": "tZ4",
+        "type": "number",
+        "unit": "s",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.delay.zp",
+      "canonical": "distance.zone.common_delay",
+      "zone": "ZP",
+      "source": {
+        "code": "3023",
+        "name": "tZp",
+        "type": "number",
+        "unit": "s",
+        "printed_unit": {
+          "policy": "required"
+        }
+      }
+    },
+    {
+      "id": "p441.r_phase.z1",
+      "canonical": "distance.zone.r_right",
+      "zone": "Z1",
+      "source": {
+        "code": "300D",
+        "name": "R1Ph",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_phase.z2",
+      "canonical": "distance.zone.r_right",
+      "zone": "Z2",
+      "source": {
+        "code": "3013",
+        "name": "R2Ph",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_phase.z3_z4",
+      "canonical": "distance.zone.r_right",
+      "zone": [
+        "Z3",
+        "Z4"
+      ],
+      "source": {
+        "code": "3019",
+        "name": "R3Ph-R4Ph",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_phase.zp",
+      "canonical": "distance.zone.r_right",
+      "zone": "ZP",
+      "source": {
+        "code": "3022",
+        "name": "RpPh",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_earth.z1",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "Z1",
+      "source": {
+        "code": "300C",
+        "name": "R1G",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_earth.z2",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "Z2",
+      "source": {
+        "code": "3012",
+        "name": "R2G",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_earth.z3_z4",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": [
+        "Z3",
+        "Z4"
+      ],
+      "source": {
+        "code": "3018",
+        "name": "R3G-R4G",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.r_earth.zp",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "ZP",
+      "source": {
+        "code": "3021",
+        "name": "RpG",
+        "type": "number",
+        "unit": "ohm",
+        "printed_unit": {
+          "policy": "required",
+          "missing_when_unprinted": true,
+          "accept_if": [
+            {
+              "text": "/I1",
+              "when": {
+                "canonical": "ct_vt.ct_secondary",
+                "equals": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p441.direction.zp",
+      "canonical": "distance.zone.direction",
+      "zone": "ZP",
+      "source": {
+        "code": "301D",
+        "name": "ZoneP - Direct"
+      },
+      "transform": {
+        "type": "enum",
+        "map": {
+          "directional fwd": "forward",
+          "directional rev": "reverse"
+        }
+      }
+    }
+  ]
+}
