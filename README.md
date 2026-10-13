@@ -49,20 +49,26 @@ is where code *runs*, never where it is written.
 
 Everything except container behaviour can be developed and tested natively.
 
+The Python virtual environment lives at `backend\.venv` (Python 3.12, matching
+CI and the Docker image). Do not create a second one at the repository root.
+Run backend commands — tests and the API — from `backend\`.
+
 ```bat
-py -3.12 -m venv .venv
-.venv\Scripts\activate
+py -3.12 -m venv backend\.venv
+backend\.venv\Scripts\activate
 pip install -r backend\requirements-dev.txt
 ```
 
-Run the tests:
+Run the tests (from `backend\`; pytest uses the OS temp directory for its
+scratch files):
 
 ```bat
 cd backend
 pytest
 ```
 
-Run the API (from `backend\`), pointing storage at any writable directory:
+Run the API (from `backend\`). Local runtime storage is the repository-root
+`.local-data` folder, which is git-ignored:
 
 ```bat
 set STORAGE_PATH=%CD%\..\.local-data
@@ -88,8 +94,8 @@ networking. CI validates those on every push.
 The native workflow is identical to Windows:
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
+python3.12 -m venv backend/.venv
+source backend/.venv/bin/activate
 pip install -r backend/requirements-dev.txt
 
 cd backend && pytest
