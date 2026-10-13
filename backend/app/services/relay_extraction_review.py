@@ -33,6 +33,7 @@ own mapped / inferred / unresolved, and a confirmation leaves the category alone
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from app.domain.relay_import.canonical_distance import (
@@ -41,14 +42,18 @@ from app.domain.relay_import.canonical_distance import (
     CompensationKind,
     DistanceZone,
     ExtraQuantity,
+    GeometryMode,
     ImpedanceValue,
+    SourceNote,
     UnresolvedSetting,
     ZoneStatus,
     item_label,
 )
-from app.domain.relay_import.engine_adapter import EngineAdaptation
-from app.domain.relay_import.provenance import MappingStatus, ReviewStatus, Sourced, SourceRef
+from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_active
+from app.domain.relay_import.provenance import MappingStatus, ProvenanceOrigin, ReviewStatus, Sourced, SourceRef
+from app.domain.relay_import.defeated_zone import is_defeated_delay_assumption
 from app.domain.relay_import.review_state import (
+    is_overridable_assumption,
     ResolutionKind,
     ResolutionSpec,
     blocking_issues,
@@ -56,10 +61,15 @@ from app.domain.relay_import.review_state import (
     compute_readiness,
     engine_limits,
     resolution_spec,
+    suggestion_spec,
+    suggestion_text,
 )
+from app.domain.parameter_catalog.loader import canonical_registry
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 NOT_STATED = "No value is stated in the document."
+NOT_REQUIRED_REASON = "Not required while zone is disabled"
+_ZONE_PATH = re.compile(r"^zones\[(?P<zone>[^\]]+)\]\.(?P<rest>.+)$")
 
 
 @dataclass(frozen=True)
@@ -83,6 +93,15 @@ class ReviewResolution:
     minimum: float | None = None
     maximum: float | None = None
     options: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class ReviewSuggestion:
+    """A value Oruxa may offer for a missing item. Not a source or profile value and
+    never applied unless the user explicitly accepts it."""
+
+    value_text: str
+    rationale: str
 
 
 @dataclass(frozen=True)
@@ -118,6 +137,11 @@ class ReviewItem:
     user_value_text: str | None = None
     #: Present while the user may supply or change the value.
     resolution: ReviewResolution | None = None
+    #: Present while the item is still missing and Oruxa has a neutral suggestion for it.
+    suggestion: ReviewSuggestion | None = None
+    #: Who supplied the effective value of a user-resolved item: ``manual`` (typed or
+    #: chosen) | ``suggestion`` (an Oruxa suggestion the user accepted); ``None`` otherwise.
+    resolution_origin: str | None = None
     #: Slice 8A. How the uncertainty is *presented*: mapped | assumption | missing |
     #: conflict | unsupported | unreadable. Derived, never stored: the profile's
     #: interpretation status, the unresolved cause and the engine adapter stay
@@ -127,6 +151,37 @@ class ReviewItem:
     #: The adapter's own message when the current engine refuses (or cannot use) this
     #: value; ``None`` otherwise. Describes the engine, not the document.
     engine_reason: str | None = None
+    #: True for an unresolved zone-local setting of a zone that is authoritatively
+    #: disabled and that no enabled function needs: the finding stays visible but is not a
+    #: blocker and gets no suggestion. Never set for the zone's own status.
+    not_required: bool = False
+    #: Why it is not required (shown beside the category); ``None`` unless ``not_required``.
+    not_required_reason: str | None = None
+    #: The transformation that turned the raw source value into the shown canonical value
+    #: (e.g. ``RFPP ÷ 2``), or ``None`` when the value is used exactly as printed. The raw
+    #: value stays in ``raw_value`` / ``sources``.
+    transformation: str | None = None
+    #: What kind of evidence supports the value (a `MappingAuthority` value), when stated.
+    authority: str | None = None
+    #: The parameter catalog (id, version) and canonical parameter that produced the value;
+    #: ``None`` for a value a hand-written profile mapped.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    canonical_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ReviewSourceNote:
+    """A statement the document makes about a zone that is not one of its settings (for
+    example a backup-scheme requirement). Shown beside the zone, never as its value."""
+
+    #: Fixed presentation phrase for the kind of note (e.g. "Document note / proposed requirement").
+    kind_label: str
+    #: Short heading, e.g. "Zone 1 timer requirement: 0.15 s".
+    title: str
+    #: The document's own words.
+    text: str
+    sources: tuple[ReviewSource, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -139,7 +194,11 @@ class ReviewGroup:
     state_status: str | None = None
     #: Slice 8: the zone state in review vocabulary (see `ReviewItem.review_status`).
     state_review_status: str | None = None
+    #: Helper text for a zone whose state Oruxa assumed (e.g. an absent optional zone).
+    state_note: str | None = None
     items: tuple[ReviewItem, ...] = ()
+    #: Document notes about this zone (not settings, never applied).
+    source_notes: tuple[ReviewSourceNote, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -204,11 +263,17 @@ class ExtractionReview:
     not_interpreted_count: int
     #: Inferred values the user confirmed this session.
     confirmed_count: int
-    #: Unresolved values the user supplied this session.
+    #: Unresolved values the user typed this session (never an accepted suggestion).
     resolved_manually_count: int
+    #: Unresolved values the user resolved by accepting a suggested value; counted apart
+    #: from `resolved_manually_count`, though both carry review_status `resolved_manually`.
+    suggested_count: int
     #: Unresolved values the current engine adapter needs (a subset of the unresolved).
     #: These are *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
+    #: Unresolved values that belong only to a disabled zone and are therefore not required.
+    #: They are excluded from the Missing / Unreadable counts and never block.
+    not_required_count: int
     #: Slice 8A presentation counts, per canonical value. Assumptions still awaiting
     #: confirmation; open Missing / Unreadable values; every Conflict and Unsupported
     #: value (an engine limit is not cleared by a decision about the value).
@@ -233,6 +298,11 @@ class ExtractionReview:
     #: them without keeping any state (see `canonical_codec`). ``None`` when the
     #: review is built only to read its state back.
     validation_context: dict | None = None
+    #: DEC-195. The parameter catalog that interpreted this relay, and how much of the sheet it accounts for
+    #: (counts only). ``None`` for a relay no catalog describes.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +318,9 @@ _STATUS_LABELS = {
     ZoneStatus.INACTIVE.value: "Inactive",
     ZoneStatus.UNKNOWN.value: "Unknown",
 }
+_SOURCE_NOTE_KIND_LABELS = {"proposed_requirement": "Document note / proposed requirement"}
+_GEOMETRY_LABELS = {GeometryMode.EXPLICIT_RX.value: "Explicit R/X", GeometryMode.POLAR_REACH.value: "Polar Reach"}
+
 _CHARACTERISTIC_LABELS = {
     CharacteristicType.QUADRILATERAL.value: "Quadrilateral",
     CharacteristicType.MHO.value: "Mho",
@@ -318,10 +391,12 @@ def _review_status(sourced: Sourced) -> str:
     p = sourced.provenance
     record = p.review
     if record is None:
+        if p.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+            return "assumed"
         return _REVIEW_STATUS_BY_MAPPING[p.status]
     if record.status is ReviewStatus.CONFIRMED:
         return "confirmed"
-    if record.status is ReviewStatus.RESOLVED_MANUALLY:
+    if record.status in (ReviewStatus.RESOLVED_MANUALLY, ReviewStatus.SUGGESTION_ACCEPTED):
         return "resolved_manually"
     return "unresolved"
 
@@ -348,13 +423,38 @@ def _category(sourced: Sourced, limit: tuple[str, str] | None) -> str:
     return cause.value if cause else "missing"
 
 
+def _resolution_origin(sourced: Sourced) -> str | None:
+    record = sourced.provenance.review
+    if record is None:
+        return None
+    if record.status is ReviewStatus.RESOLVED_MANUALLY:
+        return "manual"
+    if record.status is ReviewStatus.SUGGESTION_ACCEPTED:
+        return "suggestion"
+    return None
+
+
+def _suggestion(path: str | None, sourced: Sourced, category: str) -> ReviewSuggestion | None:
+    """Offered only for a value that is still Missing, or that the source states but Oruxa cannot
+    represent (an *Unsupported* value, worded as a visualization approximation), and only where
+    Oruxa has a specific neutral suggestion. Never for a conflict, an unreadable cell or an engine limit."""
+    if path is None or sourced.is_resolved or category not in ("missing", "unsupported"):
+        return None
+    spec = suggestion_spec(path)
+    if spec is None:
+        return None
+    rationale = suggestion_text(spec, sourced.provenance.cause)
+    return ReviewSuggestion(spec.value_text, rationale) if rationale else None
+
+
 def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
-    if path is None or _review_status(sourced) not in ("unresolved", "resolved_manually"):
+    overridable = is_overridable_assumption(path or "", sourced)
+    if path is None or (_review_status(sourced) not in ("unresolved", "resolved_manually") and not overridable):
         return None
     # Typing a value is offered only where the source simply lacks it (or could not be
     # read) and the canonical type is known; a conflict, or a limit of the engine, is
     # not something a typed value resolves.
-    if category not in ("missing", "unreadable") and _review_status(sourced) != "resolved_manually":
+    if category not in ("missing", "unreadable") and _review_status(sourced) != "resolved_manually" and not overridable:
         return None
     spec: ResolutionSpec | None = resolution_spec(path)
     if spec is None:
@@ -370,10 +470,28 @@ class _Builder:
         document: RawRelayDocument,
         blocking: frozenset[str] = frozenset(),
         limits: dict[str, tuple[str, str]] | None = None,
+        inactive_zones: frozenset[str] = frozenset(),
     ) -> None:
         self._raw: dict[str, RawSetting] = {s.setting_id: s for s in document.settings}
+        #: The geometry mode of the zone being built (``explicit_rx`` / ``polar_reach``): it selects the
+        #: registry's label variant (e.g. "Right Resistive Reach (+R)" for an explicit R/X zone).
+        self.geometry: str | None = None
         self._blocking = blocking
         self._limits = limits or {}
+        self._inactive = inactive_zones
+
+    def _not_required(self, path: str | None, sourced: Sourced) -> bool:
+        """Zone-local, unresolved, in an authoritatively disabled zone, and not a canonical
+        dependency of the adapter (``blocking``). Decided from the canonical path, never from
+        the section the row is shown under, so a value an enabled function needs still blocks."""
+        match = _ZONE_PATH.match(path or "")
+        return bool(
+            match
+            and match["zone"] in self._inactive
+            and not match["rest"] == "status"
+            and not sourced.is_resolved
+            and path not in self._blocking
+        )
 
     def source(self, ref) -> ReviewSource:
         raw = self._raw.get(ref.setting_id)
@@ -399,7 +517,12 @@ class _Builder:
         extra_notes: tuple[str, ...] = (),
         path: str | None = None,
         primary: bool = True,
+        canon: bool = True,
     ) -> ReviewItem:
+        # The frontend terminology is the canonical registry's, not the relay's: a registered
+        # parameter is labelled from the registry; the given label is the fallback for the rest.
+        if canon and primary and path is not None:
+            label = canonical_registry().label_for_review_path(path, self.geometry) or label
         prov = sourced.provenance
         refs = (*prov.sources, *(r for r in extra_sources if r not in prov.sources))
         notes = (*prov.notes, *(n for n in extra_notes if n not in prov.notes))
@@ -413,6 +536,7 @@ class _Builder:
         review_status = _review_status(sourced)
         limit = self._limits.get(path) if path else None
         category = _category(sourced, limit)
+        not_required = self._not_required(path, sourced)
         return ReviewItem(
             key=key,
             label=label,
@@ -431,14 +555,25 @@ class _Builder:
             left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
             user_value_text=record.user_value_text if record else None,
             resolution=_resolution(path, sourced, category),
+            suggestion=None if not_required else _suggestion(path, sourced, category),
+            not_required=not_required,
+            not_required_reason=NOT_REQUIRED_REASON if not_required else None,
+            resolution_origin=_resolution_origin(sourced),
             category=category,
             engine_reason=limit[1] if limit else None,
+            transformation=prov.transformation,
+            authority=prov.authority.value if prov.authority else None,
+            catalog_id=prov.catalog_id,
+            catalog_version=prov.catalog_version,
+            canonical_id=prov.canonical_id,
         )
 
     def impedance(
         self, key: str, label: str, group_label: str, sourced: Sourced, path: str | None = None
     ) -> list[ReviewItem]:
         value = sourced.value
+        if path is not None:
+            label = canonical_registry().label_for_review_path(path, self.geometry) or label
         if isinstance(value, ImpedanceValue):
             if value.is_polar:
                 parts = [
@@ -451,10 +586,10 @@ class _Builder:
                     (f"{key}.x", f"{label} X", _with_unit(_number(value.x_ohm), "ohm")),
                 ]
             return [
-                self.item(k, lab, group_label, sourced, text=t, path=path, primary=i == 0)
+                self.item(k, lab, group_label, sourced, text=t, path=path, primary=i == 0, canon=False)
                 for i, (k, lab, t) in enumerate(parts)
             ]
-        return [self.item(key, label, group_label, sourced, path=path)]
+        return [self.item(key, label, group_label, sourced, path=path, canon=False)]
 
     def extras(
         self, key: str, group_label: str, extras: tuple[ExtraQuantity, ...], path: str
@@ -571,6 +706,8 @@ def _zone_state(zone: DistanceZone) -> tuple[str, str, str]:
     if not status.is_resolved:
         return "Status unresolved", _interpretation_status(status), _review_status(status)
     label = _STATUS_LABELS.get(str(_enum_str(status.value)), "Unknown")
+    if status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+        label = label.split(" / ")[0]  # Oruxa's assumption, not a relay "Defeated" statement
     return label, _interpretation_status(status), _review_status(status)
 
 
@@ -579,16 +716,27 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     pre = f"zone.{zone.zone_id}"
     zp = f"zones[{zone.zone_id}]"
     items: list[ReviewItem] = []
+    b.geometry = zone.characteristic.geometry_mode.value
 
     state_text = None if not zone.status.is_resolved else _zone_state(zone)[0]
     items.append(b.item(f"{pre}.status", "Status", name, zone.status, text=state_text, path=f"{zp}.status"))
     items.append(b.item(f"{pre}.direction", "Direction", name, zone.direction, path=f"{zp}.direction"))
     ctype = zone.characteristic.type
     ctype_text = _CHARACTERISTIC_LABELS.get(str(_enum_str(ctype.value))) if ctype.is_resolved else None
+    explicit = zone.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
+    if explicit and ctype_text:
+        # A polar zone is the default and reads as it always did; only the other mode is named.
+        ctype_text = f"{ctype_text} · {_GEOMETRY_LABELS[GeometryMode.EXPLICIT_RX.value]}"
     items.append(
         b.item(f"{pre}.characteristic", "Characteristic", name, ctype, text=ctype_text, path=f"{zp}.characteristic.type")
     )
-    items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach, f"{zp}.reach")
+    if explicit:
+        # Explicit R/X limits: the reach is the X limit, and there is no reach angle row to show.
+        items.append(
+            b.item(f"{pre}.x_reach", "Reactive Reach (X)", name, zone.x_reach_ohm, unit="ohm", path=f"{zp}.x_reach_ohm")
+        )
+    else:
+        items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach, f"{zp}.reach")
     if _touched(zone.earth_reach):
         items += b.impedance(f"{pre}.earth_reach", "Earth Reach", name, zone.earth_reach, f"{zp}.earth_reach")
     if _touched(zone.zero_sequence_reach):
@@ -603,7 +751,8 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
         )
     items.append(
         b.item(
-            f"{pre}.rr.pp", "Phase-Phase Resistive Reach", name, rr.phase_phase, unit="ohm",
+            f"{pre}.rr.pp", "Right Resistive Reach (+R)" if explicit else "Phase-Phase Resistive Reach", name,
+            rr.phase_phase, unit="ohm",
             path=f"{zp}.resistive_reach.phase_phase",
         )
     )
@@ -617,7 +766,7 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     if quadrilateral or _touched(rr.reverse):
         items.append(
             b.item(
-                f"{pre}.rr.reverse", "Reverse Resistive Reach", name, rr.reverse, unit="ohm",
+                f"{pre}.rr.reverse", "Left Resistive Reach (−R)", name, rr.reverse, unit="ohm",
                 path=f"{zp}.resistive_reach.reverse",
             )
         )
@@ -646,7 +795,33 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
             items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u))
 
     state_label, state_status, state_review = _zone_state(zone)
-    return ReviewGroup(f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, tuple(items))
+    note = None
+    if is_defeated_delay_assumption(zone.status):
+        note = (
+            "Zone status was not explicitly decoded. The 10.0 s operating delay is interpreted "
+            "as a defeated/inactive distance zone. Its extracted settings are kept for reference."
+        )
+    elif zone.status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+        note = (
+            f"{name} was not found in the uploaded relay settings. "
+            "This optional zone is assumed to be disabled."
+        )
+    return ReviewGroup(
+        f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, note, tuple(items),
+        tuple(_source_note(b, name, n) for n in zone.source_notes),
+    )
+
+
+def _source_note(b: _Builder, zone_name: str, note: SourceNote) -> ReviewSourceNote:
+    kind = _enum_str(note.kind)
+    if note.subject and note.value_text:
+        title = f"{zone_name} {note.subject} requirement: {note.value_text}"
+    else:
+        title = f"{zone_name} note"
+    return ReviewSourceNote(
+        _SOURCE_NOTE_KIND_LABELS.get(str(kind), "Document note"), title, note.text,
+        tuple(b.source(ref) for ref in note.sources),
+    )
 
 
 def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup | None:
@@ -660,10 +835,12 @@ def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) ->
             items += b.extras(f"comp.{zone.zone_id}", name, comp.oem_values, f"zones[{zone.zone_id}].compensation.oem_values")
             continue
         for attr, label, unit in _COMPENSATION_COMPONENTS[comp.kind]:
+            path = f"zones[{zone.zone_id}].compensation.{attr}"
+            label = canonical_registry().label_for_review_path(path) or label
             items.append(
                 b.item(
                     f"comp.{zone.zone_id}.{attr}", f"{name} {label}", "", getattr(comp, attr), unit=unit or None,
-                    path=f"zones[{zone.zone_id}].compensation.{attr}",
+                    path=path, canon=False,
                 )
             )
     return ReviewGroup("compensation", "compensation", "Residual compensation", items=tuple(items)) if items else None
@@ -692,7 +869,8 @@ def build_extraction_review(
     *,
     not_interpreted: int,
 ) -> ExtractionReview:
-    b = _Builder(document, blocking_paths(adaptation), engine_limits(adaptation))
+    inactive = frozenset(z.zone_id for z in model.zones if zone_active(z) is False)
+    b = _Builder(document, blocking_paths(adaptation), engine_limits(adaptation), inactive)
     groups = [_relay_group(b, model), _transformer_group(b, model), _line_group(b, model)]
     groups += [_zone_group(b, z) for z in model.zones]
     comp = _compensation_group(b, model)
@@ -704,10 +882,12 @@ def build_extraction_review(
     def count(status: str) -> int:
         return sum(1 for item in counted if item.review_status == status)
 
-    def in_category(category: str, *review_statuses: str) -> int:
+    def in_category(category: str, *review_statuses: str, required_only: bool = False) -> int:
         return sum(
             1 for item in counted
-            if item.category == category and (not review_statuses or item.review_status in review_statuses)
+            if item.category == category
+            and (not review_statuses or item.review_status in review_statuses)
+            and not (required_only and item.not_required)
         )
 
     blocking_unresolved = sum(1 for item in counted if item.blocking)
@@ -725,15 +905,19 @@ def build_extraction_review(
         mapped_count=sum(1 for item in counted if item.review_status == "mapped" and item.category == "mapped"),
         to_confirm_count=pending,
         assumption_count=in_category("assumption", "to_confirm"),
-        missing_count=in_category("missing", "unresolved"),
+        missing_count=in_category("missing", "unresolved", required_only=True),
         conflict_count=in_category("conflict"),
         unsupported_count=in_category("unsupported"),
-        unreadable_count=in_category("unreadable", "unresolved"),
+        unreadable_count=in_category("unreadable", "unresolved", required_only=True),
         unresolved_count=count("unresolved"),
         not_interpreted_count=not_interpreted,
         confirmed_count=count("confirmed"),
-        resolved_manually_count=count("resolved_manually"),
+        resolved_manually_count=sum(
+            1 for item in counted if item.review_status == "resolved_manually" and item.resolution_origin != "suggestion"
+        ),
+        suggested_count=sum(1 for item in counted if item.resolution_origin == "suggestion"),
         blocking_count=blocking_unresolved,
+        not_required_count=sum(1 for item in counted if item.not_required),
         readiness=ReviewReadiness(readiness.value, pending, blocking_unresolved),
         blocking_issues=tuple(
             ReviewBlockingIssue(issue.message, issue.zone_ids, issue.paths) for issue in blocking_issues(adaptation)

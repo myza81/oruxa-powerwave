@@ -6,14 +6,47 @@ docs/project-memory/DISTANCE_PROTECTION_ANALYSIS.md).
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.schemas.calculated_channel import ChannelRefOut
 
 DistanceStatus = Literal["computed", "needs_configuration", "missing", "ambiguous", "not_eligible"]
 ZoneState = Literal["operated", "not_operated"]
+
+
+_Finite = Annotated[float, Field(allow_inf_nan=False)]
+
+#: Request-size guard for the generic `zones` query parameter. Not a protection limit:
+#: the engine evaluates however many zones it is given.
+MAX_REQUEST_ZONES = 64
+
+
+class ZoneSettingsIn(BaseModel):
+    """One zone of the generic `zones` request parameter (Slice 10). ``key`` is the
+    zone's stable identity: it is echoed back as ``ZoneResultOut.zone_key`` and never
+    derived from position. ``None`` = not configured; nothing is defaulted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{1,64}$")]
+    enabled: bool = False
+    direction: Literal["forward", "reverse"] = "forward"
+    reach_ohm: _Finite | None = None
+    reactive_reach_ohm: _Finite | None = None
+    resistive_reach_forward_ohm: _Finite | None = None
+    resistive_reach_reverse_ohm: _Finite | None = None
+    characteristic_angle_deg: _Finite | None = None
+    delay_s: _Finite | None = None
+    #: ``explicit_rx``: a quadrilateral stated as X / +R / -R limits with no angle
+    #: (`reactive_reach_ohm` is the X limit). ``polar`` (the default) is the reach-at-angle form.
+    geometry_mode: Literal["polar", "explicit_rx"] = "polar"
+
+
+ZONES_IN_ADAPTER: TypeAdapter[list[ZoneSettingsIn]] = TypeAdapter(
+    Annotated[list[ZoneSettingsIn], Field(max_length=MAX_REQUEST_ZONES)]
+)
 
 
 class ZoneResultOut(BaseModel):
@@ -71,6 +104,9 @@ class DistanceAnalysisResultOut(BaseModel):
     #: Added with the fourth (reverse-direction) manual slot; optional so
     #: older consumers that ignore it keep working.
     zone4: ZoneResultOut | None = None
+    #: Slice 10: every evaluated zone, in request order, each under the key it was
+    #: requested with. zone1..zone4 above are the entries with those keys.
+    zones: list[ZoneResultOut] = []
     warnings: list[str]
     reason_code: str | None
     message: str
@@ -116,5 +152,7 @@ class ManualDistanceResultOut(BaseModel):
     #: Added with the fourth (reverse-direction) manual slot; optional so
     #: older consumers that ignore it keep working.
     zone4: ZoneResultOut | None = None
+    #: Slice 10: every evaluated zone, in request order (see DistanceAnalysisResultOut).
+    zones: list[ZoneResultOut] = []
     reason_code: str | None
     message: str

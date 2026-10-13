@@ -253,3 +253,39 @@ def test_real_sample_regression(name):
     pages = [s.location.page for s in settings]
     assert pages == sorted(pages)
     assert extract_pdf(data) == r  # deterministic
+
+
+class TestBlankValueCell:
+    """A settings table with a value column and a range column: a row whose value cell is blank
+    but whose range column is filled must not lend its allowed values to the value."""
+
+    TABLE = [["1301 R1", "1.84", "0.05-65 ohms"], ["1302 X1", "2.74", "0.05-130 ohms"],
+             ["1303 R1E", "9.14", "0.05-130 ohms"], ["1305 T1 1PHASE", "", "Infinity"],
+             ["1306 T1 >1PHASE", "", "Infinity"], ["1304 DIREC. Z1", "FORWARDS", "FWD,RVS,N/DIR"]]
+
+    def _settings(self, rows):
+        return {s.parameter_id: s for s in _doc(rows).settings}
+
+    def test_a_cell_in_the_range_column_with_no_value_is_the_range_not_the_value(self):
+        s = self._settings(self.TABLE)["1305"]
+        assert s.raw_value is None and s.normalized_value is None
+        assert s.setting_range is not None and s.setting_range.text == "Infinity"
+        assert s.extraction.notes == ("row:blank_value_range",)
+        assert any("blank" in n for n in s.notes)
+
+    def test_rows_with_a_value_are_unchanged(self):
+        s = self._settings(self.TABLE)
+        assert (s["1301"].raw_value, s["1301"].setting_range.text) == ("1.84", "0.05-65 ohms")
+        assert (s["1304"].raw_value, s["1304"].setting_range.text) == ("FORWARDS", "FWD,RVS,N/DIR")
+
+    def test_a_lone_cell_in_the_value_column_is_still_the_value(self):
+        s = self._settings(self.TABLE + [["1203 T4", "Infinity"]])["1203"]
+        assert s.raw_value == "Infinity" and s.setting_range is None
+
+    def test_without_two_ranged_rows_there_is_no_column_evidence_and_nothing_changes(self):
+        s = self._settings([["1301 R1", "1.84", "0.05-65 ohms"], ["1305 T1 1PHASE", "", "Infinity"]])["1305"]
+        assert s.raw_value == "Infinity" and s.setting_range is None
+
+    def test_a_two_column_table_is_unchanged(self):
+        s = self._settings([["1301 R1", "1.84"], ["1302 X1", "2.74"], ["1305 T1", "Infinity"]])
+        assert s["1305"].raw_value == "Infinity" and s["1305"].extraction.notes == ("row:key_value",)

@@ -157,7 +157,7 @@ test("the Reverse Quadrilateral is the forward polygon rotated 180 degrees; resi
   }
   // The reverse card still has its own quadrilateral 'Resistive reach reverse' input.
   await expect(page.locator("#wwDistanceZone4ResistiveReverseInput")).toBeVisible();
-  await expect(page.locator("#wwDistanceZone4ResistiveReverseField")).toContainText("Resistive reach reverse");
+  await expect(page.locator("#wwDistanceZone4ResistiveReverseField")).toContainText("Left Resistive Reach (−R)");
 });
 
 test("an enabled Reverse Zone without a configured delay is not ready, and an entered delay is reported", async ({ page }) => {

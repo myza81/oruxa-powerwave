@@ -31,6 +31,7 @@ from app.domain.relay_import.canonical_distance import (
     CompensationKind,
     DistanceZone,
     ExtraQuantity,
+    GeometryMode,
     ImpedanceValue,
     InstrumentTransformers,
     ProtectedLine,
@@ -38,11 +39,14 @@ from app.domain.relay_import.canonical_distance import (
     ResidualCompensation,
     ResistiveReach,
     SettingBasis,
+    SourceNote,
+    SourceNoteKind,
     UnresolvedSetting,
     ZoneDirection,
     ZoneStatus,
 )
 from app.domain.relay_import.provenance import (
+    MappingAuthority,
     MappingStatus,
     Provenance,
     ProvenanceOrigin,
@@ -59,14 +63,14 @@ _DATACLASSES = {
     for cls in (
         CanonicalDistanceProtectionModel, RelayMetadata, InstrumentTransformers, ProtectedLine, DistanceZone,
         CharacteristicSpec, ResistiveReach, ResidualCompensation, ExtraQuantity, UnresolvedSetting,
-        ImpedanceValue, Sourced, Provenance, SourceRef, ReviewRecord,
+        ImpedanceValue, Sourced, Provenance, SourceRef, ReviewRecord, SourceNote,
     )
 }
 _ENUMS = {
     cls.__name__: cls
     for cls in (
         ZoneStatus, ZoneDirection, CharacteristicType, SettingBasis, CompensationKind, SourceFormat,
-        MappingStatus, ProvenanceOrigin, ReviewStatus, UnresolvedCause,
+        MappingStatus, ProvenanceOrigin, ReviewStatus, UnresolvedCause, GeometryMode, SourceNoteKind, MappingAuthority,
     )
 }
 

@@ -1215,7 +1215,7 @@ class TestChartControlsToolbarRedesign:
         group_rule = _function_body(source, ".ww-oc-view-zoom-group {", "}")
         assert "display: inline-flex;" in group_rule
         btn_rule = _function_body(source, ".ww-oc-zoom-btn {", "}")
-        assert "font-size: 0.7rem;" in btn_rule
+        assert "font-size: 0.6rem;" in btn_rule
         assert 'id="wwOvercurrentZoomOutBtn" class="ww-oc-zoom-btn"' in source
         assert 'id="wwOvercurrentZoomInBtn" class="ww-oc-zoom-btn"' in source
         assert 'id="wwOvercurrentResetViewBtn" class="ww-oc-zoom-btn ww-oc-reset-btn"' in source

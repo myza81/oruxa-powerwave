@@ -92,15 +92,15 @@ test("every decision type keeps the readiness defined: confirm, undo, confirm al
   await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption");
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(page.locator("#wwRelayReviewConfirmAll")).toHaveCount(0);
-  await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
+  await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
   const form = row(page, "zone.Z1.rr.reverse").locator("form.ww-rr-resolve");
   await form.locator("input").fill("2.5");
   await form.getByRole("button", { name: "Set value" }).click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Resolved manually");
-  await button(page, "Clear the value of Zone 1 Reverse Resistive Reach").click();
+  await button(page, "Clear the value of Zone 1 Left Resistive Reach (−R)").click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
-  await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
-  await button(page, "Leave Zone 1 Reverse Resistive Reach unresolved").click();
+  await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
+  await button(page, "Leave Zone 1 Left Resistive Reach (−R) unresolved").click();
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Left unresolved");
   await expect(readiness(page)).toContainText("Readiness: Not ready");
   await expectNoBrokenText(page);
@@ -110,7 +110,7 @@ test("while a check is pending the readiness says so, never a stale Ready, and r
   await reviewP441(page);
   await page.locator("#wwRelayReviewConfirmAll").click();
   for (const [z, n] of [["Z1", "Zone 1"], ["Z2", "Zone 2"], ["Z3", "Zone 3"]]) {
-    await button(page, `Resolve ${n} Reverse Resistive Reach`).click();
+    await button(page, `Resolve ${n} Left Resistive Reach (−R)`).click();
     const f = row(page, `zone.${z}.rr.reverse`).locator("form.ww-rr-resolve");
     await f.locator("input").fill("2.5");
     await f.getByRole("button", { name: "Set value" }).click();
@@ -164,7 +164,7 @@ test("a stale answer never overwrites a newer decision (a second decision while 
   await page.waitForTimeout(400);
   await expect(chip(page, "zone.Z2.reach")).toHaveText("Confirmed"); // and is discarded
   await expect(readiness(page)).not.toContainText("Re-evaluating");
-  expect(await page.locator("#wwRelayReviewSummary").innerText()).toMatch(/2 confirmed/);
+  expect(await page.locator("#wwRelayReviewSummary").innerText()).toMatch(/2 confirmed/i);
 });
 
 test("rapid successive decisions all land, in order, and readiness reflects the newest", async ({ page }) => {
@@ -262,9 +262,9 @@ test("a healthy first open shows the backend's initial result, never 'Not evalua
   });
   await page.locator("#wwRelayReviewBtn").click();
   await expect(readiness(page)).toContainText("Readiness: Not ready");
-  await expect(readiness(page)).toContainText("Blocking settings: 4");
-  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("reverse resistive reach is unresolved");
-  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("ZP cannot be represented");
+  await expect(readiness(page)).toContainText("Blocking settings: 3");
+  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("Left Resistive Reach (−R) is unresolved");
+  await expect(page.locator("#wwRelayReviewBlocking")).not.toContainText("ZP");
   const seen = await page.evaluate(() => window.__readinessTexts);
   expect(seen.length).toBeGreaterThan(0);
   expect(seen.join("|")).not.toContain("Not evaluated");

@@ -128,7 +128,10 @@ class TestRouting:
     def test_other_identified_families_are_not_routed_to_p441(self, registry, scheme):
         ident = self._identify(registry, scheme)
         assert ident.status is IdentificationStatus.IDENTIFIED and ident.profile_id != PROFILE_ID
-        assert registry.profile_for(ident) is None
+        # An identified relay with its own interpretation profile (the 7SA511, Slice 11) reaches that
+        # profile; an identification-only family reaches none. Neither ever reaches the P441 profile.
+        routed = registry.profile_for(ident)
+        assert routed is None or routed.profile_id == ident.profile_id != PROFILE_ID
 
     def test_unknown_and_ambiguous_documents_are_not_routed(self, registry):
         assert registry.profile_for(self._identify(registry, "XYZ9000_V1")) is None
@@ -646,7 +649,7 @@ class TestEngineAdapterCompatibility:
         a = adapt_to_engine(model, engine_basis="secondary")
         assert not a.supported
         codes = {(r.code, r.zone_id) for r in a.reasons}
-        assert (UnsupportedCode.TOO_MANY_ZONES, None) in codes  # Zone P: status not established
+        assert (UnsupportedCode.ZONE_STATUS_UNRESOLVED, "ZP") in codes  # Zone P: status not established
         for zid in ("Z1", "Z2", "Z3"):
             assert (UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, zid) in codes  # no left-hand reach on the sheet
         assert all(r.zone_id != "Z4" for r in a.reasons)  # the defeated zone needs no geometry
@@ -676,7 +679,8 @@ class TestEngineAdapterCompatibility:
         a = adapt_to_engine(filled, engine_basis="secondary")
         assert a.supported, a.reasons
         assert a.characteristic == "quadrilateral"
-        z1, z2, z3, z4 = a.zones
+        z1, z2, z3, z4, zp = a.zones
+        assert a.zone_ids == ("Z1", "Z2", "Z3", "Z4", "ZP") and zp.enabled is False
         assert (z1.reactive_reach_ohm, z1.resistive_reach_forward_ohm, z1.delay_s, z1.characteristic_angle_deg) == (1.43, 2.11, 0.0, 80.0)
         assert (z2.reactive_reach_ohm, z2.resistive_reach_forward_ohm, z2.delay_s) == (2.13, 3.14, 0.3)
         assert (z3.reactive_reach_ohm, z3.resistive_reach_forward_ohm, z3.delay_s) == (4.48, 6.34, 3.0)
@@ -711,9 +715,11 @@ class TestIsolation:
         for forbidden in ("app.storage", "sqlalchemy", "fastapi", "app.services", "distance_protection", "open(", "pypdf"):
             assert forbidden not in text
 
-    def test_profile_is_registered_for_p441_only(self):
+    def test_the_p441_profile_is_registered_once_beside_the_other_interpretation_profiles(self):
         reg = catalogue.build_registry()
-        assert {p.profile_id for p in reg._profiles} == {PROFILE_ID}
+        ids = [p.profile_id for p in reg._profiles]
+        assert ids.count(PROFILE_ID) == 1
+        assert set(ids) == {PROFILE_ID, "siemens-7sa511", "hitachi-red670"}  # Slice 11 added the 7SA511, Slice 12 the RED670
 
 
 # ---------------------------------------------------------------------------
@@ -722,7 +728,7 @@ class TestIsolation:
 
 SAMPLE_DIR = os.environ.get("RELAY_SAMPLE_PDF_DIR")
 needs_samples = pytest.mark.skipif(not SAMPLE_DIR, reason="owner sample PDFs are not committed; set RELAY_SAMPLE_PDF_DIR to run")
-OTHER_SAMPLES = ["7sa511", "7sa613", "7sl87", "grl200", "grz100", "rcs", "red670", "rel511", "rel670", "lfzp", "relz100"]
+OTHER_SAMPLES = ["7sa613", "7sl87", "grl200", "grz100", "rcs", "rel511", "rel670", "lfzp", "relz100"]  # (the RED670 has its own profile since Slice 12)
 
 
 def real(name):
@@ -798,7 +804,7 @@ class TestRealP441Sample:
     def test_adapter_verdict(self, rmodel):
         a = adapt_to_engine(rmodel, engine_basis="secondary")
         assert not a.supported
-        assert {r.code for r in a.reasons} == {UnsupportedCode.TOO_MANY_ZONES, UnsupportedCode.RESISTIVE_REACH_UNRESOLVED}
+        assert {r.code for r in a.reasons} == {UnsupportedCode.ZONE_STATUS_UNRESOLVED, UnsupportedCode.RESISTIVE_REACH_UNRESOLVED}
 
     def test_counts(self, rmodel):
         mapped_n, inferred_n, unresolved_n, not_interpreted = count_model(rmodel)

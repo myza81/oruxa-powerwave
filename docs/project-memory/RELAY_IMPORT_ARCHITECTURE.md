@@ -6,7 +6,8 @@ interpretation profile, read-only Extraction Review, review confirmation / resol
 and **integrated into `main`** (2026-10-11) on top of the completed Oscillation Analysis Phase 1
 baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
-is identification-only; auto-population / Apply (Slice 9) are later slices and **not started**. Approval record:
+is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-196/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
+**2026-10-13: the RED670 semantics are corrected (DEC-193) and a data-driven Parameter Catalog Foundation is added (DEC-194; last section).**
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -167,15 +168,15 @@ Manual form (flat API params -> ZoneSettings)      [transitional boundary]
   picks a value to make conversion succeed, and reports *all* problems.
   `allow_incomplete_zones=True` (manual form only) passes a blank reach as
   absent (`None`), which the engine already treats as Not Operated.
-- **Engine capability** (updated with the Reverse Zone enhancement): exactly four
-  zone slots in order, each with an explicit direction (forward or reverse);
+- **Engine capability** (updated with the Reverse Zone enhancement and again by Slice 10, DEC-189): any number of
+  zones, each with a stable key and an explicit direction (forward or reverse);
   one characteristic (mho or quadrilateral) for all zones; phase-phase loops
   only; forward and reverse directional geometry only (non-directional,
   unknown or unresolved directions are still refused); one delay and one shared
   angle per zone; zone ohms compared in the selected impedance basis. A reverse
   zone is the characteristic rotated 180° about the origin; it is unrelated to a
-  quadrilateral's reverse *resistive* reach. The canonical model itself still
-  allows any number of zones - four is only what the engine evaluates.
+  quadrilateral's reverse *resistive* reach. The canonical model allows any number of zones and, since
+  Slice 10, so does the engine: zone count is not a capability limit.
 - **Supported canonical fields:** zone status (enabled / disabled / inactive),
   forward or reverse direction, phase-phase operation, polar reach (→ mho `reach_ohm` or
   quadrilateral `reactive_reach_ohm`, angle → shared characteristic angle),
@@ -917,10 +918,10 @@ uncertain instead of asking everything to be confirmed. Six compact categories
 | Category | Meaning | User action |
 |---|---|---|
 | **Mapped** | read, and the mapping is deterministic | none (read-only) |
-| **Assumption** | the source value **was read**, but Oruxa made an engineering assumption to interpret it (direction from family convention, characteristic from the setting family, reach angle = line angle) | expert may Confirm / Undo; bulk "Confirm all assumptions (N)" |
+| **Assumption** | the source value **was read**, but an engineering assumption was made to interpret it (direction from family convention, characteristic from the setting family, reach angle = line angle) | expert may Confirm / Undo; bulk "Confirm all assumptions (N)" |
 | **Missing** | a value the workflow needs is not in the source | manual value only where the canonical type/unit is known |
 | **Conflict** | source values/statements disagree, or contradict the printed range/unit; none is chosen | none (the competing choices are not offered) |
-| **Unsupported** | Oruxa understands it, but the current engine/model cannot represent or use it (Zone P as a fifth zone, a lenticular characteristic, a per-loop tilt) | none -- a limit of the software, never confirmed away |
+| **Unsupported** | the software understands it, but the current engine/model cannot represent or use it (Zone P as a fifth zone, a lenticular characteristic, a per-loop tilt) | none -- a limit of the software, never confirmed away |
 | **Unreadable** | the text could not be read reliably (empty cell, not a plain number) | clearer source, or manual value where offered |
 
 Not every uncertainty is a question for the user; only an Assumption is confirmable.
@@ -963,6 +964,63 @@ identical to Slice 8 (4 blocking settings, 2 reasons). Open judgement: tilt sett
 are classed Unsupported because neither the canonical model nor the engine has a
 per-loop tilt; the owner may prefer another label.
 
+## Review UX fix -- Left Resistive Reach (−R) and the explicit 0.00 Ω suggestion (DEC-185)
+
+Status: **Implemented / Awaiting owner UAT** (2026-10-12). Review-stage only; Slice 9 has
+not started and nothing is applied.
+
+* **Labels.** `resistive_reach.reverse` is shown as **Left Resistive Reach (−R)** (review
+  row, adapter message "The Left Resistive Reach (−R) is unresolved.", profile note). Canonical
+  and API names are unchanged.
+* **Suggestion** (`review_state.SuggestionSpec`, table `_SUGGESTIONS`, one entry:
+  `zones[*].resistive_reach.reverse` → 0 Ω, text "0.00 Ω"). `ReviewItem.suggestion` is set only
+  while the item is unresolved with category **Missing**; it is never part of the effective
+  model until the user accepts it.
+* **Decision.** `ReviewDecisions.suggested` (API `suggested[]`) → `apply_review` writes the
+  value with `MappingStatus.RESOLVED_MANUALLY`, origin `SESSION_REVIEW` and
+  `ReviewRecord(SUGGESTION_ACCEPTED, original_status=unresolved, user_value_text="0.00 Ω")`;
+  source references, raw text, notes and `cause` (Missing) are kept. Refused (400
+  `invalid_review`) for any other path, a resolved value, a non-Missing cause, or an item that
+  also has a manual/confirm/leave decision.
+* **Output.** `ReviewItem(State)Out.resolution_origin` = `manual` | `suggestion` | null;
+  `review_status` stays `resolved_manually` (counts unchanged), `category` stays `missing`.
+* **UI.** Missing row: "This value was not found in the relay setting file. Suggested for
+  visualization: 0.00 Ω. …" with **Use 0.00 Ω** and **Enter manually** (the existing Resolve
+  editor; its aria-label stays "Resolve …"). Accepted: chip **Resolved · Suggested**, Source
+  shows "Suggested value: 0.00 Ω — accepted by you …" and "Not the relay's setting,
+  and not mapped from a profile"; **Edit** / **Clear** restore manual entry / Missing.
+* **Tests.** `backend/tests/test_relay_review_suggestion.py`;
+  `browser-tests/distance_resistive_reach_ux.spec.js` (plus renamed assertions in the review specs).
+
+## Slice 9 -- Apply Settings (DEC-188)
+
+Status: **Implemented / Awaiting owner UAT.** Pipeline end: `... -> Review -> Confirm / Resolve -> Apply -> Distance Protection form`.
+
+```text
+original interpretation + decisions            (sent by the browser, stateless)
+      -> reviewed_state()                       decode, apply_review, engine_adaptation (re-run), review/readiness
+      -> readiness must be exactly "ready"      else 409 apply_not_ready
+      -> build_apply_plan()                     domain/relay_import/apply_settings.py
+      -> ApplySettingsOut                       schemas/relay_import.py   (409/422/400 on refusal; never partial)
+      -> wwDistanceApplyImportedSettings()      frontend: validate whole payload, then write form state + inputs
+      -> existing change handlers               field visibility, analysis request, wwDistanceRenderPlot()
+```
+
+* **Endpoint:** `POST /api/v1/relay-import/review/apply`, same body as `review/validate`. Code: `services/relay_apply_settings.py`
+  (readiness gate), `domain/relay_import/apply_settings.py` (plan + form-slot limits). No relay-family knowledge, no math.
+* **Payload boundary (superseded by Slice 10 -- see below; the payload is now the complete zone list under stable ids, no `slot`):** `characteristic`, `impedance_basis`, four slots with `enabled`, `direction`, `delay_s`,
+  `characteristic_angle_deg`, `reach_ohm` (Mho) or `reactive_reach_ohm` + `resistive_reach_forward_ohm` (+R) +
+  `resistive_reach_reverse_ohm` (-R). Finite, non-negative; `0.0` valid. No document, raw-setting or provenance data.
+* **Form slots (removed by Slice 10):** Zone 1-3 (forward) and the Reverse Zone (reverse). `form_slot_reasons()` was merged into
+  `relay_interpretation_summary.engine_adaptation()` so review readiness and Apply cannot disagree: an *enabled* zone whose
+  canonical id does not belong to its slot (a fifth zone such as Zone P, or Zone P sitting in an empty fourth slot) or whose direction
+  contradicts the slot is `ZONE_SLOT_UNSUPPORTED` (category Unsupported, blocks). A disabled zone is preserved canonically and not applied.
+* **Equivalence:** the payload is the engine adapter's own `ZoneSettings`, reshaped; the form then feeds the unchanged
+  manual endpoints. Imported and hand-typed identical values give identical engine input and R-X geometry (tested).
+* **Re-Apply / failure / lifecycle:** overwrite, not merge; the R-X view resets to automatic; a failed or malformed Apply changes
+  nothing and the review is re-validated. State lives in the tab only; one-way (later form edits never flow back).
+* **Out of scope:** extra-zone cards, other relay profiles, persistence, export, write-back.
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
@@ -978,3 +1036,143 @@ per-loop tilt; the owner may prefer another label.
   may be called `Validated`. ~~Extraction Review~~ -- Slice 7 (above), read-only,
   awaiting owner UAT. Still open: profiles for every other family; the Apply
   workflow (Slice 9, after Slice 8 UAT).
+
+### Defeated-zone delay rule (DEC-187, 2026-10-12)
+
+A generic relay-import step (`defeated_zone.infer_defeated_zones`) reads a distance zone with an unresolved status and an
+operating delay of exactly 10.0 s as **Disabled · Assumption** (origin `DEFAULT_ASSUMPTION`, never Mapped; timer and source
+provenance preserved). It runs after profile interpretation, is vendor-neutral and distance-zone-only, and is absent from the OEM
+profiles and the engine. This supersedes the earlier statements in this document that the P441 sample's Zone P is unresolved/blocking
+(the profile still reports it unresolved; the generic step then disables it). Explicit status wins; other delays stay unresolved; an
+assumed status can be overridden in review; an enabled Zone P (fifth zone) was reported as unsupported by the four-zone engine until Slice 10 (DEC-189), after which it is validated like any other zone.
+
+## Slice 10 -- Dynamic Distance Zones (DEC-189)
+
+Status: **Implemented / Awaiting owner UAT.** Removes the four-slot ceiling of Slice 9: the reviewed model's complete zone collection
+is applied, displayed and plotted.
+
+```text
+canonical model (any number of zones)
+      -> adapt_to_engine()        one engine ZoneSettings per canonical zone (zones + zone_ids, same length/order)
+      -> readiness                the adapter alone decides; there is no separate form-slot check any more
+      -> build_apply_plan()       ApplyPlan.zones: every zone, in order, {id, display_name, enabled, direction, geometry}
+      -> ApplySettingsOut         schemas/relay_import.py   (no `slot`; at least one zone, no upper bound)
+      -> wwDistanceApplyImportedSettings()   validate whole payload; rebuild the zone collection; render cards/plot/legend
+      -> GET .../distance-protection[-locus] and .../distance-protection-manual   with ?zones=<JSON list>
+```
+
+* **Removed:** `ENGINE_ZONE_COUNT`, `UnsupportedCode.TOO_MANY_ZONES`, `UnsupportedCode.ZONE_SLOT_UNSUPPORTED`, `APPLY_SLOTS`,
+  `form_slot_reasons()`. `EngineAdaptation.zones` is a tuple of any length (no padding with `DEFAULT_ZONE4`).
+* **Identity:** the canonical zone id (`Z1`, `ZP`, `ZX7`, ...) is the zone's identity and travels as `id`; `display_name` is the source's own
+  label. Position carries no meaning (shuffling the model changes only the display order).
+* **Payload:** a zone that is disabled is present with `enabled: false`, no geometry and a delay only if the source states one; its
+  `direction` is `null` when the source does not state it. An enabled zone always states a forward/reverse direction. The payload still
+  carries no document, raw-setting or provenance data.
+* **Browser mapping:** `Z1`..`Z4` fill the four standard cards (so the existing Zone 1-3 and Reverse Zone behaviour is preserved); any other
+  *enabled* id gets an extra card keyed `z_<slug>`; a disabled non-standard zone has no card. Apply rebuilds the collection from the
+  standard defaults plus the payload, so a re-Apply removes zones that are gone and updates the same id in place.
+* **Direction and characteristic:** each zone's own direction decides its geometry (forward, or reverse = rotated 180 degrees); the
+  characteristic is still one per analysis and only Mho / Quadrilateral are drawable. A model with any other characteristic is not
+  applicable -- readiness blocks Apply and the adapter reports `CHARACTERISTIC_UNSUPPORTED` for that zone.
+* **The P441 sample** is unchanged: Zone 4 and Zone P stay Disabled (DEC-187). Overriding Zone P to Enabled blocks only for the missing
+  phase-phase and Left Resistive Reach values, and applies as a fifth card once they are resolved.
+* **Out of scope (unchanged):** a second relay family, a manual "add zone" editor, per-zone characteristics, non-directional zones,
+  persistence, write-back.
+
+## Slice 11 -- Siemens SIPROTEC 7SA511 profile (DEC-196, corrected by DEC-191)
+
+Status: **PAUSED / incomplete pending verified source data (DEC-192, 2026-10-13); code unchanged.** Previously: Implemented / Awaiting owner UAT. The second real profile; the test of the architecture. `siemens-7sa511-v2` (DEC-191 corrected the v1 reading of the real sheet and added a generic capability).
+
+```text
+7SA511 PDF -> generic extractor (column-aware) -> identifier (siemens-7sa511) -> Siemens7SA511Profile
+   -> canonical model (6 zones, explicit R/X) -> defeated-zone rule (unchanged) -> adapter / review / readiness / Apply
+   -> dynamic Distance Protection cards -> R-X plot
+```
+
+* **Source fidelity (DEC-191).** The sheet's operating-timer setting cells are **blank**; `Infinity` is in the range column - not the timer and not a zone state, so every delay is Missing. `1201 DIST.PROT. = ON` is the function, not a zone: all zone statuses are Missing (directions stay mapped). The page-5 requirements (0.15 / 0.45 / 3 / 3 s, Zone 1B "inactive") are **source notes** (`DistanceZone.source_notes`), shown as "Document note / proposed requirement - not a current setting, not applied", never a value or a status. The generic extractor keeps the table's value and range columns apart (a lone cell in the range column with an empty value column is the range).
+* **Canonical model - two quadrilateral representations.** `CharacteristicSpec.geometry_mode`: `POLAR_REACH` (a reach at an angle in `DistanceZone.reach` - P441, manual form) or `EXPLICIT_RX` (`DistanceZone.x_reach_ohm` X limit + `resistive_reach.phase_phase` Right (+R) + `resistive_reach.reverse` Left (-R), no angle). The 7SA511 states R and X and no angle, so its zones are `EXPLICIT_RX`; no Reach Angle exists anywhere in its model. The model, engine, adapter, Apply, review and UI treat the mode generically - there is no Siemens branch in any of them.
+* **Engine / adapter / Apply.** `ZoneSettings.geometry_mode`; an explicit zone is evaluated by `explicit_rx_quadrilateral_zone_operated()` which reuses `quadrilateral_zone_operated()` in the orthogonal frame (one set of maths). Polar and explicit zones coexist; direction (Forward / Reverse = whole characteristic rotated 180 degrees) is independent. `ApplyZone(Out).geometry_mode` and `ZoneSettingsIn.geometry_mode` carry the mode review -> Apply -> analysis state -> R-X plot; an explicit zone is never converted to a polar form and carries `characteristic_angle_deg = null`.
+* **Real sample result:** identified (Siemens / SIPROTEC 7SA5 / 7SA511, high); 6 zones; 34 Mapped, 28 Assumption, 29 Missing, 7 blocking before review. Z1 (X 2.74, +R 1.84, R1E 9.14, Forward), Z2 (4.47, 2.12, 9.96, Forward), Z3 (0.69, 0.46, 2.29, Reverse), Z4 (fault-detection stage, no geometry), Z1B (= Z2 reach "for SOTF"), Z1L (non-directional, engine refuses if enabled). After the user states the zone statuses and delays, takes or types the Left (-R) reach and confirms the assumptions, readiness is **Ready to apply** and the unchanged Apply plots the three zones as angle-less boxes (secondary basis).
+* **Zone model:** `Z1`, `Z2`, `Z3` (REVERSE - identity and direction are independent), `Z4` (fault-detection stage: direction + delay only), `Z1B`, `Z1L` (non-directional). Any number of zones; none squeezed into slots.
+* **Reading rules:** address *and* name must match the table; the printed range supplies the unit (kV -> V is the only conversion); a blank setting cell is Missing; an `Infinity` in the value column is a readable non-number, never a delay; notes about a zone become source notes with their source line; a finite delay is not a zone state.
+* **Known generic gaps (reported, not fixed):** phase-earth loops preserved but not plotted; assumption-note wording for non-DEC-186/187 assumptions. (The rectangular R/X gap of DEC-196 is closed by DEC-191; the DEC-187 "infinite delay" proposal is withdrawn.)
+* **Not started:** 7SA613, 7SL87, any Siemens family abstraction.
+
+## Slice 12 -- Hitachi Energy RED670 profile (DEC-192)
+
+Status: **Implemented / Awaiting owner UAT.** The third real profile (`hitachi-red670-v1`); the 7SA511 is paused pending verified source data and nothing of it was reused or changed.
+
+```text
+RED670 PDF -> generic extractor -> identifier (hitachi-red670) -> HitachiRed670Profile
+   -> canonical model (4 zones, explicit R/X) -> defeated-zone rule (unchanged) -> adapter / review / readiness / Apply
+   -> dynamic Distance Protection cards -> R-X plot
+```
+
+* **Generic code changed: none** (registration line only). The review, readiness, Apply, engine and UI treat the RED670 exactly like the P441 and 7SA511; browser spec `relay_import_red670.spec.js` asserts there is no RED670-specific control or script.
+* **Source shape.** Relion 670 sheet: `name | value | range` rows; function-instance headings (`IMP_PROT/DistanceZones/ZMQPDIS:n`); instance-prefixed parameters (`ZM0n-:X1`); channel-numbered CT/VT rows read only from the channels named as phase currents/voltages; page-end scheme requirements kept as zone source notes.
+* **Activation is explicit per zone** (`Operation` + `OperationDir`) and Mapped -- the user is not asked for zone state. Zone 4 on the real sheet is switched off by its own parameters (the page-16 "Zone 4 Inactive" line is a note that agrees).
+* **Geometry is the native explicit R/X** (`X1`, `RFPP / 2` as +R, no angle); `RFPP` is a phase-phase *loop* value so the canonical +R is half of it (raw value and transformation kept in provenance, DEC-193); phase-phase `RFPP`/`tPP`/`OperationPP` and phase-earth `RFPE` (as printed, never halved)/`tPE`/`OperationPE` stay distinct. Timers are `tPP`/`tPE`, read only while the zone's `Timer` switch is ON; an OFF switch leaves the delay Missing.
+* **Left Resistive Reach (-R) is Unsupported (DEC-193)**: the relay forms that boundary with a directional element (`ZDRDIR`), not a resistive reach -- a capability gap of the canonical model. `ArgDir` / `ArgNegRes` are preserved with their raw values; the existing explicit 0.00 Ω suggestion (DEC-185) is offered as a clearly worded *visualization approximation*, never as the relay's geometry. This is the only blocker on the real sheet.
+* **Mapped from documented family semantics (DEC-193):** the `ZMQPDIS` quadrilateral characteristic and the primary impedance basis (`IBase`/`UBase`). **Assumptions:** the RFPP / 2 loop convention (to be confirmed against the Relion 670 manual), VT/UBase units (kV, V), line sequence-impedance naming.
+* **Real sample:** 4 zones; 44 mapped / 18 assumptions / 4 missing; Not ready until the Left (-R) suggestion is taken and assumptions are confirmed, then Ready to apply and plotted (Zones 1-3 enabled, Zone 4 off).
+* **Open generic gaps (reported):** directional-element boundaries (a first-class representation is still missing); phase-earth plotting (unchanged); "Disabled / Defeated" wording for a plainly switched-off zone.
+* **Not started:** any further relay profile. See DEC-192 for the full mapped / assumption / missing list.
+
+## Parameter Catalog Foundation (DEC-194; RED670 corrected by DEC-193)
+
+Status: **Foundation implemented (DEC-194); made the primary mapping path by DEC-195 (below).** P441 and RED670 are interpreted catalog-first; Awaiting owner UAT.
+
+```text
+PDF -> generic extractor -> identifier -> OEM Parameter Catalog (JSON) -> generic matcher / transformer
+    -> canonical model -> defeated-zone rule (unchanged) -> adapter / review / readiness / Apply -> generic engine
+```
+
+Code: [backend/app/domain/parameter_catalog/](../../backend/app/domain/parameter_catalog/) (pure domain, no FastAPI / storage imports). Data: [backend/app/data/parameter_catalog/](../../backend/app/data/parameter_catalog/) (with its own README: the format, the lifecycle, how to add a relay).
+
+| Module | Holds |
+|---|---|
+| `registry.py` | the canonical registry loader / validator (`CanonicalRegistry`, `CanonicalParameter`): id, label (+ geometry variants), type, unit, group, order, scope, **engine path** (checked against the model's dataclasses), applicability |
+| `catalog_model.py` | the typed OEM catalog (`Catalog`, `Mapping`, `Selector`, `Step`, `Gate`, `Gap`, ...) and the vocabularies (lifecycle, value sources, authority precedence) |
+| `catalog_validation.py` | strict schema + semantic validation (`parse_catalog`); raises `CatalogValidationError` listing every issue |
+| `transforms.py` | the named transformation primitives and their parameter / type rules (no code from JSON) |
+| `units.py` | unit vocabulary, printed-unit aliases, the listed conversions |
+| `interpreter.py` | the generic matcher / transformer (`CatalogInterpreter`): locate, read, validate, transform, write at the engine path, record provenance, preserve the unmapped |
+| `loader.py` | `load_store` (validate every file, reject the invalid loudly), selection by manufacturer / family / model / firmware / lifecycle, the lock (`check_lock`) |
+| `profile.py` | `CatalogProfile`: a `RelayProfile` backed by one *active* catalog, so a catalog-only relay needs no Python |
+
+* **Roles.** Profiles / extractors parse source structure. The catalog defines OEM parameter meaning. The canonical registry defines application terminology. The review (and so the frontend) is labelled from the registry -- "Reactive Reach (X)", "Right Resistive Reach (+R)", "Phase Time Delay" -- with the OEM's names and codes only under **Source**. The engine consumes the canonical model only. Raw OEM terminology stays in provenance.
+* **Provenance** (`Provenance`): raw value, source page / line, `catalog_id`, `catalog_version`, `canonical_id`, `transformation`, `authority`. The review item DTO and the Source disclosure carry them.
+* **Lifecycle:** `draft -> validated -> tested -> active`; only `active` interprets real imports; locked versions are digest-checked (`catalog.lock.json`).
+* **Equivalence (this slice):** P441 subset (CT/VT, basis, delays, resistive reaches, Zone P direction) and RED670 subset (activation, direction, PP/PE, X1, RFPP, RFPE, gated tPP/tPE, characteristic, basis, ZDRDIR gap, bases, CT/VT, zero-sequence, line impedances) are read by the generic matcher and compared field by field with the hand-written profiles on clean and degraded sheets (`test_parameter_catalog_*_equivalence.py`).
+* **Catalog-only relay:** `test_parameter_catalog_new_relay_by_json.py` drives an "Acme X1" PDF through the real upload API using only a JSON catalog.
+* **Not started:** switching P441 / RED670 production to their catalogs; 7SA511 migration (paused); another relay family; an administrator editor, database storage, online distribution; CSV / Excel / XML import.
+
+## Catalog-first mapping (DEC-195)
+
+Status: **Implemented / Awaiting owner UAT.** The parameter catalog is now the *primary* mapping path for every field a catalog maps; the hand-written profile survives only as an **extension** for what the catalog schema cannot yet express.
+
+```text
+PDF -> generic extractor -> identifier -> active Parameter Catalog (JSON) -> generic matcher / transformer
+    -> canonical model  <- (extension profile: only targets the catalog does not map)
+    -> defeated-zone rule -> review table -> Apply -> generic engine
+```
+
+Ownership: the PDF extractor owns source extraction; the **parameter catalog owns OEM -> canonical meaning**; the canonical registry owns common terminology and metadata; the review owns uncertainty and human resolution; the protection engine owns calculations only.
+
+| Module | Holds |
+|---|---|
+| `catalog_first.py` | `overlay`: the catalog value wins per (canonical target, zone), also when unresolved; the extension fills only unmapped targets; nothing is dropped (settings the extension read for a catalog-owned value are kept "Not interpreted") |
+| `profile.py` | `CatalogProfile(catalog, store, extension=None)`; `interpret_with_coverage` |
+| `coverage.py` | `CatalogCoverage`: raw settings in exactly one bucket + canonical values by outcome |
+| `dry_run.py` | `dry_run(catalog, registry, document)` -> recognised / mapped / transformed / unsupported / conflicting / unmapped; pure |
+| `loader.py` | + `validate_catalog_file`, `verify_shipped_catalogs` (start-up gate), two-active-catalogs applicability check |
+| `app/tools/catalog_cli.py` | `validate-catalog`, `dry-run`, `list` |
+
+* **Precedence:** (1) validated active catalog mapping, authoritative even when Missing / Conflict / Unreadable / Unsupported; (2) extension profile, only for targets the catalog does not map; (3) unresolved / unmapped, retained "Not interpreted", never in the engine. No silent fallback to guessed profile logic.
+* **Review taxonomy is unchanged:** Mapped / Assumption / Missing / Conflict / Unsupported / Unreadable. Using a catalog is not automatically Mapped; the mapping's `authority` decides (RED670 VT primary is an Assumption).
+* **RFPP:** raw OEM value (ohm/loop) -> `divide by 2` (catalog primitive) -> canonical ohm/phase; raw value, transformation and catalog id / version are in the Source. RFPE is used as printed. The owner approved `RFPP / 2` (2026-10-13).
+* **Versions:** every catalog-owned value records the catalog id and version; its `profile_version` is `<catalog_id>-v<version>`. The upload response carries `catalog_id`, `catalog_version`, `catalog_coverage` (counts only).
+* **Start-up gate:** the shipped catalog set must validate (no rejected file, lock consistent) or the service refuses to start. A catalog change needs a restart; there is no hot reload.
+* **Adding a relay with JSON only:** write `<manufacturer>/<family>.json` (`draft`) -> `catalog_cli validate-catalog <file>` -> `catalog_cli dry-run <file> <sheet.pdf>` -> add a test -> set `"lifecycle": "active"` -> `write_lock`. No Python, no relay name in code (guard tests). Proven by the synthetic relay in `test_parameter_catalog_new_relay_by_json.py`.
+* **Remaining in Python (extensions):** P441: line-angle reach, residual compensation, Zone 4 / Zone P status from scheme notes, tilts, fault-type reading, line data; RED670: source notes, Active Group, fault-locator fallbacks; 7SA511 entirely (paused, no catalog). The Python that computes the *migrated* fields still runs but its result for catalog-owned targets is discarded (follow-up: delete it after UAT).
+* **Unchanged:** the ZDRDIR left boundary is Unsupported (not faked); no administrator GUI; no new relay.

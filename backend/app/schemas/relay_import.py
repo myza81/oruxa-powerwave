@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
 
 #: Mapped / To confirm / Confirmed / Unresolved / Resolved manually. Separate from
 #: the interpretation ``status``, which a confirmation never rewrites.
-ReviewStatusName = Literal["mapped", "to_confirm", "confirmed", "unresolved", "resolved_manually"]
+#: ``assumed`` is an Assumption made because the source is silent (e.g. an absent
+#: optional zone); it is shown as an Assumption but never awaits confirmation.
+ReviewStatusName = Literal["mapped", "to_confirm", "assumed", "confirmed", "unresolved", "resolved_manually"]
 
 
 #: Slice 8A presentation category: how an item's uncertainty is explained, kept apart
@@ -31,6 +33,13 @@ class ReviewSourceOut(BaseModel):
     page: int | None = None
     line: int | None = None
     source_text: str | None = None
+
+
+class ReviewSuggestionOut(BaseModel):
+    """A neutral value that is offered for a missing item. Never applied automatically."""
+
+    value_text: str
+    rationale: str
 
 
 class ReviewResolutionOut(BaseModel):
@@ -67,9 +76,32 @@ class ReviewItemOut(BaseModel):
     left_unresolved: bool = False
     user_value_text: str | None = None
     resolution: ReviewResolutionOut | None = None
+    suggestion: ReviewSuggestionOut | None = None
+    #: manual | suggestion: who supplied the effective value of a user-resolved item.
+    resolution_origin: Literal["manual", "suggestion"] | None = None
     category: CategoryName = "mapped"
     #: The engine adapter's message when it refuses or cannot use this value.
     engine_reason: str | None = None
+    #: Unresolved, zone-local and in a disabled zone no enabled function needs: visible, not a blocker.
+    not_required: bool = False
+    not_required_reason: str | None = None
+    #: How the raw source value became the shown canonical value (``None`` = used as printed).
+    transformation: str | None = None
+    authority: str | None = None
+    #: Parameter catalog (id, version) and canonical parameter behind the value, if any.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    canonical_id: str | None = None
+
+
+class ReviewSourceNoteOut(BaseModel):
+    """A document statement about a zone that is not one of its settings (a requirement or
+    design note). Shown beside the zone; never a value and never applied."""
+
+    kind_label: str
+    title: str
+    text: str
+    sources: list[ReviewSourceOut] = []
 
 
 class ReviewGroupOut(BaseModel):
@@ -79,7 +111,10 @@ class ReviewGroupOut(BaseModel):
     state_label: str | None = None
     state_status: Literal["mapped", "inferred", "unresolved"] | None = None
     state_review_status: ReviewStatusName | None = None
+    #: Helper text for a zone whose state was assumed.
+    state_note: str | None = None
     items: list[ReviewItemOut] = []
+    source_notes: list[ReviewSourceNoteOut] = []
 
 
 class ReviewRawSettingOut(BaseModel):
@@ -124,11 +159,16 @@ class ReviewStateFieldsOut(BaseModel):
     to_confirm_count: int
     confirmed_count: int
     resolved_manually_count: int
+    #: Resolved by accepting a suggested value (not included in `resolved_manually_count`).
+    suggested_count: int
     #: Unresolved values, blocking or not, including those left unresolved.
     unresolved_count: int
     #: Unresolved values the current engine adapter needs (a subset of the above).
     #: Blocking *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
+    #: Unresolved values of a disabled zone that no enabled function needs; not in the
+    #: Missing / Unreadable counts and never blocking.
+    not_required_count: int
     #: Slice 8A presentation counts (see `CategoryName`).
     assumption_count: int
     missing_count: int
@@ -162,6 +202,11 @@ class ExtractionReviewOut(ReviewStateFieldsOut):
     #: decisions (see ``POST /api/v1/relay-import/review/validate``). Opaque to
     #: the browser: it is held in tab memory and sent back unchanged.
     validation_context: dict | None = None
+    #: DEC-195. The parameter catalog that interpreted the relay and how much of the sheet it accounts for
+    #: (counts only; ``None`` when no catalog describes the relay).
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
 
 
 class ReviewManualResolutionIn(BaseModel):
@@ -178,6 +223,8 @@ class ReviewValidationIn(BaseModel):
     confirmed: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
     manual: list[ReviewManualResolutionIn] = Field(default=[], max_length=2000)
     left_unresolved: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
+    #: Missing items whose suggested value the user explicitly accepted.
+    suggested: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
 
 
 class ReviewItemStateOut(BaseModel):
@@ -191,6 +238,10 @@ class ReviewItemStateOut(BaseModel):
     user_value_text: str | None = None
     category: CategoryName = "mapped"
     engine_reason: str | None = None
+    suggestion: ReviewSuggestionOut | None = None
+    resolution_origin: Literal["manual", "suggestion"] | None = None
+    not_required: bool = False
+    not_required_reason: str | None = None
 
 
 class ReviewStateOut(ReviewStateFieldsOut):
@@ -199,6 +250,48 @@ class ReviewStateOut(ReviewStateFieldsOut):
     readiness. Nothing is stored and nothing is applied to the form."""
 
     items: list[ReviewItemStateOut] = []
+
+
+_Ohm = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class ApplyZoneOut(BaseModel):
+    """One zone of the applied collection. ``None`` = not configured. Only the fields
+    the selected characteristic reads are filled."""
+
+    #: The stable canonical zone id (e.g. ``Z1``, ``ZP``) -- the zone's identity. Never
+    #: its position in the list.
+    id: Annotated[str, Field(min_length=1)]
+    #: The label to show for the zone (the source's own name for it).
+    display_name: Annotated[str, Field(min_length=1)]
+    enabled: bool
+    #: ``None`` only for a *disabled* zone whose direction the source does not state.
+    direction: Literal["forward", "reverse"] | None = None
+    delay_s: _Ohm | None = None
+    #: ``polar``: a reach at an angle. ``explicit_rx``: orthogonal X / +R / -R limits with no
+    #: angle (``characteristic_angle_deg`` is then absent) -- never converted to a polar reach.
+    geometry_mode: Literal["polar", "explicit_rx"] = "polar"
+    #: Reach angle (°) -- distinct from every reach in ohms. Absent for an explicit R/X zone.
+    characteristic_angle_deg: Annotated[float, Field(allow_inf_nan=False)] | None = None
+    #: Mho |Z| reach (Ω).
+    reach_ohm: _Ohm | None = None
+    #: Quadrilateral reactive reach (Ω); the X limit of an explicit R/X zone.
+    reactive_reach_ohm: _Ohm | None = None
+    #: Right Resistive Reach (+R), Ω.
+    resistive_reach_forward_ohm: _Ohm | None = None
+    #: Left Resistive Reach (−R), Ω. ``0.0`` is a valid setting.
+    resistive_reach_reverse_ohm: _Ohm | None = None
+
+
+class ApplySettingsOut(BaseModel):
+    """The controlled apply payload -- exactly what the Distance Protection analysis
+    needs, nothing from the uploaded document or the canonical model. Slice 10: ``zones``
+    is the complete zone collection of the reviewed model (any number, in the model's
+    order, disabled zones included and flagged); it is never truncated to a fixed count."""
+
+    characteristic: Literal["mho", "quadrilateral"]
+    impedance_basis: Literal["primary", "secondary"]
+    zones: Annotated[list[ApplyZoneOut], Field(min_length=1)]
 
 
 class RelayImportUploadOut(BaseModel):
@@ -237,5 +330,10 @@ class RelayImportUploadOut(BaseModel):
     not_interpreted_setting_count: int = 0
     zone_count: int = 0
     interpretation_warnings: list[str] = []
+    #: DEC-195. The catalog behind the interpretation (``None`` for a relay no catalog describes) and its
+    #: coverage of the extracted settings.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
     #: Slice 7. Present only for an ``interpreted`` relay; ``None`` otherwise.
     review: ExtractionReviewOut | None = None

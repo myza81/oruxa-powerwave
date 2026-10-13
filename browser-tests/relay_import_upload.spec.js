@@ -388,7 +388,7 @@ function p441Pdf(notes = ["Zone 4 Defeated"], extraRows = []) {
 // Slice 8/8A: the line is the live review count by category, so confirmed / resolved / blocking
 // parts appear as they become non-zero and zero parts are dropped.
 const P441_SUMMARY =
-  /^\d+ zones found · \d+ settings mapped( · \d+ assumptions?)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ missing)?( · \d+ conflicts?)?( · \d+ unsupported)?( · \d+ unreadable)?( · \d+ blocking settings?)?$/;
+  /^\d+ zones found · \d+ settings mapped( · \d+ assumptions?)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ suggested)?( · \d+ missing)?( · \d+ conflicts?)?( · \d+ unsupported)?( · \d+ unreadable)?( · \d+ blocking settings?)?$/;
 
 test("a P441 is interpreted, summarised, and NOTHING is applied to the form", async ({ page }) => {
   await openDistance(page);
@@ -554,8 +554,7 @@ test("engine compatibility is separate from interpretation quality and explains 
   await expect(engine).toContainText("Interpretation: Complete enough for review");
   await expect(engine).toContainText("Current engine compatibility: Not ready to apply");
   await expect(engine).toContainText("Interpretation succeeded, but the current Distance Protection engine cannot fully apply this scheme yet.");
-  await expect(engine).toContainText(/ZP cannot be represented/);
-  await expect(engine).toContainText(/reverse resistive reach is unresolved/);
+  await expect(engine).toContainText(/Left Resistive Reach \(−R\) is unresolved/);
   // It is a note in the review, never an upload error.
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
 });
@@ -594,16 +593,17 @@ test("mapped, assumption and missing states are all visible", async ({ page }) =
   await expect(item(page, "zone.Z1.reach")).toHaveAttribute("data-status", "inferred");
 });
 
-test("Zone 4 shows disabled / defeated while keeping its numbers; Zone P's state is missing", async ({ page }) => {
+test("Zone 4 shows disabled / defeated while keeping its numbers; Zone P is an inferred Disabled assumption", async ({ page }) => {
   await reviewP441(page);
   await expect(group(page, "zone-Z4").locator("summary")).toHaveText("Zone 4 — Disabled / Defeated");
   await expect(item(page, "zone.Z4.status")).toContainText("Disabled / Defeated");
   await expect(item(page, "zone.Z4.reach")).toContainText("0.36 Ω");
   await expect(item(page, "zone.Z4.timer")).toContainText("3 s");
   await expect(item(page, "zone.Z4.rr.pe")).toContainText("17.19 Ω");
-  await expect(group(page, "zone-ZP").locator("summary")).toHaveText("Zone P — Status missing");
-  await expect(item(page, "zone.ZP.status")).toContainText("Missing");
-  await expect(item(page, "zone.ZP.status")).toHaveAttribute("data-status", "unresolved");
+  // the 10 s delay defeats Zone P: no decoded state, so Disabled is inferred (an Assumption)
+  await expect(group(page, "zone-ZP").locator("summary")).toHaveText("Zone P — Disabled · Assumption");
+  await expect(item(page, "zone.ZP.status")).toContainText("Assumption");
+  await expect(item(page, "zone.ZP.status")).toHaveAttribute("data-status", "inferred");
   await expect(item(page, "zone.ZP.reach")).toContainText("0.001 Ω");
   await expect(item(page, "zone.ZP.timer")).toContainText("10 s");
 });
@@ -622,7 +622,9 @@ test("provenance is collapsed by default and opens in place", async ({ page }) =
   await expect(prov).toContainText("300C · R1G");
   await expect(prov).toContainText(/Page \d+ · line \d+/);
   await expect(prov).toContainText("Raw: 7.02");
-  await expect(prov).toContainText("Profile: micom-p441-v1");
+  // DEC-195: the phase-earth reach is catalog-owned, so the catalog version is its provenance
+  await expect(prov).toContainText("Profile: schneider-micom-p44x-catalog-v1.0.0");
+  await expect(prov).toContainText("Canonical: distance.zone.r_phase_earth");
   await expect(prov).not.toContainText(/[A-Za-z]:\\|\/tmp\//);
   await toggle.click();
   await expect(prov).toBeHidden();
@@ -639,8 +641,9 @@ test("inferred and unresolved items explain themselves in their provenance", asy
   await expect(inferred.locator(".ww-rr-prov")).toContainText("3005 · Line Angle");
   const zp = item(page, "zone.ZP.status");
   await zp.getByRole("button", { name: /Source of/ }).click();
-  await expect(zp.locator(".ww-rr-prov")).toContainText(/Why missing: .*not decoded/);
-  await expect(zp.locator(".ww-rr-prov")).toContainText("Raw: 01010");
+  await expect(zp.locator(".ww-rr-prov")).toContainText("Assumption: No explicit zone status was available.");
+  await expect(zp.locator(".ww-rr-prov")).toContainText("defeated/inactive distance zone");
+  await expect(zp.locator(".ww-rr-prov")).toContainText("Raw: 10");
   const reverse = item(page, "zone.Z1.rr.reverse");
   await reverse.getByRole("button", { name: /Source of/ }).click();
   await expect(reverse.locator(".ww-rr-prov")).toContainText("No value is stated in the document.");

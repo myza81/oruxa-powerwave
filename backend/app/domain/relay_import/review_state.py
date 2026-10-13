@@ -35,7 +35,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
     item_label,
 )
-from app.domain.relay_import.engine_adapter import EngineAdaptation, UnsupportedCode
+from app.domain.relay_import.engine_adapter import EngineAdaptation, UnsupportedCode, zone_active
 from app.domain.relay_import.provenance import (
     MappingStatus,
     Provenance,
@@ -43,6 +43,7 @@ from app.domain.relay_import.provenance import (
     ReviewRecord,
     ReviewStatus,
     Sourced,
+    UnresolvedCause,
 )
 
 
@@ -99,6 +100,7 @@ _RESOLUTION_SPECS: tuple[tuple[re.Pattern[str], ResolutionSpec], ...] = (
     (re.compile(_ZONE + r"status$"), _STATUS),
     (re.compile(_ZONE + r"direction$"), _DIRECTION),
     (re.compile(_ZONE + r"resistive_reach\.(common|phase_phase|phase_earth|reverse)$"), _OHM),
+    (re.compile(_ZONE + r"x_reach_ohm$"), _OHM),
     (re.compile(_ZONE + r"(common|phase|earth)_timer_s$"), _SECONDS),
 )
 
@@ -113,6 +115,63 @@ def resolution_spec(path: str) -> ResolutionSpec | None:
 
 def _number_text(value: float) -> str:
     return str(int(value)) if value == int(value) and abs(value) < 1e15 else f"{value:.10g}"
+
+
+@dataclass(frozen=True)
+class SuggestionSpec:
+    """A neutral, non-authoritative value Oruxa may *offer* for a missing item.
+
+    A suggestion is never applied on its own and is never a source or profile value:
+    the user accepts it explicitly and it is recorded as such. Only the items listed
+    in `_SUGGESTIONS` have one."""
+
+    value: float
+    unit: str
+    #: Text shown as the effective value once accepted.
+    value_text: str
+    #: Why the value is offered (shown beside the offer).
+    rationale: str
+    #: Wording used instead when the item is *Unsupported* rather than Missing: the source does
+    #: state something, but Oruxa cannot represent it, so the value is a visualization
+    #: approximation of the relay's real geometry. ``None`` means no offer for an unsupported item.
+    unsupported_rationale: str | None = None
+
+
+#: The only suggestion: a missing quadrilateral left-hand resistive reach (-R) may
+#: be placed at R = 0 for plotting/analysis. Not the relay's setting, not a
+#: utility standard and not profile-derived.
+_SUGGESTIONS: tuple[tuple[re.Pattern[str], SuggestionSpec], ...] = (
+    (
+        re.compile(_ZONE + r"resistive_reach\.reverse$"),
+        SuggestionSpec(
+            0.0,
+            "ohm",
+            "0.00 Ω",
+            "Places the left-hand boundary at R = 0. A neutral starting point for plotting "
+            "and analysis; it is not the relay's setting.",
+            "Visualization approximation only: places the left-hand boundary at R = 0. The relay's actual "
+            "left / lower boundary is formed by a directional element that Oruxa cannot represent yet, so "
+            "this is not the relay's geometry and not a mapped setting.",
+        ),
+    ),
+)
+
+
+def suggestion_text(spec: SuggestionSpec, cause: UnresolvedCause | None) -> str | None:
+    """The rationale to show for ``spec`` when the item's unresolved ``cause`` is as given, or
+    ``None`` when the suggestion is not offered for that cause (only a value missing from the
+    source, or an unsupported one whose spec words an approximation, may take a suggestion)."""
+    if cause in (None, UnresolvedCause.MISSING):
+        return spec.rationale
+    if cause is UnresolvedCause.UNSUPPORTED:
+        return spec.unsupported_rationale
+    return None
+
+
+def suggestion_spec(path: str) -> SuggestionSpec | None:
+    """The suggestion Oruxa may offer for the value at ``path`` (if it is missing),
+    or ``None`` -- no other item has one."""
+    return next((spec for pattern, spec in _SUGGESTIONS if pattern.match(path)), None)
 
 
 def _manual_value(path: str, spec: ResolutionSpec, raw: object) -> tuple[object, str]:
@@ -151,8 +210,27 @@ class ReviewDecisions:
     manual: dict[str, float | str] = field(default_factory=dict)
     #: Unresolved values the user consciously leaves unresolved.
     left_unresolved: frozenset[str] = frozenset()
+    #: Missing values for which the user accepted Oruxa's suggestion (see
+    #: `suggestion_spec`). Distinct from ``manual``: an explicit entry of the same
+    #: number stays a manual resolution.
+    suggested: frozenset[str] = frozenset()
 
 
+_ZONE_STATUS_PATH = re.compile(r"^zones[[](?P<zone>[^]]+)[]]\.status$")
+
+
+def is_overridable_assumption(path: str, sourced: Sourced) -> bool:
+    """A zone status Oruxa merely assumed (absent optional zone, or a defeated delay) may be
+    replaced by the user's own choice; a mapped or inferred profile value may not."""
+    return (
+        sourced.is_resolved
+        and sourced.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION
+        and sourced.provenance.review is None
+        and _ZONE_STATUS_PATH.match(path) is not None
+    )
+
+
+_ZONE_ID = re.compile(r"^zones[[](?P<zone>[^]]+)[]]")
 _TOKEN = re.compile(r"\[[^\]]*\]|[^.\[\]]+")
 
 
@@ -195,6 +273,33 @@ def _resolved_manually(sourced: Sourced, value: object, text: str) -> Sourced:
             origin=ProvenanceOrigin.SESSION_REVIEW,
             review=ReviewRecord(ReviewStatus.RESOLVED_MANUALLY, p.status, user_value_text=text),
             cause=p.cause,
+            catalog_id=p.catalog_id,
+            catalog_version=p.catalog_version,
+            canonical_id=p.canonical_id,
+        ),
+    )
+
+
+def _suggestion_accepted(sourced: Sourced, spec: SuggestionSpec) -> Sourced:
+    """The suggested value as an effective value. The source interpretation stays
+    unresolved (its cause, sources, raw text and notes are kept); the record says the
+    value is Oruxa's suggestion accepted by the user."""
+    p = sourced.provenance
+    return Sourced(
+        spec.value,
+        Provenance(
+            MappingStatus.RESOLVED_MANUALLY,
+            sources=p.sources,
+            profile_id=p.profile_id,
+            profile_version=p.profile_version,
+            raw_value=p.raw_value,
+            notes=p.notes,
+            origin=ProvenanceOrigin.SESSION_REVIEW,
+            review=ReviewRecord(ReviewStatus.SUGGESTION_ACCEPTED, p.status, user_value_text=spec.value_text),
+            cause=p.cause,
+            catalog_id=p.catalog_id,
+            catalog_version=p.catalog_version,
+            canonical_id=p.canonical_id,
         ),
     )
 
@@ -210,6 +315,11 @@ def apply_review(
     or two contradictory decisions about one item."""
     index = dict(model.iter_sourced())
     overlay: dict[str, Sourced] = {}
+    # A zone that is authoritatively disabled needs none of its own settings, so there is
+    # nothing to suggest for it (the decisions are validated against the model as read).
+    # A zone whose assumed status the user overrides is judged by the override instead.
+    overridden = {m.group("zone") for p in decisions.manual if (m := _ZONE_STATUS_PATH.match(p))}
+    inactive = {z.zone_id for z in model.zones if zone_active(z) is False and z.zone_id not in overridden}
 
     def claim(path: str) -> Sourced:
         if path not in index:
@@ -230,13 +340,29 @@ def apply_review(
         overlay[path] = _left_unresolved(sourced)
     for path in sorted(decisions.manual):
         sourced = claim(path)
-        if sourced.is_resolved:
+        if sourced.is_resolved and not is_overridable_assumption(path, sourced):
             raise ReviewDecisionError("Only an unresolved value can be resolved manually.")
         spec = resolution_spec(path)
         if spec is None:
             raise ReviewDecisionError("This value cannot be entered manually.")
         value, text = _manual_value(path, spec, decisions.manual[path])
         overlay[path] = _resolved_manually(sourced, value, text)
+
+    for path in sorted(decisions.suggested):
+        sourced = claim(path)
+        spec = suggestion_spec(path)
+        if spec is None:
+            raise ReviewDecisionError("No suggestion is available for this value.")
+        if sourced.is_resolved:
+            raise ReviewDecisionError("Only a missing value can take a suggestion.")
+        zone = _ZONE_ID.match(path)
+        if zone and zone["zone"] in inactive:
+            raise ReviewDecisionError("This value is not required while its zone is disabled.")
+        if suggestion_text(spec, sourced.provenance.cause) is None:
+            raise ReviewDecisionError(
+                "A suggestion is offered only for a value missing from the source, or one that is not representable."
+            )
+        overlay[path] = _suggestion_accepted(sourced, spec)
 
     effective = model
     for path, sourced in overlay.items():
@@ -286,11 +412,11 @@ def blocking_paths(adaptation: EngineAdaptation) -> frozenset[str]:
 
 #: Adapter reasons that say the engine cannot represent / use a value it understands.
 _CAPABILITY_CODES = frozenset({
-    UnsupportedCode.TOO_MANY_ZONES,
     UnsupportedCode.BASIS_MISMATCH,
     UnsupportedCode.CHARACTERISTIC_UNSUPPORTED,
     UnsupportedCode.CHARACTERISTIC_MIXED,
     UnsupportedCode.DIRECTION_UNSUPPORTED,
+    UnsupportedCode.GEOMETRY_UNSUPPORTED,
     UnsupportedCode.LOOP_TYPE_UNSUPPORTED,
     UnsupportedCode.REACH_REPRESENTATION,
     UnsupportedCode.TILT_UNSUPPORTED,

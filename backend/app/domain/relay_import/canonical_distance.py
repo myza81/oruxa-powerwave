@@ -20,7 +20,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import StrEnum
 from typing import Iterator
 
-from app.domain.relay_import.provenance import Sourced, unresolved
+from app.domain.relay_import.provenance import Sourced, SourceRef, unresolved
 from app.domain.relay_import.raw_document import SourceFormat
 
 
@@ -55,6 +55,18 @@ class CharacteristicType(StrEnum):
     POLYGON_CUSTOM = "polygon_custom"
     #: The OEM characteristic is not understood (yet). Not drawable.
     UNKNOWN = "unknown"
+
+
+class GeometryMode(StrEnum):
+    """How a zone's reach is stated -- the representation the source used, never converted.
+
+    ``POLAR_REACH``: one reach as a magnitude at an angle (``DistanceZone.reach``), the
+    form a mho or a tilted quadrilateral uses. ``EXPLICIT_RX``: orthogonal R / X limits
+    (``DistanceZone.x_reach_ohm`` and the resistive reaches), with no reach angle at
+    all. Only a quadrilateral can be ``EXPLICIT_RX``."""
+
+    POLAR_REACH = "polar_reach"
+    EXPLICIT_RX = "explicit_rx"
 
 
 class SettingBasis(StrEnum):
@@ -254,10 +266,35 @@ class CharacteristicSpec:
     polygon_vertices_ohm: tuple[tuple[float, float], ...] = ()
     #: Free-text OEM description when the type is UNKNOWN / unresolved.
     oem_description: str | None = None
+    #: How the reach is stated (see `GeometryMode`). The default keeps every existing
+    #: polar zone (and the manual form) exactly as it was.
+    geometry_mode: GeometryMode = GeometryMode.POLAR_REACH
 
     def __post_init__(self) -> None:
         if self.polygon_vertices_ohm and len(self.polygon_vertices_ohm) < 3:
             raise ValueError("a polygon needs at least three vertices")
+
+
+class SourceNoteKind(StrEnum):
+    #: A requirement or design intent written in the document's notes: what the
+    #: relay *should* be set to, not what it is set to.
+    PROPOSED_REQUIREMENT = "proposed_requirement"
+
+
+@dataclass(frozen=True)
+class SourceNote:
+    """A statement in the source document about a zone that is not one of its
+    settings. Kept apart from every setting: it never becomes a value, a status or a
+    default, and is shown as a document note with its source."""
+
+    kind: SourceNoteKind
+    #: The document's own words.
+    text: str
+    #: What the note is about (``timer`` / ``status``) and the figure it states, when the
+    #: profile could read them; ``None`` otherwise.
+    subject: str | None = None
+    value_text: str | None = None
+    sources: tuple[SourceRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -282,6 +319,12 @@ class DistanceZone:
     compensation: ResidualCompensation | None = None
     tilt_deg: Sourced = _unresolved_field()
     unresolved_settings: tuple[UnresolvedSetting, ...] = ()
+    #: Reactive reach (X), ohms (a number): the reach of an ``EXPLICIT_RX`` zone, whose
+    #: ``reach`` stays unresolved because no polar reach exists. Right (+R) and left (-R)
+    #: resistive limits are ``resistive_reach.phase_phase`` / ``.reverse``.
+    x_reach_ohm: Sourced = _unresolved_field()
+    #: Document notes about this zone (proposed requirements...). Never settings.
+    source_notes: tuple[SourceNote, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.zone_id:
@@ -326,6 +369,7 @@ class CanonicalDistanceProtectionModel:
         ids.update(u.setting_id for u in self.unmapped_settings)
         for zone in self.zones:
             ids.update(u.setting_id for u in zone.unresolved_settings)
+            ids.update(ref.setting_id for note in zone.source_notes for ref in note.sources)
         return frozenset(ids)
 
     def items_needing_confirmation(self) -> tuple[str, ...]:

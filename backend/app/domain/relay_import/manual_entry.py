@@ -14,6 +14,8 @@ Manual semantics preserved exactly (they are the engine's own):
   reverse for the fourth slot); the mho reach `|Z|` and the
   quadrilateral reactive reach are both distances along the zone's
   characteristic angle, so each is the polar reach `magnitude ∠ angle`;
+  a quadrilateral zone marked explicit R/X instead carries its X limit
+  with no angle (`GeometryMode.EXPLICIT_RX`) and is never made polar;
 - forward/reverse resistive reach map to phase-phase / reverse resistive;
 - the single configured delay is the phase (phase-phase) timer.
 
@@ -32,6 +34,7 @@ from app.domain.distance_protection import (
     CHARACTERISTIC_QUADRILATERAL,
     DIRECTION_FORWARD,
     DIRECTION_REVERSE,
+    GEOMETRY_EXPLICIT_RX,
     ZoneSettings,
 )
 from app.domain.impedance import IMPEDANCE_BASIS_PRIMARY, IMPEDANCE_BASIS_SECONDARY
@@ -40,6 +43,7 @@ from app.domain.relay_import.canonical_distance import (
     CharacteristicSpec,
     CharacteristicType,
     DistanceZone,
+    GeometryMode,
     ImpedanceValue,
     InstrumentTransformers,
     RelayMetadata,
@@ -86,6 +90,7 @@ def manual_to_canonical(
     canonical_zones = []
     for index, z in enumerate(zones, start=1):
         angle = z.characteristic_angle_deg
+        explicit = z.geometry_mode == GEOMETRY_EXPLICIT_RX and ctype is CharacteristicType.QUADRILATERAL
         if ctype is CharacteristicType.MHO:
             reach_ohm = z.reach_ohm
             resistive = ResistiveReach()
@@ -100,7 +105,7 @@ def manual_to_canonical(
         # unresolved in the model (re-attached unchanged by engine_zones_from_manual).
         reach = (
             manual(ImpedanceValue(magnitude_ohm=reach_ohm, angle_deg=angle), raw_value=reach_ohm)
-            if reach_ohm is not None and angle is not None
+            if reach_ohm is not None and angle is not None and not explicit
             else manual_unresolved()
         )
         canonical_zones.append(
@@ -113,8 +118,11 @@ def manual_to_canonical(
                 phase_earth_enabled=manual(False),
                 # A delay that was never entered stays unresolved (never defaulted).
                 phase_timer_s=_opt(z.delay_s),
-                characteristic=char_spec,
+                characteristic=(
+                    replace(char_spec, geometry_mode=GeometryMode.EXPLICIT_RX) if explicit else char_spec
+                ),
                 reach=reach,
+                x_reach_ohm=_opt(z.reactive_reach_ohm) if explicit else manual_unresolved(),
                 resistive_reach=resistive,
             )
         )
@@ -152,7 +160,7 @@ def engine_zones_from_manual(
             adapted, characteristic_angle_deg=None, reach_ohm=original.reach_ohm,
             reactive_reach_ohm=original.reactive_reach_ohm,
         )
-        if original.characteristic_angle_deg is None and adapted.enabled
+        if original.characteristic_angle_deg is None and adapted.enabled and original.geometry_mode != GEOMETRY_EXPLICIT_RX
         else adapted
         for original, adapted in zip(zones, adaptation.zones)
     )

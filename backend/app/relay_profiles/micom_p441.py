@@ -57,7 +57,15 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
 )
 from app.domain.relay_import.profile import MatchLevel, ProfileMatch
-from app.domain.relay_import.provenance import Sourced, SourceRef, UnresolvedCause, inferred, mapped, unresolved
+from app.domain.relay_import.provenance import (
+    Sourced,
+    SourceRef,
+    UnresolvedCause,
+    assumed_default,
+    inferred,
+    mapped,
+    unresolved,
+)
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 PROFILE_ID = "schneider-micom-p441"
@@ -137,6 +145,7 @@ _MODEL_TOKEN = re.compile(r"(?<![A-Za-z0-9])P441(?![A-Za-z0-9])", re.IGNORECASE)
 _VERSION_MARKER = re.compile(r"\bMinor\s+Ver\.?\s*([A-Za-z0-9.]+)", re.IGNORECASE)
 _Z4_DEFEATED = re.compile(r"\bzone\s*4\s+(?:is\s+)?(?:defeated|disabled)\b|\bto\s+defeat\s+zone\s*4\b", re.IGNORECASE)
 _Z4_ACTIVE = re.compile(r"\bzone\s*4\s+(?:is\s+)?(?:enabled|active|in\s+service)\b", re.IGNORECASE)
+_ZP_MENTION = re.compile(r"\bzone\s*p\b", re.IGNORECASE)
 _Z1_RELEASE = re.compile(r"\brelease\s+z1\s+only\b", re.IGNORECASE)
 _TAP_3007 = re.compile(r"\btap\s*3007\b", re.IGNORECASE)
 _CELLS = "cells:"
@@ -561,7 +570,7 @@ class _Interpreter:
         )
         self.note(
             "Resistive reach is carried as set (phase and earth kept separate); no per-loop or per-phase scaling is applied, "
-            "and no reverse (left-hand) resistive reach is stated by the sheet."
+            "and no Left Resistive Reach (−R) is stated by the sheet."
         )
         ctx.z1_release = tuple(s for s in self.doc.settings if _Z1_RELEASE.search(_entry_text(s)))
         if ctx.z1_release:
@@ -699,6 +708,13 @@ class _Interpreter:
                 status="inferred",
                 why="the Distance Protection function is disabled in the relay configuration",
             )
+        if t.zone_id == "ZP" and self.zone_p_absent(ctx):
+            return assumed_default(
+                ZoneStatus.DISABLED,
+                profile_id=PROFILE_ID,
+                profile_version=PROFILE_VERSION,
+                reason="Zone P not found in uploaded relay settings",
+            )
         if t.zone_id == "Z4":
             kind, evidence = ctx.z4_state
             if kind == "defeated":
@@ -748,6 +764,21 @@ class _Interpreter:
             self.read(_ZONE_STATUS),
             reason=f"{t.name} in-service state is not established (the Zone Status bit string is not decoded)",
         )
+
+    def zone_p_absent(self, ctx: "_Context") -> bool:
+        """True only when Zone P is genuinely absent from a reliably read sheet: no Zone P
+        setting (nor any mention of it) is present while the neighbouring zones' reaches
+        and the Distance Protection function were read cleanly and the extractor raised no
+        warning. Anything less -- observed Zone P rows, an unreadable or partial source --
+        is not evidence of absence, so the state stays unresolved."""
+        zp = next(t for t in _ZONE_TABLE if t.zone_id == "ZP")
+        zp_codes = (zp.reach, zp.r_phase, zp.r_earth, zp.timer, zp.comp_magnitude, zp.comp_angle, _ZP_DIRECTION)
+        if any(self.read(code).found for code in zp_codes):
+            return False
+        if any(_ZP_MENTION.search(_entry_text(s)) for s in self.doc.settings):
+            return False
+        neighbours = (self.read(t.reach) for t in _ZONE_TABLE if t.zone_id != "ZP")
+        return ctx.dist_read.ok and not self.doc.warnings and all(r.ok for r in neighbours)
 
     def direction(self, t: _ZoneTable, reach_read: _Read, ctx: "_Context") -> Sourced:
         if t.zone_id == "ZP":

@@ -4,8 +4,58 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
-Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
+Last updated: **2026-10-13** (RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+
+## Catalog-first relay mapping (2026-10-13, `feature/red670-relay-profile`, DEC-195)
+
+The parameter catalog is now the **primary** mapping path: the P441 and RED670 catalogs are `active`; their hand-written profiles are extensions that only supply targets the catalog does not map (the catalog value wins per target, also when unresolved; no fallback). The user-facing review table and the P441 Apply payload are unchanged (one approved delta: disagreeing IBase rows are a Conflict). `RFPP / 2` was approved by the owner. New: `catalog_cli validate-catalog | dry-run | list`, catalog coverage (upload response + one summary line), the canonical target in the Source disclosure, a start-up validation gate, a two-active-catalogs applicability check, and the JSON-only synthetic relay proof (no `app/` file mentions it). Not done by instruction: admin GUI, a new relay, 7SA511. Open: owner UAT; delete the now-dead Python that computes migrated fields; further primitives for note-derived states; a first-class directional boundary (ZDRDIR); a rebase onto `main` is still owed. **Stopped here.**
+
+## RED670 correction + Parameter Catalog Foundation (2026-10-13, `feature/red670-relay-profile`)
+
+Three commits on the RED670 branch: **(1) `fix: correct RED670 distance semantics` (DEC-193)** -- `RFPP` is a phase-phase loop value, so the canonical +R is `RFPP / 2` (raw value + transformation in provenance; Assumption to confirm against the Relion 670 manual, which is not in the repository); `RFPE` unchanged; `ZMQPDIS` characteristic and the primary basis are Mapped (documented family semantics); the Left Resistive Reach is **Unsupported** (ZDRDIR capability gap), `ArgDir`/`ArgNegRes` preserved, and the 0.00 Ω value is offered only as an explicitly worded *visualization approximation*. RED670 stays reviewable and Not ready until the user accepts it. **(2) `feat: add relay parameter catalog foundation` (DEC-194)** -- `app/domain/parameter_catalog/` + `app/data/parameter_catalog/` (registry, strict validator, transformation primitives, generic matcher, loader with lifecycle and lock, `CatalogProfile`); the review labels come from the canonical registry; provenance carries catalog id / version / canonical id / transformation / authority. **(3) `refactor: map verified relay parameters through catalog`** -- P441 and RED670 subsets as tested catalogs with field-by-field equivalence tests; lock file.
+
+State: no shipped catalog is `active`, so **P441 / 7SA511 / RED670 behaviour is unchanged apart from the corrected RED670 semantics**. A new relay = a JSON catalog set `active` (proved end to end by `test_parameter_catalog_new_relay_by_json.py`). Regression: backend full suite 8,905 tests, 0 failures; browser 1,011 specs, 1,009 passed (all relay specs); 2 unrelated: event-reconstruction-per-unit L-L/L-G (fails identically on the pre-change baseline) and an impedance_analysis playback timing test (cold-start flaky, passes on rerun). Run the browser suite with the isolated frontend copy (:8102) and backend (:8200) while stale servers hold :8000/:8101.
+
+Open: owner UAT of RFPP / 2 and of the catalogs; whether to make the P441 / RED670 catalogs `active` (and retire the migrated Python); further primitives for note-derived states; a first-class directional boundary; 7SA511 (paused); a rebase onto `main` is still owed. **Stopped here; no further relay profile started.**
+
+## Slice 12 -- Hitachi Energy RED670 profile (2026-10-13, `feature/red670-relay-profile`)
+
+Implemented DEC-192: `hitachi-red670-v1` is the third relay profile, branched from the Slice 11 branch (`feature/slice11-siemens-7sa511`, itself stacked on the unmerged Slice 9/10 branches; `main` has moved on with the ROCOF work, so a rebase onto `main` is still owed). **No generic code changed.** Real sheet (`Desktop\red670.pdf`, gated by `RELAY_SAMPLE_PDF_DIR`): identified (Hitachi Energy / Relion 670 / RED670, high); 4 zones from `ZMQPDIS:1-4`; **activation is explicit per zone** (`Operation`/`OperationDir`: Zones 1-3 enabled, Zone 4 off); timers are the actual `tPP`/`tPE` fields (0.15 / 0.45 / 3 s, gated by `Timer tPP/tPE` = ON); geometry is native explicit R/X (`X1`, `RFPP` +R, `RFPE` earth, no angle). **Only blocker: Left Resistive Reach (-R) is Missing** (the 670 forms that boundary with the `ZDRDIR` directional element); the existing explicit 0.00 Ω suggestion + confirming the 18 assumptions reaches Ready to apply and plots Zones 1-3. Open for UAT: the primary-ohm basis, the per-loop reading of `RFPP`/`RFPE` (used as printed, not scaled), the quadrilateral assumption, the 0.00 Ω left-reach approximation. **7SA511 is paused pending verified source data (untouched).** **Stopped at the owner-UAT gate; no further relay profile started.** Test note: stale servers on :8000/:8101 -- the browser suite was run via a frontend copy on :8102 and backend :8200.
+
+## Slice 11 correction -- 7SA511 source fidelity + explicit R/X geometry (2026-10-12, DEC-191)
+
+Owner-directed correction after re-reading the real 7SA511 PDF; `siemens-7sa511-v2`. **(1)** The timer setting cells are blank and `Infinity` is in the range column: the generic PDF extractor now keeps value and range columns apart (`row:blank_value_range`, extractor v2), so every zone delay is Missing and `Infinity` is neither a timer nor a zone state. **(2)** `1201 DIST.PROT. = ON` is the function, not a zone: all zone statuses are Missing (Z1/Z2 Forward, Z3 Reverse stay mapped); Zone 1B is no longer Disabled from its note. **(3)** The page-5 requirements (0.15 / 0.45 / 3 / 3 s, Zone 1B inactive) are `DistanceZone.source_notes`, shown as "Document note / proposed requirement - not a current setting, not applied". **(4)** No angle is invented: new generic `GeometryMode.EXPLICIT_RX` (X, +R, -R; `x_reach_ohm`) beside the polar form, through the model, engine (`explicit_rx_quadrilateral_zone_operated` reuses `quadrilateral_zone_operated` in the orthogonal frame), adapter, Apply (`geometry_mode`), `zones` request, review rows (Reactive Reach (X) / Right (+R) / Left (-R), no Reach Angle) and the Distance Protection cards / plot / Fit Zones. P441 and the manual form are unchanged (polar default). Real sample: 34 Mapped, 28 Assumption, 29 Missing, 7 blocking; Z1 (2.74, 1.84), Z2 (4.47, 2.12), Z3 reverse (0.69, 0.46), R1E/R2E/R3E kept distinct, no Left (-R) invented. **Stopped at the owner-UAT gate; Slice 12 / 7SA613 / 7SL87 not started.** Test note: a stale `:8000` backend/`:8101` server from another session may be present - run the browser specs with `PW_BACKEND_PORT=8200` (and, for specs that read `frontend/config.js`, a frontend copy pointing at it), `PW_PYTHON` = the backend venv, `RELAY_SAMPLE_PDF_DIR=C:/Users/fairizat/Desktop`.
+
+## Slice 11 -- Siemens 7SA511 profile (2026-10-12, `feature/slice11-siemens-7sa511`)
+
+Implemented DEC-196 (renumbered from DEC-190 at integration; DEC-190 is ROCOF): `siemens-7sa511-v1` is the second relay profile. **No generic code changed** (identifier, canonical model, defeated-zone rule, adapter, review, readiness, Apply, schemas, engine, frontend all untouched); only `relay_profiles/siemens_7sa511.py`, one registration line in the catalogue and three outdated P441-test assertions changed. Real sample (`Desktop\7sa511.pdf`, gated by `RELAY_SAMPLE_PDF_DIR`): identified; 6 zones (Z1, Z2, Z3 reverse, Z4 fault-detection stage, Z1B, Z1L); every operating delay is `Infinity` and the sheet's notes contradict it with finite times, so delays and zone states stay Missing for the user (Z1B is Disabled only because the sheet says inactive); impedance basis, characteristic, X-as-90-degree reach, R/RE loop assignment are labelled Assumptions; no Left Resistive Reach is stated. With user decisions the unchanged pipeline reaches Ready to apply and Apply. The generic 10.0 s rule is not bypassed or duplicated. Generic gaps are listed in DEC-190 (rectangular R/X reach, phase-earth plotting, assumption-note wording, proposal to extend DEC-187 to infinite delays). **Branch note:** Slice 10 is still not in `origin/main`; this branch is stacked on `feature/slice10-dynamic-distance-zones` (which is on Slice 9), so rebase once those merge. **Stopped at the owner-UAT gate; 7SA613 / 7SL87 / any Siemens family base class not started.** **Results:** full backend suite 8,445 tests, 0 failures (49 skipped, incl. real-sample tests run with `RELAY_SAMPLE_PDF_DIR`); full browser suite 997/999 -- the 2 failures (`distance_dynamic_zones` 'refused Apply', an `overcurrent` minor-grid toggle) pass in isolation and do not touch relay import (flaky in the 45-minute run). A stale `:8000` backend from an earlier session made 134 unrelated specs fail until it was stopped. Test note: `PW_BACKEND_PORT=8010` and `PW_PYTHON` = the backend venv for the browser specs; `RELAY_SAMPLE_PDF_DIR=C:/Users/fairizat/Desktop` for the real-sample tests.
+
+## Slice 10 -- Dynamic Distance Zones (2026-10-12, `feature/slice10-dynamic-distance-zones`)
+
+Implemented DEC-189: **zone count is no longer a limitation** in Distance Protection analysis. One generic zone collection runs end to end:
+the engine adapter returns one setting per canonical zone (no 4-zone cap, `TOO_MANY_ZONES` / `ZONE_SLOT_UNSUPPORTED` removed); the Apply
+payload is the complete zone list under stable canonical ids with the source's labels (disabled zones included, flagged); the three distance
+endpoints take a generic `zones` JSON parameter (legacy `zoneN_*` kept) and return `zones[]` (legacy `zone1..4` mirrors kept); the engine
+has a generic `evaluate_zones()` loop. In the browser the zone collection is state-driven: the four standard cards stay, each *enabled*
+non-standard zone gets a dynamic card (source label), the plot / legend / Zone state / Fit Zones walk the collection, extra zones rotate
+through six theme colours, reverse-facing zones are dashed, and a re-Apply rebuilds the collection (stale extra zones disappear, the same id
+updates in place). The P441 sample is unchanged (Zone 4 / Zone P Disabled); overriding Zone P to Enabled now needs only its missing
+phase-phase and Left Resistive Reach values. Static frontend tests that pinned the fixed-four internals were rewritten to pin the generic
+mechanisms. **Branch note:** Slice 9 was not yet in `origin/main` when this started (the Slice 9 branch and its predecessors were local
+only), so `feature/slice10-dynamic-distance-zones` is stacked on `feature/slice9-apply-relay-settings`; rebase onto `main` once Slice 9 is
+merged. **Stopped at the owner-UAT gate; Slice 11 not started.** Test note: use `PW_BACKEND_PORT=8010` for the browser specs.
+
+## Slice 9 -- Apply Settings (2026-10-12, `feature/slice9-apply-relay-settings`)
+
+Implemented DEC-188: **Apply Settings** in the relay review (shown only when the backend-derived readiness is
+*Ready to apply*) calls `POST /api/v1/relay-import/review/apply`, which re-derives the reviewed model and returns a
+controlled four-slot payload; the browser writes it into the existing Distance Protection state/inputs and the normal
+handlers redraw the R-X plane. One-way, re-Apply overwrites, failure is atomic, nothing is persisted. Disabled extra
+zones are ignored operationally; an enabled unrepresentable zone (e.g. Zone P) keeps the review Not ready. Also fixed
+the R-X polygon guards so a 0 Ω Left Resistive Reach draws. **Stopped at the owner-UAT gate; Slice 10 not started.**
+See RELAY_IMPORT_ARCHITECTURE.md "Slice 9" and DISTANCE_PROTECTION_ANALYSIS.md "Applying imported relay settings".
+Test note: a stale server on :8000 serves old code; run the browser specs with `PW_BACKEND_PORT=8010`.
 
 ## ROCOF calculated channel (2026-10-12, `feature/calculated-channel-rocof`)
 
@@ -27,6 +77,38 @@ Conflict / Unsupported / Unreadable. The `pypdf` pin in `backend/requirements.tx
 is a real dependency: install requirements before running the backend suite.
 Slices 6-8A remain at their owner UAT gates; the per-slice notes below record
 what each added.
+
+## Distance resistive-reach UX fix (2026-10-12, `feature/distance-resistive-reach-ux`)
+
+Renamed the quadrilateral labels to **Right Resistive Reach (+R)** / **Left Resistive Reach
+(−R)** (UI only; API names unchanged; Reverse Zone untouched) and added the explicit,
+non-authoritative **0.00 Ω** suggestion for a *Missing* Left reach in the relay review
+(DEC-185; RELAY_IMPORT_ARCHITECTURE.md "Review UX fix"). Never auto-applied; recorded as
+`SUGGESTION_ACCEPTED`, distinct from a typed value; category stays Missing; backend validation
+decides readiness. **Slice 9 has not started.** The engine now accepts a left reach of exactly 0 (valid; negative invalid; unset = not configured).
+
+## Pre-Slice-9: 10.0 s defeated distance zone (2026-10-12, DEC-187)
+
+A distance zone with no established status and an operating delay of exactly 10.0 s is now interpreted
+as **Disabled -- Assumption** by a vendor-neutral relay-import step (`domain/relay_import/defeated_zone.py`),
+not by the P441 profile and not by the distance engine. This is why the current P441 sample's Zone P
+(`tZp` = 10 s, status undecoded) is now Disabled/non-blocking (blocking items 4 -> 3), correcting the
+DEC-186 line above that it stays Missing and blocking. Explicit statuses always win; other delays stay
+unresolved; the user can override the assumed status to Enabled, which restores validation and (fifth zone)
+reports the engine limit. Tests: `backend/tests/test_relay_defeated_zone_delay.py`. **Slice 9 has not started.**
+
+## Pre-Slice-9: disabled-zone readiness and Zone P defaulting (2026-10-12, DEC-186)
+
+Settings of an authoritatively disabled zone no longer block readiness: the review marks them
+`not_required` ("Not required while zone is disabled"), keeps their Missing/Conflict/Unreadable
+category, drops them from the open Missing/Unreadable counts and offers/accepts no 0.00 Ω suggestion
+for them. Blocking is still decided from the adapter's canonical dependencies, so a value an enabled
+zone shares or needs still blocks. A Zone P that is genuinely absent from a cleanly read P441 sheet
+defaults to Disabled as an **Assumption** (`ProvenanceOrigin.DEFAULT_ASSUMPTION`, no confirmation,
+non-blocking); a Zone P that is merely undecoded (the current sample) stays Missing and blocking, and
+an unreadable/partial/warned source never establishes absence. Engine and zone geometry untouched.
+Tests: `backend/tests/test_relay_inactive_zone_readiness.py`, `browser-tests/relay_import_inactive_zone.spec.js`.
+**Slice 9 has not started.**
 
 ## Relay import Slice 8A (2026-10-11, `feature/distance-relay-import`)
 

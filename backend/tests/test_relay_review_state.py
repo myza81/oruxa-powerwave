@@ -202,7 +202,7 @@ class TestBlockingAndReadiness:
         review, _ = _state(model)
         messages = {i.message for i in review.blocking_issues}
         assert messages == {r.message for r in engine_adaptation(model).reasons}
-        reverse = next(i for i in review.blocking_issues if "reverse" in i.message)
+        reverse = next(i for i in review.blocking_issues if "Left Resistive Reach" in i.message)
         assert set(reverse.zone_ids) == {"Z1", "Z2", "Z3"} and REVERSE.format("Z1") in reverse.item_ids
 
     def test_resolving_the_blockers_makes_it_ready_after_confirmation(self, model):
@@ -220,26 +220,34 @@ class TestBlockingAndReadiness:
         review, _ = _state(model, confirmed=_pending(model))
         assert review.readiness.status == "not_ready" and review.engine.status == "not_ready"
 
-    def test_zone_p_enabled_is_not_ready_for_the_current_engine(self, model):
+    def test_zone_p_enabled_is_validated_like_any_other_zone(self, model):
+        """Slice 10: an enabled fifth zone is not refused for being a fifth zone. With its own
+        Left Resistive Reach still missing it is blocked for exactly that value."""
         manual = _p441_resolutions() | {ZP_STATUS: "enabled"}
         review, items = _state(model, manual=manual, confirmed=_pending(model))
         assert review.readiness.status == "not_ready" and review.engine.status == "not_ready"
         assert items[ZP_STATUS].review_status == "resolved_manually" and not items[ZP_STATUS].blocking
-        too_many = next(i for i in review.blocking_issues if "ZP" in i.message)
-        assert ZP_STATUS in too_many.item_ids  # the issue outlives the value that caused it
-        assert review.blocking_count == 0  # no unresolved item remains; the engine itself is the limit
+        issue = next(i for i in review.blocking_issues if "ZP" in i.zone_ids)
+        assert "Left Resistive Reach" in issue.message and REVERSE.format("ZP") in issue.item_ids
+        assert issue.zone_ids == ("ZP",)
+
+    def test_zone_p_enabled_with_its_left_reach_resolved_is_ready(self, model):
+        manual = _p441_resolutions() | {ZP_STATUS: "enabled", REVERSE.format("ZP"): 2.5}
+        review, _ = _state(model, manual=manual, confirmed=_pending(model))
+        assert review.engine.status == "ready" and review.blocking_count == 0
 
     def test_zone_p_disabled_lets_the_adapter_ignore_it_and_the_zone_is_kept(self, model):
         effective = apply_review(model, ReviewDecisions(manual=_p441_resolutions()))
         assert effective.zone("ZP") is not None and len(effective.zones) == 5
         adaptation = engine_adaptation(effective)
-        assert adaptation.supported and adaptation.zone_ids == ("Z1", "Z2", "Z3", "Z4")
+        assert adaptation.supported and adaptation.zone_ids == ("Z1", "Z2", "Z3", "Z4", "ZP")
+        assert adaptation.zones[4].enabled is False  # kept, not evaluated
         assert [z.resistive_reach_reverse_ohm for z in adaptation.zones[:3]] == [2.5, 2.5, 2.5]
 
     def test_zone_p_disabled_alone_is_still_blocked_by_the_reverse_reach(self, model):
         review, _ = _state(model, manual={ZP_STATUS: "disabled"})
         assert review.readiness.status == "not_ready"
-        assert [i.message for i in review.blocking_issues] == ["The reverse resistive reach is unresolved."]
+        assert [i.message for i in review.blocking_issues] == ["The Left Resistive Reach (−R) is unresolved."]
 
     def test_the_reverse_reach_alone_is_still_blocked_by_zone_p(self, model):
         manual = {REVERSE.format(z): 2.5 for z in ("Z1", "Z2", "Z3")}
@@ -303,8 +311,8 @@ class TestEndpoint:
     def test_upload_carries_the_context_and_the_initial_state(self, client):
         review = self._context(client)
         assert review["validation_context"]["_t"] == "CanonicalDistanceProtectionModel"
-        assert review["readiness"]["status"] == "not_ready" and review["blocking_count"] == 4
-        assert all(i["review_status"] in ("mapped", "to_confirm", "unresolved") for g in review["groups"] for i in g["items"])
+        assert review["readiness"]["status"] == "not_ready" and review["blocking_count"] == 3
+        assert all(i["review_status"] in ("mapped", "to_confirm", "unresolved", "assumed") for g in review["groups"] for i in g["items"])
         assert any(i["resolution"] for g in review["groups"] for i in g["items"])
 
     def test_validate_returns_the_reviewed_state(self, client):

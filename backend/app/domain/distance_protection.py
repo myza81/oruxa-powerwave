@@ -12,8 +12,8 @@ distance relay would see for a selected phase-phase loop --
 
 -- via full complex phasor subtraction and division (never derived from
 scalar RMS magnitudes alone), then evaluates that loop impedance against
-up to four independently-configured protection zones (three forward, plus
-one explicit reverse-direction zone), each using
+any number of independently-configured protection zones (each with its own
+stable key and its own forward/reverse direction), each using
 either a Mho (circular) or a Quadrilateral (polygonal) characteristic.
 This is calculation + visualization only -- explicitly NOT full relay
 logic. See module footer for the complete non-scope boundary.
@@ -84,6 +84,7 @@ from __future__ import annotations
 
 import cmath
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from app.domain.calculated_channel import ChannelRef
@@ -240,6 +241,10 @@ ZONE_KEY_1 = "zone1"
 ZONE_KEY_2 = "zone2"
 ZONE_KEY_3 = "zone3"
 ZONE_KEY_4 = "zone4"
+#: The keys of the manual form's standard zone slots. They are ordinary zone
+#: keys like any other -- nothing in the engine treats them specially; the
+#: collection an analysis receives may hold any number of zones under any
+#: unique keys (Slice 10).
 ZONE_KEYS = (ZONE_KEY_1, ZONE_KEY_2, ZONE_KEY_3, ZONE_KEY_4)
 
 #: Zone DIRECTION -- the whole characteristic faces forward (the default,
@@ -255,6 +260,20 @@ ZONE_KEYS = (ZONE_KEY_1, ZONE_KEY_2, ZONE_KEY_3, ZONE_KEY_4)
 DIRECTION_FORWARD = "forward"
 DIRECTION_REVERSE = "reverse"
 KNOWN_DIRECTIONS = (DIRECTION_FORWARD, DIRECTION_REVERSE)
+
+#: How a quadrilateral zone's reach is stated. ``polar``: the reactive reach is a distance
+#: along `characteristic_angle_deg` (the pre-existing form -- every zone built without a
+#: mode). ``explicit_rx``: orthogonal limits -- `reactive_reach_ohm` is the X limit,
+#: `resistive_reach_forward_ohm` the +R limit and `resistive_reach_reverse_ohm` the -R
+#: limit -- and the zone has NO angle (`characteristic_angle_deg` stays None). Only a
+#: quadrilateral can be explicit; a mho zone has no meaning for it.
+GEOMETRY_POLAR = "polar"
+GEOMETRY_EXPLICIT_RX = "explicit_rx"
+KNOWN_GEOMETRY_MODES = (GEOMETRY_POLAR, GEOMETRY_EXPLICIT_RX)
+#: The coordinate frame of an explicit R/X zone: R along the horizontal axis, X along the
+#: vertical. It is the frame the polar parameterisation reduces to at 90 degrees, reused so
+#: the quadrilateral maths exists once; it is not a setting of any zone.
+_ORTHOGONAL_FRAME_DEG = 90.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +307,8 @@ class ZoneSettings:
     #: Last field with a default so every pre-existing (positional or
     #: keyword) construction keeps meaning "forward". See DIRECTION_*.
     direction: str = DIRECTION_FORWARD
+    #: See GEOMETRY_*. Defaults to polar so every pre-existing construction is unchanged.
+    geometry_mode: str = GEOMETRY_POLAR
 
 
 def _orient(point: ImpedancePoint, direction: str) -> tuple[float, float] | None:
@@ -389,11 +410,17 @@ def quadrilateral_zone_operated(
     place in the zone's own frame, so the zone's "forward resistive" side
     ends up on the negative-R side. `resistive_reach_reverse_ohm` is still
     only the quadrilateral's own second resistive boundary and is
-    independent of this direction."""
+    independent of this direction.
+
+    `resistive_reach_reverse_ohm` is a magnitude: 0.0 is a valid configured
+    value (the left boundary lies exactly at r' = 0), a positive value
+    extends the zone to negative r', and a negative value is invalid (never
+    operates). Unset (None) is "not configured" and is handled by the caller
+    (`evaluate_zone_state`), never read as 0."""
     if not (
         math.isfinite(reactive_reach_ohm) and reactive_reach_ohm > 0.0
         and math.isfinite(resistive_reach_forward_ohm) and resistive_reach_forward_ohm > 0.0
-        and math.isfinite(resistive_reach_reverse_ohm) and resistive_reach_reverse_ohm > 0.0
+        and math.isfinite(resistive_reach_reverse_ohm) and resistive_reach_reverse_ohm >= 0.0
     ):
         return False
     oriented = _orient(point, direction)
@@ -407,6 +434,24 @@ def quadrilateral_zone_operated(
     return (
         -tol <= x_prime <= reactive_reach_ohm + tol
         and -resistive_reach_reverse_ohm - tol <= r_prime <= resistive_reach_forward_ohm + tol
+    )
+
+
+def explicit_rx_quadrilateral_zone_operated(
+    point: ImpedancePoint, *,
+    x_reach_ohm: float, right_resistive_reach_ohm: float, left_resistive_reach_ohm: float,
+    direction: str = DIRECTION_FORWARD,
+) -> bool:
+    """A quadrilateral stated as orthogonal limits: X <= `x_reach_ohm`, R between
+    -`left_resistive_reach_ohm` and +`right_resistive_reach_ohm`, no angle. Evaluated by
+    `quadrilateral_zone_operated()` in the orthogonal frame -- one set of maths, not a
+    second geometry -- so the boundary tolerance, the 0 Ω left reach and the 180° `reverse`
+    rotation behave exactly as they do for a polar zone."""
+    return quadrilateral_zone_operated(
+        point, reactive_reach_ohm=x_reach_ohm,
+        resistive_reach_forward_ohm=right_resistive_reach_ohm,
+        resistive_reach_reverse_ohm=left_resistive_reach_ohm,
+        characteristic_angle_deg=_ORTHOGONAL_FRAME_DEG, direction=direction,
     )
 
 
@@ -427,7 +472,11 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     if zone.delay_s is None:
         # Enabled but the delay was never configured: incomplete, not ready.
         return ZONE_STATE_NOT_OPERATED
-    if zone.characteristic_angle_deg is None:
+    explicit = zone.geometry_mode == GEOMETRY_EXPLICIT_RX
+    if explicit and characteristic != CHARACTERISTIC_QUADRILATERAL:
+        # Explicit R/X limits describe a quadrilateral only; nothing else is guessed from them.
+        return ZONE_STATE_NOT_OPERATED
+    if zone.characteristic_angle_deg is None and not explicit:
         # Enabled but the angle was never configured: incomplete, not ready.
         return ZONE_STATE_NOT_OPERATED
     if characteristic == CHARACTERISTIC_MHO:
@@ -439,6 +488,13 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     elif characteristic == CHARACTERISTIC_QUADRILATERAL:
         if zone.reactive_reach_ohm is None or zone.resistive_reach_forward_ohm is None or zone.resistive_reach_reverse_ohm is None:
             return ZONE_STATE_NOT_OPERATED
+        if explicit:
+            operated = explicit_rx_quadrilateral_zone_operated(
+                point, x_reach_ohm=zone.reactive_reach_ohm,
+                right_resistive_reach_ohm=zone.resistive_reach_forward_ohm,
+                left_resistive_reach_ohm=zone.resistive_reach_reverse_ohm, direction=zone.direction,
+            )
+            return ZONE_STATE_OPERATED if operated else ZONE_STATE_NOT_OPERATED
         operated = quadrilateral_zone_operated(
             point, reactive_reach_ohm=zone.reactive_reach_ohm,
             resistive_reach_forward_ohm=zone.resistive_reach_forward_ohm,
@@ -466,6 +522,68 @@ class ZoneResult:
     state: str
     delay_s: float | None  # None = delay not configured
     direction: str = DIRECTION_FORWARD
+
+
+@dataclass(frozen=True, slots=True)
+class NamedZone:
+    """A zone's stable key paired with its configuration. The key is the zone's
+    identity (it is echoed back in `ZoneResult.zone_key`); its position in a
+    collection and its direction carry no identity. Any number of zones may be
+    evaluated, under any unique keys."""
+
+    key: str
+    settings: ZoneSettings
+
+
+def evaluate_zones(point: ImpedancePoint | None, *, characteristic: str, zones: Sequence[NamedZone]) -> tuple[ZoneResult, ...]:
+    """Every zone evaluated completely independently, in the order given. The
+    one generic zone loop: nothing here knows how many zones there are."""
+    return tuple(
+        ZoneResult(
+            zone_key=z.key, enabled=z.settings.enabled,
+            state=evaluate_zone_state(point, characteristic=characteristic, zone=z.settings),
+            delay_s=z.settings.delay_s, direction=z.settings.direction,
+        )
+        for z in zones
+    )
+
+
+def collect_zones(
+    zones: Sequence[NamedZone] | None,
+    zone1: ZoneSettings | None = None, zone2: ZoneSettings | None = None, zone3: ZoneSettings | None = None,
+    zone4: ZoneSettings | None = None,
+) -> tuple[NamedZone, ...]:
+    """The one zone collection an analysis evaluates.
+
+    `zones` is the generic form. `zone1`..`zone4` are the manual form's standard
+    slots, kept as a compatibility spelling: they are folded into the same
+    collection (the fourth defaults to its disabled Reverse Zone setting). The two
+    spellings are mutually exclusive, and keys must be unique."""
+    legacy = (zone1, zone2, zone3, zone4)
+    if zones is not None:
+        if any(z is not None for z in legacy):
+            raise TypeError("pass either `zones` or the standard zone1..zone4 slots, not both")
+        collected = tuple(zones)
+    else:
+        if zone1 is None or zone2 is None or zone3 is None:
+            raise TypeError("zone1, zone2 and zone3 are required when `zones` is not given")
+        collected = tuple(
+            NamedZone(key, settings)
+            for key, settings in zip(ZONE_KEYS, (zone1, zone2, zone3, zone4 if zone4 is not None else DEFAULT_ZONE4))
+        )
+    keys = [z.key for z in collected]
+    if len(set(keys)) != len(keys):
+        raise ValueError("zone keys must be unique")
+    return collected
+
+
+def _fill_standard_slots(result) -> None:
+    """Expose the standard zone1..zone4 attributes from the generic `zones` tuple
+    (matched by key, never by position) so older consumers keep working."""
+    by_key = {z.zone_key: z for z in result.zones}
+    for key in ZONE_KEYS:
+        if getattr(result, key) is None:
+            setattr(result, key, by_key.get(key))
 
 
 # ---------------------------------------------------------------------------
@@ -516,9 +634,15 @@ class DistanceAnalysisResult:
     zone2: ZoneResult | None = None
     zone3: ZoneResult | None = None
     zone4: ZoneResult | None = None
+    #: Every evaluated zone, in order, keyed by its stable `zone_key` (Slice 10). The
+    #: standard zone1..zone4 attributes above mirror the entries with those keys.
+    zones: tuple[ZoneResult, ...] = ()
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+
+    def __post_init__(self) -> None:
+        _fill_standard_slots(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,8 +698,13 @@ class ManualDistanceResult:
     zone2: ZoneResult | None = None
     zone3: ZoneResult | None = None
     zone4: ZoneResult | None = None
+    #: Every evaluated zone, in order (see `DistanceAnalysisResult.zones`).
+    zones: tuple[ZoneResult, ...] = ()
     reason_code: str | None = None
     message: str = ""
+
+    def __post_init__(self) -> None:
+        _fill_standard_slots(self)
 
 
 #: The fourth manual slot when a caller (e.g. an older client) supplies no
@@ -597,10 +726,11 @@ def evaluate_manual_distance(
     ct_secondary: float | None,
     impedance_basis: str,
     characteristic: str,
-    zone1: ZoneSettings,
-    zone2: ZoneSettings,
-    zone3: ZoneSettings,
-    zone4: ZoneSettings = DEFAULT_ZONE4,
+    zones: Sequence[NamedZone] | None = None,
+    zone1: ZoneSettings | None = None,
+    zone2: ZoneSettings | None = None,
+    zone3: ZoneSettings | None = None,
+    zone4: ZoneSettings | None = None,
 ) -> ManualDistanceResult:
     """Normalizes both Voltage legs and both Current legs to Secondary-
     canonical (reusing `convert_manual_magnitude_to_secondary()`
@@ -615,18 +745,13 @@ def evaluate_manual_distance(
     partial-role tolerance" precedent for a V/I pair, extended to four
     legs here."""
 
-    def _zone_out(key: str, settings: ZoneSettings, point: ImpedancePoint | None) -> ZoneResult:
-        return ZoneResult(
-            zone_key=key, enabled=settings.enabled, state=evaluate_zone_state(point, characteristic=characteristic, zone=settings),
-            delay_s=settings.delay_s, direction=settings.direction,
-        )
+    evaluated_zones = collect_zones(zones, zone1, zone2, zone3, zone4)
 
     def _missing_with_zones(status: str, reason_code: str | None = None, message: str = "") -> ManualDistanceResult:
         return ManualDistanceResult(
             status=status, loop_label=loop_label, reason_code=reason_code, message=message,
             characteristic=characteristic,
-            zone1=_zone_out(ZONE_KEY_1, zone1, None), zone2=_zone_out(ZONE_KEY_2, zone2, None), zone3=_zone_out(ZONE_KEY_3, zone3, None),
-            zone4=_zone_out(ZONE_KEY_4, zone4, None),
+            zones=evaluate_zones(None, characteristic=characteristic, zones=evaluated_zones),
         )
 
     if not (v1_input.enabled and v1_input.magnitude is not None and v2_input.enabled and v2_input.magnitude is not None
@@ -679,8 +804,7 @@ def evaluate_manual_distance(
         resistance_ohm=point_out.resistance_ohm, reactance_ohm=point_out.reactance_ohm,
         magnitude_ohm=point_out.magnitude_ohm, angle_deg=point_out.angle_deg,
         characteristic=characteristic,
-        zone1=_zone_out(ZONE_KEY_1, zone1, point_out), zone2=_zone_out(ZONE_KEY_2, zone2, point_out), zone3=_zone_out(ZONE_KEY_3, zone3, point_out),
-        zone4=_zone_out(ZONE_KEY_4, zone4, point_out),
+        zones=evaluate_zones(point_out, characteristic=characteristic, zones=evaluated_zones),
         message="Manual loop impedance evaluated.",
     )
 

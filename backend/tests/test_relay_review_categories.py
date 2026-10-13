@@ -65,7 +65,8 @@ class TestP441Classification:
 
     def test_counts_use_the_new_categories(self, model):
         r = _review(model)
-        assert (r.mapped_count, r.assumption_count, r.missing_count) == (32, 36, 10)
+        assert (r.mapped_count, r.assumption_count, r.missing_count) == (32, 36, 9)  # Z4 is defeated: its missing Left reach is not required
+        assert r.not_required_count == 1
         assert (r.conflict_count, r.unsupported_count, r.unreadable_count) == (0, 4, 0)
 
     def test_every_inferred_value_is_an_assumption_with_its_reason(self, model):
@@ -104,11 +105,12 @@ class TestP441Classification:
             assert item.resolution is None and item.item_id is None
             assert "tilt applies per fault-loop type" in item.notes[0]
 
-    def test_zone_p_state_is_missing_and_carries_the_engine_limit(self, model):
+    def test_zone_p_state_is_missing_and_blocking_but_not_an_engine_limit(self, model):
         zp = _items(_review(model))["zone.ZP.status"]
         assert zp.category == "missing" and zp.blocking
-        assert "ZP cannot be represented" in zp.engine_reason
-        assert zp.resolution is not None  # disabling it is a legitimate answer
+        # Slice 10: a fifth zone is not an engine limit; its status is simply not known yet
+        assert zp.engine_reason is None
+        assert zp.resolution is not None  # either answer is legitimate
 
     def test_nothing_in_the_sample_is_a_conflict_or_unreadable(self, model):
         categories = {i.category for i in _items(_review(model)).values()}
@@ -183,16 +185,20 @@ class TestEngineLimits:
     """Engine capability is its own fact: it decides Unsupported / Conflict for a
     value that was read and interpreted perfectly well."""
 
-    def test_zone_p_enabled_becomes_unsupported_and_stays_resolvable(self, model):
+    def test_zone_p_enabled_is_an_ordinary_answer_not_an_engine_limit(self, model):
+        """Slice 10: enabling a fifth zone does not make it Unsupported. It is held to the same rules as any
+        zone, so what keeps the import not ready is the values the sheet does not give it."""
         before = _review(model)
         r = _review(model, manual={ZP_STATUS: "enabled"})
         zp = _items(r)["zone.ZP.status"]
-        assert zp.category == "unsupported" and zp.review_status == "resolved_manually" and zp.value_text == "Enabled"
-        assert "ZP cannot be represented" in zp.engine_reason
+        assert zp.category != "unsupported" and zp.review_status == "resolved_manually" and zp.value_text == "Enabled"
+        assert zp.engine_reason is None
         assert zp.resolution is not None  # the user can change their mind
-        assert (r.unsupported_count, r.missing_count) == (before.unsupported_count + 1, before.missing_count - 1)
-        assert r.readiness.status == "not_ready"  # engine decides; the category is only how it is shown
-        # the other answer clears it again
+        assert (r.unsupported_count, r.missing_count) == (before.unsupported_count, before.missing_count - 1)
+        assert r.readiness.status == "not_ready"  # its own missing values still block
+        assert any("ZP" in issue.zone_ids for issue in r.blocking_issues)
+        assert not any("cannot be represented" in issue.message for issue in r.blocking_issues)
+        # the other answer is just as ordinary
         assert _items(_review(model, manual={ZP_STATUS: "disabled"}))["zone.ZP.status"].category == "missing"
 
     def test_an_unsupported_characteristic_is_unsupported_not_an_assumption(self, model):
@@ -275,7 +281,7 @@ class TestConfirmation:
         item = _by_path(r)[REVERSE.format("Z1")]
         assert item.review_status == "resolved_manually" and item.user_value_text == "2.5 Ω"
         assert item.category == "missing"  # the original classification stays traceable
-        assert r.missing_count == 9 and r.blocking_count == 3
+        assert r.missing_count == 8 and r.blocking_count == 3
 
 
 class TestReadinessIsUnchanged:
@@ -325,10 +331,12 @@ class TestApi:
             json={"validation_context": review["validation_context"], "manual": [{"item_id": ZP_STATUS, "value": "enabled"}]},
         ).json()
         zp = next(i for i in state["items"] if i["item_id"] == ZP_STATUS)
-        assert zp["category"] == "unsupported" and "ZP cannot be represented" in zp["engine_reason"]
+        assert zp["category"] != "unsupported" and not zp.get("engine_reason")  # a fifth zone is not an engine limit
         for key in ("assumption_count", "missing_count", "conflict_count", "unsupported_count", "unreadable_count"):
             assert key in state
-        assert state["unsupported_count"] == review["unsupported_count"] + 1
+        assert state["unsupported_count"] == review["unsupported_count"]
+        # the zone is now required, so the values the sheet does not give it show up as Missing
+        assert state["missing_count"] > review["missing_count"]
 
     def test_validation_without_decisions_matches_the_upload_categories(self, client):
         review = self._upload_review(client)

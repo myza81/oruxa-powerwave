@@ -23,6 +23,7 @@ from enum import StrEnum
 from app.domain.relay_import.canonical_codec import encode_model
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel, SettingBasis
 from app.domain.relay_import.engine_adapter import EngineAdaptation, adapt_to_engine
+from app.domain.relay_import.defeated_zone import infer_defeated_zones
 from app.domain.relay_import.identification import RelayIdentification
 from app.domain.relay_import.profile import RelayProfileRegistry
 from app.domain.relay_import.provenance import MappingStatus
@@ -63,6 +64,10 @@ class RelayInterpretationSummary:
     warnings: tuple[str, ...] = ()
     #: Slice 7. Read-only review view; present only for an ``interpreted`` relay.
     review: ExtractionReview | None = None
+    #: DEC-195. The catalog behind the interpretation and its coverage of the sheet (counts only).
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
 
 
 def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int, int]:
@@ -74,7 +79,10 @@ def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int,
         if status is MappingStatus.MAPPED:
             mapped += 1
         elif status is MappingStatus.INFERRED:
-            inferred += 1
+            # An Oruxa assumption (absent or defeated zone) is not an interpretation the
+            # user is asked to confirm, so it is not counted with them.
+            if sourced.needs_confirmation:
+                inferred += 1
         elif sourced.provenance.sources or sourced.provenance.raw_value is not None or sourced.provenance.notes:
             # Looked for or seen but not resolved. An untouched placeholder
             # (a field this relay simply does not have) is not counted.
@@ -85,7 +93,10 @@ def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int,
 
 
 def engine_adaptation(model: CanonicalDistanceProtectionModel) -> EngineAdaptation:
-    """The existing engine adapter run read-only against the model's own basis."""
+    """The existing engine adapter run read-only against the model's own basis. Review
+    readiness and Apply Settings both read this one result, so they can never disagree
+    (Slice 10: there is no longer a separate form-slot check -- the zones the analysis
+    receives are exactly the zones the adapter accepted, whatever their number)."""
     basis = model.transformers.setting_basis
     engine_basis = basis.value.value if basis.is_resolved and basis.value is not SettingBasis.UNKNOWN else "secondary"
     return adapt_to_engine(model, engine_basis=engine_basis)
@@ -107,8 +118,13 @@ def summarize_interpretation(
     profile = registry.profile_for(identification)
     if profile is None:
         return RelayInterpretationSummary(InterpretationStatus.NOT_SUPPORTED)
+    coverage = None
     try:
-        model = profile.interpret(document)
+        if hasattr(profile, "interpret_with_coverage"):          # a catalog-first profile
+            raw_model, coverage = profile.interpret_with_coverage(document)
+        else:
+            raw_model = profile.interpret(document)
+        model = infer_defeated_zones(raw_model)
         mapped, inferred, unresolved, not_interpreted = count_model(model)
         adaptation = engine_adaptation(model)
         warnings = (*model.interpretation_notes, *_engine_warnings(adaptation))
@@ -126,7 +142,12 @@ def summarize_interpretation(
             review = build_extraction_review(model, document, adaptation, not_interpreted=not_interpreted)
             # Slice 8: the original interpretation travels with the review so the
             # backend can re-validate the user's decisions without keeping state.
-            review = replace(review, validation_context=encode_model(model))
+            review = replace(
+                review, validation_context=encode_model(model),
+                catalog_id=coverage.catalog_id if coverage else None,
+                catalog_version=coverage.catalog_version if coverage else None,
+                catalog_coverage=coverage.as_dict() if coverage else None,
+            )
         except Exception as exc:  # the review is optional: never fail the upload for it
             logger.warning("Extraction review could not be built (%s)", type(exc).__name__)
     return RelayInterpretationSummary(
@@ -140,4 +161,7 @@ def summarize_interpretation(
         zone_count=len(model.zones),
         warnings=warnings,
         review=review,
+        catalog_id=coverage.catalog_id if coverage else None,
+        catalog_version=coverage.catalog_version if coverage else None,
+        catalog_coverage=coverage.as_dict() if coverage else None,
     )
