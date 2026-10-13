@@ -21,7 +21,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
 )
 from app.domain.relay_import.identification import IdentificationStatus
-from app.domain.relay_import.provenance import MappingStatus, UnresolvedCause
+from app.domain.relay_import.provenance import MappingAuthority, MappingStatus, UnresolvedCause
 from app.relay_profiles import hitachi_red670 as red670
 from app.relay_profiles import identification_catalogue as catalogue
 from tests.relay_red670_fixtures import default_sections, make_doc, zone_rows
@@ -124,10 +124,17 @@ class TestTransformers:
         cited = {s.parameter_name for s in t.current_base_a.provenance.sources}
         assert "ZM04-:IBase" not in cited and cited == {"ZM01-:IBase", "ZM02-:IBase", "ZM03-:IBase"}
 
-    def test_basis_is_primary_and_an_assumption_never_taken_from_magnitude(self, model):
+    def test_basis_is_primary_from_documented_semantics_never_from_magnitude(self, model):
         basis = model.transformers.setting_basis
-        assert basis.value is SettingBasis.PRIMARY and status(basis) is MappingStatus.INFERRED
-        assert "primary ohms" in " ".join(basis.provenance.notes)
+        assert basis.value is SettingBasis.PRIMARY and status(basis) is MappingStatus.MAPPED
+        assert basis.provenance.authority is MappingAuthority.DOCUMENTED_DERIVATION
+        assert "primary ohms" in " ".join(basis.provenance.notes) and "not inferred from the magnitude" in " ".join(basis.provenance.notes)
+        # the evidence is the IBase / UBase rows of the zones in service
+        assert {s.parameter_name for s in basis.provenance.sources} >= {"ZM01-:IBase", "ZM01-:UBase"}
+
+    def test_without_ibase_ubase_the_basis_is_not_claimed(self):
+        drop = tuple(f"ZM0{n}-:{k}" for n in (1, 2, 3) for k in ("IBase", "UBase"))
+        assert not interpret(make_doc(drop=drop)).transformers.setting_basis.is_resolved
 
     def test_phase_channels_that_disagree_are_a_conflict_not_a_pick(self):
         doc = make_doc(overrides={"CTprim2": ("1500", "1-99999")})
@@ -192,13 +199,14 @@ class TestZonesAndActivation:
         ]
         assert all(status(zone(m, z).direction) is MappingStatus.MAPPED for z in ("Z1", "Z2", "Z3", "Z4"))
 
-    def test_the_characteristic_is_a_labelled_assumption_citing_the_function_block(self, model):
+    def test_the_characteristic_follows_from_the_function_block_identity(self, model):
         c = zone(model, "Z1").characteristic
-        assert c.type.value is CharacteristicType.QUADRILATERAL and status(c.type) is MappingStatus.INFERRED
+        assert c.type.value is CharacteristicType.QUADRILATERAL and status(c.type) is MappingStatus.MAPPED
+        assert c.type.provenance.authority is MappingAuthority.DOCUMENTED_DERIVATION
         assert c.geometry_mode is GeometryMode.EXPLICIT_RX
         cited = {s.parameter_name for s in c.type.provenance.sources}
         assert "IMP_PROT/DistanceZones/ZMQPDIS:1" in cited and "ZM01-:X1" in cited
-        assert "does not name the characteristic" in " ".join(c.type.provenance.notes)
+        assert "quadrilateral characteristic" in " ".join(c.type.provenance.notes)
 
     def test_without_the_function_block_heading_the_characteristic_is_not_claimed(self):
         sections = [(label.replace("ZMQPDIS:1", "SOMETHING:1"), rows) for label, rows in default_sections()]
@@ -222,18 +230,40 @@ class TestGeometryLoopsTimersCompensation:
 
     def test_phase_phase_and_phase_earth_resistive_reaches_stay_distinct(self, model):
         rr = zone(model, "Z2").resistive_reach
-        assert (rr.phase_phase.value, rr.phase_earth.value) == (10.0, 20.0)
+        # RFPP = 10 ohm/loop -> phase-phase boundary 5 ohm; RFPE = 20 is its own quantity, used as printed
+        assert (rr.phase_phase.value, rr.phase_earth.value) == (5.0, 20.0)
         assert rr.phase_phase.provenance.sources[0].parameter_name == "ZM02-:RFPP"
         assert rr.phase_earth.provenance.sources[0].parameter_name == "ZM02-:RFPE"
         assert not rr.common.is_resolved
-        # the per-loop reading is an assumption with its reason; the value is not scaled
-        assert status(rr.phase_phase) is MappingStatus.INFERRED and "ohm/loop" in " ".join(rr.phase_phase.provenance.notes)
+        pp, pe = rr.phase_phase.provenance, rr.phase_earth.provenance
+        # the OEM value survives beside the canonical one, with the transformation stated
+        assert pp.raw_value == "10" and "÷ 2" in pp.transformation and "10 ohm/loop" in pp.transformation
+        assert pp.authority is MappingAuthority.DOCUMENTED_DERIVATION
+        assert status(rr.phase_phase) is MappingStatus.INFERRED and "ohm/loop" in " ".join(pp.notes)
+        assert "cannot verify" in " ".join(pp.notes)  # the factor is flagged for the owner to confirm
+        assert pe.raw_value == "20" and pe.transformation is None and status(rr.phase_earth) is MappingStatus.MAPPED
 
-    def test_the_left_resistive_reach_is_missing_and_cites_the_directional_element(self, model):
+    def test_rfpp_is_halved_for_any_value_and_rfpe_never_is(self):
+        m = interpret(make_doc(overrides={"ZM01-:RFPP": ("7.79", "0.1-3000"), "ZM01-:RFPE": ("15.5", "0.1-9000")}))
+        rr = zone(m, "Z1").resistive_reach
+        assert rr.phase_phase.value == pytest.approx(3.895) and rr.phase_phase.provenance.raw_value == "7.79"
+        assert rr.phase_earth.value == 15.5
+
+    def test_the_left_resistive_reach_is_a_capability_gap_not_a_missing_number(self, model):
         rev = zone(model, "Z1").resistive_reach.reverse
-        assert not rev.is_resolved and rev.provenance.cause is UnresolvedCause.MISSING
+        assert not rev.is_resolved and rev.provenance.cause is UnresolvedCause.UNSUPPORTED
         assert {s.parameter_name for s in rev.provenance.sources} == {"ZD01-:ArgDir", "ZD01-:ArgNegRes"}
-        assert "directional element" in " ".join(rev.provenance.notes)
+        notes = " ".join(rev.provenance.notes)
+        assert "directional element" in notes and "capability gap" in notes and "ArgDir = 15" in notes and "ArgNegRes = 115" in notes
+        assert "visualization approximation" in notes
+
+    def test_the_directional_boundary_angles_are_preserved_with_their_raw_values(self, model):
+        params = {p.name: p for p in zone(model, "Z1").characteristic.parameters}
+        arg_dir, arg_neg = params["directional_arg_dir"], params["directional_arg_neg_res"]
+        assert (arg_dir.value.value, arg_neg.value.value) == (15.0, 115.0) and arg_dir.unit == arg_neg.unit == "deg"
+        assert status(arg_dir.value) is MappingStatus.MAPPED and arg_dir.value.provenance.raw_value == "15"
+        assert arg_dir.value.provenance.sources[0].parameter_name == "ZD01-:ArgDir"
+        assert arg_neg.value.provenance.sources[0].parameter_name == "ZD01-:ArgNegRes"
 
     def test_loop_enables_are_per_zone_and_per_loop(self):
         m = interpret(make_doc(sections=sections_with({2: dict(pe="OFF")})))
@@ -380,7 +410,7 @@ class TestRealSample:
         assert (t.ct_primary_a.value, t.ct_secondary_a.value) == (1500.0, 1.0)
         assert (t.vt_primary_v.value, t.vt_secondary_v.value) == (275000.0, 110.0)
         assert (t.current_base_a.value, t.voltage_base_v.value) == (1500.0, 275000.0)
-        assert t.setting_basis.value is SettingBasis.PRIMARY and status(t.setting_basis) is MappingStatus.INFERRED
+        assert t.setting_basis.value is SettingBasis.PRIMARY and status(t.setting_basis) is MappingStatus.MAPPED
 
     def test_four_zones_with_the_sheets_own_activation(self, rmodel):
         assert [z.zone_id for z in rmodel.zones] == ["Z1", "Z2", "Z3", "Z4"]
@@ -389,9 +419,9 @@ class TestRealSample:
 
     def test_reaches_resistive_reaches_and_timers(self, rmodel):
         expected = {  # X1, RFPP, RFPE, tPP, tPE
-            "Z1": (7.87, 7.79, 20.2, 0.15, 0.15),
-            "Z2": (13.63, 11.67, 25.84, 0.45, 0.45),
-            "Z3": (24.97, 21.91, 33.83, 3.0, 3.0),
+            "Z1": (7.87, 7.79 / 2, 20.2, 0.15, 0.15),  # RFPP is a loop value: the phase-phase boundary is half
+            "Z2": (13.63, 11.67 / 2, 25.84, 0.45, 0.45),
+            "Z3": (24.97, 21.91 / 2, 33.83, 3.0, 3.0),
         }
         for zid, (x, pp, pe, tpp, tpe) in expected.items():
             z = zone(rmodel, zid)

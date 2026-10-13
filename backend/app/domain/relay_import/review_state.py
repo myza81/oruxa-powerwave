@@ -131,6 +131,10 @@ class SuggestionSpec:
     value_text: str
     #: Why the value is offered (shown beside the offer).
     rationale: str
+    #: Wording used instead when the item is *Unsupported* rather than Missing: the source does
+    #: state something, but Oruxa cannot represent it, so the value is a visualization
+    #: approximation of the relay's real geometry. ``None`` means no offer for an unsupported item.
+    unsupported_rationale: str | None = None
 
 
 #: The only suggestion: a missing quadrilateral left-hand resistive reach (-R) may
@@ -145,9 +149,23 @@ _SUGGESTIONS: tuple[tuple[re.Pattern[str], SuggestionSpec], ...] = (
             "0.00 Ω",
             "Places the left-hand boundary at R = 0. A neutral starting point for plotting "
             "and analysis; it is not the relay's setting.",
+            "Visualization approximation only: places the left-hand boundary at R = 0. The relay's actual "
+            "left / lower boundary is formed by a directional element that Oruxa cannot represent yet, so "
+            "this is not the relay's geometry and not a mapped setting.",
         ),
     ),
 )
+
+
+def suggestion_text(spec: SuggestionSpec, cause: UnresolvedCause | None) -> str | None:
+    """The rationale to show for ``spec`` when the item's unresolved ``cause`` is as given, or
+    ``None`` when the suggestion is not offered for that cause (only a value missing from the
+    source, or an unsupported one whose spec words an approximation, may take a suggestion)."""
+    if cause in (None, UnresolvedCause.MISSING):
+        return spec.rationale
+    if cause is UnresolvedCause.UNSUPPORTED:
+        return spec.unsupported_rationale
+    return None
 
 
 def suggestion_spec(path: str) -> SuggestionSpec | None:
@@ -255,6 +273,9 @@ def _resolved_manually(sourced: Sourced, value: object, text: str) -> Sourced:
             origin=ProvenanceOrigin.SESSION_REVIEW,
             review=ReviewRecord(ReviewStatus.RESOLVED_MANUALLY, p.status, user_value_text=text),
             cause=p.cause,
+            catalog_id=p.catalog_id,
+            catalog_version=p.catalog_version,
+            canonical_id=p.canonical_id,
         ),
     )
 
@@ -276,6 +297,9 @@ def _suggestion_accepted(sourced: Sourced, spec: SuggestionSpec) -> Sourced:
             origin=ProvenanceOrigin.SESSION_REVIEW,
             review=ReviewRecord(ReviewStatus.SUGGESTION_ACCEPTED, p.status, user_value_text=spec.value_text),
             cause=p.cause,
+            catalog_id=p.catalog_id,
+            catalog_version=p.catalog_version,
+            canonical_id=p.canonical_id,
         ),
     )
 
@@ -334,8 +358,10 @@ def apply_review(
         zone = _ZONE_ID.match(path)
         if zone and zone["zone"] in inactive:
             raise ReviewDecisionError("This value is not required while its zone is disabled.")
-        if sourced.provenance.cause not in (None, UnresolvedCause.MISSING):
-            raise ReviewDecisionError("A suggestion is offered only for a value missing from the source.")
+        if suggestion_text(spec, sourced.provenance.cause) is None:
+            raise ReviewDecisionError(
+                "A suggestion is offered only for a value missing from the source, or one that is not representable."
+            )
         overlay[path] = _suggestion_accepted(sourced, spec)
 
     effective = model

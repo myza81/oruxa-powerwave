@@ -62,6 +62,7 @@ from app.domain.relay_import.review_state import (
     engine_limits,
     resolution_spec,
     suggestion_spec,
+    suggestion_text,
 )
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
@@ -155,6 +156,17 @@ class ReviewItem:
     not_required: bool = False
     #: Why it is not required (shown beside the category); ``None`` unless ``not_required``.
     not_required_reason: str | None = None
+    #: The transformation that turned the raw source value into the shown canonical value
+    #: (e.g. ``RFPP ÷ 2``), or ``None`` when the value is used exactly as printed. The raw
+    #: value stays in ``raw_value`` / ``sources``.
+    transformation: str | None = None
+    #: What kind of evidence supports the value (a `MappingAuthority` value), when stated.
+    authority: str | None = None
+    #: The parameter catalog (id, version) and canonical parameter that produced the value;
+    #: ``None`` for a value a hand-written profile mapped.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    canonical_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -417,12 +429,16 @@ def _resolution_origin(sourced: Sourced) -> str | None:
 
 
 def _suggestion(path: str | None, sourced: Sourced, category: str) -> ReviewSuggestion | None:
-    """Offered only for a value that is still Missing (never a conflict, an unreadable
-    cell or an engine limit) and only where Oruxa has a specific neutral suggestion."""
-    if path is None or sourced.is_resolved or category != "missing":
+    """Offered only for a value that is still Missing, or that the source states but Oruxa cannot
+    represent (an *Unsupported* value, worded as a visualization approximation), and only where
+    Oruxa has a specific neutral suggestion. Never for a conflict, an unreadable cell or an engine limit."""
+    if path is None or sourced.is_resolved or category not in ("missing", "unsupported"):
         return None
     spec = suggestion_spec(path)
-    return ReviewSuggestion(spec.value_text, spec.rationale) if spec else None
+    if spec is None:
+        return None
+    rationale = suggestion_text(spec, sourced.provenance.cause)
+    return ReviewSuggestion(spec.value_text, rationale) if rationale else None
 
 
 def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
@@ -531,6 +547,11 @@ class _Builder:
             resolution_origin=_resolution_origin(sourced),
             category=category,
             engine_reason=limit[1] if limit else None,
+            transformation=prov.transformation,
+            authority=prov.authority.value if prov.authority else None,
+            catalog_id=prov.catalog_id,
+            catalog_version=prov.catalog_version,
+            canonical_id=prov.canonical_id,
         )
 
     def impedance(

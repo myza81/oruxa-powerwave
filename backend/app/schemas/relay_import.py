@@ -85,6 +85,13 @@ class ReviewItemOut(BaseModel):
     #: Unresolved, zone-local and in a disabled zone no enabled function needs: visible, not a blocker.
     not_required: bool = False
     not_required_reason: str | None = None
+    #: How the raw source value became the shown canonical value (``None`` = used as printed).
+    transformation: str | None = None
+    authority: str | None = None
+    #: Parameter catalog (id, version) and canonical parameter behind the value, if any.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    canonical_id: str | None = None
 
 
 class ReviewSourceNoteOut(BaseModel):

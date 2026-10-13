@@ -17,10 +17,16 @@ shared between families is decided when more profiles exist to compare.
 
 Rules this profile never breaks
 -------------------------------
-* A value is ``mapped`` only when the sheet states it. Whatever rests on Relion 670 family
-  knowledge the sheet does not repeat (the primary-ohm basis, the quadrilateral characteristic,
-  the kV / V units of the VT rows, the per-loop reading of ``RFPP`` / ``RFPE``) is ``inferred``
-  and carries a note.
+* A value is ``mapped`` when the sheet states it, or when it follows deterministically from
+  documented Relion 670 semantics the sheet identifies (the ``ZMQPDIS`` function block is the
+  quadrilateral distance zone; ``IBase`` / ``UBase`` make the impedance settings primary ohms):
+  those carry authority ``documented_derivation``. Whatever still rests on knowledge the sheet
+  does not repeat or the repository cannot verify (the kV / V units of the VT rows, the per-loop
+  halving of ``RFPP``) is ``inferred`` and carries a note.
+* The raw ``RFPP`` / ``RFPE`` values are never lost. ``RFPP`` is a phase-phase *loop* resistance
+  (ohm/loop): the phase-phase resistive boundary of the R-X plane is ``RFPP / 2``. The canonical
+  value is the halved one; the printed value stays in the provenance with the transformation
+  stated. ``RFPE`` is a phase-earth quantity of its own and is used as printed (no halving).
 * A zone's state is read from the zone's own activation parameters (``Operation`` and
   ``OperationDir``). An operating delay is read only from ``tPP`` / ``tPE`` and only while its
   ``Timer`` switch is ON. The page-16 scheme requirements (timers, "Zone 4 Inactive") are kept as
@@ -29,8 +35,10 @@ Rules this profile never breaks
   resistive reaches (``RFPP`` / ``RFPE``), no reach angle -- explicit R/X limits. No angle is
   derived or invented. The sheet states **no left (-R) resistive reach**: the left / lower
   boundary of a Relion 670 zone comes from the separate directional element (``ZDRDIR``,
-  ``ArgDir`` / ``ArgNegRes``), which the generic model cannot represent. The Left Resistive
-  Reach is therefore Missing, with that element's rows cited beside it.
+  ``ArgDir`` / ``ArgNegRes``), which the generic model cannot represent. That is a genuine
+  capability gap: the Left Resistive Reach is therefore **Unsupported** (not a number, not 0 ohm),
+  and ``ArgDir`` / ``ArgNegRes`` are preserved as zone characteristic parameters with their raw
+  values. Any left boundary drawn for the zone is a user-accepted visualization approximation.
 * Phase-phase and phase-earth values are kept distinct (``RFPP`` vs ``RFPE``, ``tPP`` vs
   ``tPE``, ``OperationPP`` vs ``OperationPE``). Nothing is collapsed.
 * Every raw setting ends up either cited by a value or carried as an ``UnresolvedSetting``.
@@ -63,6 +71,7 @@ from app.domain.relay_import.canonical_distance import (
 )
 from app.domain.relay_import.profile import MatchLevel, ProfileMatch
 from app.domain.relay_import.provenance import (
+    MappingAuthority,
     Sourced,
     SourceRef,
     UnresolvedCause,
@@ -119,6 +128,7 @@ _UNIT_TEXT = {
     "ohm": {"ohm", "ohms", "ω"},
     "s": {"s", "sec"},
     "A": {"a", "amp"},
+    "deg": {"deg", "°"},
     "kV": {"kv"},
     "V": {"v"},
     "": {""},
@@ -138,6 +148,10 @@ _ON_OFF = {"on": True, "off": False}
 
 def _norm(text: str | None) -> str:
     return re.sub(r"\s+", " ", (text or "").replace("’", "'")).strip().casefold()
+
+
+def _num(value: float) -> str:
+    return str(int(value)) if value == int(value) else f"{value:.10g}"
 
 
 def _clean(text: str | float | None) -> str:
@@ -218,13 +232,16 @@ class _Interpreter:
             self.notes.append(text)
 
     def good(self, value, reads: tuple[_Read, ...], *, status: str = "mapped", why: str = "",
-             extra: tuple[RawSetting, ...] = (), raw: str | None = None) -> Sourced:
+             extra: tuple[RawSetting, ...] = (), raw: str | None = None, transformation: str | None = None,
+             authority: MappingAuthority | None = None) -> Sourced:
         entries = tuple(e for r in reads for e in r.entries) + extra
         notes = tuple(n for r in reads for n in r.notes) + ((why,) if why else ())
         raw = (raw if raw is not None else " | ".join(r.raw for r in reads if r.raw is not None)) or None
         build = mapped if status == "mapped" else inferred
+        if authority is None:
+            authority = MappingAuthority.CONFIGURED_SETTING if status == "mapped" else MappingAuthority.ASSUMPTION
         return build(value, sources=self.refs(*entries), profile_id=PROFILE_ID, profile_version=PROFILE_VERSION,
-                     raw_value=raw, notes=notes)
+                     raw_value=raw, notes=notes, transformation=transformation, authority=authority)
 
     def bad(self, *reads: _Read, reason: str | None = None, cause: UnresolvedCause | None = None,
             extra: tuple[RawSetting, ...] = ()) -> Sourced:
@@ -434,11 +451,11 @@ class _Interpreter:
         evidence = tuple(e for z in zones for e in self.entries_of(f"ZM{int(z.zone_id[1:]):02d}-:IBase") + self.entries_of(f"ZM{int(z.zone_id[1:]):02d}-:UBase")
                          if z in live)
         basis = self.good(
-            SettingBasis.PRIMARY, (), status="inferred", extra=evidence, raw="",
+            SettingBasis.PRIMARY, (), status="mapped", extra=evidence, raw="", authority=MappingAuthority.DOCUMENTED_DERIVATION,
             why=(
-                "The sheet gives its impedance settings (X1, R1, RFPP ...) without a unit or a basis. Every distance function "
-                "carries IBase / UBase, and Relion 670 impedance settings are primary ohms referred to those bases (family "
-                "convention); the printed ranges do not depend on the CT / VT ratio. Confirm this before relying on it."
+                "Documented Relion 670 semantics: impedance settings (X1, R1, RFPP ...) are primary ohms, with IBase / UBase "
+                "as the bases the function refers them to. This zone group carries IBase / UBase, so the settings are primary; "
+                "the basis is not inferred from the magnitude of any value."
             ),
         ) if evidence else unresolved(
             notes=("no zone in service carries IBase / UBase to establish the basis",), cause=UnresolvedCause.MISSING
@@ -516,13 +533,13 @@ class _Interpreter:
         label = self.entries_of(f"IMP_PROT/DistanceZones/ZMQPDIS:{n}")
         evidence = tuple(label) + tuple(e for r in (x_r, rfpp_r, rfpe_r) if r.ok for e in r.entries)
         ctype = (
-            inferred(
+            mapped(
                 CharacteristicType.QUADRILATERAL, sources=self.refs(*evidence), profile_id=PROFILE_ID,
-                profile_version=PROFILE_VERSION,
+                profile_version=PROFILE_VERSION, authority=MappingAuthority.DOCUMENTED_DERIVATION,
                 notes=(
-                    "The sheet names the function block (ZMQPDIS) and gives a reactive reach with separate phase-phase / "
-                    "phase-earth resistive reaches, but does not name the characteristic. ZMQPDIS is the Relion 670 "
-                    "quadrilateral distance function (family knowledge).",
+                    "The sheet names the zone's function block, ZMQPDIS. ZMQPDIS is the Relion 670 'distance protection "
+                    "zone, quadrilateral characteristic' function, so the characteristic follows from the function identity "
+                    "(documented family semantics), corroborated by the reactive reach with separate resistive reaches.",
                 ),
             )
             if label and x is not None
@@ -532,21 +549,49 @@ class _Interpreter:
             )
         )
 
-        loop_why = (
-            "Relion 670 resistive reaches RFPP / RFPE are fault-resistance reaches per loop (ohm/loop), which the sheet "
-            "does not state. The value is used as printed; if the relay's boundary in the measured impedance plane is a "
-            "fraction of it (per-phase), the drawn boundary is wider than the relay's. Confirm."
+        pp_why = (
+            "Relion 670 RFPP is the phase-phase fault-resistance reach per loop (ohm/loop). The phase-phase resistive "
+            "boundary of the R-X plane is half of the loop value, so the canonical reach is RFPP / 2 and the printed "
+            "RFPP is kept as the raw value. This convention is Relion 670 family documentation that the setting sheet does "
+            "not restate and the repository cannot verify: confirm it against the Relion 670 manual."
         )
-        left_note = (
-            "The sheet states no left (-R) resistive reach. In a Relion 670 zone the left / lower boundary is formed by the "
-            "directional element (ZDRDIR: ArgDir, ArgNegRes), which is not a resistive reach and which the current model cannot "
-            "represent. Its rows are cited here. A drawn left boundary would be an approximation chosen by the user."
+        pe_why = (
+            "Relion 670 RFPE is the phase-earth fault-resistance reach (ohm/loop) and is a quantity of its own: it is used "
+            "as printed, with no phase-phase halving. The phase-phase engine does not draw it."
         )
+        directional_reads = [self.number(nm, unit="deg") for nm in _DIRECTIONAL_ELEMENT]
         directional = tuple(e for nm in _DIRECTIONAL_ELEMENT for e in self.entries_of(nm))
+        arg_text = ", ".join(f"{r.name.split(':')[-1]} = {r.raw}" for r, _ in directional_reads if r.raw is not None)
+        left_note = (
+            "The sheet states no left (-R) resistive reach, and none exists as a number: in a Relion 670 zone the left / "
+            "lower boundary is formed by the directional element (ZDRDIR: ArgDir, ArgNegRes"
+            + (f"; this sheet: {arg_text}" if arg_text else "")
+            + "). That geometry is a capability gap: the current model cannot represent it, so it is neither drawn nor "
+            "approximated as the relay's boundary. ArgDir / ArgNegRes are preserved with this zone's characteristic parameters. "
+            "A left boundary chosen for plotting is only a visualization approximation accepted by the user."
+        )
         resistive = ResistiveReach(
-            phase_phase=self.good(rfpp, (rfpp_r,), status="inferred", why=loop_why) if rfpp is not None else self.bad(rfpp_r),
-            phase_earth=self.good(rfpe, (rfpe_r,), status="inferred", why=loop_why) if rfpe is not None else self.bad(rfpe_r),
-            reverse=unresolved(sources=self.refs(*directional), notes=(left_note,), cause=UnresolvedCause.MISSING),
+            phase_phase=self.good(
+                rfpp / 2.0, (rfpp_r,), status="inferred", why=pp_why, authority=MappingAuthority.DOCUMENTED_DERIVATION,
+                transformation=f"RFPP {_num(rfpp)} ohm/loop ÷ 2 = {_num(rfpp / 2.0)} ohm (phase-phase boundary)",
+            ) if rfpp is not None else self.bad(rfpp_r),
+            phase_earth=self.good(rfpe, (rfpe_r,), why=pe_why) if rfpe is not None else self.bad(rfpe_r),
+            reverse=unresolved(
+                " | ".join(r.raw for r, _ in directional_reads if r.raw is not None) or None,
+                sources=self.refs(*directional), notes=(left_note,), cause=UnresolvedCause.UNSUPPORTED,
+            ),
+        )
+        directional_extras = tuple(
+            ExtraQuantity(
+                key,
+                self.good(
+                    v, (r,),
+                    why="ZDRDIR directional-element angle, preserved as stated. It forms the zone's left / lower boundary, "
+                        "which the current model cannot draw; it is not plotted.",
+                ) if v is not None else self.bad(r),
+                unit="deg",
+            )
+            for key, (r, v) in zip(("directional_arg_dir", "directional_arg_neg_res"), directional_reads)
         )
         r1_extra = ExtraQuantity(
             "positive_sequence_resistance_r1",
@@ -563,7 +608,9 @@ class _Interpreter:
             zone_id=zone_id, name=name, status=status, direction=dir_s,
             phase_phase_enabled=pp_s, phase_earth_enabled=pe_s,
             phase_timer_s=self.timer(n, "PP"), earth_timer_s=self.timer(n, "PE"),
-            characteristic=CharacteristicSpec(type=ctype, parameters=(r1_extra,), geometry_mode=GeometryMode.EXPLICIT_RX),
+            characteristic=CharacteristicSpec(
+                type=ctype, parameters=(r1_extra, *directional_extras), geometry_mode=GeometryMode.EXPLICIT_RX
+            ),
             reach=unresolved(notes=("this zone states explicit R / X limits; it has no polar reach and no reach angle",),
                              cause=UnresolvedCause.MISSING),
             x_reach_ohm=self.good(x, (x_r,)) if x is not None else self.bad(x_r),
@@ -647,8 +694,9 @@ class _Interpreter:
             )
             self.note(
                 "Zone reach is stated as a reactive reach (X1) with phase-phase / phase-earth resistive reaches (RFPP / RFPE) "
-                "and no reach angle, so none is modelled. No Left Resistive Reach (-R) is stated: the left boundary comes from "
-                "the directional element (ZDRDIR), which the model cannot represent."
+                "and no reach angle, so none is modelled. The phase-phase resistive reach is RFPP / 2 (RFPP is a loop value); "
+                "RFPE is used as printed. No Left Resistive Reach (-R) is stated: the left boundary comes from the directional "
+                "element (ZDRDIR: ArgDir, ArgNegRes), a capability gap the model cannot represent; those angles are preserved."
             )
             self.note(
                 "Earth-fault compensation is derived by the relay from the zone's R1 / X1 and R0 / X0; no compensation "

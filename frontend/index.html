@@ -55356,6 +55356,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Helper text for the quadrilateral's left-hand resistive boundary (relay review).
         const WW_RR_LEFT_REACH_HELP = "Left-hand resistive boundary of the quadrilateral. This does not mean the zone is reverse-directional.";
         const WW_RR_NOT_IN_FILE = "This value was not found in the relay setting file.";
+        // An unsupported item is stated by the document but cannot be represented by Oruxa; any value offered
+        // for it is a visualization approximation, never the relay's own geometry.
+        const WW_RR_NOT_REPRESENTABLE = "The relay's own definition of this value cannot be represented yet.";
         function wwRrIsLeftReach(item) {
             return !!item.item_id && /\.resistive_reach\.reverse$/.test(item.item_id);
         }
@@ -55371,6 +55374,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         };
         const WW_RR_READINESS_LABELS = {
             not_ready: "Not ready", ready_after_confirmation: "Ready after confirmation", ready: "Ready to apply",
+        };
+        // Why a value was accepted (the mapping authority), most to least direct.
+        const WW_RR_AUTHORITY_LABELS = {
+            configured_setting: "the document's own setting", engineering_instruction: "a structured engineering instruction",
+            documented_derivation: "derived from documented relay semantics", assumption: "an assumption", manual: "entered by you",
         };
         const WW_RR_PAGE_SIZE = 25;
         let wwRelayReviewUid = 0;
@@ -55393,6 +55401,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the category, which the Source disclosure still states.
         function wwRrChipKind(view) {
             const category = Object.prototype.hasOwnProperty.call(WW_RR_CATEGORY_LABELS, view.category) ? view.category : "missing";
+            // An accepted visualization approximation of an unsupported source value reads as such; an engine limit never does.
+            if (category === "unsupported" && !view.engine_reason && view.review_status === "resolved_manually" && view.resolution_origin === "suggestion") {
+                return { label: WW_RR_SUGGESTED_LABEL, style: "resolved", category };
+            }
             if (category === "unsupported" || category === "conflict") return { label: WW_RR_CATEGORY_LABELS[category], style: WW_RR_CATEGORY_STYLE[category], category };
             if (view.review_status === "resolved_manually" && view.resolution_origin === "suggestion") {
                 return { label: WW_RR_SUGGESTED_LABEL, style: "resolved", category };
@@ -55496,7 +55508,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (src.source_text) block.appendChild(wwRrEl("code", "", src.source_text));
                 box.appendChild(block);
             });
+            // How the printed source value became the shown value, and which evidence supports it.
+            if (item.transformation) labelled("Transformation", item.transformation);
+            if (item.authority) labelled("Basis", WW_RR_AUTHORITY_LABELS[item.authority] || item.authority);
             if (item.profile_version) box.appendChild(wwRrEl("div", "ww-rr-dim", "Profile: " + item.profile_version));
+            if (item.catalog_id) box.appendChild(wwRrEl("div", "ww-rr-dim", "Catalog: " + item.catalog_id + (item.catalog_version ? " " + item.catalog_version : "")));
             return box;
         }
         function wwRrAction(label, ariaLabel, handler) {
@@ -55623,7 +55639,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const offered = view.review_status === "unresolved" && !!view.suggestion;
                 offer.hidden = !offered;
                 if (offered) {
-                    offer.textContent = WW_RR_NOT_IN_FILE + " Suggested for visualization: " + view.suggestion.value_text + ". " + view.suggestion.rationale;
+                    offer.textContent = (view.category === "unsupported" ? WW_RR_NOT_REPRESENTABLE : WW_RR_NOT_IN_FILE)
+                        + " Suggested for visualization: " + view.suggestion.value_text + ". " + view.suggestion.rationale;
                 }
                 if (view.blocking) chips.appendChild(wwRrEl("span", "ww-rr-blocking", "Blocking"));
                 if (view.left_unresolved) chips.appendChild(wwRrEl("span", "ww-rr-dim", "Left unresolved"));
@@ -55637,19 +55654,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     } else if (view.review_status === "confirmed") {
                         actions.appendChild(wwRrAction("Undo confirmation", "Undo confirmation of " + item.full_label,
                             () => wwRrCommit((d) => { d.confirmed.delete(id); })));
-                    } else if (item.resolution) {
+                    } else if (item.resolution || view.suggestion || view.resolution_origin === "suggestion") {
                         const resolving = view.review_status === "resolved_manually";
                         if (!resolving && view.suggestion) {
                             actions.appendChild(wwRrAction("Use " + view.suggestion.value_text,
                                 "Use " + view.suggestion.value_text + " for " + item.full_label,
                                 () => wwRrCommit((d) => { d.left.delete(id); d.manual.delete(id); d.suggested.add(id); })));
                         }
-                        actions.appendChild(wwRrAction(resolving ? "Edit" : (view.suggestion ? "Enter manually" : "Resolve"),
-                            (resolving ? "Edit the value of " : "Resolve ") + item.full_label, () => {
-                                if (!editor) { editor = wwRrEditor(item); li.insertBefore(editor, prov); }
-                                editor.hidden = !editor.hidden;
-                                if (!editor.hidden) { editor.wwPrefill(); editor.querySelector(".ww-rr-resolve-input").focus(); }
-                            }));
+                        // A value that is only ever an offered approximation (unsupported source) has no typed entry.
+                        if (item.resolution) {
+                            actions.appendChild(wwRrAction(resolving ? "Edit" : (view.suggestion ? "Enter manually" : "Resolve"),
+                                (resolving ? "Edit the value of " : "Resolve ") + item.full_label, () => {
+                                    if (!editor) { editor = wwRrEditor(item); li.insertBefore(editor, prov); }
+                                    editor.hidden = !editor.hidden;
+                                    if (!editor.hidden) { editor.wwPrefill(); editor.querySelector(".ww-rr-resolve-input").focus(); }
+                                }));
+                        }
                         if (resolving) {
                             actions.appendChild(wwRrAction("Clear", "Clear the value of " + item.full_label,
                                 () => wwRrCommit((d) => { d.manual.delete(id); d.suggested.delete(id); })));

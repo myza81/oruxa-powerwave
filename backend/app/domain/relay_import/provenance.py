@@ -48,6 +48,24 @@ class MappingStatus(StrEnum):
     RESOLVED_MANUALLY = "resolved_manually"
 
 
+class MappingAuthority(StrEnum):
+    """What kind of evidence put a value into the canonical model, strongest first (the
+    precedence the parameter catalog applies when more than one source could supply it).
+    Separate from `MappingStatus`: it says *why* a value was accepted, not how far to trust it."""
+
+    #: The value is a setting the document states for this very parameter.
+    CONFIGURED_SETTING = "configured_setting"
+    #: A structured engineering instruction in the document (not a free-text note).
+    ENGINEERING_INSTRUCTION = "engineering_instruction"
+    #: Derived deterministically from documented relay semantics (a function-block identity,
+    #: a documented unit/loop convention) applied to configured settings.
+    DOCUMENTED_DERIVATION = "documented_derivation"
+    #: An assumption or inference the document does not support on its own.
+    ASSUMPTION = "assumption"
+    #: Supplied by the user during review.
+    MANUAL = "manual"
+
+
 class UnresolvedCause(StrEnum):
     """Why an unresolved value is unresolved: the *source / extraction* side of the
     uncertainty, kept apart from the interpretation status (`MappingStatus`) and
@@ -120,6 +138,16 @@ class Provenance:
     #: Why an unresolved value is unresolved; ``None`` for a resolved value and for
     #: an unresolved one nobody classified (presented as missing).
     cause: UnresolvedCause | None = None
+    #: The transformation that turned the raw source value into the canonical value, in words
+    #: (``None`` when the value is used exactly as printed). The raw value stays in ``raw_value``.
+    transformation: str | None = None
+    #: What kind of evidence supports the value (see `MappingAuthority`); ``None`` when not stated.
+    authority: MappingAuthority | None = None
+    #: The parameter catalog that produced the value (``None`` for a hand-written profile).
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    #: The canonical parameter id the value was written to (``None`` for a hand-written profile).
+    canonical_id: str | None = None
 
     def __post_init__(self) -> None:
         needs_source = self.origin is ProvenanceOrigin.RELAY_DOCUMENT
@@ -159,21 +187,40 @@ def unresolved(
     sources: tuple[SourceRef, ...] = (),
     notes: tuple[str, ...] = (),
     cause: UnresolvedCause | None = None,
+    catalog_id: str | None = None,
+    catalog_version: str | None = None,
+    canonical_id: str | None = None,
 ) -> Sourced:
     """A value the importer saw (or expected) but could not interpret."""
     return Sourced(
-        None, Provenance(MappingStatus.UNRESOLVED, sources=sources, raw_value=raw_value, notes=notes, cause=cause)
+        None,
+        Provenance(
+            MappingStatus.UNRESOLVED, sources=sources, raw_value=raw_value, notes=notes, cause=cause,
+            catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id,
+        ),
     )
 
 
 def mapped(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile_version: str,
-           raw_value: str | float | None = None, notes: tuple[str, ...] = ()) -> Sourced[T]:
-    return Sourced(value, Provenance(MappingStatus.MAPPED, sources, profile_id, profile_version, raw_value, notes))
+           raw_value: str | float | None = None, notes: tuple[str, ...] = (),
+           transformation: str | None = None, authority: MappingAuthority | None = None,
+           catalog_id: str | None = None, catalog_version: str | None = None,
+           canonical_id: str | None = None) -> Sourced[T]:
+    return Sourced(value, Provenance(
+        MappingStatus.MAPPED, sources, profile_id, profile_version, raw_value, notes, transformation=transformation,
+        authority=authority, catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id,
+    ))
 
 
 def inferred(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile_version: str,
-             raw_value: str | float | None = None, notes: tuple[str, ...] = ()) -> Sourced[T]:
-    return Sourced(value, Provenance(MappingStatus.INFERRED, sources, profile_id, profile_version, raw_value, notes))
+             raw_value: str | float | None = None, notes: tuple[str, ...] = (),
+             transformation: str | None = None, authority: MappingAuthority | None = None,
+             catalog_id: str | None = None, catalog_version: str | None = None,
+             canonical_id: str | None = None) -> Sourced[T]:
+    return Sourced(value, Provenance(
+        MappingStatus.INFERRED, sources, profile_id, profile_version, raw_value, notes, transformation=transformation,
+        authority=authority, catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id,
+    ))
 
 
 def assumed_default(value: T, *, profile_id: str, profile_version: str, reason: str) -> Sourced[T]:

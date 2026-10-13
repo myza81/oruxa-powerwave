@@ -1,6 +1,7 @@
 // Slice 12 -- Hitachi Energy RED670 through the unchanged generic relay-import UI.
 //
-// Upload -> identify -> generic Extraction Review -> take the 0.00 ohm Left (-R) suggestion and confirm the
+// Upload -> identify -> generic Extraction Review -> accept the 0.00 ohm Left (-R) visualization approximation (the
+// relay's real left boundary is the ZDRDIR directional element, an Unsupported capability gap) and confirm the
 // assumptions -> Ready to apply -> Apply Settings -> dynamic Distance Protection cards -> R-X plot -> Fit Zones.
 // The sheet is a synthetic RED670-shaped PDF (the owner's real sheet is never committed). Nothing here uses a
 // relay-specific selector: the review, the Apply button and the cards are the P441 / 7SA511 ones. The RED670 states
@@ -38,8 +39,8 @@ async function openReview(page, pdfOptions) {
   await expect(panel(page)).toBeVisible();
 }
 
-// What an engineer does: take the explicit 0.00 ohm visualization suggestion for each missing Left (-R) reach, then
-// confirm the assumptions. No zone state and no delay is asked for: the RED670 states them itself.
+// What an engineer does: accept the explicit 0.00 ohm visualization approximation for each unsupported Left (-R) reach,
+// then confirm the assumptions. No zone state and no delay is asked for: the RED670 states them itself.
 async function makeReady(page, zones = ["1", "2", "3"]) {
   for (const n of zones) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
   await page.locator("#wwRelayReviewConfirmAll").click();
@@ -73,7 +74,8 @@ test("a RED670 sheet is identified and opens the generic review with every zone"
   await expect(row(page, "zone.Z2.rr.pp")).toContainText("Right Resistive Reach (+R)");
   await expect(row(page, "zone.Z2.rr.pe")).toContainText("Earth Resistive Reach");
   await expect(row(page, "zone.Z2.characteristic")).toContainText("Explicit R/X");
-  await expect(row(page, "zone.Z2.characteristic")).toContainText("Assumption");
+  // ZMQPDIS is the quadrilateral function: authoritative family semantics, so Mapped (not an Assumption)
+  await expect(row(page, "zone.Z2.characteristic")).toContainText("Mapped");
   // timers are the actual tPP / tPE settings
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("0.45");
   await expect(row(page, "zone.Z2.timer.pe")).toContainText("0.45");
@@ -82,18 +84,50 @@ test("a RED670 sheet is identified and opens the generic review with every zone"
   await expect(row(page, "zone.Z2.x_reach")).toContainText("ZM02-:X1");
 });
 
-test("the Left (−R) reach is Missing, names its native source, and is the only thing blocking", async ({ page }) => {
+test("the Left (−R) reach is Unsupported (a capability gap), keeps its ZDRDIR source, and is the only thing blocking", async ({ page }) => {
   await openReview(page);
   const left = row(page, "zone.Z1.rr.reverse");
-  await expect(left).toContainText("Missing");
+  await expect(left).toContainText("Unsupported");
+  await expect(left).not.toContainText("Missing");
+  // the offered value is worded as a visualization approximation, never as the relay's geometry
   await expect(left).toContainText("Suggested for visualization: 0.00 Ω");
+  await expect(left).toContainText("cannot be represented yet");
+  await expect(left).toContainText("not the relay's geometry");
   await left.getByRole("button", { name: /Source/ }).first().click();
   await expect(left).toContainText("ZD01-:ArgDir");
-  await expect(left).toContainText("directional element");
+  await expect(left).toContainText("ZD01-:ArgNegRes");
+  await expect(left).toContainText("capability gap");
   await expect(page.locator("#wwRelayReviewBlockingSettings")).toHaveText("3 blocking"); // Zones 1-3 only
   await expect(panel(page)).toContainText("The Left Resistive Reach (−R) is unresolved.");
-  // the disabled Zone 4's missing Left reach does not block
-  await expect(row(page, "zone.Z4.rr.reverse")).toContainText("Missing");
+  // the ZDRDIR angles are preserved with the zone, as stated
+  await expect(row(page, "zone.Z1.char.directional_arg_dir")).toContainText("15");
+  await expect(row(page, "zone.Z1.char.directional_arg_neg_res")).toContainText("115");
+  // the disabled Zone 4's left reach does not block
+  await expect(row(page, "zone.Z4.rr.reverse")).toContainText("Unsupported");
+});
+
+test("accepting the approximation reads as a suggestion, not as the relay's setting", async ({ page }) => {
+  await openReview(page);
+  const left = row(page, "zone.Z1.rr.reverse");
+  await button(page, `Use 0.00 Ω for Zone 1 ${LEFT}`).click();
+  await expect(left).toContainText("Resolved · Suggested");
+  await left.getByRole("button", { name: /Source/ }).first().click();
+  await expect(left).toContainText("accepted by you, for this import session only");
+  await expect(left).toContainText("the relay's setting, and not mapped from a profile");
+  await button(page, `Clear the value of Zone 1 ${LEFT}`).click();
+  await expect(left).toContainText("Unsupported");
+});
+
+test("the loop-value RFPP is shown halved with the OEM value and transformation kept in Source", async ({ page }) => {
+  await openReview(page);
+  const pp = row(page, "zone.Z2.rr.pp");
+  await expect(pp).toContainText("5 Ω"); // RFPP = 10 ohm/loop
+  await pp.getByRole("button", { name: /Source/ }).first().click();
+  await expect(pp).toContainText("ZM02-:RFPP");
+  await expect(pp).toContainText("Raw: 10");
+  await expect(pp).toContainText("Transformation: RFPP 10 ohm/loop ÷ 2 = 5 ohm");
+  const pe = row(page, "zone.Z2.rr.pe");
+  await expect(pe).toContainText("20 Ω"); // RFPE is its own quantity, used as printed
 });
 
 test("the scheme-requirement lines are document notes beside the zone, not settings", async ({ page }) => {
@@ -115,13 +149,13 @@ test("Apply Settings fills the dynamic cards and draws only the enabled zones on
   await expect(page.locator("#wwDistanceCharacteristicSelect")).toHaveValue("quadrilateral");
 
   await expect(input(page, 1, "ReactiveReach")).toHaveValue("6");
-  await expect(input(page, 1, "ResistiveForward")).toHaveValue("7"); // RFPP (phase-phase), not RFPE = 15
+  await expect(input(page, 1, "ResistiveForward")).toHaveValue("3.5"); // RFPP 7 ohm/loop / 2 (phase-phase), not RFPE = 15
   await expect(input(page, 1, "ResistiveReverse")).toHaveValue("0");
   await expect(page.locator("#wwDistanceZone1AngleField")).toBeHidden(); // explicit R/X: no reach angle exists
   await expect(page.locator("#wwDistanceZone1Geometry")).toHaveText("Geometry: Explicit R/X");
   await expect(input(page, 1, "Delay")).toHaveValue("0.15");
   await expect(input(page, 2, "ReactiveReach")).toHaveValue("11");
-  await expect(input(page, 2, "ResistiveForward")).toHaveValue("10");
+  await expect(input(page, 2, "ResistiveForward")).toHaveValue("5");
   await expect(input(page, 2, "Delay")).toHaveValue("0.45");
   await expect(input(page, 3, "ReactiveReach")).toHaveValue("20");
   await expect(input(page, 3, "Delay")).toHaveValue("3");

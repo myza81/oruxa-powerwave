@@ -46,6 +46,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
 )
 from app.domain.relay_import.provenance import (
+    MappingAuthority,
     MappingStatus,
     Provenance,
     ProvenanceOrigin,
@@ -69,7 +70,7 @@ _ENUMS = {
     cls.__name__: cls
     for cls in (
         ZoneStatus, ZoneDirection, CharacteristicType, SettingBasis, CompensationKind, SourceFormat,
-        MappingStatus, ProvenanceOrigin, ReviewStatus, UnresolvedCause, GeometryMode, SourceNoteKind,
+        MappingStatus, ProvenanceOrigin, ReviewStatus, UnresolvedCause, GeometryMode, SourceNoteKind, MappingAuthority,
     )
 }
 

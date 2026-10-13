@@ -5,8 +5,10 @@
 
 Nothing here knows the relay: the helpers read generic review/apply DTOs only. If supporting the
 RED670 had needed relay-specific review, readiness, Apply or plotting logic, this file could not be
-written this way. The one thing RED670 needs from the user is the same generic step the 7SA511 and
-P441 need for a missing Left Resistive Reach: the explicit 0.00 ohm visualization suggestion (DEC-185).
+written this way. The one thing RED670 needs from the user is an explicit *visualization approximation*
+for its Left Resistive Reach: the relay's real left boundary is the ZDRDIR directional element, a capability
+gap the model cannot represent, so the review marks the item Unsupported and offers the same generic 0.00 ohm
+suggestion (DEC-185) worded as an approximation, never as the relay's geometry.
 """
 
 from __future__ import annotations
@@ -53,8 +55,8 @@ def assumptions(review):
 
 
 def user_decisions(review, zones=("Z1", "Z2", "Z3")):
-    """What an engineer does in the generic review: takes the 0.00 ohm suggestion for each missing Left
-    (-R) reach, then confirms the assumptions."""
+    """What an engineer does in the generic review: takes the 0.00 ohm visualization approximation for each
+    unsupported Left (-R) reach, then confirms the assumptions."""
     return {
         "validation_context": review["validation_context"],
         "suggested": [f"zones[{z}].{LEFT}" for z in zones],
@@ -118,10 +120,14 @@ class TestUploadAndReview:
         assert review["blocking_count"] == 3  # Zones 1-3; the disabled Zone 4 never blocks
         assert review["conflict_count"] == 0 and review["unreadable_count"] == 0
         left = next(i for g in review["groups"] for i in g["items"] if i["item_id"] == f"zones[Z1].{LEFT}")
-        assert left["category"] == "missing" and left["value_text"] is None
+        # a genuine capability gap, not a missing number: the relay's real boundary is ZDRDIR's angles
+        assert left["category"] == "unsupported" and left["value_text"] is None
         assert left["suggestion"] and "0.00" in json.dumps(left["suggestion"])
-        # the native source of that boundary is cited beside the missing value
+        assert "approximation" in left["suggestion"]["rationale"] and "not the relay's geometry" in left["suggestion"]["rationale"]
+        # the native source of that boundary is cited beside the unsupported value, with its raw angles
         assert {s["name"] for s in left["sources"]} == {"ZD01-:ArgDir", "ZD01-:ArgNegRes"}
+        assert {s["raw_value"] for s in left["sources"]} == {"15", "115"}
+        assert "capability gap" in " ".join(left["notes"])
 
     def test_explicit_rx_zones_show_x_and_resistive_reaches_and_no_fake_angle(self, client):
         review = upload(client)["review"]
@@ -133,14 +139,22 @@ class TestUploadAndReview:
             assert "Zero-Sequence Reach R" in labels  # preserved, distinct, not plotted
             assert not any("Angle" in label for label in labels) and "Reach" not in labels
             ch = next(i for i in group["items"] if i["label"] == "Characteristic")
-            assert ch["value_text"] == "Quadrilateral · Explicit R/X" and ch["category"] == "assumption"
+            # ZMQPDIS is the quadrilateral function: authoritative family semantics, not an assumption
+            assert ch["value_text"] == "Quadrilateral · Explicit R/X" and ch["category"] == "mapped"
+            assert ch["authority"] == "documented_derivation"
+            labels_all = [i["label"] for i in group["items"]]
+            assert "Directional Arg Dir" in labels_all and "Directional Arg Neg Res" in labels_all  # ZDRDIR angles kept
 
     def test_pp_and_pe_values_are_both_listed_with_their_own_source(self, client):
         review = upload(client)["review"]
         items = {i["item_id"]: i for g in review["groups"] for i in g["items"]}
         pp, pe = items["zones[Z2].resistive_reach.phase_phase"], items["zones[Z2].resistive_reach.phase_earth"]
-        assert (pp["value_text"], pe["value_text"]) == ("10 Ω", "20 Ω")
+        # RFPP is a loop value (10 ohm/loop): the phase-phase boundary is 5 ohm; RFPE (20) is used as printed
+        assert (pp["value_text"], pe["value_text"]) == ("5 Ω", "20 Ω")
         assert (pp["sources"][0]["name"], pe["sources"][0]["name"]) == ("ZM02-:RFPP", "ZM02-:RFPE")
+        assert pp["sources"][0]["raw_value"] == "10" and pp["raw_value"] == "10"  # the OEM value is not lost
+        assert "÷ 2" in pp["transformation"] and pe["transformation"] is None
+        assert pp["authority"] == "documented_derivation" and pe["authority"] == "configured_setting"
         assert items["zones[Z2].phase_timer_s"]["sources"][0]["name"] in {"ZM02-:Timer tPP", "ZM02-:tPP"}
 
     def test_scheme_notes_are_document_notes_beside_the_zone(self, client):
@@ -172,11 +186,11 @@ class TestReadinessAndApply:
         assert out["characteristic"] == "quadrilateral" and out["impedance_basis"] == "primary"
         assert [z["id"] for z in out["zones"]] == ["Z1", "Z2", "Z3", "Z4"]
         z1, z2, z3, z4 = out["zones"]
-        assert (z1["enabled"], z1["direction"], z1["reactive_reach_ohm"], z1["resistive_reach_forward_ohm"]) == (True, "forward", 6.0, 7.0)
+        assert (z1["enabled"], z1["direction"], z1["reactive_reach_ohm"], z1["resistive_reach_forward_ohm"]) == (True, "forward", 6.0, 3.5)
         assert (z1["resistive_reach_reverse_ohm"], z1["delay_s"]) == (0.0, 0.15)
         assert z1["geometry_mode"] == "explicit_rx" and z1["characteristic_angle_deg"] is None and z1["reach_ohm"] is None
-        assert (z2["reactive_reach_ohm"], z2["resistive_reach_forward_ohm"], z2["delay_s"]) == (11.0, 10.0, 0.45)
-        assert (z3["reactive_reach_ohm"], z3["resistive_reach_forward_ohm"], z3["delay_s"]) == (20.0, 18.0, 3.0)
+        assert (z2["reactive_reach_ohm"], z2["resistive_reach_forward_ohm"], z2["delay_s"]) == (11.0, 5.0, 0.45)
+        assert (z3["reactive_reach_ohm"], z3["resistive_reach_forward_ohm"], z3["delay_s"]) == (20.0, 9.0, 3.0)
         assert z4["enabled"] is False and z4["reactive_reach_ohm"] is None and z4["resistive_reach_forward_ohm"] is None
 
     def test_the_phase_earth_values_are_not_what_is_applied(self, client):
@@ -248,7 +262,7 @@ class TestAnalysisEngine:
         assert (s["Z1"], s["Z2"], s["Z3"]) == ("not_operated", "not_operated", "operated")
 
     def test_a_point_beyond_zone_1_resistive_reach(self, client):
-        s = self._states(client, 9, 20)  # R 8.46 > 7 (Z1 +R), X 3.08
+        s = self._states(client, 5, 20)  # R 4.70 > 3.5 (Z1 +R = RFPP 7 / 2) but < 5 (Z2 +R), X 1.71
         assert (s["Z1"], s["Z2"]) == ("not_operated", "operated")
 
     def test_a_reverse_fault_operates_no_zone_because_all_are_forward(self, client):
@@ -288,7 +302,7 @@ class TestRealSample:
         assert client.post(VALIDATE, json=body).json()["readiness"]["status"] == "ready"
         out = client.post(APPLY, json=body).json()
         got = [(z["id"], z["enabled"], z["reactive_reach_ohm"], z["resistive_reach_forward_ohm"], z["delay_s"]) for z in out["zones"]]
-        assert got[:3] == [("Z1", True, 7.87, 7.79, 0.15), ("Z2", True, 13.63, 11.67, 0.45), ("Z3", True, 24.97, 21.91, 3.0)]
+        assert got[:3] == [("Z1", True, 7.87, 3.895, 0.15), ("Z2", True, 13.63, 5.835, 0.45), ("Z3", True, 24.97, 10.955, 3.0)]
         assert got[3][:2] == ("Z4", False)
         assert out["impedance_basis"] == "primary"
         # 10 ohm at 80 deg (R 1.7, X 9.85): beyond Zone 1 X (7.87), inside Zone 2 (13.63)
