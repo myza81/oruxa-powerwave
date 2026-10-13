@@ -137,13 +137,14 @@ class TestUploadAndReview:
             assert "Reactive Reach (X)" in labels and "Right Resistive Reach (+R)" in labels
             assert "Left Resistive Reach (−R)" in labels and "Earth Resistive Reach" in labels
             assert "Zero-Sequence Reach R" in labels  # preserved, distinct, not plotted
-            assert not any("Angle" in label for label in labels) and "Reach" not in labels
+            assert not any(label in ("Reach Angle", "Tilt Angle") for label in labels) and "Reach" not in labels
             ch = next(i for i in group["items"] if i["label"] == "Characteristic")
             # ZMQPDIS is the quadrilateral function: authoritative family semantics, not an assumption
             assert ch["value_text"] == "Quadrilateral · Explicit R/X" and ch["category"] == "mapped"
             assert ch["authority"] == "documented_derivation"
             labels_all = [i["label"] for i in group["items"]]
-            assert "Directional Arg Dir" in labels_all and "Directional Arg Neg Res" in labels_all  # ZDRDIR angles kept
+            # the ZDRDIR angles are kept, under the registry's OEM-neutral labels (the relay's names live in Source)
+            assert "Directional Boundary Angle (Dir)" in labels_all and "Directional Boundary Angle (Neg. Res.)" in labels_all
 
     def test_pp_and_pe_values_are_both_listed_with_their_own_source(self, client):
         review = upload(client)["review"]

@@ -64,6 +64,7 @@ from app.domain.relay_import.review_state import (
     suggestion_spec,
     suggestion_text,
 )
+from app.domain.parameter_catalog.loader import canonical_registry
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 NOT_STATED = "No value is stated in the document."
@@ -467,6 +468,9 @@ class _Builder:
         inactive_zones: frozenset[str] = frozenset(),
     ) -> None:
         self._raw: dict[str, RawSetting] = {s.setting_id: s for s in document.settings}
+        #: The geometry mode of the zone being built (``explicit_rx`` / ``polar_reach``): it selects the
+        #: registry's label variant (e.g. "Right Resistive Reach (+R)" for an explicit R/X zone).
+        self.geometry: str | None = None
         self._blocking = blocking
         self._limits = limits or {}
         self._inactive = inactive_zones
@@ -508,7 +512,12 @@ class _Builder:
         extra_notes: tuple[str, ...] = (),
         path: str | None = None,
         primary: bool = True,
+        canon: bool = True,
     ) -> ReviewItem:
+        # The frontend terminology is the canonical registry's, not the relay's: a registered
+        # parameter is labelled from the registry; the given label is the fallback for the rest.
+        if canon and primary and path is not None:
+            label = canonical_registry().label_for_review_path(path, self.geometry) or label
         prov = sourced.provenance
         refs = (*prov.sources, *(r for r in extra_sources if r not in prov.sources))
         notes = (*prov.notes, *(n for n in extra_notes if n not in prov.notes))
@@ -558,6 +567,8 @@ class _Builder:
         self, key: str, label: str, group_label: str, sourced: Sourced, path: str | None = None
     ) -> list[ReviewItem]:
         value = sourced.value
+        if path is not None:
+            label = canonical_registry().label_for_review_path(path, self.geometry) or label
         if isinstance(value, ImpedanceValue):
             if value.is_polar:
                 parts = [
@@ -570,10 +581,10 @@ class _Builder:
                     (f"{key}.x", f"{label} X", _with_unit(_number(value.x_ohm), "ohm")),
                 ]
             return [
-                self.item(k, lab, group_label, sourced, text=t, path=path, primary=i == 0)
+                self.item(k, lab, group_label, sourced, text=t, path=path, primary=i == 0, canon=False)
                 for i, (k, lab, t) in enumerate(parts)
             ]
-        return [self.item(key, label, group_label, sourced, path=path)]
+        return [self.item(key, label, group_label, sourced, path=path, canon=False)]
 
     def extras(
         self, key: str, group_label: str, extras: tuple[ExtraQuantity, ...], path: str
@@ -700,6 +711,7 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     pre = f"zone.{zone.zone_id}"
     zp = f"zones[{zone.zone_id}]"
     items: list[ReviewItem] = []
+    b.geometry = zone.characteristic.geometry_mode.value
 
     state_text = None if not zone.status.is_resolved else _zone_state(zone)[0]
     items.append(b.item(f"{pre}.status", "Status", name, zone.status, text=state_text, path=f"{zp}.status"))
@@ -818,10 +830,12 @@ def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) ->
             items += b.extras(f"comp.{zone.zone_id}", name, comp.oem_values, f"zones[{zone.zone_id}].compensation.oem_values")
             continue
         for attr, label, unit in _COMPENSATION_COMPONENTS[comp.kind]:
+            path = f"zones[{zone.zone_id}].compensation.{attr}"
+            label = canonical_registry().label_for_review_path(path) or label
             items.append(
                 b.item(
                     f"comp.{zone.zone_id}.{attr}", f"{name} {label}", "", getattr(comp, attr), unit=unit or None,
-                    path=f"zones[{zone.zone_id}].compensation.{attr}",
+                    path=path, canon=False,
                 )
             )
     return ReviewGroup("compensation", "compensation", "Residual compensation", items=tuple(items)) if items else None

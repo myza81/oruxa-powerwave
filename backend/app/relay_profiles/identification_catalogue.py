@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from app.domain.parameter_catalog.loader import CatalogStore, default_store
+from app.domain.parameter_catalog.profile import active_catalog_profiles
 from app.domain.relay_import.identification import (
     ManufacturerAliases,
     ParameterSignature,
@@ -174,12 +176,20 @@ IDENTIFICATION_DESCRIPTORS: tuple[RelayIdentificationDescriptor, ...] = (
 )
 
 
-def build_registry() -> RelayProfileRegistry:
+def build_registry(store: CatalogStore | None = None) -> RelayProfileRegistry:
     """A fresh registry: the identification catalogue plus the interpretation
-    profiles that exist. Only the MiCOM P441 has one (Slice 6, awaiting
-    validation); every other catalogued relay is identification-only."""
+    profiles that exist -- the hand-written ones (MiCOM P441, Siemens 7SA511, Hitachi
+    RED670) and one per *active* parameter catalog; every other catalogued relay is
+    identification-only. ``store`` overrides the shipped catalogs (tests)."""
+    hand_written = (MicomP441Profile(), Siemens7SA511Profile(), HitachiRed670Profile())
+    # Relays described only by an *active* parameter catalog (JSON, no Python) join through the same
+    # registry. A catalog whose profile id a hand-written profile already owns is not used.
+    catalog_profiles = active_catalog_profiles(store or default_store(), frozenset(p.profile_id for p in hand_written))
+    standalone_ids = {d.profile_id for d in IDENTIFICATION_DESCRIPTORS}
+    for profile in catalog_profiles:
+        profile.use_catalog_identification = profile.profile_id not in standalone_ids
     return RelayProfileRegistry(
-        profiles=(MicomP441Profile(), Siemens7SA511Profile(), HitachiRed670Profile()),
+        profiles=(*hand_written, *catalog_profiles),
         identification_descriptors=IDENTIFICATION_DESCRIPTORS,
         manufacturer_aliases=MANUFACTURER_ALIASES,
     )
