@@ -35,10 +35,10 @@ def check(**kw):
 
 
 class TestTheCatalog:
-    def test_the_p44x_catalog_is_valid_tested_and_not_yet_the_production_path(self):
+    def test_the_p44x_catalog_is_valid_and_active_so_it_is_the_production_path(self):
         assert CATALOG is not None and not STORE.rejected
-        assert CATALOG.lifecycle == "tested" and CATALOG.applicability.model == "P441"
-        assert CATALOG not in STORE.active()
+        assert CATALOG.lifecycle == "active" and CATALOG.applicability.model == "P441"
+        assert CATALOG in STORE.active()
 
     def test_the_migrated_subset_covers_ct_vt_basis_timers_and_resistive_reaches(self):
         canonicals = {m.canonical for m in CATALOG.mappings}

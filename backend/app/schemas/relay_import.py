@@ -202,6 +202,11 @@ class ExtractionReviewOut(ReviewStateFieldsOut):
     #: decisions (see ``POST /api/v1/relay-import/review/validate``). Opaque to
     #: the browser: it is held in tab memory and sent back unchanged.
     validation_context: dict | None = None
+    #: DEC-195. The parameter catalog that interpreted the relay and how much of the sheet it accounts for
+    #: (counts only; ``None`` when no catalog describes the relay).
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
 
 
 class ReviewManualResolutionIn(BaseModel):
@@ -325,5 +330,10 @@ class RelayImportUploadOut(BaseModel):
     not_interpreted_setting_count: int = 0
     zone_count: int = 0
     interpretation_warnings: list[str] = []
+    #: DEC-195. The catalog behind the interpretation (``None`` for a relay no catalog describes) and its
+    #: coverage of the extracted settings.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
     #: Slice 7. Present only for an ``interpreted`` relay; ``None`` otherwise.
     review: ExtractionReviewOut | None = None

@@ -1,28 +1,34 @@
-"""A relay interpretation profile defined entirely by a parameter catalog.
+"""A relay interpretation profile defined by a parameter catalog (catalog-first).
 
 ``RawRelayDocument -> CatalogProfile -> CanonicalDistanceProtectionModel``
 
-`CatalogProfile` satisfies the generic `RelayProfile` protocol, so a relay described only by an
-*active* catalog goes through the same identification, review, readiness, Apply and engine
-pipeline as the hand-written profiles -- with no Python written for it. The profile id is the
-catalog's ``profile_id``; the interpretation's ``profile_version`` is ``<catalog_id>-v<version>``,
-so every import records which catalog version produced it.
+`CatalogProfile` satisfies the generic `RelayProfile` protocol, so a relay described by an *active*
+catalog goes through the same identification, review, readiness, Apply and engine pipeline as every
+other relay.
+
+* **Catalog only** (no ``extension``): no Python is written for the relay. The profile id is the
+  catalog's ``profile_id``; ``profile_version`` is ``<catalog_id>-v<version>``.
+* **Catalog + extension** (``extension`` = an existing hand-written profile with the same
+  ``profile_id``): the catalog is authoritative for every canonical target it maps and the extension
+  supplies only the semantics the catalog schema cannot yet express (see `catalog_first`). The
+  extension's id and version are kept; each catalog-mapped value carries its own catalog id / version.
+
+Either way every value interpreted by a catalog records the catalog id and version that produced it.
 """
 
 from __future__ import annotations
 
-import logging
 import re
 
+from app.domain.parameter_catalog.catalog_first import overlay
 from app.domain.parameter_catalog.catalog_model import Catalog
+from app.domain.parameter_catalog.coverage import CatalogCoverage, compute_coverage
 from app.domain.parameter_catalog.interpreter import CatalogInterpreter
 from app.domain.parameter_catalog.loader import CatalogStore
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel
 from app.domain.relay_import.identification import ParameterSignature, RelayIdentificationDescriptor
-from app.domain.relay_import.profile import MatchLevel, ProfileMatch
+from app.domain.relay_import.profile import MatchLevel, ProfileMatch, RelayProfile
 from app.domain.relay_import.raw_document import RawRelayDocument
-
-log = logging.getLogger(__name__)
 
 
 class CatalogProfile:
@@ -30,13 +36,25 @@ class CatalogProfile:
 
     validation_status = "Catalog-defined / Awaiting Validation"
 
-    def __init__(self, catalog: Catalog, store: CatalogStore) -> None:
+    def __init__(self, catalog: Catalog, store: CatalogStore, extension: RelayProfile | None = None) -> None:
+        if extension is not None and extension.profile_id != catalog.profile_id:
+            raise ValueError(f"extension {extension.profile_id!r} cannot extend catalog profile {catalog.profile_id!r}")
         self.catalog = catalog
+        self.extension = extension
         self.profile_id = catalog.profile_id
-        self.version = catalog.profile_version
+        self.version = extension.version if extension is not None else catalog.profile_version
+        self._registry = store.registry
         self._interpreter = CatalogInterpreter(catalog, store.registry)
         #: False when the relay is already described by a standalone identification descriptor.
         self.use_catalog_identification = True
+
+    @property
+    def catalog_id(self) -> str:
+        return self.catalog.catalog_id
+
+    @property
+    def catalog_version(self) -> str:
+        return self.catalog.version
 
     @property
     def identification(self) -> RelayIdentificationDescriptor | None:
@@ -63,6 +81,8 @@ class CatalogProfile:
 
     def match(self, document: RawRelayDocument) -> ProfileMatch:
         """CONFIRMED only when the document's own scheme field names this relay."""
+        if self.extension is not None:
+            return self.extension.match(document)
         ident = self.catalog.identification
         if not ident.scheme_model_pattern:
             return ProfileMatch(MatchLevel.NONE)
@@ -75,16 +95,24 @@ class CatalogProfile:
         return ProfileMatch(MatchLevel.NONE)
 
     def interpret(self, document: RawRelayDocument) -> CanonicalDistanceProtectionModel:
-        return self._interpreter.interpret(document)
+        return self.interpret_with_coverage(document)[0]
+
+    def interpret_with_coverage(self, document: RawRelayDocument) -> tuple[CanonicalDistanceProtectionModel, CatalogCoverage]:
+        """The canonical model (catalog first, extension for the rest) and how much of the sheet the
+        catalog accounts for."""
+        run = self._interpreter.run(document)
+        if self.extension is None:
+            model = run.model
+        else:
+            model = overlay(self.extension.interpret(document), run, self._registry, document, self.version)
+        return model, compute_coverage(self.catalog, document, run, model)
 
 
-def active_catalog_profiles(store: CatalogStore, taken_profile_ids: frozenset[str] = frozenset()) -> tuple[CatalogProfile, ...]:
-    """A profile for every ``active`` catalog. A catalog whose profile id is already taken by another
-    profile is skipped with a warning -- two definitions of one relay are never both used."""
-    out = []
-    for catalog in store.active():
-        if catalog.profile_id in taken_profile_ids:
-            log.warning("active catalog %s not used: profile id %r is already registered", catalog.key, catalog.profile_id)
-            continue
-        out.append(CatalogProfile(catalog, store))
-    return tuple(out)
+def active_catalog_profiles(
+    store: CatalogStore, extensions: tuple[RelayProfile, ...] = ()
+) -> tuple[CatalogProfile, ...]:
+    """A profile for every ``active`` catalog. A catalog whose profile id matches an ``extension`` profile
+    is catalog-first for that relay (the extension keeps only what the catalog does not map); any other
+    active catalog stands alone. Two profiles never share an id."""
+    by_id = {p.profile_id: p for p in extensions}
+    return tuple(CatalogProfile(catalog, store, by_id.get(catalog.profile_id)) for catalog in store.active())

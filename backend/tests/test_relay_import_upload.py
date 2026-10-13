@@ -70,7 +70,7 @@ class TestIdentification:
             "identification_warnings",
             "interpretation_status", "profile_version", "mapped_setting_count", "inferred_setting_count",
             "unresolved_setting_count", "not_interpreted_setting_count", "zone_count", "interpretation_warnings",
-            "review",
+            "catalog_id", "catalog_version", "catalog_coverage", "review",
         }
 
     def test_unrecognised_relay_is_unknown_not_an_error(self, client):
@@ -229,6 +229,9 @@ class TestAccepted:
             "not_interpreted_setting_count": 0,
             "zone_count": 0,
             "interpretation_warnings": [],
+            "catalog_id": None,
+            "catalog_version": None,
+            "catalog_coverage": None,
             "review": None,
         }
 

@@ -111,6 +111,9 @@ async def upload_relay_setting_file(
         not_interpreted_setting_count=interp.not_interpreted_setting_count if interp else 0,
         zone_count=interp.zone_count if interp else 0,
         interpretation_warnings=list(interp.warnings) if interp else [],
+        catalog_id=interp.catalog_id if interp else None,
+        catalog_version=interp.catalog_version if interp else None,
+        catalog_coverage=interp.catalog_coverage if interp else None,
         review=ExtractionReviewOut(**asdict(interp.review)) if interp and interp.review else None,
     )
 

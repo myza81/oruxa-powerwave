@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from app.domain.parameter_catalog.loader import CatalogStore, default_store
+from app.domain.parameter_catalog.loader import CatalogStore, default_store, verify_shipped_catalogs
 from app.domain.parameter_catalog.profile import active_catalog_profiles
 from app.domain.relay_import.identification import (
     ManufacturerAliases,
@@ -177,19 +177,26 @@ IDENTIFICATION_DESCRIPTORS: tuple[RelayIdentificationDescriptor, ...] = (
 
 
 def build_registry(store: CatalogStore | None = None) -> RelayProfileRegistry:
-    """A fresh registry: the identification catalogue plus the interpretation
-    profiles that exist -- the hand-written ones (MiCOM P441, Siemens 7SA511, Hitachi
-    RED670) and one per *active* parameter catalog; every other catalogued relay is
-    identification-only. ``store`` overrides the shipped catalogs (tests)."""
+    """A fresh registry: the identification catalogue plus the interpretation profiles that exist.
+
+    Catalog-first (DEC-195): every *active* parameter catalog interprets the relay it describes. A relay
+    that also has a hand-written profile (MiCOM P441, Hitachi RED670) is interpreted by the catalog for
+    every target the catalog maps, with the hand-written profile demoted to an *extension* that supplies
+    only what the catalog schema cannot yet express; a relay with a catalog and no profile needs no
+    Python. A hand-written profile with no active catalog (Siemens 7SA511) is unchanged, and every other
+    catalogued relay is identification-only. ``store`` overrides the shipped catalogs (tests)."""
     hand_written = (MicomP441Profile(), Siemens7SA511Profile(), HitachiRed670Profile())
-    # Relays described only by an *active* parameter catalog (JSON, no Python) join through the same
-    # registry. A catalog whose profile id a hand-written profile already owns is not used.
-    catalog_profiles = active_catalog_profiles(store or default_store(), frozenset(p.profile_id for p in hand_written))
+    catalog_profiles = active_catalog_profiles(store or default_store(), hand_written)
+    by_id = {p.profile_id: p for p in catalog_profiles}
     standalone_ids = {d.profile_id for d in IDENTIFICATION_DESCRIPTORS}
     for profile in catalog_profiles:
         profile.use_catalog_identification = profile.profile_id not in standalone_ids
     return RelayProfileRegistry(
-        profiles=(*hand_written, *catalog_profiles),
+        # a catalog-first relay keeps its place; a catalog-only relay follows the hand-written ones
+        profiles=(
+            *(by_id.get(p.profile_id, p) for p in hand_written),
+            *(p for p in catalog_profiles if p.profile_id not in {h.profile_id for h in hand_written}),
+        ),
         identification_descriptors=IDENTIFICATION_DESCRIPTORS,
         manufacturer_aliases=MANUFACTURER_ALIASES,
     )
@@ -200,4 +207,4 @@ def default_registry() -> RelayProfileRegistry:
     """Shared read-only registry used by the upload service. Identification and
     interpretation are stateless, so one instance is safe across requests; do not
     register into it."""
-    return build_registry()
+    return build_registry(verify_shipped_catalogs())

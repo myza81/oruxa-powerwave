@@ -622,7 +622,9 @@ test("provenance is collapsed by default and opens in place", async ({ page }) =
   await expect(prov).toContainText("300C · R1G");
   await expect(prov).toContainText(/Page \d+ · line \d+/);
   await expect(prov).toContainText("Raw: 7.02");
-  await expect(prov).toContainText("Profile: micom-p441-v1");
+  // DEC-195: the phase-earth reach is catalog-owned, so the catalog version is its provenance
+  await expect(prov).toContainText("Profile: schneider-micom-p44x-catalog-v1.0.0");
+  await expect(prov).toContainText("Canonical: distance.zone.r_phase_earth");
   await expect(prov).not.toContainText(/[A-Za-z]:\\|\/tmp\//);
   await toggle.click();
   await expect(prov).toBeHidden();

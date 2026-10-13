@@ -254,5 +254,5 @@ class Catalog:
 
     @property
     def profile_version(self) -> str:
-        """The version string an import carries (e.g. ``acme-x1-catalog-v1.0.0``)."""
+        """The version string an import carries (e.g. ``example-catalog-v1.0.0``)."""
         return f"{self.catalog_id}-v{self.version}"

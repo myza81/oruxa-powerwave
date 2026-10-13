@@ -64,6 +64,10 @@ class RelayInterpretationSummary:
     warnings: tuple[str, ...] = ()
     #: Slice 7. Read-only review view; present only for an ``interpreted`` relay.
     review: ExtractionReview | None = None
+    #: DEC-195. The catalog behind the interpretation and its coverage of the sheet (counts only).
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
 
 
 def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int, int]:
@@ -114,8 +118,13 @@ def summarize_interpretation(
     profile = registry.profile_for(identification)
     if profile is None:
         return RelayInterpretationSummary(InterpretationStatus.NOT_SUPPORTED)
+    coverage = None
     try:
-        model = infer_defeated_zones(profile.interpret(document))
+        if hasattr(profile, "interpret_with_coverage"):          # a catalog-first profile
+            raw_model, coverage = profile.interpret_with_coverage(document)
+        else:
+            raw_model = profile.interpret(document)
+        model = infer_defeated_zones(raw_model)
         mapped, inferred, unresolved, not_interpreted = count_model(model)
         adaptation = engine_adaptation(model)
         warnings = (*model.interpretation_notes, *_engine_warnings(adaptation))
@@ -133,7 +142,12 @@ def summarize_interpretation(
             review = build_extraction_review(model, document, adaptation, not_interpreted=not_interpreted)
             # Slice 8: the original interpretation travels with the review so the
             # backend can re-validate the user's decisions without keeping state.
-            review = replace(review, validation_context=encode_model(model))
+            review = replace(
+                review, validation_context=encode_model(model),
+                catalog_id=coverage.catalog_id if coverage else None,
+                catalog_version=coverage.catalog_version if coverage else None,
+                catalog_coverage=coverage.as_dict() if coverage else None,
+            )
         except Exception as exc:  # the review is optional: never fail the upload for it
             logger.warning("Extraction review could not be built (%s)", type(exc).__name__)
     return RelayInterpretationSummary(
@@ -147,4 +161,7 @@ def summarize_interpretation(
         zone_count=len(model.zones),
         warnings=warnings,
         review=review,
+        catalog_id=coverage.catalog_id if coverage else None,
+        catalog_version=coverage.catalog_version if coverage else None,
+        catalog_coverage=coverage.as_dict() if coverage else None,
     )

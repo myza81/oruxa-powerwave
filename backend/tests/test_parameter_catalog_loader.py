@@ -182,12 +182,30 @@ class TestActivation:
         profiles = active_catalog_profiles(load_store(root))
         assert [(p.profile_id, p.version) for p in profiles] == [("acme-x1", "acme-x1-v1.0.0")]
 
-    def test_a_catalog_cannot_replace_a_hand_written_profile_of_the_same_id(self, root, caplog):
+    def test_a_catalog_with_a_hand_written_profiles_id_becomes_catalog_first_never_a_second_profile(self, root):
         put(root, "acme/x1.json", catalog_json(x_reach(), lifecycle="active", profile_id="hitachi-red670"))
-        with caplog.at_level(logging.WARNING):
-            registry = build_registry(load_store(root))
-        assert [p.profile_id for p in registry._profiles].count("hitachi-red670") == 1          # noqa: SLF001
-        assert "already registered" in caplog.text
+        registry = build_registry(load_store(root))
+        profiles = [p for p in registry._profiles if p.profile_id == "hitachi-red670"]            # noqa: SLF001
+        assert len(profiles) == 1                                                  # one definition of one relay
+        (profile,) = profiles
+        assert profile.catalog_id == "acme-x1" and profile.extension.version == "hitachi-red670-v1"
+
+    def test_two_active_catalogs_may_not_claim_the_same_relay_and_firmware(self, root):
+        put(root, "acme/x1.json", catalog_json(x_reach(), lifecycle="active"))
+        put(root, "acme/x1_b.json", catalog_json(x_reach(), lifecycle="active", catalog_id="acme-x1-b"))
+        store = load_store(root)
+        assert [c.catalog_id for c in store.active()] == ["acme-x1"]
+        (rejected,) = store.rejected
+        assert rejected.path.endswith("x1_b.json") and any(i.code == IssueCode.CONFLICT for i in rejected.issues)
+
+    def test_active_catalogs_for_different_firmware_of_one_relay_may_coexist(self, root):
+        for name, cid, versions in (("v1", "acme-x1", ["1.*"]), ("v2", "acme-x1-v2", ["2.*"])):
+            data = catalog_json(x_reach(), lifecycle="active", catalog_id=cid)
+            data["applicability"]["versions"] = versions
+            put(root, f"acme/{name}.json", data)
+        store = load_store(root)
+        assert not store.rejected and len(store.active()) == 2
+        assert store.select("Acme", "X-Series", "X1", "2.4").catalog_id == "acme-x1-v2"
 
     def test_an_active_catalog_joins_the_shared_registry_and_is_identifiable(self, root):
         put(root, "acme/x1.json", catalog_json(x_reach(), lifecycle="active"))

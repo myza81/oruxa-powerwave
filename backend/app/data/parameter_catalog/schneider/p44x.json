@@ -2,10 +2,10 @@
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "schneider-micom-p44x-catalog",
   "version": "1.0.0",
-  "lifecycle": "tested",
+  "lifecycle": "active",
   "profile_id": "schneider-micom-p441",
   "registry_version": "1.0.0",
-  "description": "Schneider Electric MiCOM P44x (P441) distance settings, addressed by the relay's own parameter codes: CT/VT ratios, the settings basis, each zone's operating delay and phase / earth resistive reaches, and Zone P's direction. A small, well-understood subset migrated from the hand-written micom-p441-v1 profile and tested for canonical equivalence with it; that profile stays the production path. Everything not listed (reaches that depend on the line angle, residual compensation, zone status from the scheme notes, tilts) is deliberately left to the profile for now and is retained as 'not interpreted' when a document is read through this catalog.",
+  "description": "Schneider Electric MiCOM P44x (P441) distance settings, addressed by the relay's own parameter codes: CT/VT ratios, the settings basis, each zone's operating delay and phase / earth resistive reaches, and Zone P's direction. A small, well-understood subset migrated from the hand-written micom-p441-v1 profile and proven equivalent to it. Catalog-first: every target listed here is authoritative from this catalog; everything not listed (reaches that depend on the line angle, residual compensation, zone status from the scheme notes, tilts) is still read by the micom-p441-v1 profile as an extension, and is retained as 'not interpreted' when no one reads it.",
   "applicability": {
     "manufacturer": "Schneider Electric",
     "family": "MiCOM P44x",

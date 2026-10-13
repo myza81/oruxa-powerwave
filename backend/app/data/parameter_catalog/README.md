@@ -18,18 +18,36 @@ canonical/distance_protection.json   the application's own vocabulary (ids, labe
 catalog.lock.json                    semantic digests of locked (validated / tested / active) versions
 ```
 
+## Precedence (DEC-195)
+
+For every canonical value and zone: (1) the **active** catalog mapping is authoritative -- also when it does not
+resolve (Missing / Conflict / Unreadable / Unsupported stay so; nothing falls back to Python); (2) an extension profile
+(a hand-written profile with the same `profile_id`) supplies only targets the catalog does not map; (3) otherwise the
+raw setting is retained as *Not interpreted* and never reaches the engine. The catalog's `authority` decides the review
+category (an `assumption` mapping is shown as an Assumption).
+
 ## Adding a relay (no Python)
 
+```text
+python -m app.tools.catalog_cli validate-catalog <file> [--root DIR]     schema, canonical targets, transforms, units,
+                                                                         enums, duplicates, applicability, lock
+python -m app.tools.catalog_cli dry-run <file> <sheet.pdf> [--json]      recognised / mapped / transformed /
+                                                                         unsupported / conflicting / unmapped; changes nothing
+python -m app.tools.catalog_cli list                                     installed and rejected catalogs
+```
+
 1. Write `<manufacturer>/<family>.json` with `"lifecycle": "draft"`. Map only what the source states.
-2. **Validate**: `load_store()` rejects an invalid catalog with every issue listed (it is never partly used).
-   Move to `"validated"`.
-3. **Test**: add a test that reads a real or synthetic sheet through the catalog (see
+2. **Validate** with `validate-catalog` (the service validates the same way at start-up and refuses to start on an
+   invalid shipped catalog -- it is never partly used). Move to `"validated"`.
+3. **Dry-run** it against a real sheet with `dry-run`; read the unmapped and conflicting lists.
+4. **Test**: add a test that reads a real or synthetic sheet through the catalog (see
    `backend/tests/test_parameter_catalog_new_relay_by_json.py`; for a relay that already has a hand-written
    profile, prove equivalence as `test_parameter_catalog_*_equivalence.py` do). Move to `"tested"`.
-4. **Activate**: set `"lifecycle": "active"`. Only an active catalog interprets real imports. A catalog whose
-   `profile_id` a hand-written profile already owns is not used. Only one version of a `catalog_id` may be active.
-5. Record the version in `catalog.lock.json` (`write_lock`). A locked version is never edited: a change of meaning is
-   a new `version`.
+5. **Activate**: set `"lifecycle": "active"` and restart. Only an active catalog interprets real imports. A catalog
+   whose `profile_id` a hand-written profile owns becomes catalog-first for that relay (the profile is an extension).
+   Only one version of a `catalog_id` may be active, and two active catalogs may not claim the same relay and firmware.
+6. Record the version in `catalog.lock.json` (`write_lock`). A locked version is never edited: a change of meaning is
+   a new `version` (imports record the catalog id and version, so v1 and v2 imports are distinguishable).
 
 ## Catalog format (`oruxa.parameter-catalog/1`)
 
@@ -61,5 +79,9 @@ Units convert only where `units.CONVERSIONS` lists the pair (kV -> V ...), autom
 
 **Capability gaps.** `gap` declares that the document states something the canonical model cannot represent: the value
 stays *Unsupported*, the evidence is cited and preserved, nothing is approximated.
+
+Coverage is reported per import (`catalog_coverage`): raw settings split into catalog
+mapped / unsupported / unresolved, read by the extension, not interpreted and outside Distance Protection (they add up
+to the extracted settings), plus canonical values by outcome. Review rows are not raw settings.
 
 Not covered here: 7SA511 (paused pending verified source data), any administrator UI, database storage, CSV/Excel/XML.

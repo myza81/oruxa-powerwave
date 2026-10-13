@@ -169,7 +169,9 @@ class TestReviewDto:
         (src,) = item.sources
         assert (src.code, src.name, src.raw_value, src.page) == ("300C", "R1G", "7.02", 3)
         assert isinstance(src.line, int) and "R1G" in src.source_text and "7.02" in src.source_text
-        assert (item.profile_id, item.profile_version) == ("schneider-micom-p441", "micom-p441-v1")
+        # DEC-195: the phase-earth resistive reach is catalog-owned, so the catalog version is the provenance
+        assert (item.profile_id, item.profile_version) == ("schneider-micom-p441", "schneider-micom-p44x-catalog-v1.0.0")
+        assert (item.catalog_id, item.catalog_version) == ("schneider-micom-p44x-catalog", "1.0.0")
         assert item.raw_value == "7.02"
 
     def test_multi_source_values_cite_every_source(self):

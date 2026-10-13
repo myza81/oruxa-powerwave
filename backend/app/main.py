@@ -25,6 +25,7 @@ from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.synchronization import router as synchronization_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
+from app.domain.parameter_catalog.loader import verify_shipped_catalogs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -57,6 +58,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # DEC-195: the shipped parameter catalogs are validated before the service accepts a request; an
+        # invalid catalog is never partly activated (this raises, naming every problem).
+        verify_shipped_catalogs()
         app.state.storage = get_storage(settings)
         # In-memory only, per docs/project-memory/MIGRATION_PLAN.md's
         # Critical New Storage Decision: source metadata lives here for the

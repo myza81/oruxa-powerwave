@@ -83,6 +83,18 @@ class CatalogStore:
         return max(fits, key=lambda c: _semver(c.version), default=None)
 
 
+def applicabilities_overlap(a: Catalog, b: Catalog) -> bool:
+    """True when two catalogs claim the same relay (manufacturer / family / model, case- and
+    spacing-insensitive) for at least one common firmware version."""
+    def norm(text: str) -> str:
+        return " ".join(text.split()).casefold()
+
+    pa, pb = a.applicability, b.applicability
+    if (norm(pa.manufacturer), norm(pa.family), norm(pa.model)) != (norm(pb.manufacturer), norm(pb.family), norm(pb.model)):
+        return False
+    return any(fnmatch.fnmatchcase(x, y) or fnmatch.fnmatchcase(y, x) for x in pa.versions for y in pb.versions)
+
+
 def _semver(version: str) -> tuple[int, ...]:
     return tuple(int(x) for x in version.split("."))
 
@@ -103,6 +115,7 @@ def load_store(root: Path = CATALOG_ROOT) -> CatalogStore:
     digests: dict[str, str] = {}
     seen: dict[str, str] = {}
     active_ids: dict[str, str] = {}
+    active_catalogs: list[tuple[Catalog, str]] = []
     canonical_dir = root / REGISTRY_FILE.parent
     for path in sorted(root.rglob("*.json")):
         if path.parent == canonical_dir or path.name == LOCK_FILE:
@@ -119,6 +132,14 @@ def load_store(root: Path = CATALOG_ROOT) -> CatalogStore:
                     "lifecycle", IssueCode.CONFLICT,
                     f"{catalog.catalog_id} already has an active version ({active_ids[catalog.catalog_id]}); only one may be active",
                 ))
+            if catalog.lifecycle == "active":
+                for other, other_rel in active_catalogs:
+                    if other.catalog_id != catalog.catalog_id and applicabilities_overlap(catalog, other):
+                        problems.append(CatalogIssue(
+                            "applicability", IssueCode.CONFLICT,
+                            f"{other.key} ({other_rel}) is already active for the same relay and firmware; "
+                            "two active catalogs may not interpret one relay",
+                        ))
             if problems:
                 raise CatalogValidationError(rel, problems)
         except (OSError, json.JSONDecodeError) as exc:
@@ -130,6 +151,7 @@ def load_store(root: Path = CATALOG_ROOT) -> CatalogStore:
         seen[catalog.key] = rel
         if catalog.lifecycle == "active":
             active_ids[catalog.catalog_id] = rel
+            active_catalogs.append((catalog, rel))
         digests[catalog.key] = semantics_digest(data)
         catalogs.append(catalog)
     for item in rejected:
@@ -141,6 +163,97 @@ def load_store(root: Path = CATALOG_ROOT) -> CatalogStore:
 def default_store() -> CatalogStore:
     """The shipped catalogs, loaded and validated once. Read-only: do not mutate."""
     return load_store(CATALOG_ROOT)
+
+
+@dataclass(frozen=True)
+class FileValidation:
+    """The result of validating one catalog file against a catalog tree (``validate-catalog``)."""
+
+    path: str
+    catalog: Catalog | None
+    issues: tuple[CatalogIssue, ...]
+    #: ``mappings[i]`` -> that mapping's own id, so an issue can name the entry it is about.
+    mapping_ids: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        return self.catalog is not None and not self.issues
+
+    def locate(self, issue: CatalogIssue) -> str:
+        """``mappings[3].transform[0]`` -> ``mappings[3] (vendor.x_reach).transform[0]``."""
+        head = issue.path.split(".", 1)[0].split("[", 1)
+        key = head[0] + "[" + head[1] if len(head) == 2 else issue.path
+        mid = self.mapping_ids.get(key)
+        return issue.path.replace(key, f"{key} ({mid})", 1) if mid else issue.path
+
+
+def validate_catalog_file(path: Path, root: Path = CATALOG_ROOT) -> FileValidation:
+    """Validate one catalog file as the application would load it, **without activating or changing
+    anything**: JSON and schema, canonical targets, transformations, units, enums, duplicate / conflicting
+    mappings, relay / model / firmware applicability against the catalogs already in ``root`` (a second
+    active catalog for the same relay, a duplicate version) and the semantic lock (a locked version whose
+    meaning changed)."""
+    registry = load_registry(root / REGISTRY_FILE)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return FileValidation(str(path), None, (CatalogIssue("$", IssueCode.MALFORMED, f"cannot read the file: {exc}"),))
+    except json.JSONDecodeError as exc:
+        return FileValidation(str(path), None, (CatalogIssue(f"line {exc.lineno}, column {exc.colno}", IssueCode.MALFORMED, f"not valid JSON: {exc.msg}"),))
+    mappings = data.get("mappings") if isinstance(data, dict) else None
+    mapping_ids = {
+        f"mappings[{i}]": m["id"] for i, m in enumerate(mappings or []) if isinstance(m, dict) and isinstance(m.get("id"), str)
+    }
+    try:
+        catalog = parse_catalog(data, registry, source=path.name, source_path=path.name)
+    except CatalogValidationError as exc:
+        return FileValidation(str(path), None, exc.issues, mapping_ids)
+    issues: list[CatalogIssue] = []
+    here = path.resolve()
+    others = [
+        (c, p) for p in sorted(root.rglob("*.json"))
+        if p.resolve() != here and p.parent != root / REGISTRY_FILE.parent and p.name != LOCK_FILE
+        for c in [_try_parse(p, registry)] if c is not None
+    ]
+    for other, other_path in others:
+        if other.key == catalog.key:
+            issues.append(CatalogIssue("catalog_id", IssueCode.DUPLICATE, f"{catalog.key} is already defined in {other_path.name}"))
+        if catalog.lifecycle == "active" and other.lifecycle == "active" and other.catalog_id != catalog.catalog_id                 and applicabilities_overlap(catalog, other):
+            issues.append(CatalogIssue(
+                "applicability", IssueCode.CONFLICT,
+                f"{other.key} ({other_path.name}) is already active for the same relay and firmware",
+            ))
+        if catalog.lifecycle == "active" and other.lifecycle == "active" and other.catalog_id == catalog.catalog_id:
+            issues.append(CatalogIssue("lifecycle", IssueCode.CONFLICT, f"{other.key} ({other_path.name}) is already the active version of {catalog.catalog_id}"))
+    locked = load_lock(root).get(catalog.key)
+    if catalog.lifecycle in LOCKED_LIFECYCLES and locked is not None and locked != semantics_digest(data):
+        issues.append(CatalogIssue("version", IssueCode.CONFLICT, f"{catalog.key} is locked and its meaning changed; bump the version"))
+    return FileValidation(str(path), catalog if not issues else None, tuple(issues), mapping_ids)
+
+
+def _try_parse(path: Path, registry: CanonicalRegistry) -> Catalog | None:
+    try:
+        return parse_catalog(json.loads(path.read_text(encoding="utf-8")), registry, source=path.name, source_path=path.name)
+    except (OSError, json.JSONDecodeError, CatalogValidationError):
+        return None
+
+
+class CatalogLoadError(RuntimeError):
+    """The shipped catalogs failed validation: the application must not start on partly valid data."""
+
+
+def verify_shipped_catalogs() -> CatalogStore:
+    """The shipped store, or `CatalogLoadError` naming every rejected catalog and issue. Called at
+    application start-up: an invalid catalog is never partly activated, and never silently skipped
+    -- the service refuses to start and says exactly what to fix (``validate-catalog <file>``)."""
+    store = default_store()
+    problems = check_lock(store, load_lock())
+    if store.rejected or problems:
+        lines = [f"  - {r}" for r in store.rejected] + [f"  - {p}" for p in problems]
+        raise CatalogLoadError(
+            "parameter catalogs failed validation; refusing to start with a partly valid catalog set:\n" + "\n".join(lines)
+        )
+    return store
 
 
 @lru_cache(maxsize=1)

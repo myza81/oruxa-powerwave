@@ -140,6 +140,16 @@ class Outcome:
     zone: str = ""
 
 
+@dataclass(frozen=True)
+class CatalogRun:
+    """One interpretation run: the catalog's own model, its per-target outcomes and the ids of every
+    raw setting a mapping consumed (whether or not it resolved)."""
+
+    model: CanonicalDistanceProtectionModel
+    outcomes: dict[tuple[str, str], Outcome]
+    consumed: frozenset[str]
+
+
 class CatalogInterpreter:
     """Interprets documents with one validated catalog (stateless between calls)."""
 
@@ -149,6 +159,13 @@ class CatalogInterpreter:
 
     def interpret(self, document: RawRelayDocument) -> CanonicalDistanceProtectionModel:
         return _Run(self.catalog, self.registry, document).run()
+
+    def run(self, document: RawRelayDocument) -> "CatalogRun":
+        """The model plus what produced it: every resolved target with its mapping, and the raw
+        settings a mapping consumed. The catalog-first profile and the dry-run read this."""
+        run = _Run(self.catalog, self.registry, document)
+        model = run.run()
+        return CatalogRun(model, dict(run.results), frozenset(run.consumed))
 
     def trace(self, document: RawRelayDocument) -> dict[tuple[str, str], Outcome]:
         """Every resolved canonical target with the mapping that supplied it (for tests and tooling)."""
@@ -630,7 +647,7 @@ class _Run:
     def _assemble(self) -> CanonicalDistanceProtectionModel:
         holder = {"metadata": self._metadata(), "transformers": InstrumentTransformers(), "line": ProtectedLine()}
         for p in sorted((p for p in self.reg.parameters if p.scope == "document" and (p.id, "") in self.results), key=lambda p: p.order):
-            _set_path(holder, p, self.results[(p.id, "")].result)
+            set_path(holder, p, self.results[(p.id, "")].result)
         zones = tuple(self._zone(z) for z in self.zone_vars)
         return CanonicalDistanceProtectionModel(
             metadata=holder["metadata"], transformers=holder["transformers"], line=holder["line"], zones=zones,
@@ -647,7 +664,7 @@ class _Run:
                 kinds.add(p.compensation_kind)
                 compensation[(p.engine_path or "").rsplit(".", 1)[1]] = result
             else:
-                _set_path(holder, p, result)
+                set_path(holder, p, result)
         zone = holder["zone"]
         if compensation and len(kinds) == 1:
             zone = replace(zone, compensation=ResidualCompensation(kind=CompensationKind(next(iter(kinds))), **compensation))
@@ -734,7 +751,7 @@ def _plain(result: Sourced | PlainValue) -> Any:
     return getattr(value, "value", value)
 
 
-def _set_path(holder: dict, param: CanonicalParameter, result: Sourced | PlainValue) -> None:
+def set_path(holder: dict, param: CanonicalParameter, result: Sourced | PlainValue) -> None:
     """Write ``result`` at ``param``'s engine path into the dict of root objects (``metadata``,
     ``transformers``, ``line`` or ``zone``)."""
     if param.plain:

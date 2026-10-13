@@ -95,10 +95,13 @@ class TestRawAndTransformedValuesBothSurvive:
         pe = by_id["zones[Z2].resistive_reach.phase_earth"]
         assert pe.value_text == "20 Ω" and pe.transformation is None
 
-    def test_a_hand_written_profile_value_has_no_catalog_identity(self):
+    def test_a_catalog_owned_value_carries_the_catalog_identity_and_an_extension_value_does_not(self):
         review = review_of(p441_doc())
-        ct = next(i for i in items(review) if i.item_id == "transformers.ct_primary_a")
-        assert ct.catalog_id is None and ct.canonical_id is None and ct.transformation is None
+        by_id = {i.item_id: i for i in items(review) if i.item_id}
+        ct = by_id["transformers.ct_primary_a"]                                  # migrated: the catalog owns it
+        assert (ct.catalog_id, ct.catalog_version, ct.canonical_id) == ("schneider-micom-p44x-catalog", "1.0.0", "ct_vt.ct_primary")
+        line_length = by_id["line.length"]                                    # not migrated: the extension reads it
+        assert line_length.catalog_id is None and line_length.canonical_id is None
 
 
 class TestRegistryDrivesPresentationOrder:

@@ -26816,3 +26816,49 @@ PDF -> generic extraction -> relay identification -> OEM Parameter Catalog (JSON
 **Open.** (1) Switching P441 / RED670 production to their catalogs (set `active`, retire the Python for the migrated fields) needs owner approval after UAT; (2) the remaining profile-specific fields need further primitives (e.g. note-derived states) before they can migrate; (3) the RFPP / 2 convention still needs owner confirmation against the Relion 670 manual (DEC-193); (4) a first-class directional-boundary representation (the real fix for the ZDRDIR capability gap).
 
 Tests: `test_parameter_catalog_validation.py` (registry + catalog schema and semantics), `test_parameter_catalog_interpreter.py` (matcher on a synthetic relay), `test_parameter_catalog_loader.py` and `test_parameter_catalog_shipped.py` (loading, rejection, selection, lifecycle, lock), `test_parameter_catalog_p441_equivalence.py`, `test_parameter_catalog_red670_equivalence.py`, `test_parameter_catalog_new_relay_by_json.py`, `test_parameter_catalog_review_terms.py` (frontend DTO stays standardised), `test_parameter_catalog_architecture.py` (guards).
+
+
+## DEC-195 -- The parameter catalog is the primary mapping path for catalogued fields: P441 and RED670 run catalog-first; validation CLI, dry-run and coverage; JSON-only relay proof
+
+Date: 2026-10-13
+Status: Implemented (`feature/red670-relay-profile`); P441 and RED670 catalogs **active**; awaiting owner UAT. Owner-directed ("Operational Parameter Catalog / Catalog-First Relay Mapping"). Supersedes DEC-194's "the hand-written profiles remain the production path" and resolves its open item (1). The owner also **approved `RFPP / 2`** for RED670 phase-phase plotting (resolves DEC-193's open confirmation).
+
+**Ownership (standing).**
+
+```text
+PDF extractor        owns source extraction
+Parameter catalog    owns OEM -> canonical meaning
+Canonical registry   owns common terminology / metadata
+Review               owns uncertainty and human resolution
+Protection engine    owns calculations only
+```
+
+**Precedence, per canonical value and zone** (`parameter_catalog/catalog_first.py`):
+
+1. the validated, **active** catalog mapping -- authoritative **even when it does not resolve** (Missing / Conflict / Unreadable / Unsupported stay so; the extension's reading of the same field is discarded, never used as a fallback);
+2. an explicit **extension profile**, only for a target the catalog does not map (the hand-written profile, demoted);
+3. unresolved / unmapped -- the raw setting is retained, marked "Not interpreted", and can never enter the engine.
+
+A catalog never makes a value `Mapped` by itself: the mapping's `authority` / `confidence` / `value_source` decide the review category (RED670 `VT primary` is declared `assumption` and the review shows an **Assumption**).
+
+**What changed.**
+* `CatalogProfile` takes an optional `extension` (a profile with the same `profile_id`). `build_registry` makes every relay with an active catalog catalog-first: the profile keeps its registry slot, id and version; a catalog without a hand-written profile (the synthetic relay, any future relay) is catalog-only. 7SA511 has no catalog and is unchanged (paused).
+* P441 (`schneider-micom-p44x-catalog@1.0.0`) and RED670 (`hitachi-red670-catalog@1.0.0`) set to `"lifecycle": "active"` (lifecycle is outside the semantic digest, so `catalog.lock.json` is unchanged). Every catalogued value in the review carries `catalog_id`, `catalog_version`, `canonical_id`, `transformation`, `authority`; `profile_version` of such a value is `<catalog_id>-v<version>` (a v2 import is distinguishable from v1). Values the catalog does not map keep the profile's `profile_version`.
+* **RFPP**: raw OEM value (Ω/loop) kept in `raw_value` and the Source; `divide by 2` is a catalog primitive; the canonical phase-phase value is Ω/phase; the transformation sentence is shown. **RFPE is not divided** (no analogy).
+* **Validation before use** (`loader.verify_shipped_catalogs`, run in the application lifespan): the shipped catalog set must have no rejected file and a consistent lock, otherwise **the service refuses to start** naming every problem -- an invalid catalog is never partly activated. Two active catalogs for the same manufacturer / family / model and an overlapping firmware pattern are rejected (new check); different firmware ranges may coexist.
+* **Administrator workflow (filesystem)**: `python -m app.tools.catalog_cli validate-catalog <file>` (schema, canonical targets, transformations, units, enums, duplicates / conflicts, applicability against installed catalogs, locked-meaning check; every problem located as `mappings[<id>].<path>`), `dry-run <catalog> <pdf>` (recognised / mapped / transformed / unsupported / conflicting / unmapped, `--json`; pure, changes nothing), `list`. No administrator GUI.
+* **Coverage** (`coverage.py`), returned with the upload (`catalog_id`, `catalog_version`, `catalog_coverage`) and shown as one line in the review summary. Counts are **raw settings**, each in exactly one bucket (they add up to `extracted_settings`): catalog mapped / unsupported / unresolved, read by the extension, not interpreted (distance-related), outside Distance Protection; plus canonical values by outcome. Raw-setting count is not the review-row count.
+* **Review**: the primary row label is the canonical registry's; the Source disclosure now also shows the canonical target (`distance.zone.x_reach`) beside catalog id / version, transformation and basis.
+* **Notes.** With an extension, the extension's `interpretation_notes` remain the relay's narrative (unchanged user-facing text); the catalog's own notes describe a catalog-only relay.
+
+**Acceptance proof.** `test_parameter_catalog_new_relay_by_json.py` (synthetic "Acme X1", test-only data): no Python profile, no `app/` file mentions it; PDF -> extractor -> identification -> catalog -> canonical fields -> standard review DTO -> readiness -> Apply -> unchanged engine; coverage and a dry-run for it. Editing the shipped JSON (a divisor, an enum map, the version) changes the result with no Python change (`test_parameter_catalog_first.py`).
+
+**Equivalence (what the user sees).** Review table (labels, values, status, category, readiness, blocking issues, counts, not-interpreted lists) and the P441 Apply payload are identical to the hand-written-only behaviour on clean and degraded P441 / RED670 sheets. One approved divergence (DEC-194): disagreeing `IBase` rows are a **Conflict** (the profile said Missing).
+
+**Still profile-specific (the extensions).** P441: line angle-based reach, residual compensation, Zone 4 / Zone P status from scheme notes, tilts, the 'Both Enabled' fault-type reading, line data. RED670: source notes, Active Group, fault-locator fallbacks. 7SA511: everything. The hand-written code that computes the **migrated** fields still runs inside the profile, but its result for any catalog-owned target is discarded (guard tests assert every catalog target in the output is the catalog's); deleting that dead code is a follow-up once UAT confirms the catalogs. The directional-boundary (ZDRDIR) gap is unchanged: Unsupported, `ArgDir` / `ArgNegRes` preserved, the 0.00 Ω value only an explicitly worded visualization approximation.
+
+**Not done (by instruction).** No administrator GUI, no new production relay, no 7SA511 migration, no live hot-reload (a catalog change needs a restart).
+
+**Adding a relay through JSON:** README of [backend/app/data/parameter_catalog/](../../backend/app/data/parameter_catalog/README.md).
+
+Tests: `test_parameter_catalog_first.py`, `test_parameter_catalog_cli.py`, plus the updated equivalence / loader / shipped / review-term / upload / provenance tests.

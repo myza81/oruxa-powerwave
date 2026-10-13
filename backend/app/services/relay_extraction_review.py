@@ -298,6 +298,11 @@ class ExtractionReview:
     #: them without keeping any state (see `canonical_codec`). ``None`` when the
     #: review is built only to read its state back.
     validation_context: dict | None = None
+    #: DEC-195. The parameter catalog that interpreted this relay, and how much of the sheet it accounts for
+    #: (counts only). ``None`` for a relay no catalog describes.
+    catalog_id: str | None = None
+    catalog_version: str | None = None
+    catalog_coverage: dict | None = None
 
 
 # ---------------------------------------------------------------------------

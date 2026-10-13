@@ -1120,7 +1120,7 @@ RED670 PDF -> generic extractor -> identifier (hitachi-red670) -> HitachiRed670P
 
 ## Parameter Catalog Foundation (DEC-194; RED670 corrected by DEC-193)
 
-Status: **Foundation implemented / Awaiting owner UAT.** The hand-written profiles are still the production path; the catalog is tested for equivalence beside them and ready to carry a new relay on its own.
+Status: **Foundation implemented (DEC-194); made the primary mapping path by DEC-195 (below).** P441 and RED670 are interpreted catalog-first; Awaiting owner UAT.
 
 ```text
 PDF -> generic extractor -> identifier -> OEM Parameter Catalog (JSON) -> generic matcher / transformer
@@ -1146,3 +1146,33 @@ Code: [backend/app/domain/parameter_catalog/](../../backend/app/domain/parameter
 * **Equivalence (this slice):** P441 subset (CT/VT, basis, delays, resistive reaches, Zone P direction) and RED670 subset (activation, direction, PP/PE, X1, RFPP, RFPE, gated tPP/tPE, characteristic, basis, ZDRDIR gap, bases, CT/VT, zero-sequence, line impedances) are read by the generic matcher and compared field by field with the hand-written profiles on clean and degraded sheets (`test_parameter_catalog_*_equivalence.py`).
 * **Catalog-only relay:** `test_parameter_catalog_new_relay_by_json.py` drives an "Acme X1" PDF through the real upload API using only a JSON catalog.
 * **Not started:** switching P441 / RED670 production to their catalogs; 7SA511 migration (paused); another relay family; an administrator editor, database storage, online distribution; CSV / Excel / XML import.
+
+## Catalog-first mapping (DEC-195)
+
+Status: **Implemented / Awaiting owner UAT.** The parameter catalog is now the *primary* mapping path for every field a catalog maps; the hand-written profile survives only as an **extension** for what the catalog schema cannot yet express.
+
+```text
+PDF -> generic extractor -> identifier -> active Parameter Catalog (JSON) -> generic matcher / transformer
+    -> canonical model  <- (extension profile: only targets the catalog does not map)
+    -> defeated-zone rule -> review table -> Apply -> generic engine
+```
+
+Ownership: the PDF extractor owns source extraction; the **parameter catalog owns OEM -> canonical meaning**; the canonical registry owns common terminology and metadata; the review owns uncertainty and human resolution; the protection engine owns calculations only.
+
+| Module | Holds |
+|---|---|
+| `catalog_first.py` | `overlay`: the catalog value wins per (canonical target, zone), also when unresolved; the extension fills only unmapped targets; nothing is dropped (settings the extension read for a catalog-owned value are kept "Not interpreted") |
+| `profile.py` | `CatalogProfile(catalog, store, extension=None)`; `interpret_with_coverage` |
+| `coverage.py` | `CatalogCoverage`: raw settings in exactly one bucket + canonical values by outcome |
+| `dry_run.py` | `dry_run(catalog, registry, document)` -> recognised / mapped / transformed / unsupported / conflicting / unmapped; pure |
+| `loader.py` | + `validate_catalog_file`, `verify_shipped_catalogs` (start-up gate), two-active-catalogs applicability check |
+| `app/tools/catalog_cli.py` | `validate-catalog`, `dry-run`, `list` |
+
+* **Precedence:** (1) validated active catalog mapping, authoritative even when Missing / Conflict / Unreadable / Unsupported; (2) extension profile, only for targets the catalog does not map; (3) unresolved / unmapped, retained "Not interpreted", never in the engine. No silent fallback to guessed profile logic.
+* **Review taxonomy is unchanged:** Mapped / Assumption / Missing / Conflict / Unsupported / Unreadable. Using a catalog is not automatically Mapped; the mapping's `authority` decides (RED670 VT primary is an Assumption).
+* **RFPP:** raw OEM value (ohm/loop) -> `divide by 2` (catalog primitive) -> canonical ohm/phase; raw value, transformation and catalog id / version are in the Source. RFPE is used as printed. The owner approved `RFPP / 2` (2026-10-13).
+* **Versions:** every catalog-owned value records the catalog id and version; its `profile_version` is `<catalog_id>-v<version>`. The upload response carries `catalog_id`, `catalog_version`, `catalog_coverage` (counts only).
+* **Start-up gate:** the shipped catalog set must validate (no rejected file, lock consistent) or the service refuses to start. A catalog change needs a restart; there is no hot reload.
+* **Adding a relay with JSON only:** write `<manufacturer>/<family>.json` (`draft`) -> `catalog_cli validate-catalog <file>` -> `catalog_cli dry-run <file> <sheet.pdf>` -> add a test -> set `"lifecycle": "active"` -> `write_lock`. No Python, no relay name in code (guard tests). Proven by the synthetic relay in `test_parameter_catalog_new_relay_by_json.py`.
+* **Remaining in Python (extensions):** P441: line-angle reach, residual compensation, Zone 4 / Zone P status from scheme notes, tilts, fault-type reading, line data; RED670: source notes, Active Group, fault-locator fallbacks; 7SA511 entirely (paused, no catalog). The Python that computes the *migrated* fields still runs but its result for catalog-owned targets is discarded (follow-up: delete it after UAT).
+* **Unchanged:** the ZDRDIR left boundary is Unsupported (not faked); no administrator GUI; no new relay.

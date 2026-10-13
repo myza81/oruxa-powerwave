@@ -2,10 +2,10 @@
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "hitachi-red670-catalog",
   "version": "1.0.0",
-  "lifecycle": "tested",
+  "lifecycle": "active",
   "profile_id": "hitachi-red670",
   "registry_version": "1.0.0",
-  "description": "Hitachi Energy (ABB) Relion RED670 distance zones (ZMQPDIS) as a Relion 670 setting sheet prints them. A representative, verified subset: zone activation and direction, the explicit R/X reaches (X1, RFPP, RFPE), the PP/PE timers, the channel-numbered CT/VT, the IBase/UBase bases and the line data. Tested for equivalence against the hand-written hitachi-red670-v1 profile; that profile stays the production path until this catalog is activated.",
+  "description": "Hitachi Energy (ABB) Relion RED670 distance zones (ZMQPDIS) as a Relion 670 setting sheet prints them. A representative, verified subset: zone activation and direction, the explicit R/X reaches (X1, RFPP, RFPE), the PP/PE timers, the channel-numbered CT/VT, the IBase/UBase bases and the line data. Proven equivalent to the hand-written hitachi-red670-v1 profile. Catalog-first: every target listed here is authoritative from this catalog; the profile remains only as an extension for what is not listed (source notes, Active Group, fault-locator fallbacks).",
   "applicability": {
     "manufacturer": "Hitachi Energy",
     "family": "Relion 670",

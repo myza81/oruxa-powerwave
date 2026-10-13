@@ -323,7 +323,12 @@ class TestProvenanceAndCompleteness:
         for path, s in model.iter_sourced():
             if s.provenance.status is MappingStatus.UNRESOLVED:
                 continue
-            assert s.provenance.profile_id == PROFILE_ID and s.provenance.profile_version == "hitachi-red670-v1", path
+            # DEC-195: a catalog-owned value is stamped with the catalog version, the rest with the profile's
+            assert s.provenance.profile_id == PROFILE_ID, path
+            if s.provenance.catalog_id:
+                assert s.provenance.profile_version == f"{s.provenance.catalog_id}-v{s.provenance.catalog_version}", path
+            else:
+                assert s.provenance.profile_version == "hitachi-red670-v1", path
             assert s.provenance.sources, path
             assert all(ref.page and ref.location for ref in s.provenance.sources), path
 

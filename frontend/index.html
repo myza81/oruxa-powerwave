@@ -55513,6 +55513,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (item.authority) labelled("Basis", WW_RR_AUTHORITY_LABELS[item.authority] || item.authority);
             if (item.profile_version) box.appendChild(wwRrEl("div", "ww-rr-dim", "Profile: " + item.profile_version));
             if (item.catalog_id) box.appendChild(wwRrEl("div", "ww-rr-dim", "Catalog: " + item.catalog_id + (item.catalog_version ? " " + item.catalog_version : "")));
+            if (item.canonical_id) box.appendChild(wwRrEl("div", "ww-rr-dim", "Canonical: " + item.canonical_id));
             return box;
         }
         function wwRrAction(label, ariaLabel, handler) {
@@ -55815,6 +55816,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             box.appendChild(wwRrEl("div", "ww-rr-dim",
                 "Profile " + (review.profile_version || review.profile_id || "—") + " · " + wwRrPlural(review.zone_count, "zone", "zones")
                 + " · " + review.not_interpreted_count + " not interpreted"));
+            // How much of the extracted sheet the parameter catalog accounts for (raw settings, not review rows).
+            if (review.catalog_coverage) {
+                const cov = review.catalog_coverage;
+                const coverage = wwRrEl("div", "ww-rr-dim",
+                    "Catalog " + review.catalog_id + " " + review.catalog_version + " · " + cov.extracted_settings + " settings extracted · "
+                    + cov.catalog_recognised_settings + " recognised by the catalog · " + cov.extension_interpreted_settings
+                    + " read by the relay profile · " + cov.unmapped_settings + " not interpreted");
+                coverage.id = "wwRelayReviewCatalogCoverage";
+                box.appendChild(coverage);
+            }
             const counts = wwRrEl("div", "ww-rr-counts");
             // Conflict and Unreadable appear only when there are some.
             const chipDefs = [["mapped", "mapped", live.mapped_count + " mapped", true],

@@ -1,4 +1,4 @@
-"""The catalogs that ship with the application: valid, locked, and not yet the production path."""
+"""The catalogs that ship with the application: valid, locked, and the production path (catalog-first)."""
 
 from __future__ import annotations
 
@@ -20,10 +20,15 @@ class TestShippedCatalogs:
         assert not any("7sa511" in p.name.lower() for p in CATALOG_ROOT.rglob("*.json"))
         assert default_store().get("siemens-7sa511-catalog") is None
 
-    def test_no_shipped_catalog_is_active_so_the_hand_written_profiles_stay_the_production_path(self):
-        assert default_store().active() == ()
+    def test_the_p441_and_red670_catalogs_are_active_and_7sa511_is_still_the_hand_written_profile(self):
+        assert {c.catalog_id for c in default_store().active()} == {"schneider-micom-p44x-catalog", "hitachi-red670-catalog"}
         registry = build_registry()
-        assert {p.profile_id for p in registry._profiles} == {"schneider-micom-p441", "siemens-7sa511", "hitachi-red670"}  # noqa: SLF001
+        by_id = {p.profile_id: p for p in registry._profiles}                       # noqa: SLF001
+        assert set(by_id) == {"schneider-micom-p441", "siemens-7sa511", "hitachi-red670"}
+        assert not hasattr(by_id["siemens-7sa511"], "catalog_id")                    # paused: no catalog, unchanged
+        for profile_id, extension in (("schneider-micom-p441", "micom-p441-v1"), ("hitachi-red670", "hitachi-red670-v1")):
+            assert by_id[profile_id].extension.version == extension                  # catalog-first, profile = extension
+            assert by_id[profile_id].version == extension                            # the profile id / version are unchanged
 
     def test_the_lock_matches_the_shipped_locked_catalogs(self):
         assert check_lock(default_store(), load_lock()) == []

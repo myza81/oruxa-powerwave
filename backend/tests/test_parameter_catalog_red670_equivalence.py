@@ -45,9 +45,9 @@ def check(*, sources=False, raw=False, **kw):
 
 
 class TestTheCatalog:
-    def test_the_red670_catalog_is_valid_tested_and_not_yet_the_production_path(self):
+    def test_the_red670_catalog_is_valid_and_active_so_it_is_the_production_path(self):
         assert CATALOG is not None and not STORE.rejected
-        assert CATALOG.lifecycle == "tested" and CATALOG.applicability.model == "RED670" and CATALOG not in STORE.active()
+        assert CATALOG.lifecycle == "active" and CATALOG.applicability.model == "RED670" and CATALOG in STORE.active()
 
     def test_the_migrated_subset_includes_the_requested_parameters(self):
         sources = {s.name for m in CATALOG.mappings for _, s in ((("value", m.source),) if m.source else ()) + m.sources if s.name}
