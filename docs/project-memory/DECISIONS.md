@@ -26984,3 +26984,28 @@ A catalog never makes a value `Mapped` by itself: the mapping's `authority` / `c
 **Adding a relay through JSON:** README of [backend/app/data/parameter_catalog/](../../backend/app/data/parameter_catalog/README.md).
 
 Tests: `test_parameter_catalog_first.py`, `test_parameter_catalog_cli.py`, plus the updated equivalence / loader / shipped / review-term / upload / provenance tests.
+
+## DEC-197 -- Remaining relay families as catalog-only JSON catalogs; small generic catalog capabilities; explicit support states
+
+Date: 2026-10-14
+Status: Implemented on `feature/remaining-relay-imports` (not merged, not deployed); awaiting one consolidated owner UAT. Owner-directed ("Relay Import -- Consolidated Batch Implementation of All Remaining Relay Samples"). Builds on DEC-194 / DEC-195; P441, RED670 and the 7SA511 pause (DEC-192) are unchanged.
+
+**Decision.** Every remaining owner sample relay is interpreted by an **active, locked JSON parameter catalog with no hand-written profile**: REL670, REL511, 7SL87, 7SA613, GRZ100, GRL200, RCS-941, RELZ100, LFZP111 (catalog ids and per-relay mapping in RELAY_IMPORT_ARCHITECTURE.md, "Remaining relay families"). Each relay ends the batch with an explicit support state, reflecting engineering confidence rather than parsing success:
+
+* **READY FOR OWNER UAT** -- REL670 (the catalog-only proof: review -> readiness -> Apply -> Distance Protection with no REL670 mapping code; same ZMQPDIS semantics as RED670 incl. `RFPP / 2`; the CT / VT channel-label variant `IL1..UL3` handled by a catalog pattern).
+* **PARTIALLY SUPPORTED -- UAT WITH LIMITATIONS** -- REL511, 7SL87, 7SA613, GRZ100, GRL200, RCS-941, RELZ100: useful review; Apply unavailable because a semantic the engine needs is not stated or not verified (characteristic, basis, zone state, delays, loops) and is not invented.
+* **DEFERRED -- SOURCE SEMANTICS NOT VERIFIED** -- LFZP111 (limited review: ratios, tripping switches as assumptions, multipliers preserved) and 7SA511 (unchanged, paused).
+
+**Generic, additive catalog capabilities** (relay-neutral; no engine, Apply-payload or P441 / RED670 semantic change; locked digests unchanged):
+1. `source_notes` -- document notes about a zone become that zone's `SourceNote`s (provenance only; never a value, state or default).
+2. `zone_preserved` -- declared raw zone settings (blinders, inclined-boundary angles, reach multipliers, scheme switches) kept with their zone as visible, never-resolvable Unsupported rows.
+3. Listed zones may declare a `key` for templates; `distance_scope.name_patterns`; `applicability.manufacturer: null` (explicitly not asserted).
+4. **A setting cell the extractor established as blank (`row:blank_value_range`) is Missing** -- never Unreadable, never the range value (generalises DEC-191 to every catalog). An empty value without that evidence stays Unreadable.
+5. Canonical registry 1.1.0: `ct_vt.ct_ratio` / `ct_vt.vt_ratio` (`InstrumentTransformers.ct_ratio` / `.vt_ratio`) for relays that state ratios; review rows only when stated; never split into primary / secondary.
+6. A selector's documented `note` is now surfaced when that source cannot be read; coverage counts preserved rows as recognised-unsupported and note rows as not interpreted.
+
+**Rules applied (no guessing).** Configured TAP SETTING is authoritative; ranges, defaults and notes never supply a value. Unknown semantics stay unknown: no zone state from element enables or names (GRZ100, GRL200, RCS-941, RELZ100), no direction where none is set, no basis from magnitudes, no characteristic not named or not documented (only ZMQPDIS and explicit Toshiba selections are mapped), no RF / Rn loop conversion (REL511, RELZ100 -- preserved as an Unsupported +R with the raw value), no geometry for blinders / inclined boundaries / lenticular shapes, no correction of suspicious data (RELZ100 line R1 > X1). Differing phase / earth characteristics (GRL200 MHO + QUAD) are recorded as "unknown" -> Unsupported, never forced into one.
+
+**Not done (future capability, documented).** A generic angle-defined / inclined boundary geometry (ZDRDIR, SIPROTEC polygon, Toshiba blinders) changes the engine and R-X renderer and is left for a dedicated slice.
+
+Tests: `test_parameter_catalog_generic_extensions.py`, `test_relay_remaining_families.py` (+ `relay_family_fixtures.py`; gated real-sample tests), updated pinned expectations in the shipped / upload / review / identification / P441 / 7SA511 / RED670 tests; `browser-tests/relay_import_remaining_families.spec.js`, updated `relay_import_upload.spec.js`.

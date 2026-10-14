@@ -8,6 +8,7 @@ baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
 is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-196/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
 **2026-10-13: the RED670 semantics are corrected (DEC-193) and a data-driven Parameter Catalog Foundation is added (DEC-194; last section).**
+**2026-10-14: every remaining sample relay family is interpreted by a catalog-only JSON parameter catalog (DEC-197, branch `feature/remaining-relay-imports`; section "Remaining relay families" at the end, with the consolidated owner-UAT matrix).**
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -1176,3 +1177,153 @@ Ownership: the PDF extractor owns source extraction; the **parameter catalog own
 * **Adding a relay with JSON only:** write `<manufacturer>/<family>.json` (`draft`) -> `catalog_cli validate-catalog <file>` -> `catalog_cli dry-run <file> <sheet.pdf>` -> add a test -> set `"lifecycle": "active"` -> `write_lock`. No Python, no relay name in code (guard tests). Proven by the synthetic relay in `test_parameter_catalog_new_relay_by_json.py`.
 * **Remaining in Python (extensions):** P441: line-angle reach, residual compensation, Zone 4 / Zone P status from scheme notes, tilts, fault-type reading, line data; RED670: source notes, Active Group, fault-locator fallbacks; 7SA511 entirely (paused, no catalog). The Python that computes the *migrated* fields still runs but its result for catalog-owned targets is discarded (follow-up: delete it after UAT).
 * **Unchanged:** the ZDRDIR left boundary is Unsupported (not faked); no administrator GUI; no new relay.
+
+## Remaining relay families (DEC-197)
+
+Status: **Implemented on `feature/remaining-relay-imports` (not merged); awaiting one consolidated owner UAT.** Every remaining
+owner sample relay is interpreted by an **active, locked JSON parameter catalog with no hand-written profile** (catalog-only).
+P441 and RED670 are unchanged (their catalogs and lock digests are untouched); 7SA511 stays paused (DEC-192).
+
+```text
+PDF -> generic extractor -> identifier (unchanged descriptors) -> active OEM catalog (JSON) -> generic matcher / transformer
+    -> canonical model -> defeated-zone rule (unchanged) -> generic review / readiness -> Apply -> generic engine
+```
+
+### Support status
+
+| Relay | Catalog | Status |
+|---|---|---|
+| Hitachi Energy REL670 | `hitachi_energy/rel670.json` | **READY FOR OWNER UAT** (catalog-only proof) |
+| Hitachi Energy REL511 | `hitachi_energy/rel511.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Toshiba GRZ100 | `toshiba/grz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Toshiba GRL200 | `toshiba/grl200.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| NR Electric RCS-941 | `nr_electric/rcs941.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| RELZ100 | `relz/relz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| LFZP111 | `lfzp/lfzp111.json` | DEFERRED — SOURCE SEMANTICS NOT VERIFIED (limited review) |
+| Siemens 7SA511 | hand-written, paused | DEFERRED — SOURCE SEMANTICS NOT VERIFIED (unchanged) |
+| Schneider MiCOM P441 | `schneider/p44x.json` + extension | unchanged (catalog-first, awaiting UAT since DEC-195) |
+| Hitachi Energy RED670 | `hitachi_energy/red670.json` + extension | unchanged (catalog-first, awaiting UAT since DEC-195) |
+
+"Partially supported" means the review is useful (identification, CT/VT, line data, zones and every value the sheet states with
+its provenance) but the relay cannot reach Apply, because a semantic the engine needs (characteristic, impedance basis, zone state,
+timers, phase-phase loop operation) is not stated or not verified -- and is therefore not invented.
+
+### Generic catalog capabilities added (relay-neutral, additive)
+
+| Capability | Where | Used by |
+|---|---|---|
+| `source_notes`: document notes about a zone ("Zone 1 Forward direction timer set to 0.15s") become that zone's `SourceNote`s -- provenance only, never a value, a status or a default. Rows consumed; coverage counts them *not interpreted*. | catalog key; `interpreter._collect_zone_notes` | REL670, REL511, 7SL87, 7SA613, GRZ100, RCS-941 |
+| `zone_preserved`: declared raw zone settings (blinders, boundary angles, reach multipliers, scheme switches) are kept **with their zone** as visible, never-resolvable Unsupported rows with the catalog's reason. Coverage: recognised-unsupported. A setting a mapping reads is never taken. | catalog key; `interpreter._preserve_zone_settings` | REL511, 7SL87, 7SA613, GRZ100, GRL200, RCS-941, LFZP111, RELZ100 |
+| Listed zones may declare a `key` used as `{key}` in templates (`Z_PP1`, `En_ZPP_Rev`, `KZ1X`). | `zones.static[].key` | RCS-941, LFZP111 |
+| A setting cell the extractor **established** as blank (`row:blank_value_range`) is **Missing** with the note "the configured setting cell is blank (the range column shows 'Infinity', which is not a setting)" -- never Unreadable and never the range value (generalises DEC-191). An empty cell without that evidence stays Unreadable. | `interpreter.locate` | 7SL87, 7SA613 |
+| `distance_scope.name_patterns` (regex over names, for codes written inside names). | catalog key | 7SL87, GRZ100, GRL200, RCS-941, LFZP111, RELZ100 |
+| `"manufacturer": null` -- the manufacturer is explicitly not asserted (shown Missing, never a placeholder). | `applicability` | LFZP111, RELZ100 |
+| Canonical **CT Ratio / VT Ratio** (`transformers.ct_ratio`, `.vt_ratio`; registry 1.1.0); review rows appear only when a relay states them, so other relays keep exactly their rows. A ratio is never split into primary / secondary. | model, registry, review | GRZ100, LFZP111 |
+| A selector's `note` is appended when that source cannot be read (documented, previously unused). | `interpreter.evaluate` | 7SA613 (`Infinity` setting) |
+
+The lock digest counts the new sections only when a catalog uses them, so the locked P441 / RED670 digests are unchanged.
+A catalog that declares notes / preserved settings owns them also in catalog-first mode (`catalog_first.overlay`; no effect on
+P441 / RED670, which declare neither).
+
+**Investigated, not implemented (documented future capability):** a generic *angle-defined / inclined boundary* geometry would
+cover the ZDRDIR directional boundary (RED670 / REL670), the SIPROTEC polygon whose resistance lines are inclined at the distance /
+characteristic angle (7SL87, 7SA613), GRZ100 blinders (BFRS, BFLS-angle) and GRL200 mho-with-blinders. It changes the engine and
+the R-X renderer, so per the batch rules it is not done here; every such setting is preserved and shown as a capability gap.
+
+### Per-relay mapping summary
+
+* **REL670** -- identical ZMQPDIS semantics to RED670 (DEC-193 / DEC-195): Operation + OperationDir -> status (decision table),
+  OperationDir -> direction, OperationPP / PE, X1 -> X (explicit R/X), `RFPP / 2` -> +R (raw value + transformation kept),
+  RFPE as printed, R1 / R0 / X0 preserved, `Timer tPP / tPE` gates tPP / tPE, ZMQPDIS -> quadrilateral (documented derivation),
+  IBase / UBase -> bases and primary basis (documented derivation), ZDRDIR left boundary = capability gap (0.00 Ω only as a
+  user-accepted visualization approximation). **CT / VT variant handled declaratively**: the indexed channel family matches
+  `^(?:CH\d+_)?IL[123]$` / `UL[123]` with no `ChannelType` filter (the REL670 sheet has none); the IN channel is never read.
+* **REL511** -- Operation_Zn -> status, DirZn -> direction (`None` is not a printed option: Unsupported), `Timer tn` gates `tn`,
+  X1Zn -> X, R1Zn / R0Zn / X0Zn preserved, RFNZn as printed (assumption), CT / VT (Ir / Ur as secondaries: assumptions; VT kV:
+  assumption), line data. **Not interpreted:** characteristic, basis, RF loop/per-phase convention (RFZn preserved as an
+  Unsupported +R with its raw value), ZnBlock (preserved), directional boundary.
+* **7SL87** -- Edit mode -> basis (Primary), Mode -> status, Directional mode -> direction, Function mode -> PP / PE loops,
+  X reach / R (ph-ph) / R (ph-g), Zone-inclination angle -> tilt (the engine reports it Unsupported), zone-specific Kr / Kx
+  (gated by `Zone-spec. residu. comp.` = YES and format Kr, Kx), CT / VT (VT units assumed kV / V), line length / angle.
+  Operate delays: **blank setting cells -> Missing** (never `Infinity`, never the notes' 0.15 / 0.45 / 3 s); the 1-phase / multi-phase
+  -> earth / phase delay loop assignment is an assumption. **Not interpreted:** characteristic; the polygon's inclined resistance
+  boundary (Dist. characteristic angle preserved in every zone); K0 rows (other compensation format).
+* **7SA613** -- Op. mode Zn (+ 1201 FCT Distance) -> status and direction (Z4 Inactive -> Disabled, Z5 Non-directional),
+  R(Zn) ph-ph / X(Zn) / RE(Zn) ph-E, Z5 `X+` -> X (`X-` preserved), RE/RL - XE/XL compensation (Z1 own, Z2..Z1B shared;
+  format-gated), CT / VT with units from the printed range (kV, AMP), line angle / length / unit. Timers: blank -> Missing,
+  `Infinity` setting -> Unreadable "not a finite delay". **Not interpreted:** basis, characteristic, Distance Angle (inclined
+  boundary, preserved), Zone Reduction (preserved).
+* **GRZ100** -- CT / VT **ratios**, line data, ZS-C / ZG-C -> characteristic (Quad + Quad -> quadrilateral; differing -> "unknown",
+  which the engine reports Unsupported -- never forced into one), TZnS / TZnG -> phase / earth delays. **Not interpreted:**
+  zone status and direction (no per-zone switch), each zone's reach setting (reactance limit or impedance reach not established),
+  BFRS / BFLS-angle / BRRS / BNDS, reactance-line and bottom angles (all preserved with their zones), Krs / Kxs (percent factors in
+  Toshiba's own definition -- not the canonical Kr / Kx; preserved), basis.
+* **GRL200** (setting group 1) -- ZnS-EN / ZnG-EN -> PP / PE loops, agreed ZnS-Dir / ZnG-Dir -> direction, ZnS-Mho.Reach at
+  ZnS-Mho.Angle -> polar reach, ZnG-R.Reach -> earth resistive reach, TZnS / TZnG -> delays, ZS-Chara MHO + ZG-Chara QUAD ->
+  "unknown" (Unsupported: one canonical characteristic cannot represent both), fault-locator line data. **Not interpreted:**
+  zone status (no zone switch), CT / VT (not on the sheet; the notes' CT ratio is not a setting), basis, blinders / mho geometry /
+  earth X reach / Krs-Kxs (preserved with the zone).
+* **RCS-941** -- U1n / U2n / I1n / I2n (units printed; U as printed phase-to-neutral), Z_PPn at phi1_Reach -> polar reach,
+  En_ZPPn / En_ZPGn -> loops, timers (t_Z1, t_PPn / t_PGn, t_Rev), Rn_Quad -> earth resistive reach only while En_ZPGn_Quad = 1,
+  K0 -> K0 magnitude (assumption), reverse zone direction from its identity (assumption), line data. **Not interpreted:** zone
+  status, forward zones' direction, characteristic, basis, Z_PGn (preserved).
+* **RELZ100** -- reference CT / VT (VT kV assumed), line data **exactly as printed** (R1 4.381 > X1 0.74 is not corrected),
+  Xn -> X, RNn as printed (assumption), Tn gated by TimerTn, Dir -> direction where stated (Zones 4-5). **Not interpreted:** status,
+  Zones 1-3 direction, characteristic, basis, Rn convention (preserved as Unsupported +R), KNn and the T3R reverse timer (preserved).
+* **LFZP111** -- CT / VT ratios (N:1), line length / unit, tripping switches -> zone state (**assumption**). **Not interpreted:**
+  any reach (multipliers KZn preserved; their combination is not verified), lenticular / quadrilateral geometry, timers (none on the
+  sheet), direction, characteristic, basis. Manufacturer not asserted.
+
+### Real-sample results (owner sheets, `RELAY_SAMPLE_PDF_DIR`, never committed)
+
+| Relay | Zones | Review counts (mapped / assumption / missing / unsupported / unreadable / blocking) | Raw settings: extracted = catalog mapped + unsupported + unresolved + not interpreted + outside DP | Readiness after accepting every offered approximation and confirming every assumption |
+|---|---|---|---|---|
+| REL670 | 4 (Z1-Z3 fwd, Z4 rev, all enabled) | 62 / 9 / 2 / 4 / 0 / 4 | 993 = 88 + 0 + 0 + 117 + 788 | **Ready to apply**; Apply returns 4 zones |
+| REL511 | 5 | 35 / 10 / 17 / 11 / 0 / 9 | 238 = 53 + 11 + 2 + 46 + 126 | Not ready (basis, characteristic, PP loops) |
+| 7SL87 | 6 | 60 / 2 / 14 / 39 / 0 / 6 | 794 = 60 + 31 + 21 + 84 + 598 | Not ready (characteristic, delays, tilt) |
+| 7SA613 | 6 | 51 / 0 / 26 / 9 / 3 / 16 | 343 = 38 + 3 + 9 + 38 + 255 | Not ready (basis, characteristic, delays, loops, non-dir Z5) |
+| GRZ100 | 8 | 30 / 2 / 75 / 58 / 0 / 17 | 858 = 24 + 32 + 0 + 58 + 744 | Not ready (basis, zone status) |
+| GRL200 | 6 | 47 / 2 / 22 / 246 / 0 / 7 | 2498 = 63 + 240 + 0 + 121 + 2074 | Not ready (basis, characteristic, zone status) |
+| RCS-941 | 4 | 30 / 7 / 26 / 3 / 0 / 12 | 164 = 36 + 3 + 0 + 35 + 90 | Not ready (basis, characteristic, zone status) |
+| RELZ100 | 5 | 18 / 9 / 30 / 12 / 0 / 14 | 154 = 31 + 12 + 2 + 36 + 73 | Not ready (basis, characteristic, zone status) |
+| LFZP111 | 5 | 6 / 5 / 36 / 8 / 0 / 13 | 102 = 10 + 8 + 0 + 30 + 54 | Not ready (by design: deferred) |
+
+Every extracted raw setting is in exactly one bucket (no extension reads anything for these relays: `extension_interpreted = 0`);
+0 conflicts on every real sheet. Unchanged regression references: P441 32 / 36 / 7 / 4 / 0 / 3 and RED670 61 / 9 / 1 / 4 / 0 / 3,
+both Ready after the same decisions.
+
+### Consolidated owner-UAT matrix
+
+Upload each owner sheet in Distance Protection -> Import Relay Settings, open *Review Extracted Settings*, compare with the PDF.
+"As printed" = the TAP SETTING column. Owner checks are what this batch could not verify from the repository.
+
+| Relay | Sample file | Support status | Identification | CT/VT | Basis | Zones | Status | Direction | Characteristic | Reach | PP resistive reach | PE resistive reach | Timers | Compensation | Review readiness | Apply | R-X plot | Known limitations | Owner checks required |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| REL670 | rel670.pdf | READY FOR OWNER UAT | Hitachi Energy · REL670, V1.2, high | CT 900/1 A (IL1-IL3); VT 132 kV / 110 V (unit assumption) | Primary (IBase/UBase, documented) | Z1-Z4 | Z1-Z4 Enabled (Operation/OperationDir) | Z1-Z3 Fwd, Z4 Rev | Quadrilateral (ZMQPDIS) | X 0.65 / 1.3 / 4.65 / 0.16 Ω | RFPP/2: 0.49 / 0.97 / 3.49 / 0.125 Ω (raw 0.98 / 1.94 / 6.98 / 0.25) | RFPE 3.27 / 6.48 / 17.26 / 0.8 Ω | tPP = tPE 0.15 / 0.45 / 3 / 3 s | none stated (R0/X0 kept) | Not ready -> Ready after 4 × 0.00 Ω approximation + 9 confirmations | Yes | 4 explicit R/X boxes, Z4 dashed reverse | Left boundary is the ZDRDIR directional element (0 Ω is an approximation); PE not plotted | Z4 reverse in service correct?; RFPP/2 for REL670 like RED670; VT/UBase units; the 0 Ω approximation acceptable for viewing |
+| REL511 | rel511.pdf | PARTIAL | Hitachi Energy · REL511, V1.2, high | CT 1200 A, Ir 1 A (assumption); VT 132 kV (assumption) / Ur 110 V (assumption) | Missing | Z1-Z5 | Z1-Z4 Enabled, Z5 Disabled (Operation_Zn) | Z1-Z3 Fwd, Z4 Rev; Z5 'None' not interpreted | Missing | X1Zn 3.08 / 4.7 / 10.28 / 0.77 Ω | Unsupported: RFZn preserved (4.62 / 6.77 / 11.87 / 1.15) | RFNZn as printed 15.39 / 17.5 / 23.26 / 3.85 (assumption) | t1-t4 0 / 0.3 / 3 / 3 s (Timer on); Z5 Missing | none (R0/X0 kept) | Not ready (basis, characteristic, PP loops) | No | No | RF loop / per-phase, characteristic, basis, ZnBlock unknown | Is REL511 primary or secondary ohms? Characteristic? RF per loop or per phase? ZnBlock meaning? |
+| 7SL87 | 7sl87.pdf | PARTIAL | Siemens · 7SL87, high | CT 1500/1 A; VT 275 kV / 110 V (unit assumption) | Primary (Edit mode) | Z1-Z6 | Z1-Z3 Enabled, Z4-Z6 Disabled (Mode) | Z1-Z3 Fwd, Z4 Rev | Missing (not named) | X 4.7 / 8.5 / 30.5 Ω | R (ph-ph) 3.1 / 3.6 / 6.6 Ω | R (ph-g) 11.2 / 14.4 / 34 Ω | **all Missing** (blank cells; Infinity is the range) | Kr 1.72 / Kx 0.58 (Z1-Z3) | Not ready (characteristic, delays, tilt) | No | No | Inclined R boundary (82.7°) not representable; tilt blocks the engine | Notes' 0.15 / 0.45 / 3 s are not settings -- confirm the real delays; Z4 off matches "Zone 4 Inactive" note |
+| 7SA613 | 7sa613.pdf | PARTIAL | Siemens · 7SA613, high | CT 1200/1 A; VT 275 kV / 110 V (units printed) | Missing | Z1, Z2, Z3, Z4, Z5, Z1B | Z1-Z3, Z5, Z1B Enabled; Z4 Disabled (Op. mode Inactive) | Z1-Z3, Z1B Fwd; Z5 Non-directional | Missing | X 2.4 / 3.6 / 8.8 / 250 / 10.6 (X+) / 3.2 Ω; Z5 X- 6.9 preserved | 1.5 / 1.7 / 2.4 / 250 / 2.9 / 1.6 Ω | 7.8 / 8.6 / 13.6 / 250 / 16.3 / 8.4 Ω | T1-T3 Missing (blank); T4, T5, T1B 'Infinity' (not a delay) | RE/RL 1.51, XE/XL 0.48 | Not ready (basis, characteristic, delays) | No | No | Inclined boundary (Distance Angle 82) and Zone Reduction preserved | Primary or secondary ohms? Real delays (blank on sheet) |
+| GRZ100 | grz100.pdf | PARTIAL | Toshiba · GRZ100, Ver 2.1, high | CT ratio 1200, VT ratio 1200 | Missing | Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2, ZND | Missing (no zone switch) | Missing (not stated) | Quadrilateral (ZS-C = ZG-C = Quad) | not interpreted (ZnS/ZnG preserved) | not interpreted (BFRS preserved) | not interpreted | TZ1S 0, TZ2S 0.3, TZFS 0.35, TZ3S 3, TZR1S 0.5, TZR2S 3, TZNDS 0.7 s (+G) | Krs 560 / Kxs 313 % preserved | Not ready (basis, status) | No | No | Blinder geometry (BFRS / BFLS-angle) a capability gap | Reach setting = reactance limit or impedance? Which zones are in service? Basis |
+| GRL200 | grl200.pdf | PARTIAL | Toshiba · GRL200, high | Missing (only in the notes) | Missing | Z1-Z5, Z1X | Missing; PP/PE enables Z1-Z3 on, Z4, Z5, Z1X off | Z1-Z3 Fwd, Z4 Rev (agreed) | Unknown -> Unsupported (MHO phase / QUAD earth) | mho 3.59 / 7.18 / 10.53 Ω ∠85° | not interpreted (blinder 4.2 / 5 / 5.32 preserved) | ZnG-R.Reach 15.42 / 18.34 / 21.06 Ω | TZnS = TZnG 0.15 / 0.45 / 3 s | Krs/Kxs preserved | Not ready (basis, characteristic, status) | No | No | Mho-with-blinders + quad earth needs a per-loop / blinder geometry model | Basis; CT/VT; is the review useful as it stands? |
+| RCS-941 | rcs.pdf | PARTIAL | NR Electric · RCS-941, high | CT 1200/1 A; VT 76.2 kV / 63.5 V (as printed, phase-neutral) | Missing | Z1, Z2, Z3, Reverse Zone | Missing; PP/PE enables on | Z1-Z3 Missing; Reverse Zone Reverse (assumption) | Missing | Z_PP 0.53 / 1.23 / 3.57 / 0.15 Ω ∠80° | not stated | Rn_Quad 2.44 / 4.92 / 14.28 Ω (quad enabled) | t_Z1 0.15; Z2 0.45 / 0.45; Z3 3 / 3; Rev 3 s | K0 0.83 (assumption) | Not ready (basis, characteristic, status) | No | No | PG mho reach (Z_PGn) and blinder not interpreted | Characteristic (mho?); basis; K0 definition |
+| RELZ100 | relz100.pdf | PARTIAL | RELZ 100 (manufacturer not asserted), 3.0, high | CT 1200/1 A; VT 132 kV / 0.11 kV = 110 V (units assumed) | Missing | Z1-Z5 | Missing | Z4, Z5 Non-directional; Z1-Z3 Missing | Missing | X 3.91 / 4.59 / 8.98 / 11.81 / 150 Ω | Unsupported: Rn preserved (5.69 / 5.81 / 6.58 / 8.21 / 150) | RNn as printed 16.69 / 16.99 / 18.89 / 23.5 / 150 (assumption) | T1-T4 0 / 0.3 / 3 / 0 s; T5 Missing (TimerT5 OFF) | KNn preserved | Not ready (basis, characteristic, status) | No | No | Line R1 4.381 > X1 0.74 kept as printed | Is the line data correct on the sheet? Zones 1-3 direction; basis |
+| LFZP111 | lfzp.pdf | DEFERRED | LFZP111 (manufacturer not asserted), high | CT ratio 600, VT ratio 1200 | Missing | Z1, Z1X, Z1Y, Z2, Z3 | from tripping switch (assumption): Z1, Z2, Z3 on; Z1X, Z1Y blocked | Missing | Missing | not derived (KZn preserved) | not derived | not derived | none on the sheet | not interpreted | Not ready (deferred) | No | No | Multiplier-based reaches, lenticular Z3 | How KZn / KZPh / KR combine into a reach (manual) |
+| 7SA511 | 7sa511.pdf | DEFERRED (unchanged) | Siemens · 7SA511, high | as before | Assumption (secondary) | 6 | Missing | Z1, Z2 Fwd, Z3 Rev | Assumption | X/R as before | as before | as before | Missing (blank) | RE/RL - XE/XL | Not ready | after user decisions only | -- | Paused (DEC-192) | none in this batch |
+| P441 | p441.pdf | unchanged (regression) | Schneider Electric · P441 | unchanged | unchanged | 5 | unchanged | unchanged | Assumption | unchanged | unchanged | unchanged | unchanged | K0 | Ready after decisions | Yes | unchanged | -- | regression only |
+| RED670 | red670.pdf | unchanged (regression) | Hitachi Energy · RED670 | unchanged | Primary | 4 | unchanged | unchanged | Quadrilateral | unchanged | RFPP/2 | RFPE | unchanged | -- | Ready after decisions | Yes | unchanged | -- | regression only |
+
+### Regression
+
+**Regression (2026-10-14):** backend full suite 9,192 tests, 0 failures, 49 skipped (unrelated gates; the relay real-sample tests ran with `RELAY_SAMPLE_PDF_DIR`); focused relay / Distance Protection browser specs 176 passed (171 + the new 5); full browser suite 1,032 specs: 1,029 passed, 3 failed -- `calculated-channel-presentation.spec.js:213` (passed on isolated rerun), `calculated-channel-presentation.spec.js:256` and `impedance_analysis.spec.js:289` (Play/Pause timing; both also fail on untouched `main` b2d796a -- pre-existing, not relay-related).
+
+### Open (owner input needed)
+
+1. Whether the RFPP / 2 convention approved for RED670 applies to REL670 unchanged (same ZMQPDIS parameters; implemented so).
+2. The impedance basis of REL511, 7SA613, GRZ100, GRL200, RCS-941 and RELZ100 sheets (not stated; never inferred from magnitudes).
+3. The characteristic of REL511, 7SL87, 7SA613, RCS-941, RELZ100 (not named on the sheets; the parameter sets suggest
+   quadrilateral / mho, but nothing is assumed).
+4. The per-loop / per-phase meaning of REL511 RFZn / RELZ100 Rn (preserved, not used).
+5. Whether a zero tilt (7SL87 Zone-inclination angle 0) should be acceptable to the engine (today any stated tilt is refused).
+6. A first-class angle-defined / inclined boundary geometry (ZDRDIR, SIPROTEC polygon, Toshiba blinders) -- a future engine slice.

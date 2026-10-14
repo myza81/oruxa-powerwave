@@ -80,8 +80,49 @@ Units convert only where `units.CONVERSIONS` lists the pair (kV -> V ...), autom
 **Capability gaps.** `gap` declares that the document states something the canonical model cannot represent: the value
 stays *Unsupported*, the evidence is cited and preserved, nothing is approximated.
 
+**Zone document notes** (`source_notes`, DEC-197). A list of rules `{pattern, zone_id, zone_ids, subjects}`: `pattern` is
+searched in a raw row's text (name and value) and has a named group `zone`; `zone_id` (default `Z{zone}`) turns the token into a
+zone id, `zone_ids` overrides listed tokens (`{"3R": "ZR"}`); `subjects` (`timer` / `status`, a pattern and a value template
+`{1} s`) label what the note states. A matching row becomes a `SourceNote` of that zone -- shown as "Document note / proposed
+requirement", **never a value, a status or a default**. A note naming a zone the document does not have stays a raw row.
+
+**Preserved zone settings** (`zone_preserved`, DEC-197). A list of `{zone, names | name_pattern, reason}`: the matching raw settings
+(templated per zone; `{zone}` / `{n}` / `{nn}` / `{key}`, regex-escaped in a pattern) are kept **with their zone** as Unsupported,
+never-resolvable review rows carrying `reason` -- for geometry or logic the canonical model cannot represent (blinders, boundary
+angles, reach multipliers). A setting a mapping reads is never taken. Coverage counts them as recognised-unsupported.
+
+**Listed zone keys.** A listed zone may declare `"key"` (default: its id), used as `{key}` in templates when the sheet's own zone
+token differs from the zone id (`Z_PP1`, `En_ZPP_Rev`, `KZ1X`).
+
+**Blank setting cells.** A row whose setting cell the extractor established as blank (`row:blank_value_range`) reads as *Missing*
+("the configured setting cell is blank (the range column shows 'Infinity', which is not a setting)") -- never the range, never a
+default. A merely empty value without that evidence stays *Unreadable*.
+
+**Other keys.** `distance_scope.name_patterns` (regex over names, for codes written inside names); `applicability.manufacturer: null`
+(the manufacturer is explicitly not asserted; shown as Missing); a selector's `note` is appended when that source cannot be read.
+The canonical registry (1.1.0) adds `ct_vt.ct_ratio` / `ct_vt.vt_ratio` for relays that state ratios (never split into primary /
+secondary). The lock digest counts `source_notes` / `zone_preserved` only when a catalog uses them.
+
 Coverage is reported per import (`catalog_coverage`): raw settings split into catalog
 mapped / unsupported / unresolved, read by the extension, not interpreted and outside Distance Protection (they add up
 to the extracted settings), plus canonical values by outcome. Review rows are not raw settings.
+
+## Shipped catalogs
+
+| Catalog | Relay | Mode |
+|---|---|---|
+| `schneider/p44x.json` | MiCOM P441 | catalog-first (+ hand-written extension) |
+| `hitachi_energy/red670.json` | RED670 | catalog-first (+ hand-written extension) |
+| `hitachi_energy/rel670.json` | REL670 | catalog-only |
+| `hitachi_energy/rel511.json` | REL511 | catalog-only (verified subset) |
+| `siemens/siprotec5_7sl87.json` | 7SL87 | catalog-only (verified subset) |
+| `siemens/siprotec4_7sa613.json` | 7SA613 | catalog-only (verified subset) |
+| `toshiba/grz100.json` | GRZ100 | catalog-only (verified subset) |
+| `toshiba/grl200.json` | GRL200 | catalog-only (verified subset) |
+| `nr_electric/rcs941.json` | RCS-941 | catalog-only (verified subset) |
+| `relz/relz100.json` | RELZ100 | catalog-only (verified subset) |
+| `lfzp/lfzp111.json` | LFZP111 | catalog-only (limited review, deferred) |
+
+Support status per relay and the owner-UAT matrix: `docs/project-memory/RELAY_IMPORT_ARCHITECTURE.md`, "Remaining relay families".
 
 Not covered here: 7SA511 (paused pending verified source data), any administrator UI, database storage, CSV/Excel/XML.
