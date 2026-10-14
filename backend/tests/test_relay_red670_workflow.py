@@ -123,7 +123,10 @@ class TestUploadAndReview:
         # a genuine capability gap, not a missing number: the relay's real boundary is ZDRDIR's angles
         assert left["category"] == "unsupported" and left["value_text"] is None
         assert left["suggestion"] and "0.00" in json.dumps(left["suggestion"])
-        assert "approximation" in left["suggestion"]["rationale"] and "not the relay's geometry" in left["suggestion"]["rationale"]
+        assert left["suggestion"]["rationale"] == (
+            "Relay directional boundary is not yet representable. 0.00 Ω is an optional visualization "
+            "approximation only and is not a mapped relay setting."
+        )
         # the native source of that boundary is cited beside the unsupported value, with its raw angles
         assert {s["name"] for s in left["sources"]} == {"ZD01-:ArgDir", "ZD01-:ArgNegRes"}
         assert {s["raw_value"] for s in left["sources"]} == {"15", "115"}

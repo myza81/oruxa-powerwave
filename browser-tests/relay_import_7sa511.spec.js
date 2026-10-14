@@ -160,7 +160,7 @@ test("Apply Settings fills the dynamic cards and draws only the enabled zones on
   // Zones 1-3 are drawn; the disabled Zone 4, Zone 1B and Zone 1L are not.
   for (const key of ["zone1", "zone2", "zone3"]) await expect(boundary(page, key)).toHaveCount(1);
   await expect(page.locator("#wwDistanceSvg .ww-dist-zone-boundary")).toHaveCount(3);
-  await expect(legendItems(page)).toHaveText(["Zone 1", "Zone 2", "Zone 3 (reverse)"]);
+  await expect(legendItems(page)).toHaveText(["Zone 1", "Zone 2", "Zone 3 · Reverse"]);
   await expect(page.locator("#wwDistancePanel .ww-dist-zone-card")).toHaveCount(4);
   await expect(page.locator("#wwDistancePanel [data-zone-dynamic]")).toHaveCount(0);
   await expect(page.locator("#wwDistanceZone4Enabled")).not.toBeChecked();
@@ -182,7 +182,7 @@ test("an enabled Zone 1B becomes a dynamic card with the sheet's own label, is p
   await expect(extra).toHaveCount(1);
   await expect(extra.locator(".ww-dist-zone-card-title")).toHaveText("Zone 1B");
   await expect(boundary(page, "z_z1b")).toHaveCount(1);
-  await expect(legendItems(page)).toHaveText(["Zone 1", "Zone 2", "Zone 3 (reverse)", "Zone 1B"]);
+  await expect(legendItems(page)).toHaveText(["Zone 1", "Zone 2", "Zone 3 · Reverse", "Zone 1B"]);
   await page.locator("#wwDistanceFitZonesBtn").click();
   const inside = await page.evaluate(() => {
     const svg = document.getElementById("wwDistanceSvg").getBoundingClientRect();

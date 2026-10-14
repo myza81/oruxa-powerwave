@@ -528,7 +528,7 @@ reverse zone, etc., and no OEM naming is assumed.
 - **Canonical model is not limited to four zones.** Four is the manual form's starting set only;
   `CanonicalDistanceProtectionModel.zones` stays arbitrary and, since Slice 10, so does the engine (see [Dynamic zones](#dynamic-zones-slice-10-dec-189)).
 - **Outputs / viewport.** Zone 4 reports Enabled, Operated / Not Operated and
-  the configured delay like the other zones, is drawn dashed in its own colour,
+  the configured delay like the other zones, is drawn dashed in its own colour (a display cue only -- see Dynamic zones),
   and is included in Fit Zones (its negative-R/negative-X extent) and the
   default view, with the R/X scale still 1:1.
 - **Not in scope:** non-directional zones, polygon/lenticular geometry,
@@ -678,7 +678,11 @@ carrying its own direction; the four manual slots below are only the form's *sta
 - **Re-Apply** rebuilds the collection from the standard defaults plus the payload (atomically; a malformed payload changes nothing), so
   stale extra cards/boundaries/state rows disappear and the same id is updated, never duplicated. Reset also drops all extra zones.
 - **Colours / legend.** Standard zones keep their tokens; extra zones rotate through `--ww-dist-zone-extra1..6` (light and dark);
-  reverse-facing zones are dashed; a legend lists every plotted zone ("(reverse)" where relevant) so colour is never the only cue.
+  reverse-facing zones are dashed; a legend lists every plotted zone so colour is never the only cue. A reverse zone is named
+  `<label> · Reverse` (e.g. `Zone 4 · Reverse`; slot 4 uses "Zone 4" there, not its card title "Reverse Zone"), and while one is
+  drawn the legend adds "Dashed = reverse zone (display cue only)". **Dashed vs solid is a presentation convention only**
+  (owner UAT, 2026-10-14): it carries no protection-engineering meaning; reverse operation comes from the zone's direction
+  setting / orientation, and the dash is tied to that direction alone (never to a zone number or slot).
 - **Zone-state semantics are unchanged**: Operated / Not Operated is pure geometry; the delay is configuration only.
 
 ## Known limitations / explicitly deferred (not this slice)

@@ -9127,9 +9127,9 @@
         .ww-dist-zone-boundary--zone1 { stroke: var(--ww-dist-zone1); }
         .ww-dist-zone-boundary--zone2 { stroke: var(--ww-dist-zone2); }
         .ww-dist-zone-boundary--zone3 { stroke: var(--ww-dist-zone3); }
-        /* Reverse Zone: dashed so it reads as the opposite-facing zone. */
         .ww-dist-zone-boundary--zone4 { stroke: var(--ww-dist-zone4); }
-        /* Any zone facing reverse is dashed -- direction, not a zone number, decides it. */
+        /* Any zone facing reverse is dashed -- direction, not a zone number, decides it. A display
+           convention only: the dash carries no protection meaning (the legend says so). */
         .ww-dist-zone-boundary--reverse { stroke-dasharray: 5 3; }
         /* Legend of the plotted zones: colour is never the only cue (label + dash style). */
         .ww-dist-zone-legend {
@@ -9154,6 +9154,8 @@
             border-top: 2px solid var(--zone-color, var(--text-dim));
         }
         .ww-dist-zone-legend-item--reverse .ww-dist-zone-legend-swatch { border-top-style: dashed; }
+        /* States the dash convention: a display cue for reverse zones, not a protection meaning. */
+        .ww-dist-zone-legend-note { font-style: italic; opacity: 0.85; }
         .ww-dist-zone-direction {
             font-size: 0.7rem;
             color: var(--text-dim);
@@ -55444,20 +55446,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             svg.innerHTML = parts.join("");
             wwDistanceRenderZoneLegend();
         }
+        // Legend name of a drawn zone: its label, plus " · Reverse" when it faces reverse ("Zone 4 · Reverse",
+        // never "Reverse Zone · Reverse"). Direction comes from the zone setting; the dash only mirrors it.
+        const WW_DISTANCE_REVERSE_DASH_NOTE = "Dashed = reverse zone (display cue only)";
+        const WW_DISTANCE_REVERSE_DASH_TITLE = "Reverse operation comes from the zone's direction setting. "
+            + "The dashed line is a display convention only and has no protection meaning.";
+        function wwDistanceZoneLegendLabel(key) {
+            const z = wwDistanceState.zones[key];
+            const base = key === "zone4" && !(z && z.dynamic) ? "Zone 4" : wwDistanceZoneLabel(key);
+            return z && z.direction === "reverse" ? base + " \u00b7 Reverse" : base;
+        }
         // Legend of the zones actually drawn (enabled, with a drawable geometry), in zone order.
         function wwDistanceRenderZoneLegend() {
             const legend = document.getElementById("wwDistanceZoneLegend");
             if (!legend) return;
             const items = [];
+            let anyReverse = false;
             for (const key of wwDistanceZoneKeys()) {
                 const z = wwDistanceState.zones[key];
                 if (!wwDistanceZoneBounds(z, wwDistanceState.characteristic)) continue;
                 const reverse = z.direction === "reverse";
+                anyReverse = anyReverse || reverse;
                 items.push(
                     '<span class="ww-dist-zone-legend-item' + (reverse ? " ww-dist-zone-legend-item--reverse" : "") + '" data-zone-key="' + key +
-                    '" style="--zone-color: ' + wwDistanceZoneColorVar(key) + '"><span class="ww-dist-zone-legend-swatch"></span>' +
-                    escapeHtml(wwDistanceZoneLabel(key) + (reverse ? " (reverse)" : "")) + '</span>'
+                    '" data-direction="' + (reverse ? "reverse" : "forward") + '"' +
+                    (reverse ? ' title="' + escapeHtml(WW_DISTANCE_REVERSE_DASH_TITLE) + '"' : "") +
+                    ' style="--zone-color: ' + wwDistanceZoneColorVar(key) + '"><span class="ww-dist-zone-legend-swatch"></span>' +
+                    escapeHtml(wwDistanceZoneLegendLabel(key)) + '</span>'
                 );
+            }
+            // The dash convention is stated once, only while a reverse zone is drawn.
+            if (anyReverse) {
+                items.push('<span class="ww-dist-zone-legend-note" data-legend-note="reverse-dash" title="' +
+                    escapeHtml(WW_DISTANCE_REVERSE_DASH_TITLE) + '">' + escapeHtml(WW_DISTANCE_REVERSE_DASH_NOTE) + '</span>');
             }
             legend.innerHTML = items.join("");
             legend.hidden = items.length === 0;
@@ -55707,9 +55728,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Helper text for the quadrilateral's left-hand resistive boundary (relay review).
         const WW_RR_LEFT_REACH_HELP = "Left-hand resistive boundary of the quadrilateral. This does not mean the zone is reverse-directional.";
         const WW_RR_NOT_IN_FILE = "This value was not found in the relay setting file.";
-        // An unsupported item is stated by the document but cannot be represented by Oruxa; any value offered
-        // for it is a visualization approximation, never the relay's own geometry.
-        const WW_RR_NOT_REPRESENTABLE = "The relay's own definition of this value cannot be represented yet.";
         function wwRrIsLeftReach(item) {
             return !!item.item_id && /\.resistive_reach\.reverse$/.test(item.item_id);
         }
@@ -55991,8 +56009,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const offered = view.review_status === "unresolved" && !!view.suggestion;
                 offer.hidden = !offered;
                 if (offered) {
-                    offer.textContent = (view.category === "unsupported" ? WW_RR_NOT_REPRESENTABLE : WW_RR_NOT_IN_FILE)
-                        + " Suggested for visualization: " + view.suggestion.value_text + ". " + view.suggestion.rationale;
+                    // An unsupported item is stated by the document but cannot be represented by Oruxa: the backend's
+                    // rationale alone (one concise sentence pair) says the offer is an optional visualization approximation.
+                    offer.textContent = view.category === "unsupported" ? view.suggestion.rationale
+                        : WW_RR_NOT_IN_FILE + " Suggested for visualization: " + view.suggestion.value_text + ". " + view.suggestion.rationale;
                 }
                 if (view.blocking) chips.appendChild(wwRrEl("span", "ww-rr-blocking", "Blocking"));
                 if (view.left_unresolved) chips.appendChild(wwRrEl("span", "ww-rr-dim", "Left unresolved"));

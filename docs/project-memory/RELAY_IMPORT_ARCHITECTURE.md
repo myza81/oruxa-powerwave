@@ -1238,7 +1238,11 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
   OperationDir -> direction, OperationPP / PE, X1 -> X (explicit R/X), `RFPP / 2` -> +R (raw value + transformation kept),
   RFPE as printed, R1 / R0 / X0 preserved, `Timer tPP / tPE` gates tPP / tPE, ZMQPDIS -> quadrilateral (documented derivation),
   IBase / UBase -> bases and primary basis (documented derivation), ZDRDIR left boundary = capability gap (0.00 Ω only as a
-  user-accepted visualization approximation). **CT / VT variant handled declaratively**: the indexed channel family matches
+  user-accepted visualization approximation). **Review wording (owner UAT, 2026-10-14):** the line under an Unsupported
+  Left Resistive Reach (−R) is the concise "Relay directional boundary is not yet representable. 0.00 Ω is an optional
+  visualization approximation only and is not a mapped relay setting." (`SuggestionSpec.unsupported_rationale`, shown
+  alone); semantics unchanged -- still Unsupported, the offer optional, accepting it a visualization resolution
+  (Resolved · Suggested, never Mapped), readiness / Apply unchanged. **CT / VT variant handled declaratively**: the indexed channel family matches
   `^(?:CH\d+_)?IL[123]$` / `UL[123]` with no `ChannelType` filter (the REL670 sheet has none); the IN channel is never read.
 * **REL511** -- Operation_Zn -> status, DirZn -> direction (`None` is not a printed option: Unsupported), `Timer tn` gates `tn`,
   X1Zn -> X, R1Zn / R0Zn / X0Zn preserved, RFNZn as printed (assumption), CT / VT (Ir / Ur as secondaries: assumptions; VT kV:

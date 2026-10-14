@@ -89,10 +89,11 @@ test("the Left (−R) reach is Unsupported (a capability gap), keeps its ZDRDIR 
   const left = row(page, "zone.Z1.rr.reverse");
   await expect(left).toContainText("Unsupported");
   await expect(left).not.toContainText("Missing");
-  // the offered value is worded as a visualization approximation, never as the relay's geometry
-  await expect(left).toContainText("Suggested for visualization: 0.00 Ω");
-  await expect(left).toContainText("cannot be represented yet");
-  await expect(left).toContainText("not the relay's geometry");
+  // the offered value is worded concisely as an optional visualization approximation, never a mapped setting
+  await expect(left.locator(".ww-rr-offer")).toHaveText(
+    "Relay directional boundary is not yet representable. 0.00 Ω is an optional visualization approximation only and is not a mapped relay setting.");
+  await expect(left).not.toContainText("cannot be represented yet");
+  await expect(left).not.toContainText("Suggested for visualization");
   await left.getByRole("button", { name: /Source/ }).first().click();
   await expect(left).toContainText("ZD01-:ArgDir");
   await expect(left).toContainText("ZD01-:ArgNegRes");

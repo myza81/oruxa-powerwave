@@ -564,7 +564,11 @@ class TestDynamicZonesSlice10:
         assert 'id="wwDistanceZoneLegend"' in source
         legend = _function_body(source, "function wwDistanceRenderZoneLegend", "// ---- Input Source (Recording/Manual)")
         assert "wwDistanceZoneBounds(z, wwDistanceState.characteristic)" in legend  # only zones that are drawn
-        assert '" (reverse)"' in legend
+        # a reverse zone is named as such ("Zone 4 · Reverse") and the dash is stated as a display cue only
+        assert "wwDistanceZoneLegendLabel(key)" in legend and 'data-legend-note="reverse-dash"' in legend
+        label = _function_body(source, "function wwDistanceZoneLegendLabel", "// Legend of the zones actually drawn")
+        assert 'z.direction === "reverse" ? base + " \\u00b7 Reverse"' in label
+        assert 'const WW_DISTANCE_REVERSE_DASH_NOTE = "Dashed = reverse zone (display cue only)";' in source
 
 
 class TestExplicitRxGeometryInTheFrontend:

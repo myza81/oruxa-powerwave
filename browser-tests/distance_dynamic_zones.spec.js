@@ -199,7 +199,8 @@ test("an extra reverse-directed zone is the forward characteristic rotated 180 d
   });
   await expect(boundary(page, "z_zr")).toHaveClass(/ww-dist-zone-boundary--reverse/);
   await expect(boundary(page, "z_zf")).not.toHaveClass(/ww-dist-zone-boundary--reverse/);
-  await expect(legendItems(page).filter({ hasText: "Rev Backup" })).toContainText("(reverse)");
+  await expect(legendItems(page).filter({ hasText: "Rev Backup" })).toHaveText("Rev Backup · Reverse");
+  await expect(legendItems(page).filter({ hasText: "Fwd Backup" })).toHaveText("Fwd Backup");
   // and the backend evaluates it by direction, not by name or number
   await enterLoop(page, 180);
   await expect(zoneRow(page, "Rev Backup")).toContainText("Operated");

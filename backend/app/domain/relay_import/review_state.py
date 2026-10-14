@@ -149,9 +149,8 @@ _SUGGESTIONS: tuple[tuple[re.Pattern[str], SuggestionSpec], ...] = (
             "0.00 Ω",
             "Places the left-hand boundary at R = 0. A neutral starting point for plotting "
             "and analysis; it is not the relay's setting.",
-            "Visualization approximation only: places the left-hand boundary at R = 0. The relay's actual "
-            "left / lower boundary is formed by a directional element that Oruxa cannot represent yet, so "
-            "this is not the relay's geometry and not a mapped setting.",
+            "Relay directional boundary is not yet representable. 0.00 Ω is an optional visualization "
+            "approximation only and is not a mapped relay setting.",
         ),
     ),
 )

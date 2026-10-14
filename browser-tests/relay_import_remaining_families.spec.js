@@ -29,6 +29,9 @@ const button = (page, label) => page.locator(`#wwRelayReviewPanel button[aria-la
 const readiness = (page) => page.locator("#wwRelayReviewReadiness");
 const applyBtn = (page) => page.locator("#wwRelayReviewApply");
 const LEFT = "Left Resistive Reach (−R)";
+// The concise explanation under an unsupported Left (-R) reach (owner UAT wording), and fragments of the longer one it replaced.
+const LEFT_OFFER = "Relay directional boundary is not yet representable. 0.00 Ω is an optional visualization approximation only and is not a mapped relay setting.";
+const OLD_LEFT_OFFER_FRAGMENTS = ["cannot be represented yet", "Suggested for visualization", "directional element that Oruxa cannot represent", "not the relay's geometry"];
 const input = (page, n, id) => page.locator(`#wwDistanceZone${n}${id}Input`);
 const boundary = (page, key) => page.locator(`#wwDistanceSvg .ww-dist-zone-boundary[data-zone-key="${key}"]`);
 
@@ -60,7 +63,7 @@ test("REL670: identified and reviewed through its catalog, with Zone 4 enabled i
   await expect(pp).toContainText("hitachi-rel670-catalog");
   // the ZDRDIR left boundary is a capability gap, offered only as a worded approximation
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Unsupported");
-  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("not the relay's geometry");
+  await expect(row(page, "zone.Z1.rr.reverse").locator(".ww-rr-offer")).toHaveText(LEFT_OFFER);
   // the scheme requirement is a document note beside the zone, never the value
   await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 Forward direction timer set to 0.15s");
   await expect(row(page, "zone.Z1.timer.pp")).toContainText("0.15 s");
@@ -84,6 +87,61 @@ test("REL670: Ready to apply after the approximation and confirmations; Apply pl
   // the reverse Zone 4 lies on the other side of the origin from Zone 1
   const cy = (key) => page.evaluate((k) => { const r = document.querySelector(`#wwDistanceSvg .ww-dist-zone-boundary[data-zone-key="${k}"]`).getBoundingClientRect(); return (r.top + r.bottom) / 2; }, key);
   expect(await cy("zone4")).toBeGreaterThan(await cy("zone1"));
+});
+
+test("REL670: the concise Left (-R) explanation -- 0.00 Ω stays optional and never becomes Mapped", async ({ page }) => {
+  await openReview(page, rel670Pdf(), 4);
+  const left = row(page, "zone.Z1.rr.reverse");
+  await expect(left.locator(".ww-rr-offer")).toBeVisible();
+  await expect(left.locator(".ww-rr-offer")).toHaveText(LEFT_OFFER);
+  for (const fragment of OLD_LEFT_OFFER_FRAGMENTS) await expect(panel(page)).not.toContainText(fragment);
+  // optional: offered, not applied -- the row stays Unsupported (blocking) and the review Not ready until the user acts
+  await expect(left.locator(".ww-rr-status")).toHaveText("Unsupported");
+  await expect(left).toHaveAttribute("data-blocking", "true");
+  await expect(readiness(page)).toContainText("Not ready");
+  // accepting it is a visualization resolution only: Resolved · Suggested, still classified Unsupported, never Mapped
+  await button(page, `Use 0.00 Ω for Zone 1 ${LEFT}`).click();
+  await expect(left.locator(".ww-rr-status")).toHaveText("Resolved · Suggested");
+  await expect(left.locator(".ww-rr-status")).toHaveAttribute("data-category", "unsupported");
+  await expect(left.locator(".ww-rr-offer")).toBeHidden();
+  await left.getByRole("button", { name: /Source/ }).first().click();
+  await expect(left).toContainText("Classified as");
+  await expect(left).toContainText("the relay's setting, and not mapped from a profile");
+  await expect(left.locator(".ww-rr-status")).not.toHaveText("Mapped");
+  // readiness is unchanged: the other zones' left reaches still block
+  await expect(readiness(page)).toContainText("Not ready");
+  await expect(applyBtn(page)).toHaveCount(0);
+});
+
+test("REL670: reverse Zone 4 is dashed and labelled 'Zone 4 · Reverse'; forward zones stay solid", async ({ page }) => {
+  await openReview(page, rel670Pdf(), 4);
+  for (const n of ["1", "2", "3", "4"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
+  await page.locator("#wwRelayReviewConfirmAll").click();
+  await expect(readiness(page)).toHaveAttribute("data-readiness", "ready");
+  await applyBtn(page).click();
+  await expect(page.locator("#wwRelayReviewApplyStatus")).toHaveText("Relay settings applied to Distance Protection analysis.");
+  // Apply geometry unchanged: Zone 4 keeps its own X / +R (RFPP 3 / 2) / 0.00 Ω and its reverse direction
+  await expect(input(page, 4, "ReactiveReach")).toHaveValue("2");
+  await expect(input(page, 4, "ResistiveForward")).toHaveValue("1.5");
+  await expect(input(page, 4, "ResistiveReverse")).toHaveValue("0");
+  await expect(page.locator("#wwDistanceZone4Direction")).toHaveText("Direction: Reverse");
+  // the legend names the direction; the dash convention is stated once, as a display cue only
+  const legend = page.locator("#wwDistanceZoneLegend");
+  await expect(legend.locator(".ww-dist-zone-legend-item")).toHaveText(["Zone 1", "Zone 2", "Zone 3", "Zone 4 · Reverse"]);
+  await expect(legend.locator('[data-zone-key="zone4"]')).toHaveAttribute("data-direction", "reverse");
+  await expect(legend.locator('[data-legend-note="reverse-dash"]')).toHaveText("Dashed = reverse zone (display cue only)");
+  await expect(legend.locator('[data-legend-note="reverse-dash"]')).toHaveAttribute("title", /direction setting.*display convention only/);
+  // dashed is tied to the reverse direction only: boundary and legend swatch
+  const dash = (key) => boundary(page, key).evaluate((el) => getComputedStyle(el).strokeDasharray);
+  const swatch = (key) => legend.locator(`[data-zone-key="${key}"] .ww-dist-zone-legend-swatch`).evaluate((el) => getComputedStyle(el).borderTopStyle);
+  expect(await dash("zone4")).not.toBe("none");
+  expect(await swatch("zone4")).toBe("dashed");
+  for (const key of ["zone1", "zone2", "zone3"]) {
+    await expect(boundary(page, key)).not.toHaveClass(/ww-dist-zone-boundary--reverse/);
+    expect(await dash(key)).toBe("none");
+    expect(await swatch(key)).toBe("solid");
+    await expect(legend.locator(`[data-zone-key="${key}"]`)).toHaveAttribute("data-direction", "forward");
+  }
 });
 
 // Document notes are audit context, never settings: one collapsed, neutral disclosure under the zone's settings.
