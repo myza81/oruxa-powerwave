@@ -368,6 +368,15 @@ class TestAppliedImportOwnership:
         source = _source()
         reset = _function_body(source, "function wwRelayImportReset", "function wwRelayImportRender")
         assert "wwDistanceReleaseImportedSettings(wwRelayImportState.importId);" in reset
+        # a newly ACCEPTED upload releases an earlier import's state through the same release path;
+        # nothing happens before acceptance (a failed upload changes nothing)
+        superseded = _function_body(source, "function wwDistanceReleaseSupersededImport", "function wwDistanceNoteConfigurationEdited")
+        assert "owner.importId !== currentImportId" in superseded
+        assert "wwDistanceReleaseImportedSettings(owner.importId)" in superseded
+        handle = _function_body(source, "async function wwRelayImportHandleFile", "function wwDistanceSetInputSource")
+        accepted = handle[handle.index('state.phase = "accepted";'):]
+        assert "wwDistanceReleaseSupersededImport(state.importId);" in accepted
+        assert handle.count("wwDistanceReleaseSupersededImport") == 1
         apply = _function_body(source, "async function wwRrApply", "async function wwRrValidate")
         assert "if (state.review !== review) return;" in apply
         assert "wwDistanceApplyImportedSettings(body, state.importId)" in apply

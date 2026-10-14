@@ -1024,8 +1024,9 @@ original interpretation + decisions            (sent by the browser, stateless)
   nothing and the review is re-validated. State lives in the tab only; one-way (later form edits never flow back).
 * **Remove after Apply (owner UAT fix, 2026-10-14):** an applied relay import owns the Distance Protection state it populated;
   removing that import clears its applied analysis state so stale zone cards and R-X traces cannot remain. A hand edit after Apply
-  makes the configuration the user's, and Remove then keeps it. Rules and code: DISTANCE_PROTECTION_ANALYSIS.md, "Ownership of
-  applied state".
+  makes the configuration the user's, and Remove then keeps it. A successfully accepted new relay import likewise releases any
+  unedited state still owned by the previous import; failed uploads change nothing and edited configurations are preserved.
+  Rules and code: DISTANCE_PROTECTION_ANALYSIS.md, "Ownership of applied state".
 * **Out of scope:** extra-zone cards, other relay profiles, persistence, export, write-back.
 
 ## Intentionally unresolved in Slice 1

@@ -672,8 +672,12 @@ populated. Removing that import clears its applied analysis state so stale zone 
 - **A late Apply answer** that arrives after Remove / a new file is discarded.
 - `wwDistanceRestoreDefaultConfiguration()` is the one path back to "no relay applied"; the whole-workspace reset
   (`wwDistanceResetState()`) uses it too. Re-Apply stays atomic (unchanged).
-- Known gap, `[OPEN]` for the owner: picking a new file while another import's settings are applied leaves those settings in
-  place (a failed upload never touches the form); removing the new import then keeps them, as they belong to the earlier one.
+- **A new accepted import (owner decision, 2026-10-14; closes the earlier `[OPEN]` item).** A successfully accepted new relay
+  import releases any unedited Distance Protection state still owned by the previous relay import. Failed uploads do not change
+  the current analysis state, and manually edited configurations are preserved. Code: the upload's accepted branch calls
+  `wwDistanceReleaseSupersededImport(importId)`, which releases any owner other than the current import through the same
+  `wwDistanceReleaseImportedSettings()` path as Remove. Nothing happens when a file is picked or while it uploads; a refused
+  or failed upload leaves the earlier import's ownership intact, so the next accepted upload still releases it.
 
 ## Dynamic zones (Slice 10, DEC-189)
 

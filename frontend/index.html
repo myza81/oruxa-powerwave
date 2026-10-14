@@ -56745,6 +56745,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     state.unresolvedCount = body.unresolved_setting_count || 0;
                     state.review = body.review || null;
                     state.reviewOpen = false;
+                    // Only now, once the new file is accepted, does the previous import's applied
+                    // state go (a failed upload changes nothing).
+                    wwDistanceReleaseSupersededImport(state.importId);
                 }
             } catch (networkError) {
                 if (state.controller !== controller) return;
@@ -57145,6 +57148,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             wwDistanceRestoreDefaultConfiguration();
             wwDistanceConfigurationReplaced();
+        }
+        // A new import was accepted: whatever an EARLIER import applied is released the same way as
+        // by its Remove (cleared while unedited, kept once edited). Only the current import can apply,
+        // so any other owner is a previous one -- also after failed uploads in between.
+        function wwDistanceReleaseSupersededImport(currentImportId) {
+            const owner = wwDistanceState.appliedImport;
+            if (owner && owner.importId !== currentImportId) wwDistanceReleaseImportedSettings(owner.importId);
         }
         // A hand edit of anything an Apply writes makes the configuration the user's.
         function wwDistanceNoteConfigurationEdited() {

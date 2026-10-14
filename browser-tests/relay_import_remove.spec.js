@@ -8,6 +8,8 @@
 // * Remove after a hand edit of the applied settings: the edited configuration is the user's and is kept.
 // * A -> Apply -> Remove -> B -> Apply: B is exactly what applying B on a clean page gives.
 // * An Apply answer arriving after Remove applies nothing.
+// * A new upload, once ACCEPTED, releases the previous import's unedited state the same way; an
+//   edited configuration is kept, and a failed upload changes nothing.
 
 const { test, expect } = require("@playwright/test");
 const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
@@ -191,17 +193,77 @@ test("A -> Apply -> Remove -> B -> Apply shows B exactly as on a clean page, wit
   expect(await plotSnapshot(page)).toEqual(bPlot);
 });
 
-test("removing an import that applied nothing leaves another import's applied configuration alone", async ({ page }) => {
+// ---- a new accepted upload supersedes the previous import -----------------------------------
+
+test("A Apply -> B accepted clears A's unedited state and shows B's review", async ({ page }) => {
+  const clean = await cleanSnapshot(page);
+  await reviewReady(page);
+  await page.route("**/api/v1/relay-import/review/apply", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(withExtraZone) }),
+  );
+  await apply(page);
+  await expect(extraCards(page)).toHaveCount(1);
+  await expect(boundaries(page)).toHaveCount(4);
+
+  await pick(page, "b.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportFilename")).toHaveText("b.pdf");
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
+  await expect(extraCards(page)).toHaveCount(0);
+  await expect(boundaries(page)).toHaveCount(0);
+  await expect(legendItems(page)).toHaveCount(0);
+  expect(await formSnapshot(page)).toEqual(clean.form);
+  // B's own review is there, not applied.
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(panel(page)).toBeVisible();
+  await expect(applyBtn(page)).toHaveCount(0);
+  // Removing B afterwards has nothing left to clear and changes nothing.
+  await removeBtn(page).click();
+  expect(await formSnapshot(page)).toEqual(clean.form);
+});
+
+test("A Apply -> hand edit -> B accepted keeps the edited configuration", async ({ page }) => {
   await openDistance(page);
   await reviewReady(page);
   await apply(page);
+  await input(page, 1, "ReactiveReach").fill("0.5");
+  await input(page, 1, "ReactiveReach").dispatchEvent("change");
   const form = await formSnapshot(page);
-  // A second file replaces the import card; it is never applied, then removed.
-  await pick(page, "other.pdf", p441Pdf());
+  const plot = await plotSnapshot(page);
+
+  await pick(page, "b.pdf", p441Pdf());
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
-  await removeBtn(page).click();
   expect(await formSnapshot(page)).toEqual(form);
-  await expect(boundaries(page)).toHaveCount(3);
+  expect(await plotSnapshot(page)).toEqual(plot);
+  await expect(input(page, 1, "ReactiveReach")).toHaveValue("0.5");
+});
+
+test("A Apply -> B upload fails keeps A's state; a later accepted upload still releases it", async ({ page }) => {
+  const clean = await cleanSnapshot(page);
+  await reviewReady(page);
+  await apply(page);
+  const form = await formSnapshot(page);
+  const plot = await plotSnapshot(page);
+
+  // A server-side failure ...
+  await page.route("**/api/v1/relay-import/upload", (route) =>
+    route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ detail: { code: "unreadable_pdf", message: "The PDF could not be read." } }) }),
+  );
+  await pick(page, "broken.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportError")).toHaveText("The PDF could not be read.");
+  expect(await formSnapshot(page)).toEqual(form);
+  expect(await plotSnapshot(page)).toEqual(plot);
+  // ... and a file the browser refuses before uploading change nothing.
+  await pick(page, "notes.txt", Buffer.from("not a pdf"));
+  await expect(page.locator("#wwRelayImportError")).toContainText("Only PDF");
+  expect(await formSnapshot(page)).toEqual(form);
+  expect(await plotSnapshot(page)).toEqual(plot);
+
+  // A's applied state is still A's: the next ACCEPTED upload releases it.
+  await page.unroute("**/api/v1/relay-import/upload");
+  await pick(page, "c.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
+  expect(await formSnapshot(page)).toEqual(clean.form);
+  await expect(boundaries(page)).toHaveCount(0);
 });
 
 test("an Apply answer that arrives after Remove applies nothing", async ({ page }) => {
