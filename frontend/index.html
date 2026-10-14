@@ -54572,6 +54572,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 latestResult: null,
             },
             manualRequestGeneration: 0,
+            // Who owns the configuration an Apply wrote (characteristic, output basis, zones):
+            // null = no applied import (manual / default); otherwise {importId, edited}. While
+            // `edited` is false the configuration is still exactly the import's, so removing that
+            // import restores the defaults; a hand edit makes it the user's and Remove keeps it.
+            appliedImport: null,
         };
 
         // ---- The generic zone collection (Slice 10) ----
@@ -55637,6 +55642,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             reviewBuilt: false,
             reviewError: "",
             reviewController: null,
+            // Identity of the current import (a new number per picked file). An Apply records it on
+            // the Distance Protection side, so Remove can release exactly what this import applied.
+            importId: 0,
             // Slice 9 Apply Settings: {kind: "ok" | "error", text} after an attempt (tab memory only).
             applyBusy: false,
             applyMessage: null,
@@ -56420,6 +56428,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwRrApply() {
             const state = wwRelayImportState;
             if (!state.review || state.applyBusy || state.reviewBusy) return;
+            const review = state.review;
             state.applyBusy = true;
             state.applyMessage = null;
             wwRrRefreshAll();
@@ -56431,12 +56440,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 });
                 let body = null;
                 try { body = await response.json(); } catch (parseError) { /* non-JSON error body */ }
-                if (response.ok && wwDistanceApplyImportedSettings(body)) {
+                if (state.review !== review) return; // removed/replaced meanwhile: a late answer applies nothing
+                if (response.ok && wwDistanceApplyImportedSettings(body, state.importId)) {
                     message = { kind: "ok", text: "Relay settings applied to Distance Protection analysis." };
                 } else if (!response.ok && body && body.detail && typeof body.detail.message === "string") {
                     message = { kind: "error", text: body.detail.message + " Nothing was changed." };
                 }
             } catch (networkError) {
+                if (state.review !== review) return;
                 message = { kind: "error", text: "Could not reach the server. Nothing was changed." };
             }
             state.applyBusy = false;
@@ -56585,6 +56596,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
         function wwRelayImportReset() {
             if (wwRelayImportState.controller) wwRelayImportState.controller.abort();
+            // What this import applied goes with it, unless the user has edited it since.
+            wwDistanceReleaseImportedSettings(wwRelayImportState.importId);
             wwRelayImportState.phase = "idle";
             wwRelayImportState.filename = "";
             wwRelayImportState.sourceFormat = "";
@@ -56675,6 +56688,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!file) return;
             if (wwRelayImportState.controller) wwRelayImportState.controller.abort();
             const state = wwRelayImportState;
+            state.importId += 1;
             state.filename = file.name;
             state.sourceFormat = "";
             state.sizeBytes = 0;
@@ -57031,12 +57045,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (!zone) return;
                 const value = parseFloat(event.target.value);
                 zone[field] = Number.isFinite(value) ? value : blankValue;
+                wwDistanceNoteConfigurationEdited();
                 wwDistanceHandleZoneSettingChanged();
             });
             bind("Enabled", "change", (event) => {
                 const zone = wwDistanceState.zones[key];
                 if (!zone) return;
                 zone.enabled = event.target.checked;
+                wwDistanceNoteConfigurationEdited();
                 wwDistanceHandleZoneSettingChanged();
             });
             // A blank delay / angle stays "not configured" (null) unless the zone has a legacy default.
@@ -57055,8 +57071,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // from the payload (or their defaults when it has no such zone) and every extra zone from an
         // earlier Apply is dropped, so nothing stale survives and a zone is matched by its stable id,
         // never duplicated. Disabled zones are preserved by the backend but have no card or geometry
-        // here. Re-applying never merges with earlier edits.
-        function wwDistanceApplyImportedSettings(payload) {
+        // here. Re-applying never merges with earlier edits. `importId` names the import that now owns
+        // the configuration (see `wwDistanceState.appliedImport`); without one it is owned by no import.
+        function wwDistanceApplyImportedSettings(payload, importId) {
             const num = (v) => (v === null ? null : (typeof v === "number" && Number.isFinite(v) ? v : undefined));
             if (!payload || !Array.isArray(payload.zones) || payload.zones.length < 1) return false;
             if (payload.characteristic !== "mho" && payload.characteristic !== "quadrilateral") return false;
@@ -57099,6 +57116,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.settings.outputBasis = payload.impedance_basis;
             wwDistanceState.zones = zones;
             wwDistanceState.view = null; // automatic view, so the applied zones are in frame
+            wwDistanceState.appliedImport = importId === undefined ? null : { importId, edited: false };
+            wwDistanceConfigurationReplaced();
+            const plot = document.getElementById("wwDistanceSvg");
+            if (plot && plot.scrollIntoView) plot.scrollIntoView({ block: "nearest" });
+            return true;
+        }
+        // The configuration an Apply writes -- characteristic, output impedance basis, the zone
+        // collection and the R-X view -- back at its defaults, owned by no import. The one way back to
+        // "no relay applied": the workspace reset and removing an applied import both use it.
+        function wwDistanceRestoreDefaultConfiguration() {
+            wwDistanceState.characteristic = "mho";
+            wwDistanceState.settings.outputBasis = "secondary";
+            wwDistanceState.zones = wwDistanceStandardZones();
+            wwDistanceState.view = null;
+            wwDistanceState.appliedImport = null;
+        }
+        // Removing a relay import releases what it applied. Still exactly the import's (no hand edit
+        // since its Apply): the configuration returns to the defaults, so no imported card, extra zone
+        // or R-X boundary outlives the import. Edited since: it is the user's work now and is kept.
+        // A configuration applied by a different import, or none, is never touched.
+        function wwDistanceReleaseImportedSettings(importId) {
+            const owner = wwDistanceState.appliedImport;
+            if (!owner || owner.importId !== importId) return;
+            if (owner.edited) {
+                wwDistanceState.appliedImport = null;
+                return;
+            }
+            wwDistanceRestoreDefaultConfiguration();
+            wwDistanceConfigurationReplaced();
+        }
+        // A hand edit of anything an Apply writes makes the configuration the user's.
+        function wwDistanceNoteConfigurationEdited() {
+            if (wwDistanceState.appliedImport) wwDistanceState.appliedImport.edited = true;
+        }
+        // After Apply or Remove replaced the configuration wholesale: inputs, cards, Zone state rows
+        // and plot follow it at once, and the normal re-request recomputes the zone states.
+        function wwDistanceConfigurationReplaced() {
             wwDistanceSyncSettingsFields();
             // The Zone state rows follow the new collection at once: a removed zone's row goes, a new one
             // appears (Not Operated until the re-request below answers); retained zones keep their state.
@@ -57107,9 +57161,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             ));
             wwDistanceHandleCharacteristicChanged(); // field visibility + the normal re-request
             wwDistanceRenderPlot();
-            const plot = document.getElementById("wwDistanceSvg");
-            if (plot && plot.scrollIntoView) plot.scrollIntoView({ block: "nearest" });
-            return true;
         }
         function wwDistanceSyncSettingsFields() {
             const s = wwDistanceState.settings;
@@ -57154,11 +57205,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.activeTimeGroupId = null;
             wwDistanceState.analysisTime = null;
             wwDistanceState.loop = "AB";
-            wwDistanceState.characteristic = "mho";
             wwDistanceState.settings = { recordingBasis: "secondary", outputBasis: "secondary", vtPrimary: null, vtSecondary: null, ctPrimary: null, ctSecondary: null };
-            wwDistanceState.zones = wwDistanceStandardZones();
+            wwDistanceRestoreDefaultConfiguration(); // characteristic, zones (every extra zone dropped), view, ownership
             wwDistanceState.latestResult = null;
-            wwDistanceState.view = null;
             wwDistanceState.requestGeneration += 1;
             wwDistanceInvalidateLocus();
             wwDistanceState.locusRequestGeneration += 1;
@@ -62446,10 +62495,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwDistanceResetViewBtn").addEventListener("click", wwDistanceResetView);
         document.getElementById("wwDistanceCharacteristicSelect").addEventListener("change", (event) => {
             wwDistanceState.characteristic = event.target.value;
+            wwDistanceNoteConfigurationEdited();
             wwDistanceHandleCharacteristicChanged();
         });
         document.getElementById("wwDistanceOutputBasisSelect").addEventListener("change", (event) => {
             wwDistanceState.settings.outputBasis = event.target.value;
+            wwDistanceNoteConfigurationEdited();
             wwDistanceHandleSettingsChanged();
         });
         document.getElementById("wwDistanceRecordingBasisSelect").addEventListener("change", (event) => {

@@ -334,8 +334,43 @@ class TestDistanceResetStateWiring:
         source = _source()
         fn = _function_body(source, "function wwDistanceResetState", "// ------------------------------------------------------------------\n        // Init")
         assert 'wwDistanceState.loop = "AB";' in fn
-        assert 'wwDistanceState.characteristic = "mho";' in fn
-        assert "wwDistanceState.zones = wwDistanceStandardZones();" in fn  # drops every extra zone
+        # characteristic / zones / view / ownership come back through the ONE default-configuration path
+        assert "wwDistanceRestoreDefaultConfiguration();" in fn
+        restore = _function_body(source, "function wwDistanceRestoreDefaultConfiguration", "function wwDistanceReleaseImportedSettings")
+        assert 'wwDistanceState.characteristic = "mho";' in restore
+        assert "wwDistanceState.zones = wwDistanceStandardZones();" in restore  # drops every extra zone
+        assert "wwDistanceState.appliedImport = null;" in restore
+
+
+class TestAppliedImportOwnership:
+    """An applied relay import owns the configuration it wrote; Remove releases it."""
+
+    def test_apply_records_the_owning_import(self):
+        fn = _function_body(_source(), "function wwDistanceApplyImportedSettings", "function wwDistanceRestoreDefaultConfiguration")
+        assert "function wwDistanceApplyImportedSettings(payload, importId)" in fn
+        assert "wwDistanceState.appliedImport = importId === undefined ? null : { importId, edited: false };" in fn
+
+    def test_release_clears_only_an_unedited_configuration_of_the_same_import(self):
+        fn = _function_body(_source(), "function wwDistanceReleaseImportedSettings", "function wwDistanceNoteConfigurationEdited")
+        assert "owner.importId !== importId" in fn
+        assert "if (owner.edited)" in fn
+        assert "wwDistanceRestoreDefaultConfiguration();" in fn
+
+    def test_hand_edits_of_applied_fields_take_ownership(self):
+        source = _source()
+        wire = _function_body(source, "function wwDistanceWireZoneCard", "// Relay Import Slice 9 / 10")
+        assert wire.count("wwDistanceNoteConfigurationEdited();") == 2  # number inputs + Enabled
+        for select in ("wwDistanceCharacteristicSelect", "wwDistanceOutputBasisSelect"):
+            listener = _function_body(source, f'getElementById("{select}").addEventListener', "});")
+            assert "wwDistanceNoteConfigurationEdited();" in listener, select
+
+    def test_remove_releases_the_import_and_a_late_apply_is_discarded(self):
+        source = _source()
+        reset = _function_body(source, "function wwRelayImportReset", "function wwRelayImportRender")
+        assert "wwDistanceReleaseImportedSettings(wwRelayImportState.importId);" in reset
+        apply = _function_body(source, "async function wwRrApply", "async function wwRrValidate")
+        assert "if (state.review !== review) return;" in apply
+        assert "wwDistanceApplyImportedSettings(body, state.importId)" in apply
 
 
 class TestDistanceRXViewportControls:

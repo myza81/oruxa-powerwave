@@ -656,6 +656,25 @@ values. Disabled zones are applied as disabled with their geometry cleared; a Le
 the left boundary through the origin of the rotated frame. Applied values are ordinary editable inputs; Apply again overwrites
 them. Nothing is stored; a refresh clears everything.
 
+**Ownership of applied state (owner UAT fix, 2026-10-14).** An applied relay import owns the Distance Protection state it
+populated. Removing that import clears its applied analysis state so stale zone cards and R-X traces cannot remain.
+
+- Apply records `wwDistanceState.appliedImport = {importId, edited: false}` (the import's identity: a new number per picked
+  file). It owns exactly what Apply writes: characteristic, output impedance basis, the zone collection (incl. extra zones)
+  and the R-X view. Loop, recording basis and CT / VT ratios are never written by Apply, so they are never cleared by Remove.
+- **Remove** calls `wwDistanceReleaseImportedSettings(importId)`. Still unedited: `wwDistanceRestoreDefaultConfiguration()`
+  returns that configuration to the defaults (Mho, secondary, the four standard empty zones, automatic view) and the normal
+  redraw runs -- cards, Zone state rows, boundaries and legend entries of the import disappear.
+- **A hand edit after Apply** (any zone-card input, the characteristic or the output basis) sets `edited`; the configuration
+  is then the user's work and Remove keeps it (ownership is dropped, nothing is cleared). No confirmation dialog: Remove
+  never deletes an edit.
+- **Remove before Apply**, or Remove of an import that did not apply the current configuration, touches nothing.
+- **A late Apply answer** that arrives after Remove / a new file is discarded.
+- `wwDistanceRestoreDefaultConfiguration()` is the one path back to "no relay applied"; the whole-workspace reset
+  (`wwDistanceResetState()`) uses it too. Re-Apply stays atomic (unchanged).
+- Known gap, `[OPEN]` for the owner: picking a new file while another import's settings are applied leaves those settings in
+  place (a failed upload never touches the form); removing the new import then keeps them, as they belong to the earlier one.
+
 ## Dynamic zones (Slice 10, DEC-189)
 
 Zone count is not a limitation. The analysis evaluates, displays and plots **any number of zones**, each identified by a stable key and

@@ -251,6 +251,8 @@ Import Relay Settings -> pick file -> POST /api/v1/relay-import/upload
   localStorage, sessionStorage, IndexedDB or cookies. Hard refresh, reopening
   or leaving the page starts clean. **Remove** aborts any in-flight request
   and resets all of it; a late response after Remove/replace is discarded.
+  Since Slice 9, Remove also releases the Distance Protection settings the
+  import applied (see "Slice 9", *Remove after Apply*).
   A failed upload never touches the manual form.
 - **Privacy wording (accurate to the above):** "Files are processed
   temporarily and are not permanently stored. Import details are kept in this
@@ -1020,6 +1022,10 @@ original interpretation + decisions            (sent by the browser, stateless)
   manual endpoints. Imported and hand-typed identical values give identical engine input and R-X geometry (tested).
 * **Re-Apply / failure / lifecycle:** overwrite, not merge; the R-X view resets to automatic; a failed or malformed Apply changes
   nothing and the review is re-validated. State lives in the tab only; one-way (later form edits never flow back).
+* **Remove after Apply (owner UAT fix, 2026-10-14):** an applied relay import owns the Distance Protection state it populated;
+  removing that import clears its applied analysis state so stale zone cards and R-X traces cannot remain. A hand edit after Apply
+  makes the configuration the user's, and Remove then keeps it. Rules and code: DISTANCE_PROTECTION_ANALYSIS.md, "Ownership of
+  applied state".
 * **Out of scope:** extra-zone cards, other relay profiles, persistence, export, write-back.
 
 ## Intentionally unresolved in Slice 1
