@@ -178,6 +178,73 @@ function red670Pdf({ fifthZone = false, zones = {} } = {}) {
   return buildPdfPages(pages);
 }
 
+// Rows -> a multi-page PDF with name | value | range at the given x positions (an empty value cell stays empty).
+function rowsPdf(rows, X = [40, 230, 340], perPage = 58) {
+  const pages = [];
+  for (let i = 0; i < rows.length; i += perPage) {
+    let y = 820;
+    pages.push(rows.slice(i, i + perPage).flatMap((cells) => { y -= 13; return cells.map((c, k) => [X[k], y, c]).filter(([, , c]) => c !== ""); }));
+  }
+  return buildPdfPages(pages);
+}
+
+// A synthetic Hitachi Energy REL670-shaped sheet: the same Relion 670 ZMQPDIS naming as RED670, but bare channel labels
+// (IL1..UL3) and no ChannelType rows; Zone 4 is an enabled reverse zone. Invented numbers.
+function rel670Pdf() {
+  const rows = [
+    ["LZOP: 132kV AAAA - BBBB No 1", "Scheme: REL670_V1.2_21"], ["Utility ID: 1", "Active Group: SET-TEST-R1"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["HW Configuration/TRM_61_6U_3I"],
+  ];
+  [[1, "IL1"], [2, "IL2"], [3, "IL3"], [4, "IN"]].forEach(([n, nm]) =>
+    rows.push([`NAMECH${n}`, nm], [`CTsec${n}`, "1", "1-10"], [`CTprim${n}`, n === 4 ? "600" : "900", "1-99999"]));
+  [[7, "UL1"], [8, "UL2"], [9, "UL3"]].forEach(([n, nm]) =>
+    rows.push([`NAMECH${n}`, nm], [`VTsec${n}`, "110", "0.001-999.999"], [`VTprim${n}`, "132", "0.05-2000"]));
+  rows.push(...red670Zone(1, { x1: "6", rfpp: "8", rfpe: "12", t: "0.15", ubase: "132", ibase: "900" }));
+  rows.push(...red670Zone(2, { x1: "11", rfpp: "10", rfpe: "20", t: "0.45", ubase: "132", ibase: "900" }));
+  rows.push(...red670Zone(3, { x1: "20", rfpp: "18", rfpe: "28", t: "3", ubase: "132", ibase: "900" }));
+  rows.push(...red670Zone(4, { direction: "Reverse", x1: "2", rfpp: "3", rfpe: "5", t: "3", ubase: "132", ibase: "900" }));
+  rows.push(["IMP_PROT/DirectionalImpedance/ZDRDIR:1"], ["ZD01-:ArgNegRes", "115", "90-175"], ["ZD01-:ArgDir", "15", "5-45"]);
+  rows.push(["Zone 1 Forward direction timer set to 0.15s"], ["Zone 4 Reverse direction timer set to 3s"]);
+  return rowsPdf(rows);
+}
+
+// A synthetic Siemens SIPROTEC 5 7SL87-shaped sheet: DIGSI addresses inside the names (a wide name column), Edit mode
+// Primary, and operate-delay setting cells that are BLANK with "Infinity" in the range column. Invented numbers.
+function sl87Pdf() {
+  const zone = (n, mode, dir, x, rpp, rpg) => {
+    const p = `21.901.357${n}.`;
+    return [[`21 Distance prot.1 > Z${n}`], [p + "1 Mode", mode, "off/on/test"], [p + "101 Function mode", "ph-gnd and ph-ph", "SIP5_Function mode"],
+      [p + "114 Zone-spec. residu. comp.", "YES", "NO/YES"], [p + "109 Directional mode", dir, "Fwd/Rev/Non-dir"], [p + "102 X reach", x, "0.05-600"],
+      [p + "103 R (ph-g)", rpg, "0.05-600"], [p + "104 R (ph-ph)", rpp, "0.05-600"], [p + "113 Zone-inclination angle", "0", "0-45"],
+      [p + "110 Operate delay (1-phase)", "", "Infinity"], [p + "112 Operate delay (multi-ph.)", "", "Infinity"],
+      [p + "105 Kr", "1.7", "-0.33-11"], [p + "106 Kx", "0.6", "-0.33-11"]];
+  };
+  const rows = [
+    ["LZOP: 275kV AAAA - BBBB No 2", "Scheme: 7SL87_8.81"], ["Utility ID: 1", "Active Group: SET-TEST"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["Edit mode", "Primary", "Edit Mode"], ["91.115 Set. format residu. comp.", "Kr, Kx", "KR, Kx/K0"],
+    ["11.931.8881.101 Rated primary current", "1500", "1-100000"], ["11.931.8881.102 Rated secondary current", "1", "1-5"],
+    ["11.941.8911.101 Rated primary voltage", "275", "0.2-1200"], ["11.941.8911.102 Rated secondary voltage", "110", "80-230"],
+    ["21.901.2311.107 Dist. characteristic angle", "82.7", "30-90"],
+    ...zone(1, "on", "Forward", "4.7", "3.1", "11"), ...zone(2, "on", "Forward", "8.5", "3.6", "14"),
+    ["Zone 1", "Forward direction timer set to 0.15s"],
+  ];
+  return rowsPdf(rows, [20, 330, 450]);
+}
+
+// A synthetic Toshiba GRZ100-shaped sheet: CT / VT stated as ratios, Quad phase and Mho earth selections, blinders. Invented.
+function grz100Pdf() {
+  const rows = [
+    ["LZOP: 132kV AAAA - BBBB 1", "Scheme: GRZ100_201A_Ver2.1"], ["Utility ID: 1", "Active Group: Rev0"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["[Parameter]"], ["VT", "1200", "1-20000"], ["CT", "1200", "1-20000"], ["X1", "6.7", "0.0-999.9 ohms"], ["R1", "1.2", "0.0-999.9 ohms"],
+    ["X0", "21", "0.0-999.9 ohms"], ["R0", "7", "0.0-999.9 ohms"], ["Line", "24.9", "0.0-399.9 km"],
+    ["ZS-C", "Quad", "Mho/Quad"], ["ZG-C", "Mho", "Mho/Quad"],
+    ["Z1S", "5.72", "0.10-250.00 ohms"], ["BFRS", "20", "0.5-100.0 ohms"], ["BFLS-angle", "120", "90-135 degree"],
+    ["TZ1S", "0", "0.00-10.00 s"], ["TZ2S", "0.3", "0.00-10.00 s"], ["TZ1G", "0", "0.00-10.00 s"],
+    ["Zone 1", "Forward direction timer set to 0.0s"],
+  ];
+  return rowsPdf(rows);
+}
+
 async function routeConfig(page) {
   await page.route("**/config.js", (route) =>
     route.fulfill({
@@ -198,4 +265,4 @@ async function openDistance(page) {
 const pick = (page, name, buffer) =>
   page.locator("#wwRelayImportFileInput").setInputFiles({ name, mimeType: "application/pdf", buffer });
 
-module.exports = { BACKEND_PORT, buildPdf, p441Pdf, siemens7sa511Pdf, red670Pdf, routeConfig, openDistance, pick };
+module.exports = { BACKEND_PORT, buildPdf, p441Pdf, siemens7sa511Pdf, red670Pdf, rel670Pdf, sl87Pdf, grz100Pdf, routeConfig, openDistance, pick };
