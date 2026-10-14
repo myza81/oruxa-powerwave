@@ -79,7 +79,8 @@ class TestIdentificationAndMetadata:
         doc = make_doc(header=(("LZOP: x", "Scheme: REL670_V1.2_21"), ("Utility ID: 1", "Active Group: g")))
         reg = catalogue.build_registry()
         ident = reg.identify(doc)
-        assert ident.profile_id == "hitachi-rel670" and reg.profile_for(ident) is None
+        assert ident.profile_id == "hitachi-rel670"
+        assert reg.profile_for(ident).profile_id == "hitachi-rel670"             # its own catalog, never the RED670
         assert red670.HitachiRed670Profile().match(doc).level.name == "NONE"
 
     def test_metadata(self, model):

@@ -147,7 +147,9 @@ class TestRouting:
     def test_registry_interpret_does_not_read_other_relays_as_a_p441(self, registry):
         other = make_doc(scheme=("LZOP", "Scheme: 7SA6131_4AB02_3GA0"))
         m = registry.interpret(other)
-        assert m.zones == () and m.metadata.profile_id is None and len(m.unmapped_settings) == len(other.settings)
+        # the scheme names another relay: its own catalog reads the sheet, never the P441 profile
+        assert m.metadata.profile_id == "siemens-7sa613" and m.metadata.profile_id != PROFILE_ID
+        assert not any(z.reach.is_resolved or z.common_timer_s.is_resolved for z in m.zones)    # no P441 value is read
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +608,9 @@ class TestSummary:
         assert s.mapped_setting_count > 0 and s.inferred_setting_count > 0 and s.unresolved_setting_count > 0
 
     def test_other_relays_are_not_supported(self):
-        reg = catalogue.build_registry()
+        # an identified relay with no interpretation profile of its own is not supported
+        reg = type(catalogue.build_registry())(
+            profiles=(MicomP441Profile(),), identification_descriptors=catalogue.IDENTIFICATION_DESCRIPTORS)
         d = make_doc(scheme=("LZOP", "Scheme: 7SA6131_4AB02_3GA0"))
         s = summarize_interpretation(reg, d, reg.identify(d))
         assert s == type(s)(InterpretationStatus.NOT_SUPPORTED)
@@ -719,7 +723,8 @@ class TestIsolation:
         reg = catalogue.build_registry()
         ids = [p.profile_id for p in reg._profiles]
         assert ids.count(PROFILE_ID) == 1
-        assert set(ids) == {PROFILE_ID, "siemens-7sa511", "hitachi-red670"}  # Slice 11 added the 7SA511, Slice 12 the RED670
+        # Slice 11 added the 7SA511, Slice 12 the RED670; the remaining families are catalog-only profiles
+        assert set(ids) == {PROFILE_ID, "siemens-7sa511", "hitachi-red670", "hitachi-rel670", "hitachi-rel511", "siemens-siprotec5-7sl87", "siemens-7sa613", "toshiba-grz100", "toshiba-grl200", "nr-rcs941", "lfzp111", "relz100"}
 
 
 # ---------------------------------------------------------------------------
@@ -813,13 +818,14 @@ class TestRealP441Sample:
 
 
 @needs_samples
-class TestRealOtherFamiliesStayIdentificationOnly:
+class TestRealOtherFamiliesAreNotReadAsAP441:
     @pytest.mark.parametrize("name", OTHER_SAMPLES)
     def test_not_routed_to_the_p441_profile(self, name):
         reg = catalogue.build_registry()
         d = real(name)
         ident = reg.identify(d)
         assert ident.profile_id != PROFILE_ID
-        assert reg.profile_for(ident) is None
-        assert summarize_interpretation(reg, d, ident).status is InterpretationStatus.NOT_SUPPORTED
+        profile = reg.profile_for(ident)                       # each family has its own catalog since the batch
+        assert profile is not None and profile.profile_id == ident.profile_id != PROFILE_ID
+        assert summarize_interpretation(reg, d, ident).profile_version != PROFILE_VERSION
         assert MicomP441Profile().match(d).level is MatchLevel.NONE

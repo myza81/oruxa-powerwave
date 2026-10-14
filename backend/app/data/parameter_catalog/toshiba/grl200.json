@@ -1,0 +1,164 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "toshiba-grl200-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "toshiba-grl200",
+  "registry_version": "1.1.0",
+  "description": "Toshiba GR200 GRL200 distance elements of setting group 1 (Prot/G1/Trip/Distance_ZS for the phase-fault elements, Distance_ZG for the earth-fault elements). Catalog-only, verified subset: the phase / earth element enables, the agreed element direction, the phase mho reach and angle, the earth quadrilateral resistive reach, the phase / earth timers, the characteristic selections and the fault-locator line data. The phase elements are MHO with blinders and the earth elements QUAD on the sample: one canonical characteristic per zone cannot represent both, so the characteristic is recorded as not representable and the blinder / boundary geometry is preserved with each zone. No CT / VT setting and no impedance basis are stated on the sheet (the CT ratio appears only in the notes).",
+  "applicability": {
+    "manufacturer": "Toshiba",
+    "family": "GR200",
+    "model": "GRL200",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["GRL-?200"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])GRL-?200(?![A-Za-z0-9])"
+  },
+  "zones": {
+    "static": [
+      {"id": "Z1", "name": "Zone 1"}, {"id": "Z2", "name": "Zone 2"}, {"id": "Z3", "name": "Zone 3"},
+      {"id": "Z4", "name": "Zone 4"}, {"id": "Z5", "name": "Zone 5"}, {"id": "Z1X", "name": "Zone 1X"}
+    ]
+  },
+  "distance_scope": {
+    "name_patterns": ["^Prot/G1/Trip/Distance_", "^Prot/G1/Trip/Carrier_Dist/", "^Fault Locator/"]
+  },
+  "interpretation_notes": [
+    "The zones are the sheet's Zn phase-fault elements (ZnS, Distance_ZS) and earth-fault elements (ZnG, Distance_ZG) of setting group 1 (the sheet's Active Group is 1): Z1, Z2, Z3, Z4, Z5 and the extension zone Z1X. The command zones (ZCS / ZCG) are not mapped.",
+    "Each zone's phase and earth elements are enabled separately (mapped as Phase-Phase Faults / Earth Faults). The sheet states no single zone in-service switch, so the zone's status is not derived from them (Missing).",
+    "The zone's direction is mapped only when its phase and earth elements state the same direction.",
+    "Phase elements: ZS-Chara (MHO on this sheet) with resistive / directional blinders; earth elements: ZG-Chara (QUAD). One canonical characteristic cannot represent a MHO phase element and a QUAD earth element at once, so the characteristic is recorded as not representable (never forced into one). The mho reach and angle are kept as the zone's Reach; the blinders, the earth reactance reach and the earth mho settings are preserved with the zone.",
+    "Krs / Kxs (and Krm / Kxm) are per-zone percent compensation factors in the relay's own definition, not the canonical Kr / Kx; they are preserved with the zone, not converted.",
+    "No CT / VT setting is on the sheet (the CT ratio in the notes is not a setting) and the impedance basis is not stated: none is assumed."
+  ],
+  "zone_preserved": [
+    {"zone": "*", "name_pattern": "^Prot/G1/Trip/Distance_Z[SG]/{zone}[SG]-(?:Mho|MhoX|MhoR|MhoDX|X\\.|R\\.|DX\\.|DR\\.|I0K/)",
+     "reason": "Mho / quadrilateral boundary and blinder geometry of the zone's elements (reactance and resistive blinders, blinder and reactance-line angles, earth compensation factors). The combined phase-mho / earth-quad shape with blinders is a capability gap of the current model: preserved, not drawn and not approximated."},
+    {"zone": "*", "name_pattern": "^Prot/G1/Trip/Distance_Z[SG]/{zone}[SG]-(?:Output/|SOTF|CovCoeff)",
+     "reason": "Output, blocking and switch-on-to-fault logic of the zone's element; not part of the zone geometry and not interpreted."}
+  ],
+  "mappings": [
+    {
+      "id": "grl200.line_length",
+      "canonical": "line.length",
+      "source": {"name": "Fault Locator/FL_1Line_km", "type": "number", "unit": ""},
+      "note": "The fault locator's line 1 length."
+    },
+    {
+      "id": "grl200.line_length_unit",
+      "canonical": "line.length_unit",
+      "source": {"name": "Fault Locator/FL_Unit", "type": "text", "allowed_text": ["km", "mile"]}
+    },
+    {
+      "id": "grl200.line_z1",
+      "canonical": "line.positive_sequence_impedance",
+      "sources": {
+        "r": {"name": "Fault Locator/Line1/FL_1R1", "type": "number", "unit": "ohm"},
+        "x": {"name": "Fault Locator/Line1/FL_1X1", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "The fault locator's line 1 R1 / X1 read as the line's positive-sequence impedance (the sheet's own '1' / '0' naming, not a stated label)."
+    },
+    {
+      "id": "grl200.line_z0",
+      "canonical": "line.zero_sequence_impedance",
+      "sources": {
+        "r": {"name": "Fault Locator/Line1/FL_1R0", "type": "number", "unit": "ohm"},
+        "x": {"name": "Fault Locator/Line1/FL_1X0", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "The fault locator's line 1 R0 / X0 read as the line's zero-sequence impedance (the sheet's own '1' / '0' naming, not a stated label)."
+    },
+
+    {
+      "id": "grl200.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "source": {"name": "Prot/G1/Trip/Distance_ZS/{zone}S-EN"},
+      "transform": {"type": "boolean", "true_values": ["on"], "false_values": ["off"]},
+      "note": "The zone's phase-fault element enable (ZnS-EN)."
+    },
+    {
+      "id": "grl200.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "source": {"name": "Prot/G1/Trip/Distance_ZG/{zone}G-EN"},
+      "transform": {"type": "boolean", "true_values": ["on"], "false_values": ["off"]},
+      "note": "The zone's earth-fault element enable (ZnG-EN)."
+    },
+    {
+      "id": "grl200.direction",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "sources": {
+        "s": {"name": "Prot/G1/Trip/Distance_ZS/{zone}S-Dir", "allowed_text": ["forward", "rever", "reverse", "nondir"]},
+        "g": {"name": "Prot/G1/Trip/Distance_ZG/{zone}G-Dir", "allowed_text": ["forward", "rever", "reverse", "nondir"]}
+      },
+      "transform": {
+        "type": "decision_table",
+        "rules": [
+          {"when": {"s": "forward", "g": "forward"}, "value": "forward"},
+          {"when": {"s": ["rever", "reverse"], "g": ["rever", "reverse"]}, "value": "reverse"},
+          {"when": {"s": "nondir", "g": "nondir"}, "value": "non_directional"}
+        ]
+      },
+      "note": "The direction both of the zone's elements state (ZnS-Dir, ZnG-Dir). Elements that disagree leave the zone's direction unresolved."
+    },
+    {
+      "id": "grl200.characteristic",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "sources": {
+        "s": {"name": "Prot/G1/Trip/Distance_ZS/Common/ZS-Chara", "allowed_text": ["mho", "quad"]},
+        "g": {"name": "Prot/G1/Trip/Distance_ZG/Common/ZG-Chara", "allowed_text": ["mho", "quad"]}
+      },
+      "transform": {
+        "type": "decision_table",
+        "rules": [
+          {"when": {"s": "quad", "g": "quad"}, "value": "quadrilateral"},
+          {"when": {"s": "mho", "g": "mho"}, "value": "mho"},
+          {"when": {"s": ["mho", "quad"], "g": ["mho", "quad"]}, "value": "unknown"}
+        ]
+      },
+      "note": "ZS-Chara (phase-fault elements) and ZG-Chara (earth-fault elements). When they differ, one zone characteristic cannot represent both: the characteristic is recorded as not representable (unknown), never as one of the two."
+    },
+    {
+      "id": "grl200.reach",
+      "canonical": "distance.zone.reach",
+      "zone": "*",
+      "sources": {
+        "magnitude": {"name": "Prot/G1/Trip/Distance_ZS/{zone}S-Mho.Reach", "type": "number", "unit": "ohm"},
+        "angle": {"name": "Prot/G1/Trip/Distance_ZS/{zone}S-Mho.Angle", "type": "number", "unit": "deg"}
+      },
+      "transform": {"type": "impedance_polar"},
+      "note": "The phase-fault element's mho reach (ZnS-Mho.Reach) at its characteristic angle (ZnS-Mho.Angle). Its blinders are preserved with the zone."
+    },
+    {
+      "id": "grl200.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "*",
+      "source": {"name": "Prot/G1/Trip/Distance_ZG/{zone}G-R.Reach", "type": "number", "unit": "ohm"},
+      "note": "The earth-fault element's resistive reach (ZnG-R.Reach), as printed. Its boundary is inclined at ZnG-R.Angle (preserved); the phase-phase engine does not draw it."
+    },
+    {
+      "id": "grl200.phase_delay",
+      "canonical": "distance.zone.phase_delay",
+      "zone": "*",
+      "source": {"name": "Prot/G1/Trip/Distance_ZS/T{zone}S", "type": "number", "unit": "s"},
+      "note": "The phase-fault element's timer (TZnS)."
+    },
+    {
+      "id": "grl200.earth_delay",
+      "canonical": "distance.zone.earth_delay",
+      "zone": "*",
+      "source": {"name": "Prot/G1/Trip/Distance_ZG/T{zone}G", "type": "number", "unit": "s"},
+      "note": "The earth-fault element's timer (TZnG)."
+    }
+  ]
+}

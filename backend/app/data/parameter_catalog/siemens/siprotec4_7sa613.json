@@ -1,0 +1,242 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "siemens-7sa613-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "siemens-7sa613",
+  "registry_version": "1.1.0",
+  "description": "Siemens SIPROTEC 4 7SA613 distance zones (Z1, Z2, Z3, Z4, Z5, Z1B) as a DIGSI 4 setting sheet prints them (address | name | value | range). Catalog-only, verified subset: the per-zone Op. mode (status and direction, with 1201 FCT Distance), R(Zn) ph-ph, X(Zn), RE(Zn) ph-E, the RE/RL - XE/XL compensation, the CT / VT ratings (units printed in the range column) and the line data. Every zone delay setting cell is blank or 'Infinity': no delay is assumed. The impedance basis and the characteristic are not stated and are not assumed; Z5's negative reactance reach, Z1's zone-reduction angle and the distance angle (inclined resistance boundaries) are preserved as capability gaps.",
+  "applicability": {
+    "manufacturer": "Siemens",
+    "family": "SIPROTEC 4 7SA6",
+    "model": "7SA613",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["7SA613\\d?"],
+    "family_markers": ["7SA6xx", "DIGSI\\s*4"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])7SA613\\d?(?![A-Za-z0-9])"
+  },
+  "zones": {
+    "static": [
+      {"id": "Z1", "name": "Zone 1"}, {"id": "Z2", "name": "Zone 2"}, {"id": "Z3", "name": "Zone 3"},
+      {"id": "Z4", "name": "Zone 4"}, {"id": "Z5", "name": "Zone 5"}, {"id": "Z1B", "name": "Zone 1B"}
+    ]
+  },
+  "distance_scope": {
+    "code_prefixes": ["1110", "12", "13", "20", "21", "24", "25"],
+    "names": ["PSB", "SOTF"]
+  },
+  "interpretation_notes": [
+    "The zones are the sheet's Z1, Z2, Z3, Z4, Z5 and Z1B parameter groups (addresses 13xx); each zone's state and direction come from its own 'Op. mode' setting, with the distance function itself (1201 FCT Distance) switched on.",
+    "The sheet states impedances in ohms but not whether they are primary or secondary ohms, and does not name the zone characteristic: neither is assumed (Missing).",
+    "Every zone delay (T1-1phase, T1-multi-phase, T2..., T3 DELAY, T4 DELAY, T5 DELAY, T1B...) has a blank setting cell or 'Infinity'. A blank cell is not a delay, the 'Infinity' in the range column is not a setting, and an 'Infinity' setting is not a finite delay: no delay is assumed, and the document notes' timers are not used.",
+    "The polygon's resistance boundaries are inclined at the distance angle (1211); the current model cannot draw an inclined boundary, so that setting is preserved with every zone. No left (-R) boundary is stated."
+  ],
+  "source_notes": [
+    {
+      "pattern": "^Zone\\s+(?P<zone>\\d+[A-Z]?)\\s+(?:Forward|Reverse|Inactive|Non)",
+      "zone_id": "Z{zone}",
+      "subjects": [
+        {"subject": "timer", "pattern": "(?i)timer\\s+set\\s+to\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s\\b", "value": "{1} s"},
+        {"subject": "status", "pattern": "(?i)\\binactive\\b", "value": "Inactive (out of service)"}
+      ]
+    }
+  ],
+  "zone_preserved": [
+    {"zone": "*", "names": ["Distance Angle"],
+     "reason": "The polygon's resistance boundaries are inclined at the distance angle. The current model draws resistance limits as vertical lines, so this geometry cannot be represented; the setting is preserved, not approximated."},
+    {"zone": "Z1", "names": ["Zone Reduction"],
+     "reason": "Zone 1's zone-reduction angle is preserved as stated; the current model cannot apply it to the drawn boundary."},
+    {"zone": "Z5", "names": ["X(Z5)-"],
+     "reason": "The reactance reach of non-directional Zone 5 in the reverse direction (X-). The canonical zone carries one reactive reach (X+ is mapped); the reverse reach cannot be represented and is preserved."}
+  ],
+  "mappings": [
+    {
+      "id": "7sa613.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {"name": "CT PRIMARY", "type": "number", "unit": "A"}
+    },
+    {
+      "id": "7sa613.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {"name": "CT SECONDARY", "type": "number", "unit": "A", "validate": {"printed_range_pattern": "(?:1|5)\\s*AMP"}},
+      "note": "CT secondary as printed; the range column states the unit (AMP)."
+    },
+    {
+      "id": "7sa613.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {"name": "Unom PRIMARY", "type": "number", "unit": "kV"},
+      "note": "Rated primary voltage; the range column states kV (converted to volts)."
+    },
+    {
+      "id": "7sa613.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {"name": "Unom SECONDARY", "type": "number", "unit": "V"}
+    },
+    {
+      "id": "7sa613.line_angle",
+      "canonical": "line.angle",
+      "source": {"name": "Line Angle", "type": "number", "unit": "deg"}
+    },
+    {
+      "id": "7sa613.line_length",
+      "canonical": "line.length",
+      "source": {"name": "Line Length", "type": "number", "unit": "", "printed_unit": {"accept": ["km", "miles"]}},
+      "note": "Line length as printed; its unit is the sheet's 'Distance Unit'."
+    },
+    {
+      "id": "7sa613.line_length_unit",
+      "canonical": "line.length_unit",
+      "source": {"name": "Distance Unit", "type": "text", "allowed_text": ["km", "miles"]}
+    },
+
+    {
+      "id": "7sa613.status",
+      "canonical": "distance.zone.status",
+      "zone": "*",
+      "sources": {
+        "fct": {"name": "FCT Distance", "allowed_text": ["on", "off"]},
+        "mode": {"name": "Op. mode {zone}", "allowed_text": ["forward", "reverse", "non-directional", "inactive"]}
+      },
+      "transform": {
+        "type": "decision_table",
+        "rules": [
+          {"when": {"fct": "off"}, "value": "disabled"},
+          {"when": {"mode": "inactive"}, "value": "disabled"},
+          {"when": {"fct": "on", "mode": ["forward", "reverse", "non-directional"]}, "value": "enabled"}
+        ]
+      },
+      "note": "The zone's own Op. mode: Inactive puts it out of service; a direction puts it in service while the distance function (1201) is ON."
+    },
+    {
+      "id": "7sa613.direction",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "source": {"name": "Op. mode {zone}"},
+      "transform": {"type": "enum", "map": {"forward": "forward", "reverse": "reverse", "non-directional": "non_directional", "inactive": "inactive"}}
+    },
+    {
+      "id": "7sa613.geometry_mode",
+      "canonical": "distance.zone.geometry_mode",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "explicit_rx"},
+      "authority": "documented_derivation",
+      "note": "The zone is stated as X and R limits (X(Zn), R(Zn) ph-ph, RE(Zn) ph-E), not as a polar reach. Its resistance boundaries are inclined at the distance angle, which this representation cannot carry (preserved with the zone)."
+    },
+    {
+      "id": "7sa613.x_reach",
+      "canonical": "distance.zone.x_reach",
+      "zone": ["Z1", "Z2", "Z3", "Z4", "Z1B"],
+      "source": {"name": "X({zone})", "type": "number", "unit": "ohm"}
+    },
+    {
+      "id": "7sa613.x_reach_z5",
+      "canonical": "distance.zone.x_reach",
+      "zone": "Z5",
+      "source": {"name": "X(Z5)+", "type": "number", "unit": "ohm"},
+      "note": "X(Z5)+: the forward reactance reach of Zone 5. Its reverse reach X(Z5)- is preserved with the zone."
+    },
+    {
+      "id": "7sa613.r_right",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
+      "source": {"name": "R({zone}) ph-ph", "type": "number", "unit": "ohm"},
+      "note": "R(Zn) ph-ph, the phase-phase resistance reach, as printed."
+    },
+    {
+      "id": "7sa613.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "*",
+      "source": {"name": "RE({zone}) ph-E", "type": "number", "unit": "ohm"},
+      "note": "RE(Zn) ph-E, the phase-earth resistance reach, as printed. Not drawn by the phase-phase engine."
+    },
+    {
+      "id": "7sa613.comp_re_rl_z1",
+      "canonical": "distance.zone.comp.re_rl",
+      "zone": "Z1",
+      "source": {"name": "RE/RL(Z1)", "type": "number", "unit": ""},
+      "requires": [{"source": {"name": "Format Z0/Z1"}, "equals": ["re/rl and xe/xl"],
+                    "off_note": "The earth-impedance format is not RE/RL and XE/XL; RE/RL is not in use.",
+                    "missing_note": "the earth-impedance format (0237) was not found"}]
+    },
+    {
+      "id": "7sa613.comp_xe_xl_z1",
+      "canonical": "distance.zone.comp.xe_xl",
+      "zone": "Z1",
+      "source": {"name": "XE/XL(Z1)", "type": "number", "unit": ""},
+      "requires": [{"source": {"name": "Format Z0/Z1"}, "equals": ["re/rl and xe/xl"],
+                    "off_note": "The earth-impedance format is not RE/RL and XE/XL; XE/XL is not in use.",
+                    "missing_note": "the earth-impedance format (0237) was not found"}]
+    },
+    {
+      "id": "7sa613.comp_re_rl_rest",
+      "canonical": "distance.zone.comp.re_rl",
+      "zone": ["Z2", "Z3", "Z4", "Z5", "Z1B"],
+      "source": {"name": "RE/RL(Z1B...Z5)", "type": "number", "unit": ""},
+      "requires": [{"source": {"name": "Format Z0/Z1"}, "equals": ["re/rl and xe/xl"],
+                    "off_note": "The earth-impedance format is not RE/RL and XE/XL; RE/RL is not in use.",
+                    "missing_note": "the earth-impedance format (0237) was not found"}],
+      "note": "RE/RL(Z1B...Z5): one setting for zones Z1B to Z5."
+    },
+    {
+      "id": "7sa613.comp_xe_xl_rest",
+      "canonical": "distance.zone.comp.xe_xl",
+      "zone": ["Z2", "Z3", "Z4", "Z5", "Z1B"],
+      "source": {"name": "XE/XL(Z1B...Z5)", "type": "number", "unit": ""},
+      "requires": [{"source": {"name": "Format Z0/Z1"}, "equals": ["re/rl and xe/xl"],
+                    "off_note": "The earth-impedance format is not RE/RL and XE/XL; XE/XL is not in use.",
+                    "missing_note": "the earth-impedance format (0237) was not found"}],
+      "note": "XE/XL(Z1B...Z5): one setting for zones Z1B to Z5."
+    },
+
+    {
+      "id": "7sa613.delay_z1_pp", "canonical": "distance.zone.phase_delay", "zone": "Z1",
+      "source": {"name": "T1-multi-phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "Delay for multi-phase faults, read as the phase-phase loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sa613.delay_z1_pe", "canonical": "distance.zone.earth_delay", "zone": "Z1",
+      "source": {"name": "T1-1phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "Delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sa613.delay_z2_pp", "canonical": "distance.zone.phase_delay", "zone": "Z2",
+      "source": {"name": "T2-multi-phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "Delay for multi-phase faults, read as the phase-phase loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sa613.delay_z2_pe", "canonical": "distance.zone.earth_delay", "zone": "Z2",
+      "source": {"name": "T2-1phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "Delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sa613.delay_z1b_pp", "canonical": "distance.zone.phase_delay", "zone": "Z1B",
+      "source": {"name": "T1B-multi-phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "Delay for multi-phase faults, read as the phase-phase loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sa613.delay_z1b_pe", "canonical": "distance.zone.earth_delay", "zone": "Z1B",
+      "source": {"name": "T1B-1phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "Delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sa613.delay_z3", "canonical": "distance.zone.common_delay", "zone": "Z3",
+      "source": {"name": "T3 DELAY", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"}
+    },
+    {
+      "id": "7sa613.delay_z4", "canonical": "distance.zone.common_delay", "zone": "Z4",
+      "source": {"name": "T4 DELAY", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"}
+    },
+    {
+      "id": "7sa613.delay_z5", "canonical": "distance.zone.common_delay", "zone": "Z5",
+      "source": {"name": "T5 DELAY", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"}
+    }
+  ]
+}

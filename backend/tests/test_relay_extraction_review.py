@@ -51,7 +51,7 @@ class TestReviewDto:
         summary, review = _review()
         assert summary.status.value == "interpreted" and review is not None
         registry = default_registry()
-        other = make_doc(scheme=("LZOP", "Scheme: 7SA6131_4AB02_3GA0"))
+        other = make_doc(scheme=("LZOP", "Scheme: XYZ9000_V1"))                  # not a recognised relay
         none = summarize_interpretation(registry, other, registry.identify(other))
         assert none.status.value == "not_supported" and none.review is None
 
@@ -246,7 +246,8 @@ class TestUploadResponse:
         assert len(r.content) < 250_000  # concise enough to ride in the upload response
 
     def test_review_is_null_for_unsupported_and_unreadable(self, client):
-        sheet = simple_pdf([["Scheme: 7SA6131_4AB02_3GA0"], ["R1", "1.84", "0-655.35"]])
+        # a relay no profile or catalog interprets (every catalogued family now has one)
+        sheet = simple_pdf([["Scheme: XYZ9000_V1"], ["R1", "1.84", "0-655.35"]])
         body = client.post(URL, files={"file": ("a.pdf", io.BytesIO(sheet), "application/pdf")}).json()
         assert body["interpretation_status"] == "not_supported" and body["review"] is None
         scanned = client.post(URL, files={"file": ("a.pdf", io.BytesIO(build_pdf(["image"])), "application/pdf")}).json()

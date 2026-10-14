@@ -58,8 +58,10 @@ class TestIdentification:
         assert (body["manufacturer"], body["relay_family"], body["model"]) == ("Siemens", "SIPROTEC 4 7SA6", "7SA613")
         assert (body["profile_id"], body["confidence"]) == ("siemens-7sa613", "high")
         assert body["identification_warnings"] == []
+        # engineering values appear only inside ``review`` (Slice 7); the identification verdict carries none
+        outside_review = json.dumps({k: v for k, v in body.items() if k != "review"})
         for content in ("3.6", "X(Z2)", "7SA6131_4AB02", "evidence", "score"):
-            assert content not in r.text
+            assert content not in outside_review
 
     def test_response_stays_concise(self, client):
         body = client.post(URL, files=_files(_sheet("GRL200_TNB"))).json()
@@ -162,18 +164,29 @@ class TestInterpretation:
         assert undeclared["unresolved_setting_count"] > defeated["unresolved_setting_count"]
         assert undeclared["inferred_setting_count"] < defeated["inferred_setting_count"]
 
-    @pytest.mark.parametrize("scheme", ["7SA6131_4AB02_3GA0", "GRL200_TNB", "RELZ100_3.0", "XYZ9000_V1"])
-    def test_every_other_relay_stays_identification_only(self, client, scheme):
-        body = client.post(URL, files=_files(_sheet(scheme))).json()
+    def test_an_unrecognised_relay_stays_uninterpreted(self, client):
+        body = client.post(URL, files=_files(_sheet("XYZ9000_V1"))).json()
         assert body["interpretation_status"] == "not_supported"
         assert body["profile_version"] is None and body["zone_count"] == 0
         assert (body["mapped_setting_count"], body["inferred_setting_count"], body["unresolved_setting_count"]) == (0, 0, 0)
         assert body["interpretation_warnings"] == []
 
-    def test_p441_settings_under_another_relays_scheme_are_not_interpreted(self, client):
+    @pytest.mark.parametrize("scheme, profile_id, catalog_id", [
+        ("7SA6131_4AB02_3GA0", "siemens-7sa613", "siemens-7sa613-catalog"),
+        ("GRL200_TNB", "toshiba-grl200", "toshiba-grl200-catalog"),
+        ("RELZ100_3.0", "relz100", "relz100-catalog"),
+    ])
+    def test_a_catalogued_relay_is_interpreted_by_its_own_catalog(self, client, scheme, profile_id, catalog_id):
+        body = client.post(URL, files=_files(_sheet(scheme))).json()
+        assert body["profile_id"] == profile_id and body["catalog_id"] == catalog_id
+        assert body["profile_version"] == f"{catalog_id}-v1.0.0"
+        assert body["interpretation_status"] in ("interpreted", "incomplete")
+
+    def test_p441_settings_under_another_relays_scheme_are_not_interpreted_as_a_p441(self, client):
         data = _p441_pdf().replace(b"SE_P441?A1???038?JE", b"7SA6131_4AB02_3GA0")
         body = client.post(URL, files=_files(data)).json()
-        assert body["profile_id"] != "schneider-micom-p441" and body["interpretation_status"] == "not_supported"
+        assert body["profile_id"] == "siemens-7sa613"                                # the scheme decides the relay
+        assert not (body["profile_version"] or "").startswith(("micom", "schneider"))  # never the P441 profile / catalog
 
     def test_nothing_to_interpret_without_text(self, client):
         body = client.post(URL, files=_files(build_pdf(["image"]))).json()

@@ -1,0 +1,197 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "hitachi-rel511-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "hitachi-rel511",
+  "registry_version": "1.1.0",
+  "description": "Hitachi Energy (ABB) REx5xx REL511 distance zones as a flat REL511 setting sheet prints them (TAP NAME | TAP SETTING | TAP RANGE). Catalog-only, verified subset: per-zone Operation_Zn (status), DirZn (direction), gated Timer tn / tn, X1Zn (reactive reach), R1Zn, X0Zn / R0Zn, RFNZn as printed, the CT / VT values and the line data. Not interpreted (owner-verified semantics missing): the characteristic, the impedance basis, the RF loop / per-phase convention (RFZn is preserved, never used as +R), the ZnBlock switches and any directional / left boundary.",
+  "applicability": {
+    "manufacturer": "Hitachi Energy",
+    "family": "REx5xx",
+    "model": "REL511",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["REL-?511"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])REL-?511(?![A-Za-z0-9])",
+    "version_pattern": "(?<![A-Za-z0-9])(V\\d+(?:\\.\\d+)*)(?![A-Za-z0-9.])"
+  },
+  "zones": {
+    "discover": {"name_pattern": "^Operation_Z(?P<n>\\d+)$", "id": "Z{n}", "name": "Zone {n}"}
+  },
+  "distance_scope": {
+    "names": ["Operation_GFC", "I>_GFC", "IN>_GFC", "X1GFCFw", "X0GFCFw", "X1GFCRv", "X0GFCRv", "RFGFC", "RFNGFC", "RLd", "ARGLd",
+              "tPhase_GFC", "tN_GFC", "Operation_PSB", "X1PSB", "RFPSB", "Automatic_SOTF", "Operation_SOTF", "Scheme_Type_Z",
+              "tCoord_Z", "tSendmin_Z", "Unblock_Z", "tSecurity_Z", "Operation_Extension", "CurrRev_Z", "tPickUp_CurrRev",
+              "tDelay_CurrRev", "WEI_Z", "Operation_FFS", "U>_FFS", "I>_FFS", "Operation_LossOfLoad", "U<_UV",
+              "X1SA", "R1SA", "X1SB", "R1SB", "Xm0", "Rm0", "Distance Unit", "PSB", "SOTF"]
+  },
+  "interpretation_notes": [
+    "Zone N is the parameter set ending in ZN (Operation_ZN, X1ZN, R1ZN, X0ZN, R0ZN, RFZN, RFNZN, Timer tN, tN, DirZN, ZNBlock); the numbering follows the sheet.",
+    "The sheet does not name the zone characteristic and does not state whether the impedance settings are primary or secondary ohms: neither is assumed (Missing).",
+    "RFZn is the phase-phase fault-resistance setting. Whether it is a per-loop or a per-phase value is not established for this relay family, so no Right Resistive Reach (+R) is derived from it; it is preserved with the zone. RFNZn is kept as printed as the earth resistive reach (not plotted).",
+    "No left (-R) boundary or directional-element geometry is stated; none is assumed. ZnBlock switches are preserved uninterpreted."
+  ],
+  "source_notes": [
+    {
+      "pattern": "^Zone\\s+(?P<zone>\\d+)\\s+(?:Forward|Reverse|Inactive|Non)",
+      "zone_id": "Z{zone}",
+      "subjects": [
+        {"subject": "timer", "pattern": "(?i)timer\\s+set\\s+to\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s\\b", "value": "{1} s"},
+        {"subject": "status", "pattern": "(?i)\\binactive\\b", "value": "Inactive (out of service)"}
+      ]
+    }
+  ],
+  "zone_preserved": [
+    {"zone": "*", "names": ["Z{n}Block"], "reason": "ZnBlock is an On / Off switch whose effect (what it blocks) the sheet does not state; it is preserved and does not decide the zone's state."}
+  ],
+  "mappings": [
+    {
+      "id": "rel511.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {"name": "CTPrim Iphases", "type": "number", "unit": "A"},
+      "note": "CTPrim Iphases: the phase CT primary current (no unit printed; amperes)."
+    },
+    {
+      "id": "rel511.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {"name": "Ir", "type": "number", "unit": "A", "validate": {"within_printed_range": false}},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Ir is the relay's rated current input; it is taken as the CT secondary rating. The sheet does not label it as the CT secondary (the notes' CT ratio agrees). Confirm."
+    },
+    {
+      "id": "rel511.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {"name": "VTPrim Uphases", "type": "number", "unit": "kV"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "VTPrim Uphases is printed without a unit; kV is assumed (the sheet's 132kV header agrees) and converted to volts. Confirm the unit."
+    },
+    {
+      "id": "rel511.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {"name": "Ur", "type": "number", "unit": "V", "validate": {"printed_range_pattern": "[0-9]+(?:/[0-9]+)*"}},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Ur is the relay's rated voltage input; it is taken as the VT secondary rating (volts). The sheet does not label it as the VT secondary. Confirm."
+    },
+    {
+      "id": "rel511.line_length",
+      "canonical": "line.length",
+      "source": {"name": "Line Length", "type": "number", "unit": "", "validate": {"within_printed_range": false}},
+      "note": "Line Length as printed; its unit is the sheet's 'Length unit'."
+    },
+    {
+      "id": "rel511.line_length_unit",
+      "canonical": "line.length_unit",
+      "source": {"name": "Length unit", "type": "text", "allowed_text": ["km", "mi"]},
+      "note": "Length unit as printed (not converted)."
+    },
+    {
+      "id": "rel511.line_z1",
+      "canonical": "line.positive_sequence_impedance",
+      "sources": {
+        "r": {"name": "R1", "type": "number", "unit": "ohm"},
+        "x": {"name": "X1", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "R1 / X1 of the line-data group (beside Line Length and the fault-locator source impedances) read as the line's positive-sequence impedance; the sheet's own '1' / '0' naming, not a stated label."
+    },
+    {
+      "id": "rel511.line_z0",
+      "canonical": "line.zero_sequence_impedance",
+      "sources": {
+        "r": {"name": "R0", "type": "number", "unit": "ohm"},
+        "x": {"name": "X0", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "R0 / X0 of the line-data group read as the line's zero-sequence impedance; the sheet's own '1' / '0' naming, not a stated label."
+    },
+
+    {
+      "id": "rel511.status",
+      "canonical": "distance.zone.status",
+      "zone": "*",
+      "source": {"name": "Operation_Z{n}"},
+      "transform": {"type": "enum", "map": {"on": "enabled", "off": "disabled"}},
+      "note": "The zone's own Operation switch."
+    },
+    {
+      "id": "rel511.direction",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "source": {"name": "DirZ{n}"},
+      "transform": {"type": "enum", "map": {"forward": "forward", "reverse": "reverse", "non": "non_directional", "non-directional": "non_directional"}},
+      "note": "DirZn as printed. A value that is not one of the printed options (Non / Forward / Reverse) is not interpreted."
+    },
+    {
+      "id": "rel511.geometry_mode",
+      "canonical": "distance.zone.geometry_mode",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "explicit_rx"},
+      "authority": "documented_derivation",
+      "note": "The sheet states a reactance (X1Zn) and resistances, never a reach angle: the reach is stated as orthogonal R / X values."
+    },
+    {
+      "id": "rel511.x_reach",
+      "canonical": "distance.zone.x_reach",
+      "zone": "*",
+      "source": {"name": "X1Z{n}", "type": "number", "unit": "ohm"},
+      "note": "X1Zn: the zone's positive-sequence reactive reach."
+    },
+    {
+      "id": "rel511.r1",
+      "canonical": "distance.zone.r1_resistance",
+      "zone": "*",
+      "source": {"name": "R1Z{n}", "type": "number", "unit": "ohm"},
+      "note": "R1Zn: the zone's positive-sequence resistance setting. How the relay uses it is not stated; it does not set a drawn boundary."
+    },
+    {
+      "id": "rel511.zero_sequence_reach",
+      "canonical": "distance.zone.zero_sequence_reach",
+      "zone": "*",
+      "sources": {
+        "r": {"name": "R0Z{n}", "type": "number", "unit": "ohm"},
+        "x": {"name": "X0Z{n}", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "note": "R0Zn / X0Zn: the zone's zero-sequence reach. Preserved, not plotted."
+    },
+    {
+      "id": "rel511.r_right",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
+      "gap": {
+        "note": "The sheet states the phase-phase fault-resistance setting ({evidence}), but whether it is a per-loop or a per-phase value is not established for this relay family. No Right Resistive Reach (+R) is derived from it (no division, no as-printed use); the value is preserved here.",
+        "evidence": [{"name": "RFZ{n}"}]
+      }
+    },
+    {
+      "id": "rel511.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "*",
+      "source": {"name": "RFNZ{n}", "type": "number", "unit": "ohm"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "RFNZn, the phase-earth fault-resistance setting, kept as printed (not scaled). Its per-loop / per-phase convention is not stated. The phase-phase engine does not draw it."
+    },
+    {
+      "id": "rel511.delay",
+      "canonical": "distance.zone.common_delay",
+      "zone": "*",
+      "source": {"name": "t{n}", "type": "number", "unit": "s"},
+      "requires": [{
+        "source": {"name": "Timer t{n}", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "The 'Timer t{n}' switch is Off, so t{n} is not an operating delay of this zone; none is assumed.",
+        "missing_note": "the 'Timer t{n}' switch was not found, so t{n} is not established as in use"
+      }],
+      "note": "The zone timer, read only while its own 'Timer' switch is On. One delay per zone (phase and earth loops)."
+    }
+  ]
+}

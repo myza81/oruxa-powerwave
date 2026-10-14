@@ -1,0 +1,85 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "lfzp111-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "lfzp111",
+  "registry_version": "1.1.0",
+  "description": "LFZP111 distance relay as an LFZP111 setting sheet prints it. Catalog-only, limited review: the CT and VT ratios, the line length, the per-zone tripping switches (read as the zone's in-service state, an assumption) and each zone's reach multiplier preserved raw. The LFZP reaches are products of multipliers (KZ, KZPh, KZN, KR ...) whose combination is not verified, so no canonical reach, characteristic (lenticular / quadrilateral) or geometry is derived, and the sheet states no zone timers.",
+  "applicability": {
+    "manufacturer": null,
+    "family": "LFZP",
+    "model": "LFZP111",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["LFZP-?111"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])LFZP-?111(?![A-Za-z0-9])"
+  },
+  "zones": {
+    "static": [
+      {"id": "Z1", "name": "Zone 1", "key": "1"}, {"id": "Z1X", "name": "Zone 1X", "key": "1X"},
+      {"id": "Z1Y", "name": "Zone 1Y", "key": "1Y"}, {"id": "Z2", "name": "Zone 2", "key": "2"},
+      {"id": "Z3", "name": "Zone 3", "key": "3"}
+    ]
+  },
+  "distance_scope": {
+    "name_patterns": ["^KZ", "^KR$", "^THETA ", "^Z\\d.* Lenticular", "^(?:LEFT|RIGHT)_QUAD", "^ZONE ", "^Z\\d", "^DIST ", "^ALL G TRIPPING$", "^PwrSwg ", "^SWCH ON TO FAULT", "^SWITCH ON TO FAULT", "^SCHEME SELECTION$", "^MUTUAL COMP\\.$", "^OVERHEAD/CABLE$", "^In$"]
+  },
+  "interpretation_notes": [
+    "The zones are Zone 1, 1X, 1Y, 2 and 3 as the sheet's reach multipliers (KZn) and tripping switches name them. KZ6 (and KZ6_PRIME) belong to the power-swing / starter function and are not a protection zone here.",
+    "The manufacturer is not recorded for this relay line and is not asserted.",
+    "A zone's tripping switch (ENABLED / BLOCKED) is read as its in-service state: an assumption to confirm (the sheet has no other zone switch).",
+    "The LFZP reaches are set as multipliers (KZn with KZPh, KZN, KR, THETA ...). How they combine into an ohmic reach is not verified, so no reach, resistive reach, characteristic (DIST G CHARACTERISTIC, Z3 lenticular a/b) or geometry is derived; the multipliers are preserved with their zones. The sheet states no zone timers and no impedance basis; none is assumed.",
+    "The CT and VT are stated as ratios (N:1); no primary / secondary split is made."
+  ],
+  "zone_preserved": [
+    {"zone": "*", "names": ["KZ{key}"],
+     "reason": "The zone's reach multiplier as stated. The relay's reach is a product of multipliers whose combination is not verified, so no ohmic reach is derived from it."},
+    {"zone": "Z3", "names": ["KZ3_PRIME", "Z3 Lenticular a/b", "ZONE 3 SETTING"],
+     "reason": "Zone 3's offset reach multiplier and lenticular shape settings. The lenticular / offset geometry is not established and the current model cannot draw it; preserved as stated."}
+  ],
+  "mappings": [
+    {
+      "id": "lfzp111.ct_ratio",
+      "canonical": "ct_vt.ct_ratio",
+      "source": {"name": "CT Ratio (N:1)", "type": "number", "unit": ""},
+      "note": "CT Ratio (N:1) as stated; not split into primary and secondary."
+    },
+    {
+      "id": "lfzp111.vt_ratio",
+      "canonical": "ct_vt.vt_ratio",
+      "source": {"name": "VT Ratio (N:1)", "type": "number", "unit": ""},
+      "note": "VT Ratio (N:1) as stated; not split into primary and secondary."
+    },
+    {
+      "id": "lfzp111.line_length",
+      "canonical": "line.length",
+      "source": {"name": "Line Length", "type": "number", "unit": ""}
+    },
+    {
+      "id": "lfzp111.line_length_unit",
+      "canonical": "line.length_unit",
+      "source": {"name": "LINE UNITS", "type": "text", "allowed_text": ["km", "miles"]},
+      "note": "LINE UNITS as printed (a '100%' setting would not be a length unit and is not recognised)."
+    },
+    {
+      "id": "lfzp111.status_z1",
+      "canonical": "distance.zone.status",
+      "zone": "Z1",
+      "source": {"name": "ZONE 1 TRIPPING"},
+      "transform": {"type": "enum", "map": {"enabled": "enabled", "blocked": "disabled"}},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "The zone's tripping switch read as its in-service state (ENABLED = in service, BLOCKED = out of service). Assumption: the sheet has no other zone switch."
+    },
+    {
+      "id": "lfzp111.status_t",
+      "canonical": "distance.zone.status",
+      "zone": ["Z1X", "Z1Y", "Z2", "Z3"],
+      "source": {"name": "Z{key}(T) TRIPPING"},
+      "transform": {"type": "enum", "map": {"enabled": "enabled", "blocked": "disabled"}},
+      "authority": "assumption", "confidence": "inferred",
+      "note": "The zone's (time-delayed) tripping switch read as its in-service state (ENABLED = in service, BLOCKED = out of service). Assumption: the sheet has no other zone switch."
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "siemens-siprotec5-7sl87-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "siemens-siprotec5-7sl87",
+  "registry_version": "1.1.0",
+  "description": "Siemens SIPROTEC 5 7SL87 distance zones (function '21 Distance prot.1', zones Z1..Zn) as a DIGSI 5 setting sheet prints them, with the DIGSI address written inside each setting name (21.901.357n.xxx). Catalog-only, verified subset: per-zone Mode (status), Directional mode, Function mode (loops), X reach, R (ph-ph), R (ph-g), Zone-inclination angle (tilt), zone-specific Kr / Kx, the CT / VT ratings, the Edit-mode basis and the line data. The operating-delay setting cells on the sheet are blank (Infinity is printed in the range column): every delay is Missing. The characteristic is not named by the sheet and is not assumed; the polygon's inclined resistance boundaries (Dist. characteristic angle) cannot be represented and are preserved as a capability gap.",
+  "applicability": {
+    "manufacturer": "Siemens",
+    "family": "SIPROTEC 5",
+    "model": "7SL87",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["7SL87"],
+    "family_markers": ["SIPROTEC\\s*5", "DIGSI\\s*5"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])7SL87(?![A-Za-z0-9])"
+  },
+  "zones": {
+    "discover": {"name_pattern": "^21\\.901\\.357(?P<n>\\d)\\.1 Mode$", "id": "Z{n}", "name": "Zone {n}"}
+  },
+  "distance_scope": {
+    "name_patterns": ["^21\\.901\\.", "^21\\.5311\\.", "^21\\.1341\\.", "^21\\.9001\\.", "^21\\.2671\\."],
+    "names": ["PSB", "SOTF"]
+  },
+  "interpretation_notes": [
+    "Zone N is the zone 'Z N' of function '21 Distance prot.1' (DIGSI addresses 21.901.357N.xxx); the numbering follows the sheet.",
+    "The sheet's Edit mode is Primary: the impedance values on the sheet are primary ohms.",
+    "Every operating delay (1-phase and multi-phase) has a blank setting cell; the 'Infinity' beside it is the range column, not a configured delay. No delay is assumed, and the document notes' timers are not used.",
+    "The sheet does not name the zone characteristic, so none is assumed. The zone geometry is stated as X reach, R (ph-ph) and R (ph-g) limits; the resistance boundaries are inclined at the distance characteristic angle (21.901.2311.107), which the current model cannot draw; that setting is preserved with every zone. No left (-R) boundary is stated."
+  ],
+  "source_notes": [
+    {
+      "pattern": "^Zone\\s+(?P<zone>\\d+)\\s+(?:Forward|Reverse|Inactive|Non)",
+      "zone_id": "Z{zone}",
+      "subjects": [
+        {"subject": "timer", "pattern": "(?i)timer\\s+set\\s+to\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s\\b", "value": "{1} s"},
+        {"subject": "status", "pattern": "(?i)\\binactive\\b", "value": "Inactive (out of service)"}
+      ]
+    }
+  ],
+  "zone_preserved": [
+    {"zone": "*", "names": ["21.901.2311.107 Dist. characteristic angle"],
+     "reason": "The polygon's resistance boundaries are inclined at the distance characteristic angle. The current model draws resistance limits as vertical lines, so this geometry cannot be represented; the setting is preserved, not approximated."},
+    {"zone": "*", "name_pattern": "^21\\.901\\.357{n}\\.(?:2|11|121) ",
+     "reason": "A zone operating / blocking switch of the vendor's scheme logic; it does not change the zone's geometry and is not interpreted."},
+    {"zone": "*", "name_pattern": "^21\\.901\\.357{n}\\.(?:107|108) ",
+     "reason": "K0 / Angle (K0) are the other residual-compensation format; this sheet is set to the Kr, Kx format (91.115). Preserved, not used."}
+  ],
+  "mappings": [
+    {
+      "id": "7sl87.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {"name": "11.931.8881.101 Rated primary current", "type": "number", "unit": "A"},
+      "note": "Rated primary current of the 3-phase CT measuring point (no unit printed; amperes)."
+    },
+    {
+      "id": "7sl87.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {"name": "11.931.8881.102 Rated secondary current", "type": "number", "unit": "A"},
+      "note": "Rated secondary current of the 3-phase CT measuring point (printed '1 A')."
+    },
+    {
+      "id": "7sl87.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {"name": "11.941.8911.101 Rated primary voltage", "type": "number", "unit": "kV"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Rated primary voltage of the 3-phase VT measuring point, printed without a unit; kV is assumed (the sheet's 275kV header and the line's rated voltage agree) and converted to volts. Confirm the unit."
+    },
+    {
+      "id": "7sl87.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {"name": "11.941.8911.102 Rated secondary voltage", "type": "number", "unit": "V"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Rated secondary voltage of the 3-phase VT measuring point, printed without a unit; volts are assumed. Confirm the unit."
+    },
+    {
+      "id": "7sl87.basis",
+      "canonical": "ct_vt.impedance_basis",
+      "source": {"name": "Edit mode", "allowed_text": ["primary", "secondary"]},
+      "transform": {"type": "enum", "map": {"primary": "primary", "secondary": "secondary"}},
+      "note": "DIGSI 5 Edit mode: the basis in which the sheet's settings are stated."
+    },
+    {
+      "id": "7sl87.line_length",
+      "canonical": "line.length",
+      "source": {"name": "21.9001.114 Line length", "type": "number", "unit": ""},
+      "note": "Line length as printed; the sheet prints no length unit."
+    },
+    {
+      "id": "7sl87.line_angle",
+      "canonical": "line.angle",
+      "source": {"name": "21.9001.108 Line angle", "type": "number", "unit": "deg"}
+    },
+
+    {
+      "id": "7sl87.status",
+      "canonical": "distance.zone.status",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.1 Mode", "allowed_text": ["on", "off"]},
+      "transform": {"type": "enum", "map": {"on": "enabled", "off": "disabled"}},
+      "note": "The zone's own Mode setting (on / off). 'test' is not interpreted."
+    },
+    {
+      "id": "7sl87.direction",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.109 Directional mode"},
+      "transform": {"type": "enum", "map": {"forward": "forward", "reverse": "reverse", "non-directional": "non_directional", "non-dir": "non_directional"}}
+    },
+    {
+      "id": "7sl87.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.101 Function mode"},
+      "transform": {"type": "enum", "map": {"ph-gnd and ph-ph": true, "ph-ph": true, "ph-gnd": false}},
+      "note": "Function mode states which loops the zone measures."
+    },
+    {
+      "id": "7sl87.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.101 Function mode"},
+      "transform": {"type": "enum", "map": {"ph-gnd and ph-ph": true, "ph-ph": false, "ph-gnd": true}},
+      "note": "Function mode states which loops the zone measures."
+    },
+    {
+      "id": "7sl87.geometry_mode",
+      "canonical": "distance.zone.geometry_mode",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "explicit_rx"},
+      "authority": "documented_derivation",
+      "note": "The zone is stated as X and R limits (X reach, R (ph-ph), R (ph-g)), not as a polar reach. Its resistance boundaries are inclined at the distance characteristic angle, which this representation cannot carry (preserved with the zone)."
+    },
+    {
+      "id": "7sl87.x_reach",
+      "canonical": "distance.zone.x_reach",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.102 X reach", "type": "number", "unit": "ohm"}
+    },
+    {
+      "id": "7sl87.r_right",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.104 R (ph-ph)", "type": "number", "unit": "ohm"},
+      "note": "R (ph-ph), the phase-phase resistance reach, as printed."
+    },
+    {
+      "id": "7sl87.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.103 R (ph-g)", "type": "number", "unit": "ohm"},
+      "note": "R (ph-g), the phase-ground resistance reach, as printed. Not drawn by the phase-phase engine."
+    },
+    {
+      "id": "7sl87.tilt",
+      "canonical": "distance.zone.tilt",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.113 Zone-inclination angle", "type": "number", "unit": "deg"},
+      "note": "The inclination of the zone's X reach line, as stated."
+    },
+    {
+      "id": "7sl87.phase_delay",
+      "canonical": "distance.zone.phase_delay",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.112 Operate delay (multi-ph.)", "type": "number", "unit": "s"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Operate delay for multi-phase faults, read as the phase-phase loop delay (multi-phase faults include phase-phase-earth faults; the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sl87.earth_delay",
+      "canonical": "distance.zone.earth_delay",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.110 Operate delay (1-phase)", "type": "number", "unit": "s"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Operate delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+    },
+    {
+      "id": "7sl87.kr",
+      "canonical": "distance.zone.comp.kr",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.105 Kr", "type": "number", "unit": ""},
+      "requires": [
+        {"source": {"name": "21.901.357{n}.114 Zone-spec. residu. comp."}, "equals": ["yes"],
+         "off_note": "Zone-specific residual compensation is NO for this zone: its own Kr is not in use (the line's Kr applies); none is assumed for the zone.",
+         "missing_note": "the 'Zone-spec. residu. comp.' setting was not found, so the zone's own Kr is not established as in use"},
+        {"source": {"name": "91.115 Set. format residu. comp."}, "equals": ["kr, kx"],
+         "off_note": "The residual-compensation format is not Kr, Kx; Kr is not in use.",
+         "missing_note": "the residual-compensation format (91.115) was not found"}
+      ]
+    },
+    {
+      "id": "7sl87.kx",
+      "canonical": "distance.zone.comp.kx",
+      "zone": "*",
+      "source": {"name": "21.901.357{n}.106 Kx", "type": "number", "unit": ""},
+      "requires": [
+        {"source": {"name": "21.901.357{n}.114 Zone-spec. residu. comp."}, "equals": ["yes"],
+         "off_note": "Zone-specific residual compensation is NO for this zone: its own Kx is not in use (the line's Kx applies); none is assumed for the zone.",
+         "missing_note": "the 'Zone-spec. residu. comp.' setting was not found, so the zone's own Kx is not established as in use"},
+        {"source": {"name": "91.115 Set. format residu. comp."}, "equals": ["kr, kx"],
+         "off_note": "The residual-compensation format is not Kr, Kx; Kx is not in use.",
+         "missing_note": "the residual-compensation format (91.115) was not found"}
+      ]
+    }
+  ]
+}

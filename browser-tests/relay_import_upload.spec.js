@@ -51,6 +51,32 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+// Every catalogued relay family now has an active parameter catalog, so no real sheet is "identified but not
+// interpreted" any more. That outcome is still a backend response (a catalogue entry without an active catalog),
+// so its honest wording is exercised with the backend's own response shape.
+async function pickIdentifiedOnly(page) {
+  await page.route("**/api/v1/relay-import/upload", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        filename: "siemens.pdf", source_format: "pdf", size_bytes: 900, status: "accepted",
+        extraction_status: "text_extracted", page_count: 1, pages_with_text: 1, raw_entry_count: 2,
+        section_count: 0, extraction_warnings: [], identification_status: "identified",
+        manufacturer: "Siemens", relay_family: "SIPROTEC 4 7SA6", model: "7SA613", profile_id: "siemens-7sa613",
+        confidence: "high", identification_warnings: [], interpretation_status: "not_supported",
+        profile_version: null, mapped_setting_count: 0, inferred_setting_count: 0, unresolved_setting_count: 0,
+        not_interpreted_setting_count: 0, zone_count: 0, interpretation_warnings: [], review: null,
+        catalog_id: null, catalog_version: null, catalog_coverage: null,
+      }),
+    }),
+  );
+  await pick(page, "siemens.pdf", SIEMENS_PDF);
+  // the upload is sent after the file is picked: keep the response mocked until it has been rendered
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SA613");
+  await page.unroute("**/api/v1/relay-import/upload");
+}
+
 async function openDistance(page) {
   await page.goto("/index.html");
   await page.locator("#mainNavAnalysisBtn").click();
@@ -288,14 +314,14 @@ test("scanned/image-only and encrypted outcomes are reported without calling the
 test("extraction outcome never fills the Distance Protection form", async ({ page }) => {
   await openDistance(page);
   const before = await page.locator("#wwDistanceZone1ReachInput").inputValue();
-  await pick(page, "p441.pdf", SIEMENS_PDF);
-  await expect(page.locator("#wwRelayImportDetail")).toContainText("have not been interpreted");
+  await pick(page, "p441.pdf", SIEMENS_PDF); // a catalogued relay: interpreted by its own catalog, never applied
+  await expect(page.locator("#wwRelayImportDetail")).toContainText("Nothing has been applied to the form");
   await expect(page.locator("#wwDistanceZone1ReachInput")).toHaveValue(before);
 });
 
 test("an identified relay is named, with an honest 'not interpreted' message", async ({ page }) => {
   await openDistance(page);
-  await pick(page, "document.pdf", SIEMENS_PDF);
+  await pickIdentifiedOnly(page);
   await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SA613");
   await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
   await expect(page.locator("#wwRelayImportStatus")).toContainText("raw entr");
@@ -415,15 +441,25 @@ test("a P441 is interpreted, summarised, and NOTHING is applied to the form", as
   await expect(page.locator("#wwRelayImportFile")).toBeHidden();
 });
 
-test("a second upload replaces the P441 summary and a non-P441 relay shows none", async ({ page }) => {
+test("a second upload replaces the P441 summary and a non-interpreted relay shows none", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "p441.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
+  await pickIdentifiedOnly(page);
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SA613");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("");
+  await expect(page.locator("#wwRelayImportSummary")).toBeHidden();
+});
+
+test("a second upload replaces the P441 summary with the next relay's own catalog interpretation", async ({ page }) => {
   await openDistance(page);
   await pick(page, "p441.pdf", p441Pdf());
   await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
   await pick(page, "siemens.pdf", SIEMENS_PDF);
   await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SA613");
-  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
-  await expect(page.locator("#wwRelayImportSummary")).toHaveText("");
-  await expect(page.locator("#wwRelayImportSummary")).toBeHidden();
+  await expect(page.locator("#wwRelayImportDetail")).toContainText("Relay identified and settings interpreted.");
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("6 zones found"); // the 7SA613 catalog's zones
 });
 
 test("summary wording for each interpretation outcome (backend response shapes)", async ({ page }) => {
@@ -510,7 +546,7 @@ test("Review button shows only for an interpreted relay", async ({ page }) => {
   await pick(page, "unknown.pdf", PDF);
   await expect(page.locator("#wwRelayImportStatus")).toContainText("raw entries");
   await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
-  await pick(page, "siemens.pdf", SIEMENS_PDF); // identified, but not interpreted
+  await pickIdentifiedOnly(page); // identified, but not interpreted
   await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
   await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
   await pick(page, "p441.pdf", p441Pdf());

@@ -1,4 +1,13 @@
 {
   "hitachi-red670-catalog@1.0.0": "0a54401eff44e128f27367b31ac18ee3e8d9beddcd7ef9b4d11ea3af07fd9d42",
-  "schneider-micom-p44x-catalog@1.0.0": "6cd1308892ef73ca1e97e82e4bb3be6ecd3d158dccbb80f5743d9f2d9b69b72c"
+  "hitachi-rel511-catalog@1.0.0": "e82b915dd136cf175ac56c4600a28df53b4f6d0f069fc47c22f0811fc627201c",
+  "hitachi-rel670-catalog@1.0.0": "f1e29dc8eca32180bdc26207c47ee9d5826a6c28023f20bf62f467ec81a4678f",
+  "lfzp111-catalog@1.0.0": "029dc64fd2e44e5deceae95b04f22ae58384e5896a6651b7a17bbf0fe250fb02",
+  "nr-rcs941-catalog@1.0.0": "646d222e50b91c21d4a17471b85d7c86c32d20b8e92569e8735268f35d5234ce",
+  "relz100-catalog@1.0.0": "4d67f3045c70d191c4b94c46dda2dd0dba17d813a510fcfc5c12b4a475491021",
+  "schneider-micom-p44x-catalog@1.0.0": "6cd1308892ef73ca1e97e82e4bb3be6ecd3d158dccbb80f5743d9f2d9b69b72c",
+  "siemens-7sa613-catalog@1.0.0": "4be61e8e3c7704a315ca087d42ea99e6748d7c7fb5a33f4c8cd0dc10ead41b97",
+  "siemens-siprotec5-7sl87-catalog@1.0.0": "e891b1fdfeb2d93c10f6439d8155e21587ae140a3add33503871480768a4f9b6",
+  "toshiba-grl200-catalog@1.0.0": "66906a9ed5ce6566561a08fbc0c5d642efa10a5e9b4dcc56f3987086c9e89204",
+  "toshiba-grz100-catalog@1.0.0": "7e555788414a7b29a8f94b14387d4efcbe3b13bec2e52ae4d0b6c958fd99ebab"
 }

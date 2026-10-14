@@ -1,0 +1,207 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "nr-rcs941-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "nr-rcs941",
+  "registry_version": "1.1.0",
+  "description": "NR Electric RCS-941 distance zones (zones 1-3 and the reverse zone) as an RCS-941 setting sheet prints them. Catalog-only, verified subset: the CT / VT ratings, the phase-phase element reach (Z_PPn) at the positive-sequence reach angle (phi1_Reach), the per-loop element enables (En_ZPPn / En_ZPGn), the timers, the explicitly enabled phase-earth quadrilateral resistive reach (Rn_Quad while En_ZPGn_Quad = 1), K0 and the line data. Not interpreted: a zone in-service state (not stated per zone), the forward zones' direction (not stated), the characteristic (not named), the impedance basis, the phase-earth mho reach and angle, and any phase-earth geometry.",
+  "applicability": {
+    "manufacturer": "NR Electric",
+    "family": "RCS-9xx",
+    "model": "RCS-941",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["RCS-?941"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])RCS-?941(?![A-Za-z0-9])"
+  },
+  "zones": {
+    "static": [
+      {"id": "Z1", "name": "Zone 1", "key": "1"}, {"id": "Z2", "name": "Zone 2", "key": "2"},
+      {"id": "Z3", "name": "Zone 3", "key": "3"}, {"id": "ZR", "name": "Reverse Zone", "key": "_Rev"}
+    ]
+  },
+  "distance_scope": {
+    "name_patterns": ["^En_(?:ZP|Blinder|BI_Z1|Z_SOTF|Z[23]_SOTF|PSBR|POTT|PUTT|WE_POTT|Inst_Blk|Z[23]_Blk)", "^(?:Z_|t_PP|t_PG|t_Z|t_Rev|R_Blinder|R\\d_Quad|phi|K0$|I_OC_PSBR|CfgBO_(?:Z|PSBR))", "^[XR][01]L$", "^LineLength$", "^VEBI_DistP$", "^PSBR$", "^SOTF$", "^t_(?:Dly|Ext)_CurRev$"]
+  },
+  "interpretation_notes": [
+    "The zones are the sheet's zone 1, 2, 3 parameter groups (Z_PPn / Z_PGn, t_*, En_ZPPn / En_ZPGn) and the reverse zone (Z_Rev, t_Rev, En_ZPP_Rev / En_ZPG_Rev).",
+    "Each zone's phase-phase and phase-earth elements are enabled separately (mapped as Phase-Phase Faults / Earth Faults). The sheet states no single zone in-service switch, so the zone's status is not derived from them (Missing).",
+    "The forward zones' direction is not a setting on the sheet and is not assumed. The reverse zone's direction follows from its identity in the parameter names (an assumption to confirm).",
+    "The phase-phase reach is Z_PPn at the positive-sequence reach angle phi1_Reach. The sheet does not name the characteristic, so none is assumed; the phase-earth reach (Z_PGn) and its geometry are preserved with the zone, not interpreted. The impedance basis is not stated and is not assumed.",
+    "U1n / U2n are printed as the VT's rated primary (kV) and secondary (V) values as the relay states them (phase-to-neutral on this sheet); they are kept as printed."
+  ],
+  "source_notes": [
+    {
+      "pattern": "^Zone\\s+(?P<zone>\\d+R?)\\s+(?:Forward|Reverse|Inactive|Non)",
+      "zone_id": "Z{zone}",
+      "zone_ids": {"3R": "ZR"},
+      "subjects": [
+        {"subject": "timer", "pattern": "(?i)timer\\s+set\\s+to\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s\\b", "value": "{1} s"},
+        {"subject": "status", "pattern": "(?i)\\binactive\\b", "value": "Inactive (out of service)"}
+      ]
+    }
+  ],
+  "zone_preserved": [
+    {"zone": ["Z1", "Z2", "Z3"], "names": ["Z_PG{key}"],
+     "reason": "The phase-earth element's reach. Its reach angle and characteristic are not established, so it is not used as the Earth Reach; preserved as stated."},
+    {"zone": ["Z1", "Z2", "Z3"], "names": ["En_ZPG{key}_Quad"],
+     "reason": "The phase-earth quadrilateral enable of this zone (1 = on). It gates the zone's Earth Resistive Reach; the quadrilateral's geometry itself is not represented."}
+  ],
+  "mappings": [
+    {
+      "id": "rcs941.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {"name": "I1n", "type": "number", "unit": "A"},
+      "note": "I1n: the CT's rated primary current."
+    },
+    {
+      "id": "rcs941.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {"name": "I2n", "type": "number", "unit": "A"},
+      "note": "I2n: the CT's rated secondary current."
+    },
+    {
+      "id": "rcs941.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {"name": "U1n", "type": "number", "unit": "kV"},
+      "note": "U1n: the VT's rated primary voltage as printed (kV, phase-to-neutral on this sheet), converted to volts."
+    },
+    {
+      "id": "rcs941.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {"name": "U2n", "type": "number", "unit": "V"},
+      "note": "U2n: the VT's rated secondary voltage as printed (phase-to-neutral on this sheet)."
+    },
+    {
+      "id": "rcs941.line_length",
+      "canonical": "line.length",
+      "source": {"name": "LineLength", "type": "number", "unit": ""},
+      "note": "Line length as printed; the sheet prints no unit."
+    },
+    {
+      "id": "rcs941.line_z1",
+      "canonical": "line.positive_sequence_impedance",
+      "sources": {
+        "r": {"name": "R1L", "type": "number", "unit": "ohm"},
+        "x": {"name": "X1L", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "R1L / X1L read as the line's positive-sequence impedance ('1' / '0' and 'L' in the sheet's own names; no unit printed, ohms assumed)."
+    },
+    {
+      "id": "rcs941.line_z0",
+      "canonical": "line.zero_sequence_impedance",
+      "sources": {
+        "r": {"name": "R0L", "type": "number", "unit": "ohm"},
+        "x": {"name": "X0L", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "R0L / X0L read as the line's zero-sequence impedance ('1' / '0' and 'L' in the sheet's own names; no unit printed, ohms assumed)."
+    },
+
+    {
+      "id": "rcs941.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "source": {"name": "En_ZPP{key}"},
+      "transform": {"type": "boolean", "true_values": ["1"], "false_values": ["0"]},
+      "note": "The zone's phase-phase element enable (En_ZPPn / En_ZPP_Rev, 1 = on)."
+    },
+    {
+      "id": "rcs941.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "source": {"name": "En_ZPG{key}"},
+      "transform": {"type": "boolean", "true_values": ["1"], "false_values": ["0"]},
+      "note": "The zone's phase-earth element enable (En_ZPGn / En_ZPG_Rev, 1 = on)."
+    },
+    {
+      "id": "rcs941.direction_rev",
+      "canonical": "distance.zone.direction",
+      "zone": "ZR",
+      "transform": {"type": "constant", "value": "reverse"},
+      "evidence": [{"name": "Z_Rev"}, {"name": "t_Rev"}],
+      "authority": "documented_derivation",
+      "confidence": "inferred",
+      "note": "This is the relay's reverse zone (Z_Rev, t_Rev, En_ZPP_Rev / En_ZPG_Rev): the direction follows from the zone's identity in the sheet's parameter names, not from a direction setting. Confirm.",
+      "unresolved_note": "the reverse zone's reach / timer was not found"
+    },
+    {
+      "id": "rcs941.reach",
+      "canonical": "distance.zone.reach",
+      "zone": ["Z1", "Z2", "Z3"],
+      "sources": {
+        "magnitude": {"name": "Z_PP{key}", "type": "number", "unit": "ohm"},
+        "angle": {"name": "phi1_Reach", "type": "number", "unit": "deg"}
+      },
+      "transform": {"type": "impedance_polar"},
+      "note": "The phase-phase element's reach (Z_PPn) at the positive-sequence reach angle (phi1_Reach)."
+    },
+    {
+      "id": "rcs941.reach_rev",
+      "canonical": "distance.zone.reach",
+      "zone": "ZR",
+      "sources": {
+        "magnitude": {"name": "Z_Rev", "type": "number", "unit": "ohm"},
+        "angle": {"name": "phi1_Reach", "type": "number", "unit": "deg"}
+      },
+      "transform": {"type": "impedance_polar"},
+      "note": "The reverse zone's reach (Z_Rev) at the positive-sequence reach angle (phi1_Reach)."
+    },
+    {
+      "id": "rcs941.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": ["Z1", "Z2", "Z3"],
+      "source": {"name": "R{key}_Quad", "type": "number", "unit": "ohm"},
+      "requires": [{
+        "source": {"name": "En_ZPG{key}_Quad", "allowed_text": ["0", "1"]}, "equals": ["1"],
+        "off_note": "The zone's phase-earth quadrilateral is disabled (En_ZPGn_Quad = 0): Rn_Quad is not in use; none is assumed.",
+        "missing_note": "the zone's phase-earth quadrilateral enable was not found, so Rn_Quad is not established as in use"
+      }],
+      "note": "The phase-earth quadrilateral's resistive reach (Rn_Quad), read only while the zone's phase-earth quadrilateral is enabled. Not drawn by the phase-phase engine."
+    },
+    {
+      "id": "rcs941.delay_z1",
+      "canonical": "distance.zone.common_delay",
+      "zone": "Z1",
+      "source": {"name": "t_Z1", "type": "number", "unit": "s"},
+      "note": "Zone 1's delay (one setting for both loops)."
+    },
+    {
+      "id": "rcs941.phase_delay",
+      "canonical": "distance.zone.phase_delay",
+      "zone": ["Z2", "Z3"],
+      "source": {"name": "t_PP{key}", "type": "number", "unit": "s"},
+      "note": "The phase-phase element's delay."
+    },
+    {
+      "id": "rcs941.earth_delay",
+      "canonical": "distance.zone.earth_delay",
+      "zone": ["Z2", "Z3"],
+      "source": {"name": "t_PG{key}", "type": "number", "unit": "s"},
+      "note": "The phase-earth element's delay."
+    },
+    {
+      "id": "rcs941.delay_rev",
+      "canonical": "distance.zone.common_delay",
+      "zone": "ZR",
+      "source": {"name": "t_Rev", "type": "number", "unit": "s"},
+      "note": "The reverse zone's delay."
+    },
+    {
+      "id": "rcs941.k0",
+      "canonical": "distance.zone.comp.k0_magnitude",
+      "zone": "*",
+      "source": {"name": "K0", "type": "number", "unit": ""},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "K0, the relay-wide zero-sequence compensation factor, read as the K0 magnitude; the sheet states no angle and its exact definition is not stated. Not used by the engine."
+    }
+  ]
+}

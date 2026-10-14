@@ -1,0 +1,317 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "hitachi-rel670-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "hitachi-rel670",
+  "registry_version": "1.1.0",
+  "description": "Hitachi Energy (ABB) Relion REL670 distance zones (ZMQPDIS) as a Relion 670 setting sheet prints them. Catalog-only: no Python profile exists for this relay. Zone activation and direction, the explicit R/X reaches (X1, RFPP / 2, RFPE), the gated PP/PE timers, the channel-numbered CT/VT (channels named IL1-IL3 / UL1-UL3, with or without a CHn_ prefix), the IBase/UBase bases, the fault-locator line data and the scheme requirements kept as zone document notes. The ZMQPDIS parameter semantics are the ones verified and owner-approved for RED670 (DEC-193 / DEC-195).",
+  "applicability": {
+    "manufacturer": "Hitachi Energy",
+    "family": "Relion 670",
+    "model": "REL670",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["REL-?670"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])REL-?670(?![A-Za-z0-9])",
+    "version_pattern": "(?<![A-Za-z0-9])(V\\d+(?:\\.\\d+)*)(?![A-Za-z0-9.])",
+    "parameter_signatures": [
+      {"name": "hw-configuration-paths", "pattern": "^HW Configuration/", "min_matches": 2},
+      {"name": "function-block-operation", "pattern": "^[A-Z]{2,6}\\d*:(?:Operation|OscRelease)$", "min_matches": 2}
+    ]
+  },
+  "zones": {
+    "discover": {"name_pattern": "^ZM(?P<n>\\d{2})-:", "id": "Z{n}", "name": "Zone {n}"}
+  },
+  "distance_scope": {
+    "section_contains": ["/DistanceZones/", "/Phase Selection/", "/DirectionalImpedance/", "/AutomaticSOTF/", "/PowerSwingDetection/", "/FuseFailure/", "/FaultLocator/", "/ZSchemeCommunication/"],
+    "names": ["psb", "sotf"]
+  },
+  "interpretation_notes": [
+    "Zone N is the ZMQPDIS function instance N (parameters 'ZM0N-:...'); the numbering follows the instance number. A setting sheet carries settings only: blocking and tripping logic in the relay configuration is not visible here.",
+    "The phase-phase resistive reach is RFPP / 2 (RFPP is a loop value); RFPE is used as printed. No Left Resistive Reach (-R) is stated: the left boundary comes from the directional element (ZDRDIR: ArgDir, ArgNegRes), a capability gap the model cannot represent; those angles are preserved.",
+    "Earth-fault compensation is derived by the relay from the zone's R1 / X1 and R0 / X0; no compensation factor is stated, so none is computed here. R0 / X0 are kept as the zone's zero-sequence reach."
+  ],
+  "source_notes": [
+    {
+      "pattern": "^Zone\\s+(?P<zone>\\d+)\\s+(?:Forward|Reverse|Inactive|Non)",
+      "zone_id": "Z{zone}",
+      "subjects": [
+        {"subject": "timer", "pattern": "(?i)timer\\s+set\\s+to\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s\\b", "value": "{1} s"},
+        {"subject": "status", "pattern": "(?i)\\binactive\\b", "value": "Inactive (out of service)"}
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "id": "rel670.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {
+        "indexed_family": {
+          "index": {"name_pattern": "^NAMECH(?P<n>\\d+)$", "value_pattern": "^(?:CH\\d+_)?IL[123]$"},
+          "member": "CTprim{n}", "expected_count": 3, "aggregate": "all_equal"
+        },
+        "type": "number", "unit": "A"
+      },
+      "note": "identical on the three phase current channels (NAMECH IL1 / IL2 / IL3)"
+    },
+    {
+      "id": "rel670.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {
+        "indexed_family": {
+          "index": {"name_pattern": "^NAMECH(?P<n>\\d+)$", "value_pattern": "^(?:CH\\d+_)?IL[123]$"},
+          "member": "CTsec{n}", "expected_count": 3, "aggregate": "all_equal"
+        },
+        "type": "number", "unit": "A"
+      },
+      "note": "identical on the three phase current channels (NAMECH IL1 / IL2 / IL3)"
+    },
+    {
+      "id": "rel670.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {
+        "indexed_family": {
+          "index": {"name_pattern": "^NAMECH(?P<n>\\d+)$", "value_pattern": "^(?:CH\\d+_)?UL[123]$"},
+          "member": "VTprim{n}", "expected_count": 3, "aggregate": "all_equal"
+        },
+        "type": "number", "unit": "kV"
+      },
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "identical on the three phase voltage channels (NAMECH UL1 / UL2 / UL3); kV converted to volts. The sheet prints no unit for this VT row. kV (primary) and V (secondary) are the Relion 670 convention; the header voltage and the UBase rows agree. Confirm the unit."
+    },
+    {
+      "id": "rel670.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {
+        "indexed_family": {
+          "index": {"name_pattern": "^NAMECH(?P<n>\\d+)$", "value_pattern": "^(?:CH\\d+_)?UL[123]$"},
+          "member": "VTsec{n}", "expected_count": 3, "aggregate": "all_equal"
+        },
+        "type": "number", "unit": "V"
+      },
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "identical on the three phase voltage channels (NAMECH UL1 / UL2 / UL3). The sheet prints no unit for this VT row. kV (primary) and V (secondary) are the Relion 670 convention. Confirm the unit."
+    },
+    {
+      "id": "rel670.line_length",
+      "canonical": "line.length",
+      "source": {"name": "FLO1-:LineLength", "type": "number", "unit": "", "printed_unit": {"policy": "none"}}
+    },
+    {
+      "id": "rel670.line_z1",
+      "canonical": "line.positive_sequence_impedance",
+      "sources": {
+        "r": {"name": "FLO1-:R1L", "type": "number", "unit": "ohm"},
+        "x": {"name": "FLO1-:X1L", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "read from the fault locator's line data: '1' / '0' are the positive / zero sequence and 'L' the protected line in the sheet's own names; the sheet does not label them"
+    },
+    {
+      "id": "rel670.line_z0",
+      "canonical": "line.zero_sequence_impedance",
+      "sources": {
+        "r": {"name": "FLO1-:R0L", "type": "number", "unit": "ohm"},
+        "x": {"name": "FLO1-:X0L", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "read from the fault locator's line data: '1' / '0' are the positive / zero sequence and 'L' the protected line in the sheet's own names; the sheet does not label them"
+    },
+
+    {
+      "id": "rel670.status",
+      "canonical": "distance.zone.status",
+      "zone": "*",
+      "sources": {
+        "op": {"name": "ZM{nn}-:Operation", "allowed_text": ["on", "off"]},
+        "dir": {"name": "ZM{nn}-:OperationDir", "allowed_text": ["off", "non-dir", "non-directional", "forward", "forw", "reverse", "rev"]}
+      },
+      "transform": {
+        "type": "decision_table",
+        "rules": [
+          {"when": {"op": "off"}, "value": "disabled"},
+          {"when": {"dir": "off"}, "value": "disabled"},
+          {"when": {"op": "on", "dir": ["forward", "forw", "reverse", "rev", "non-dir", "non-directional"]}, "value": "enabled"}
+        ]
+      },
+      "note": "The zone's own activation parameters: Operation OFF, or OperationDir Off, puts it out of service; Operation ON with a direction puts it in service."
+    },
+    {
+      "id": "rel670.direction",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:OperationDir"},
+      "transform": {
+        "type": "enum",
+        "map": {
+          "forward": "forward", "forw": "forward", "reverse": "reverse", "rev": "reverse",
+          "non-dir": "non_directional", "non-directional": "non_directional", "off": "inactive"
+        }
+      }
+    },
+    {
+      "id": "rel670.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:OperationPP"},
+      "transform": {"type": "boolean", "true_values": ["on"], "false_values": ["off"]}
+    },
+    {
+      "id": "rel670.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:OperationPE"},
+      "transform": {"type": "boolean", "true_values": ["on"], "false_values": ["off"]}
+    },
+    {
+      "id": "rel670.geometry_mode",
+      "canonical": "distance.zone.geometry_mode",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "explicit_rx"},
+      "authority": "documented_derivation",
+      "note": "Orthogonal R / X limits with no reach angle: the sheet states a reactive reach and resistive reaches, never an angle."
+    },
+    {
+      "id": "rel670.x_reach",
+      "canonical": "distance.zone.x_reach",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:X1", "type": "number", "unit": "ohm"}
+    },
+    {
+      "id": "rel670.r1",
+      "canonical": "distance.zone.r1_resistance",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:R1", "type": "number", "unit": "ohm"},
+      "note": "Stated by the sheet as the zone's R1. How the relay uses it is not stated; it does not set the drawn boundary."
+    },
+    {
+      "id": "rel670.r_right",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:RFPP", "type": "number", "unit": "ohm"},
+      "transform": {
+        "type": "divide", "by": 2,
+        "describe": "RFPP {input} ohm/loop ÷ 2 = {result} ohm (phase-phase boundary)"
+      },
+      "authority": "documented_derivation",
+      "confidence": "inferred",
+      "note": "Relion 670 RFPP is the phase-phase fault-resistance reach per loop (ohm/loop). The phase-phase resistive boundary of the R-X plane is half of the loop value, so the canonical reach is RFPP / 2 and the printed RFPP is kept as the raw value (the convention approved for the same ZMQPDIS parameter, DEC-195). RFPE is not halved."
+    },
+    {
+      "id": "rel670.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:RFPE", "type": "number", "unit": "ohm"},
+      "note": "Relion 670 RFPE is the phase-earth fault-resistance reach (ohm/loop) and is a quantity of its own: it is used as printed, with no phase-phase halving. The phase-phase engine does not draw it."
+    },
+    {
+      "id": "rel670.r_left",
+      "canonical": "distance.zone.r_left",
+      "zone": "*",
+      "gap": {
+        "note": "The sheet states no left (-R) resistive reach, and none exists as a number: in a Relion 670 zone the left / lower boundary is formed by the directional element (ZDRDIR: ArgDir, ArgNegRes; this sheet: {evidence}). That geometry is a capability gap: the current model cannot represent it, so it is neither drawn nor approximated as the relay's boundary. ArgDir / ArgNegRes are preserved with this zone's characteristic parameters. A left boundary chosen for plotting is only a visualization approximation accepted by the user.",
+        "evidence": [{"name": "ZD01-:ArgDir"}, {"name": "ZD01-:ArgNegRes"}]
+      }
+    },
+    {
+      "id": "rel670.directional_arg_dir",
+      "canonical": "distance.zone.directional_angle_dir",
+      "zone": "*",
+      "source": {"name": "ZD01-:ArgDir", "type": "number", "unit": "deg"},
+      "note": "ZDRDIR directional-element angle, preserved as stated. It forms the zone's left / lower boundary, which the current model cannot draw; it is not plotted."
+    },
+    {
+      "id": "rel670.directional_arg_neg_res",
+      "canonical": "distance.zone.directional_angle_neg_res",
+      "zone": "*",
+      "source": {"name": "ZD01-:ArgNegRes", "type": "number", "unit": "deg"},
+      "note": "ZDRDIR directional-element angle, preserved as stated. It forms the zone's left / lower boundary, which the current model cannot draw; it is not plotted."
+    },
+    {
+      "id": "rel670.zero_sequence_reach",
+      "canonical": "distance.zone.zero_sequence_reach",
+      "zone": "*",
+      "sources": {
+        "r": {"name": "ZM{nn}-:R0", "type": "number", "unit": "ohm"},
+        "x": {"name": "ZM{nn}-:X0", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "note": "R0 / X0: the zone's zero-sequence reach; the relay derives its earth-fault compensation from R1 / X1 and R0 / X0. Preserved, not plotted."
+    },
+    {
+      "id": "rel670.characteristic",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "quadrilateral"},
+      "evidence": [{"name": "IMP_PROT/DistanceZones/ZMQPDIS:{n}"}],
+      "evidence_from": ["distance.zone.x_reach", "distance.zone.r_right", "distance.zone.r_phase_earth"],
+      "requires_resolved": ["distance.zone.x_reach"],
+      "authority": "documented_derivation",
+      "note": "The sheet names the zone's function block, ZMQPDIS. ZMQPDIS is the Relion 670 'distance protection zone, quadrilateral characteristic' function, so the characteristic follows from the function identity (documented family semantics), corroborated by the reactive reach with separate resistive reaches.",
+      "unresolved_note": "the zone's ZMQPDIS section heading or its reactive reach was not found; the characteristic is not established"
+    },
+    {
+      "id": "rel670.phase_delay",
+      "canonical": "distance.zone.phase_delay",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:tPP", "type": "number", "unit": "s"},
+      "requires": [{
+        "source": {"name": "ZM{nn}-:Timer tPP", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "The 'Timer tPP' switch is OFF, so tPP is not an operating delay of this zone; none is assumed.",
+        "missing_note": "the 'Timer tPP' switch was not found, so tPP is not established as in use"
+      }]
+    },
+    {
+      "id": "rel670.earth_delay",
+      "canonical": "distance.zone.earth_delay",
+      "zone": "*",
+      "source": {"name": "ZM{nn}-:tPE", "type": "number", "unit": "s"},
+      "requires": [{
+        "source": {"name": "ZM{nn}-:Timer tPE", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "The 'Timer tPE' switch is OFF, so tPE is not an operating delay of this zone; none is assumed.",
+        "missing_note": "the 'Timer tPE' switch was not found, so tPE is not established as in use"
+      }]
+    },
+
+    {
+      "id": "rel670.current_base",
+      "canonical": "ct_vt.current_base",
+      "source": {
+        "zone_family": {"member": "ZM{nn}-:IBase", "where": {"canonical": "distance.zone.status", "equals": "enabled"}, "aggregate": "all_equal", "min_count": 1},
+        "type": "number", "unit": "A"
+      },
+      "note": "IBase of the zones in service (identical)"
+    },
+    {
+      "id": "rel670.voltage_base",
+      "canonical": "ct_vt.voltage_base",
+      "source": {
+        "zone_family": {"member": "ZM{nn}-:UBase", "where": {"canonical": "distance.zone.status", "equals": "enabled"}, "aggregate": "all_equal", "min_count": 1},
+        "type": "number", "unit": "kV"
+      },
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "UBase (kV, phase-to-phase) of the zones in service (identical), converted to volts. The sheet prints no unit for this row; kV is the Relion 670 convention. Confirm the unit."
+    },
+    {
+      "id": "rel670.impedance_basis",
+      "canonical": "ct_vt.impedance_basis",
+      "transform": {"type": "constant", "value": "primary"},
+      "evidence": [
+        {"zone_family": {"member": "ZM{nn}-:IBase", "where": {"canonical": "distance.zone.status", "equals": "enabled"}}},
+        {"zone_family": {"member": "ZM{nn}-:UBase", "where": {"canonical": "distance.zone.status", "equals": "enabled"}}}
+      ],
+      "authority": "documented_derivation",
+      "note": "Documented Relion 670 semantics: impedance settings (X1, R1, RFPP ...) are primary ohms, with IBase / UBase as the bases the function refers them to. This zone group carries IBase / UBase, so the settings are primary; the basis is not inferred from the magnitude of any value.",
+      "unresolved_note": "no zone in service carries IBase / UBase to establish the basis"
+    }
+  ]
+}

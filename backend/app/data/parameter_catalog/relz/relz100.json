@@ -1,0 +1,158 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "relz100-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "relz100",
+  "registry_version": "1.1.0",
+  "description": "RELZ 100 distance zones (Z<Prot_Zone1..5) as a RELZ100 setting sheet prints them. Catalog-only, verified subset: the reference CT / VT values, the line data exactly as printed, each zone's reactive reach (Xn), earth resistive reach (RNn) as printed, the gated zone timers (Tn while TimerTn is ON) and the direction where the sheet states one (Zones 4 and 5). Not interpreted: a zone in-service state (none is stated), the direction of Zones 1-3 (not stated), the characteristic, the impedance basis, the per-loop / per-phase meaning of Rn (preserved, never used as +R) and the earth-compensation factor KNn (preserved).",
+  "applicability": {
+    "manufacturer": null,
+    "family": "RELZ 100",
+    "model": "RELZ100",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["RELZ-?100"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])RELZ-?100(?![A-Za-z0-9])",
+    "version_pattern": "(?<![A-Za-z0-9])RELZ-?100_(\\d+(?:\\.\\d+)*)(?![0-9.])"
+  },
+  "zones": {
+    "discover": {"name_pattern": "^Z<Prot_Zone(?P<n>\\d+):X\\d+$", "id": "Z{n}", "name": "Zone {n}"}
+  },
+  "distance_scope": {
+    "name_patterns": ["^Z<Prot_", "^AddFu_(?:PSB|PhS|WEI|Stub|FL|SOTF|Fuse|Rev|High)", "^Ref_Line:"]
+  },
+  "interpretation_notes": [
+    "Zone N is the sheet's Z<Prot_ZoneN parameter group (XN, RN, KNN, RNN, TN, TimerTN and, for Zones 4-5, Dir).",
+    "The manufacturer of this relay line is not established by the project and is not asserted.",
+    "The sheet states no zone in-service switch and no direction for Zones 1-3; neither is assumed. It does not name the characteristic or state whether the impedances are primary or secondary ohms; neither is assumed.",
+    "Rn is the zone's phase resistive setting; whether it is a per-loop or a per-phase value is not established for this relay, so no Right Resistive Reach (+R) is derived from it (preserved). RNn is kept as printed as the earth resistive reach (not plotted). KNn (earth compensation) is preserved, not interpreted.",
+    "The line data are shown exactly as printed (Ref_Line:R1 is larger than Ref_Line:X1 on this sheet); nothing is corrected."
+  ],
+  "zone_preserved": [
+    {"zone": "*", "names": ["Z<Prot_Zone{n}:KN{n}"],
+     "reason": "The zone's earth-compensation factor KN as stated. Its definition (magnitude / angle convention) is not established; preserved, not converted."},
+    {"zone": "*", "names": ["Z<Prot_Zone{n}:T{n}R", "Z<Prot_Zone{n}:TimerT{n}R"],
+     "reason": "A second (reverse-direction) timer of this zone and its switch. The zone's reverse operation is not represented; preserved as stated."}
+  ],
+  "mappings": [
+    {
+      "id": "relz100.ct_primary",
+      "canonical": "ct_vt.ct_primary",
+      "source": {"name": "Ref_Transf:CT_Prim", "type": "number", "unit": "A"},
+      "note": "Reference CT primary current (no unit printed; amperes)."
+    },
+    {
+      "id": "relz100.ct_secondary",
+      "canonical": "ct_vt.ct_secondary",
+      "source": {"name": "Ref_Transf:CT_Sec", "type": "number", "unit": "A", "validate": {"within_printed_range": false}},
+      "note": "Reference CT secondary current (no unit printed; amperes)."
+    },
+    {
+      "id": "relz100.vt_primary",
+      "canonical": "ct_vt.vt_primary",
+      "source": {"name": "Ref_Transf:VT_Prim", "type": "number", "unit": "kV"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Reference VT primary voltage, printed without a unit; kV is assumed (the sheet's 132kV header agrees) and converted to volts. Confirm the unit."
+    },
+    {
+      "id": "relz100.vt_secondary",
+      "canonical": "ct_vt.vt_secondary",
+      "source": {"name": "Ref_Transf:VT_Sec", "type": "number", "unit": "kV", "validate": {"within_printed_range": false}},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Reference VT secondary voltage, printed without a unit as 0.11 (options 0.10, 0.11); kV is assumed and converted to volts. Confirm the unit."
+    },
+    {
+      "id": "relz100.line_length",
+      "canonical": "line.length",
+      "source": {"name": "Ref_Line:Length", "type": "number", "unit": ""}
+    },
+    {
+      "id": "relz100.line_length_unit",
+      "canonical": "line.length_unit",
+      "source": {"name": "Ref_Line:Length_Unit", "type": "text", "allowed_text": ["km", "mi"]}
+    },
+    {
+      "id": "relz100.line_z1",
+      "canonical": "line.positive_sequence_impedance",
+      "sources": {
+        "r": {"name": "Ref_Line:R1", "type": "number", "unit": "ohm"},
+        "x": {"name": "Ref_Line:X1", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Ref_Line:R1 / X1 read as the line's positive-sequence impedance (the sheet's own '1' / '0' naming). Shown exactly as printed: R1 is larger than X1 on this sheet, which is unusual for a line; nothing is corrected."
+    },
+    {
+      "id": "relz100.line_z0",
+      "canonical": "line.zero_sequence_impedance",
+      "sources": {
+        "r": {"name": "Ref_Line:R0", "type": "number", "unit": "ohm"},
+        "x": {"name": "Ref_Line:X0", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "Ref_Line:R0 / X0 read as the line's zero-sequence impedance (the sheet's own '1' / '0' naming), exactly as printed."
+    },
+
+    {
+      "id": "relz100.direction",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "source": {"name": "Z<Prot_Zone{n}:Dir"},
+      "transform": {"type": "enum", "map": {"nondirectional": "non_directional", "nondir": "non_directional", "rev": "reverse", "reverse": "reverse", "fwd": "forward", "forward": "forward"}},
+      "unresolved_note": "the sheet states no direction for this zone",
+      "note": "The zone's Dir setting, where the sheet has one."
+    },
+    {
+      "id": "relz100.geometry_mode",
+      "canonical": "distance.zone.geometry_mode",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "explicit_rx"},
+      "authority": "documented_derivation",
+      "note": "The sheet states a reactance (Xn) and resistances, never a reach angle: the reach is stated as orthogonal R / X values."
+    },
+    {
+      "id": "relz100.x_reach",
+      "canonical": "distance.zone.x_reach",
+      "zone": "*",
+      "source": {"name": "Z<Prot_Zone{n}:X{n}", "type": "number", "unit": "ohm"},
+      "note": "Xn, the zone's reactive reach, as printed."
+    },
+    {
+      "id": "relz100.r_right",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
+      "gap": {
+        "note": "The sheet states the zone's phase resistive setting ({evidence}), but whether it is a per-loop or a per-phase value is not established for this relay. No Right Resistive Reach (+R) is derived from it (no division, no as-printed use); the value is preserved here.",
+        "evidence": [{"name": "Z<Prot_Zone{n}:R{n}"}]
+      }
+    },
+    {
+      "id": "relz100.r_phase_earth",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "*",
+      "source": {"name": "Z<Prot_Zone{n}:RN{n}", "type": "number", "unit": "ohm"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "RNn, the zone's earth resistive setting, kept as printed (not scaled). Its per-loop / per-phase convention is not stated. The phase-phase engine does not draw it."
+    },
+    {
+      "id": "relz100.delay",
+      "canonical": "distance.zone.common_delay",
+      "zone": "*",
+      "source": {"name": "Z<Prot_Zone{n}:T{n}", "type": "number", "unit": "s"},
+      "requires": [{
+        "source": {"name": "Z<Prot_Zone{n}:TimerT{n}", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "The zone's TimerT{n} switch is OFF, so T{n} is not an operating delay of this zone; none is assumed.",
+        "missing_note": "the zone's TimerT{n} switch was not found, so T{n} is not established as in use"
+      }],
+      "note": "The zone timer Tn, read only while its TimerTn switch is ON."
+    }
+  ]
+}

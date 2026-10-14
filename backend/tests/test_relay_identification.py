@@ -575,9 +575,11 @@ class TestRegistryIntegration:
         reg.register_identification_descriptor(RelayIdentificationDescriptor("q", "Q", model_patterns=("QQQ1",)))
         assert reg.identify(_doc("Scheme: QQQ1")).profile_id == "q"
 
-    def test_interpretation_behaviour_is_unchanged(self, registry):
+    def test_interpretation_behaviour_is_unchanged(self):
         """Identification metadata does not turn a recognised relay into a
-        supported one: interpretation still falls back to the generic profile."""
+        supported one: without an interpretation profile (or active catalog) for
+        it, interpretation still falls back to the generic profile."""
+        registry = RelayProfileRegistry(identification_descriptors=catalogue.IDENTIFICATION_DESCRIPTORS)
         doc = _doc(*_header("7SA6131_4AB02_3GA0"), ("1313 X(Z2)", "3.6"))
         assert registry.identify(doc).status is I.IDENTIFIED
         model = registry.interpret(doc)

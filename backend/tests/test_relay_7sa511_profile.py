@@ -94,9 +94,11 @@ class TestIdentificationAndRouting:
     def test_a_7sa511_sheet_under_another_relays_scheme_is_not_interpreted(self):
         doc = make_doc(header=(("LZOP: x", "Scheme: GRL200_TNB"),))
         reg = catalogue.build_registry()
-        assert reg.profile_for(reg.identify(doc)) is None
+        profile = reg.profile_for(reg.identify(doc))
+        assert profile is not None and profile.profile_id == "toshiba-grl200"      # its own catalog, never the 7SA511
         s = summarize_interpretation(reg, doc, reg.identify(doc))
-        assert s.status is InterpretationStatus.NOT_SUPPORTED
+        assert s.profile_version != PROFILE_VERSION
+        assert Siemens7SA511Profile().match(doc).level.name == "NONE"
 
     def test_identification_and_interpretation_stay_separate_stages(self, doc):
         reg = catalogue.build_registry()
@@ -590,7 +592,9 @@ class TestIsolation:
 
     def test_registered_beside_the_p441_profile_only_through_the_catalogue(self):
         ids = [p.profile_id for p in catalogue.build_registry()._profiles]
-        assert ids == ["schneider-micom-p441", PROFILE_ID, "hitachi-red670"]  # Slice 12 added the RED670
+        # Slice 12 added the RED670; the remaining families follow as catalog-only profiles
+        assert ids[:3] == ["schneider-micom-p441", PROFILE_ID, "hitachi-red670"]
+        assert set(ids[3:]) == {"hitachi-rel670", "hitachi-rel511", "siemens-siprotec5-7sl87", "siemens-7sa613", "toshiba-grz100", "toshiba-grl200", "nr-rcs941", "lfzp111", "relz100"}
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,138 @@
+{
+  "schema": "oruxa.parameter-catalog/1",
+  "catalog_id": "toshiba-grz100-catalog",
+  "version": "1.0.0",
+  "lifecycle": "active",
+  "profile_id": "toshiba-grz100",
+  "registry_version": "1.1.0",
+  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only, verified subset: the phase (ZS) and earth (ZG) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Not interpreted (semantics not verified): each zone's reach setting (reactance limit or impedance reach), the blinders (BFRS, BFLS-angle, BRRS, BNDS), the reactance-line and bottom angles, the Krs / Kxs compensation factors, the impedance basis, and any zone in-service state or direction (none is stated per zone). The raw zone settings are preserved with their zones.",
+  "applicability": {
+    "manufacturer": "Toshiba",
+    "family": "GRZ100",
+    "model": "GRZ100",
+    "versions": ["*"]
+  },
+  "identification": {
+    "model_patterns": ["GRZ-?100"],
+    "scheme_model_pattern": "(?<![A-Za-z0-9])GRZ-?100(?![A-Za-z0-9])",
+    "version_pattern": "(?i)(?<![A-Za-z0-9])(?:Ver|V)(\\d+(?:\\.\\d+)*)(?![A-Za-z0-9.])"
+  },
+  "zones": {
+    "static": [
+      {"id": "Z1", "name": "Zone 1"}, {"id": "Z1X", "name": "Zone 1X"}, {"id": "Z2", "name": "Zone 2"},
+      {"id": "ZF", "name": "Zone F"}, {"id": "Z3", "name": "Zone 3"}, {"id": "ZR1", "name": "Zone R1"},
+      {"id": "ZR2", "name": "Zone R2"}, {"id": "ZND", "name": "Zone ND"}
+    ]
+  },
+  "distance_scope": {
+    "name_patterns": ["^PSB", "^SOTF", "^Z", "^TZ", "^B(?:FR|FL|RR|ND)[SG]", "^Kr", "^Kx", "^OST", "^UVC", "^TPSB"],
+    "names": ["Protection Scheme", "PSBFR", "UVPWIEN", "ECHO", "WKIT", "CHSEL", "Vn", "PSB", "SOTF"]
+  },
+  "interpretation_notes": [
+    "The zones are the sheet's distance element groups: Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2 and ZND, each with a phase-fault element (suffix S) and an earth-fault element (suffix G). The sheet states no per-zone in-service switch and no per-zone direction: neither is assumed from the zone's name.",
+    "The characteristic is the sheet's phase (ZS-C) and earth (ZG-C) selection. One canonical characteristic per zone represents both only when they agree; otherwise the zone's characteristic is recorded as not representable.",
+    "Each zone's reach setting (ZnS / ZnG), the blinders (BFRS, BFLS-angle, BRRS, BNDS and their earth counterparts), the reactance-line angles and the bottom angle are preserved with their zones uninterpreted: whether the reach is the reactance limit or an impedance reach, and the blinder geometry, are not established, and the current model cannot draw angle-defined blinders. Krs / Kxs (and Krm / Kxm, KrsR / KxsR) are percent compensation factors in the relay's own definition, not the canonical Kr / Kx; they are preserved, not converted.",
+    "The CT and VT are stated as ratios (CT, VT); no primary / secondary split is made. The impedance basis is not stated and is not assumed."
+  ],
+  "source_notes": [
+    {
+      "pattern": "^Zone\\s+(?P<zone>R?\\d+X?|ND|F)\\s+(?:Forward|Reverse|Inactive|Non)",
+      "zone_id": "Z{zone}",
+      "subjects": [
+        {"subject": "timer", "pattern": "(?i)timer\\s+set\\s+to\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s\\b", "value": "{1} s"},
+        {"subject": "status", "pattern": "(?i)\\binactive\\b", "value": "Inactive (out of service)"}
+      ]
+    }
+  ],
+  "zone_preserved": [
+    {"zone": "*", "names": ["{zone}S", "{zone}G"],
+     "reason": "The zone's reach setting (phase element S, earth element G). Whether it is the quadrilateral's reactance limit or an impedance reach is not established, so it is not used as the Reactive Reach (X); preserved as stated."},
+    {"zone": "Z1", "names": ["Z1S-angle1", "Z1S-angle2", "Z1G-angle1", "Z1G-angle2"],
+     "reason": "Reactance-line angles of Zone 1. The current model cannot draw an angle-shaped reactance line; preserved as stated."},
+    {"zone": "Z3", "names": ["Z3S-angle (mho)", "Z3G-angle (mho)"],
+     "reason": "The mho characteristic angle of Zone 3 (used only with the Mho selection). Preserved as stated."},
+    {"zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"], "names": ["BFRS", "BFLS-angle", "ZBS-angle (quad)", "BFRG", "BFLG-angle", "ZBG-angle (quad)"],
+     "reason": "Forward-zone blinder / boundary settings (right blinder, left blinder angle, bottom angle). Angle-defined blinders are a capability gap of the current model: preserved, not drawn and not approximated."},
+    {"zone": ["ZR1", "ZR2"], "names": ["BRRS", "BRRG"],
+     "reason": "Reverse-zone right blinder. Its geometry is not established and the current model cannot draw it: preserved, not approximated."},
+    {"zone": "ZND", "names": ["BNDS", "BNDG"],
+     "reason": "Non-directional-zone blinder. Its geometry is not established and the current model cannot draw it: preserved, not approximated."}
+  ],
+  "mappings": [
+    {
+      "id": "grz100.ct_ratio",
+      "canonical": "ct_vt.ct_ratio",
+      "source": {"name": "CT", "type": "number", "unit": ""},
+      "note": "The CT ratio as stated (e.g. 1200 for 1200/1); not split into primary and secondary."
+    },
+    {
+      "id": "grz100.vt_ratio",
+      "canonical": "ct_vt.vt_ratio",
+      "source": {"name": "VT", "type": "number", "unit": ""},
+      "note": "The VT ratio as stated (main VT); not split into primary and secondary. VTs1 (the synchronism-check VT) is not interpreted."
+    },
+    {
+      "id": "grz100.line_length",
+      "canonical": "line.length",
+      "source": {"name": "Line", "type": "number", "unit": "", "printed_unit": {"accept": ["km"]}},
+      "note": "Line length as printed (the range column states km)."
+    },
+    {
+      "id": "grz100.line_z1",
+      "canonical": "line.positive_sequence_impedance",
+      "sources": {
+        "r": {"name": "R1", "type": "number", "unit": "ohm"},
+        "x": {"name": "X1", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "R1 / X1 of the [Parameter] line data read as the line's positive-sequence impedance (the sheet's own '1' / '0' naming, not a stated label)."
+    },
+    {
+      "id": "grz100.line_z0",
+      "canonical": "line.zero_sequence_impedance",
+      "sources": {
+        "r": {"name": "R0", "type": "number", "unit": "ohm"},
+        "x": {"name": "X0", "type": "number", "unit": "ohm"}
+      },
+      "transform": {"type": "impedance_rx"},
+      "authority": "assumption",
+      "confidence": "inferred",
+      "note": "R0 / X0 of the [Parameter] line data read as the line's zero-sequence impedance (the sheet's own '1' / '0' naming, not a stated label)."
+    },
+
+    {
+      "id": "grz100.characteristic",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "sources": {
+        "s": {"name": "ZS-C", "allowed_text": ["mho", "quad"]},
+        "g": {"name": "ZG-C", "allowed_text": ["mho", "quad"]}
+      },
+      "transform": {
+        "type": "decision_table",
+        "rules": [
+          {"when": {"s": "quad", "g": "quad"}, "value": "quadrilateral"},
+          {"when": {"s": "mho", "g": "mho"}, "value": "mho"},
+          {"when": {"s": ["mho", "quad"], "g": ["mho", "quad"]}, "value": "unknown"}
+        ]
+      },
+      "note": "ZS-C (phase-fault elements) and ZG-C (earth-fault elements). When they differ, one zone characteristic cannot represent both and the zone's characteristic is recorded as not representable (unknown), never as one of the two."
+    },
+    {
+      "id": "grz100.phase_delay",
+      "canonical": "distance.zone.phase_delay",
+      "zone": "*",
+      "source": {"name": "T{zone}S", "type": "number", "unit": "s"},
+      "note": "The phase-fault element's timer (TZnS)."
+    },
+    {
+      "id": "grz100.earth_delay",
+      "canonical": "distance.zone.earth_delay",
+      "zone": "*",
+      "source": {"name": "T{zone}G", "type": "number", "unit": "s"},
+      "note": "The earth-fault element's timer (TZnG)."
+    }
+  ]
+}
