@@ -176,7 +176,11 @@ test("7SL87: blank timer cells are Missing (not the Infinity range), basis from 
   await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 Forward direction timer set to 0.15s");
   await expect(row(page, "zone.Z1.x_reach")).toContainText("4.7 Ω");
   await expect(row(page, "zone.Z1.rr.pp")).toContainText("3.1 Ω");
-  await expect(row(page, "zone.Z1.tilt")).toContainText("Unsupported");
+  // an explicit 0° tilt on an explicit R/X zone is a valid configured value (DEC-197 Amendment 1), not a blocker
+  await expect(row(page, "zone.Z1.tilt")).toContainText("0°");
+  await expect(row(page, "zone.Z1.tilt")).toContainText("Mapped");
+  await expect(row(page, "zone.Z1.tilt")).not.toContainText("Unsupported");
+  await expect(row(page, "zone.Z1.tilt")).toHaveAttribute("data-blocking", "false");
   await expect(zoneGroup(page, "Z1")).toContainText("Dist. characteristic angle");
   await expect(row(page, "zone.Z1.characteristic")).toContainText("Missing"); // not named by the sheet: not assumed
   await page.locator("#wwRelayReviewConfirmAll").click().catch(() => {});
