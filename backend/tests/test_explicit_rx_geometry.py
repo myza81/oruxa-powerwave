@@ -277,6 +277,33 @@ class TestAdapter:
         assert eff.zone("Z1").x_reach_ohm.value == 2.74
         assert adapt_to_engine(eff, engine_basis=SEC).supported
 
+    @pytest.mark.parametrize("tilt", [0.0, 0, -0.0])
+    def test_an_explicit_zero_tilt_is_a_valid_setting_and_draws_the_untilted_zone(self, tilt):
+        zone = explicit_zone("Z1", **Z1, tilt_deg=m(tilt))
+        ad = adapt_to_engine(model(zone), engine_basis=SEC)
+        assert ad.supported, [r.message for r in ad.reasons]
+        assert zone.tilt_deg.is_resolved and zone.tilt_deg.value == 0      # kept as 0, never turned into Missing
+        assert ad.zones == adapt_to_engine(model(explicit_zone("Z1", **Z1)), engine_basis=SEC).zones
+        from app.domain.relay_import.review_state import engine_limits
+
+        assert "zones[Z1].tilt_deg" not in engine_limits(ad)
+
+    @pytest.mark.parametrize("tilt", [5.0, -3.0, 0.001, float("nan"), float("inf")])
+    def test_any_other_tilt_on_explicit_limits_stays_refused(self, tilt):
+        ad = adapt_to_engine(model(explicit_zone("Z1", **Z1, tilt_deg=m(tilt))), engine_basis=SEC)
+        r = next(r for r in ad.reasons if r.code is UnsupportedCode.TILT_UNSUPPORTED)
+        assert not ad.supported and r.paths == ("zones[Z1].tilt_deg",)
+
+    def test_a_zero_tilt_on_a_polar_reach_stays_refused(self):
+        # the engine's single reach angle already inclines the reactance line: what a separate 0 means is not established
+        zone = replace(polar_zone("P", reach=5.0, angle=80.0, right=4.0, left=2.0), tilt_deg=m(0.0))
+        assert UnsupportedCode.TILT_UNSUPPORTED in {r.code for r in adapt_to_engine(model(zone), engine_basis=SEC).reasons}
+
+    def test_an_unstated_tilt_is_not_a_zero_tilt(self):
+        zone = explicit_zone("Z1", **Z1)
+        assert not zone.tilt_deg.is_resolved and zone.tilt_deg.value is None
+        assert adapt_to_engine(model(zone), engine_basis=SEC).supported
+
     def test_lenient_manual_adaptation_keeps_a_blank_x_absent(self):
         ad = adapt_to_engine(model(explicit_zone("Z1", x=None, right=1.84)), engine_basis=SEC, allow_incomplete_zones=True)
         assert ad.supported and ad.zones[0].reactive_reach_ohm is None and ad.zones[0].geometry_mode == GEOMETRY_EXPLICIT_RX

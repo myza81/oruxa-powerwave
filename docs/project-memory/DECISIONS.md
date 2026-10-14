@@ -27009,3 +27009,23 @@ Status: Implemented on `feature/remaining-relay-imports` (not merged, not deploy
 **Not done (future capability, documented).** A generic angle-defined / inclined boundary geometry (ZDRDIR, SIPROTEC polygon, Toshiba blinders) changes the engine and R-X renderer and is left for a dedicated slice.
 
 Tests: `test_parameter_catalog_generic_extensions.py`, `test_relay_remaining_families.py` (+ `relay_family_fixtures.py`; gated real-sample tests), updated pinned expectations in the shipped / upload / review / identification / P441 / 7SA511 / RED670 tests; `browser-tests/relay_import_remaining_families.spec.js`, updated `relay_import_upload.spec.js`.
+
+### DEC-197 Amendment 1 -- Explicit tilt = 0° is a valid configured value (2026-10-14)
+
+Status: Implemented on `feature/remaining-relay-imports` (not merged, not deployed); owner-directed before the consolidated UAT ("Relay Import -- Accept Explicit Zero Tilt as a Valid Setting"). Resolves open item 5 of RELAY_IMPORT_ARCHITECTURE.md "Remaining relay families".
+
+**Decision.** Explicit tilt = 0° is a valid configured value and does not block readiness by itself. A stated, finite numeric `0` means *no inclination* and is distinct from a Missing / blank / unreadable tilt.
+
+**Root cause.** Not a falsy check: the engine adapter (`engine_adapter._adapt_zone`) refused **every resolved** `tilt_deg` with `TILT_UNSUPPORTED` ("A separate tilt is not representable by the engine's single angle"), so a stated 0 was refused exactly like 5°, shown as Unsupported and listed as a blocking reason (7SL87: "Not ready (characteristic, delays, tilt)").
+
+**Change (generic, one rule, no relay-specific code, no catalog change).** `TILT_UNSUPPORTED` is no longer raised for a tilt that is exactly 0 on a zone with **explicit R/X geometry** (`GeometryMode.EXPLICIT_RX`): the engine draws that zone's X limit horizontally, so "no inclination" is exactly what is drawn (the engine zone is identical to the zone with no tilt stated). Unchanged and still refused / unresolved:
+* any non-zero tilt, NaN or infinity -> Unsupported, blocks;
+* a zero tilt on a **polar** reach -> Unsupported, blocks (the engine's single reach angle already inclines the reactance line, so what a separate 0 is measured from is not established -- genuinely unknown angle interpretation);
+* a blank tilt cell -> Missing; a non-numeric tilt -> Unreadable (catalog parsing, unchanged);
+* every other blocker, including the SIPROTEC inclined resistance boundary (preserved, Unsupported) and Missing characteristics / delays.
+
+P441 (tilts kept raw, unresolved) and RED670 (no tilt) are unaffected; no catalog, lock digest, Apply payload or engine code changed.
+
+**7SL87 result.** Every zone's tilt is now `0°`, **Mapped** (raw `0`). The relay stays **PARTIALLY SUPPORTED / Not ready**: the characteristic is not named and the Z1-Z3 operate delays are Missing (blank setting cells).
+
+Tests: `test_explicit_rx_geometry.py` (`TestAdapter`: zero / int zero / -0.0 accepted and drawn identically to no tilt; 5, -3, 0.001, NaN, inf refused; polar zero refused; unstated tilt is not zero), `test_relay_remaining_families.py` (`TestSiprotec5_7SL87`: tilt 0 Mapped and not a blocker, still Not ready; tilt 5 Unsupported and blocking; blank -> Missing, `abc` -> Unreadable).

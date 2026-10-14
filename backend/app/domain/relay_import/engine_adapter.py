@@ -230,6 +230,20 @@ def zone_direction(zone: DistanceZone) -> str | None:
     return None
 
 
+def _explicit_zero_tilt(zone: DistanceZone) -> bool:
+    """A stated tilt of exactly 0 degrees on explicit R/X limits: "no inclination", which is
+    exactly the horizontal X limit the engine draws, so it is a valid setting, not a refusal.
+    Any other tilt stays refused, as does a zero tilt on a polar reach (there the engine's
+    single angle already inclines the reactance line, so what a separate 0 is measured from
+    is not established)."""
+    v = zone.tilt_deg.value
+    return (
+        zone.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
+        and isinstance(v, (int, float)) and not isinstance(v, bool)
+        and v == 0.0  # NaN and infinities are never equal to 0
+    )
+
+
 def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     status = _status(zone)
     if status is None:
@@ -271,7 +285,7 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         )
     if zone.phase_earth_enabled.is_resolved and zone.phase_earth_enabled.value is True:
         warn(f"{zone.zone_id}: phase-earth operation is preserved in the model but not evaluated by the engine.")
-    if zone.tilt_deg.is_resolved:
+    if zone.tilt_deg.is_resolved and not _explicit_zero_tilt(zone):
         fail(
             UnsupportedCode.TILT_UNSUPPORTED, "A separate tilt is not representable by the engine's single angle.", zone,
             (zone_path(zone, "tilt_deg"),),

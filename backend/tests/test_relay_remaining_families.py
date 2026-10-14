@@ -246,13 +246,26 @@ class TestSiprotec5_7SL87:
                 assert any("blank" in n and "Infinity" in n for n in item["notes"])
         assert [n["title"] for n in group(review, "Z1")["source_notes"]] == ["Zone 1 timer requirement: 0.15 s"]
 
-    def test_tilt_and_inclined_boundary_are_preserved_and_block_apply(self, client):
+    def test_explicit_zero_tilt_is_a_valid_setting_and_the_inclined_boundary_still_blocks_apply(self, client):
         review = upload(client, F.sl87_pdf())["review"]
         i = items(review)
-        assert i["zones[Z1].tilt_deg"]["value_text"] == "0°" and i["zones[Z1].tilt_deg"]["category"] == "unsupported"
+        tilt = i["zones[Z1].tilt_deg"]
+        assert (tilt["value_text"], tilt["raw_value"], tilt["category"]) == ("0°", "0", "mapped")  # 0 kept as 0, not Missing
+        assert not any("tilt" in r["message"].lower() for r in review["blocking_issues"])
         assert raw_rows(review, "Z1")["21.901.2311.107 Dist. characteristic angle"]["raw_value"] == "82.7"
         assert unresolved(i["zones[Z1].characteristic.type"], "missing")             # not named: not assumed
         assert client.post(VALIDATE, json=decisions(review)).json()["readiness"]["status"] == "not_ready"
+
+    def test_a_non_zero_tilt_stays_unsupported_and_blocks(self, client):
+        review = upload(client, F.sl87_pdf(tilt="5"))["review"]
+        tilt = items(review)["zones[Z1].tilt_deg"]
+        assert (tilt["value_text"], tilt["category"]) == ("5°", "unsupported")
+        assert any("tilt" in r["message"].lower() for r in review["blocking_issues"])
+
+    @pytest.mark.parametrize(("cell", "category"), [("", "missing"), ("abc", "unreadable")])
+    def test_a_blank_or_malformed_tilt_is_never_read_as_zero(self, client, cell, category):
+        tilt = items(upload(client, F.sl87_pdf(tilt=cell))["review"])["zones[Z1].tilt_deg"]
+        assert unresolved(tilt, category)
 
 
 class TestSiprotec4_7SA613:

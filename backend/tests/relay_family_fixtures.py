@@ -136,8 +136,10 @@ SL87_ROWS: list[Row] = [
 SL87_NOTES: list[Row] = [("Zone 1", "Forward direction timer set to 0.15s"), ("Zone 2", "Inactive (duplicated protection)")]
 
 
-def sl87_pdf() -> bytes:
-    return sheet_pdf("7SL87_8.81", SL87_ROWS, SL87_NOTES, columns=WIDE_COLUMNS)
+def sl87_pdf(*, tilt: str = "0") -> bytes:
+    """``tilt`` replaces every zone's Zone-inclination angle cell ("" = a blank cell beside its range)."""
+    rows = [(r[0], tilt, *r[2:]) if r[0].endswith(".113 Zone-inclination angle") else r for r in SL87_ROWS]
+    return sheet_pdf("7SL87_8.81", rows, SL87_NOTES, columns=WIDE_COLUMNS)
 
 
 # --- Siemens SIPROTEC 4 7SA613 -----------------------------------------------------------------------------------
