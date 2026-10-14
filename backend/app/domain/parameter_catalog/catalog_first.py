@@ -68,6 +68,18 @@ def overlay(
         else:
             _write(zone_holder, param, result)
         zones[zone_id] = zone_holder["zone"]
+    # A catalog that declares zone document notes owns them; raw zone settings it keeps join the zone's.
+    for zone_id, source in catalog_zones.items():
+        zone = zones.get(zone_id)
+        if zone is None:
+            continue
+        if run.note_ids:
+            zone = replace(zone, source_notes=source.source_notes)
+        if run.preserved_ids:
+            have = {u.setting_id for u in zone.unresolved_settings}
+            zone = replace(zone, unresolved_settings=(
+                *zone.unresolved_settings, *(u for u in source.unresolved_settings if u.setting_id not in have)))
+        zones[zone_id] = zone
     merged = replace(
         base, metadata=holder["metadata"], transformers=holder["transformers"], line=holder["line"],
         zones=tuple(zones[z.zone_id] for z in base.zones),

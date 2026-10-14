@@ -35,11 +35,14 @@ from app.domain.parameter_catalog.catalog_model import (
     Gate,
     Identification,
     Mapping,
+    NoteSubject,
+    PreservedSettings,
     PrintedUnitRule,
     Selector,
     Step,
     Validation,
     ZoneModel,
+    ZoneNoteRule,
 )
 from app.domain.parameter_catalog.errors import CatalogIssue, CatalogValidationError, IssueCode
 from app.domain.parameter_catalog.registry import CanonicalParameter, CanonicalRegistry
@@ -49,15 +52,20 @@ from app.domain.parameter_catalog.units import conversion_factor, is_known_unit
 _KEBAB = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 _TEMPLATE = re.compile(r"\{([A-Za-z_]+)\}")
-_ZONE_VARS = {"n", "nn", "zone"}
+_ZONE_VARS = {"n", "nn", "zone", "key"}
 _FAMILY_VARS = {"n"}
 
 _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "applicability", "profile_id",
-             "identification", "zones", "distance_scope", "mappings", "registry_version", "interpretation_notes"}
+             "identification", "zones", "distance_scope", "mappings", "registry_version", "interpretation_notes",
+             "source_notes", "zone_preserved"}
+_NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
+_NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
+_NOTE_SUBJECTS = ("timer", "status")
+_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason"}
 _APPLICABILITY_KEYS = {"manufacturer", "family", "model", "versions"}
 _IDENT_KEYS = {"model_patterns", "family_markers", "parameter_signatures", "scheme_pattern", "scheme_model_pattern", "version_pattern"}
 _ZONES_KEYS = {"discover", "static"}
-_SCOPE_KEYS = {"code_prefixes", "section_contains", "names"}
+_SCOPE_KEYS = {"code_prefixes", "section_contains", "names", "name_patterns"}
 _MAPPING_KEYS = {"id", "canonical", "zone", "source", "sources", "transform", "requires", "value_source", "authority",
                  "confidence", "note", "evidence", "evidence_from", "requires_resolved", "unresolved_note", "gap"}
 _SELECTOR_KEYS = {"name", "code", "name_pattern", "pattern_in_text", "indexed_family", "zone_family", "section", "type",
@@ -146,6 +154,8 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
     identification = _identification(v, data.get("identification"))
     zones = _zones(v, data.get("zones"))
     scope = _distance_scope(v, data.get("distance_scope"))
+    note_rules = _source_notes(v, data.get("source_notes"))
+    preserved = _zone_preserved(v, data.get("zone_preserved"), zones)
 
     raw_mappings = data.get("mappings")
     mappings: list[Mapping] = []
@@ -166,6 +176,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
         catalog_id=catalog_id, version=version, lifecycle=lifecycle, applicability=applicability, profile_id=profile_id,
         mappings=tuple(_with_stage(m) for m in mappings), zones=zones, identification=identification,
         distance_scope=scope, description=str(data.get("description") or ""), notes=tuple(notes),
+        source_notes=note_rules, zone_preserved=preserved,
         registry_version=registry_version or registry.version,
         source_path=source_path,
     )
@@ -181,12 +192,16 @@ def _applicability(v: _Validator, raw: Any) -> Applicability | None:
         v.add("applicability", IssueCode.MISSING_METADATA, "applicability (manufacturer, family, model) is required")
         return None
     v.keys(raw, _APPLICABILITY_KEYS, "applicability")
-    fields = {k: v.string(raw, k, "applicability") for k in ("manufacturer", "family", "model")}
+    # an explicit ``"manufacturer": null`` states that the project has not established the manufacturer:
+    # it is then never asserted (a missing key is still an error -- the author must say so on purpose)
+    unasserted = "manufacturer" in raw and raw["manufacturer"] is None
+    fields = {k: v.string(raw, k, "applicability") for k in ("family", "model")}
+    fields["manufacturer"] = None if unasserted else v.string(raw, "manufacturer", "applicability")
     versions = raw.get("versions", ["*"])
     if not isinstance(versions, list) or not versions or not all(isinstance(x, str) and x for x in versions):
         v.add("applicability.versions", IssueCode.INVALID_VERSION, "versions must be a non-empty list of strings ('*' = any)")
         versions = ["*"]
-    if not all(fields.values()):
+    if not (fields["family"] and fields["model"] and (unasserted or fields["manufacturer"])):
         return None
     return Applicability(fields["manufacturer"], fields["family"], fields["model"], tuple(versions))  # type: ignore[arg-type]
 
@@ -243,16 +258,19 @@ def _zones(v: _Validator, raw: Any) -> ZoneModel | None:
         return None
     seen: set[str] = set()
     static: list[tuple[str, str]] = []
+    keys: list[tuple[str, str]] = []
     for k, z in enumerate(items):
-        if not isinstance(z, dict) or set(z) != {"id", "name"} or not all(isinstance(z[x], str) and z[x] for x in z):
-            v.add(f"zones.static[{k}]", IssueCode.MALFORMED, "a zone needs a string id and name")
+        if (not isinstance(z, dict) or not {"id", "name"} <= set(z) or set(z) - {"id", "name", "key"}
+                or not all(isinstance(z[x], str) and z[x] for x in z)):
+            v.add(f"zones.static[{k}]", IssueCode.MALFORMED, "a zone needs a string id and name (and an optional string key)")
             continue
         if z["id"] in seen:
             v.add(f"zones.static[{k}]", IssueCode.DUPLICATE, f"duplicate zone id {z['id']!r}")
             continue
         seen.add(z["id"])
         static.append((z["id"], z["name"]))
-    return ZoneModel("static", static=tuple(static))
+        keys.append((z["id"], z.get("key", z["id"])))
+    return ZoneModel("static", static=tuple(static), keys=tuple(keys))
 
 
 def _distance_scope(v: _Validator, raw: Any) -> DistanceScope:
@@ -268,8 +286,97 @@ def _distance_scope(v: _Validator, raw: Any) -> DistanceScope:
         if not isinstance(items, list) or not all(isinstance(x, str) for x in items):
             v.add(f"distance_scope.{key}", IssueCode.MALFORMED, f"{key} must be a list of strings")
         else:
+            if key == "name_patterns":
+                for k, pattern in enumerate(items):
+                    v.regex(pattern, f"distance_scope.name_patterns[{k}]")
             out[key] = tuple(items)
     return DistanceScope(**out)
+
+
+def _source_notes(v: _Validator, raw: Any) -> tuple[ZoneNoteRule, ...]:
+    """Zone document notes: provenance only, so there is nothing to type-check against the registry --
+    only that every pattern compiles and every zone template is well-formed."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        v.add("source_notes", IssueCode.MALFORMED, "source_notes must be a list of note rules")
+        return ()
+    rules: list[ZoneNoteRule] = []
+    for k, item in enumerate(raw):
+        path = f"source_notes[{k}]"
+        if not isinstance(item, dict) or "pattern" not in item:
+            v.add(path, IssueCode.MALFORMED, "a note rule needs a pattern")
+            continue
+        v.keys(item, _NOTE_KEYS, path)
+        ok = v.regex(item["pattern"], f"{path}.pattern", named="zone")
+        zone_id = item.get("zone_id", "Z{zone}")
+        if not isinstance(zone_id, str) or "{zone}" not in zone_id or set(_TEMPLATE.findall(zone_id)) - {"zone"}:
+            v.add(f"{path}.zone_id", IssueCode.INVALID_ZONE, "zone_id must be a template using {zone} (and only {zone})")
+            ok = False
+        overrides = item.get("zone_ids", {})
+        if not isinstance(overrides, dict) or not all(isinstance(a, str) and isinstance(b, str) and a and b
+                                                      for a, b in overrides.items()):
+            v.add(f"{path}.zone_ids", IssueCode.MALFORMED, "zone_ids must map note tokens to zone ids")
+            ok, overrides = False, {}
+        subjects: list[NoteSubject] = []
+        for j, s in enumerate(item.get("subjects", [])):
+            where = f"{path}.subjects[{j}]"
+            if not isinstance(s, dict) or set(s) != _NOTE_SUBJECT_KEYS:
+                v.add(where, IssueCode.MALFORMED, "a subject needs exactly subject, pattern and value")
+                ok = False
+                continue
+            if s["subject"] not in _NOTE_SUBJECTS:
+                v.add(f"{where}.subject", IssueCode.MALFORMED, f"subject must be one of {list(_NOTE_SUBJECTS)}")
+                ok = False
+            ok = v.regex(s["pattern"], f"{where}.pattern") and ok
+            if not isinstance(s["value"], str) or not s["value"]:
+                v.add(f"{where}.value", IssueCode.MALFORMED, "value must be a non-empty template")
+                ok = False
+            subjects.append(NoteSubject(str(s["subject"]), str(s["pattern"]), str(s["value"])))
+        if ok:
+            rules.append(ZoneNoteRule(item["pattern"], zone_id, tuple(overrides.items()), tuple(subjects)))
+    return tuple(rules)
+
+
+def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[PreservedSettings, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        v.add("zone_preserved", IssueCode.MALFORMED, "zone_preserved must be a list")
+        return ()
+    out: list[PreservedSettings] = []
+    for k, item in enumerate(raw):
+        path = f"zone_preserved[{k}]"
+        if not isinstance(item, dict):
+            v.add(path, IssueCode.MALFORMED, "an entry must be an object")
+            continue
+        v.keys(item, _PRESERVED_KEYS, path)
+        ok = True
+        targets = _zone_targets(v, item.get("zone"), path, zones)
+        reason = item.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            v.add(f"{path}.reason", IssueCode.MISSING_METADATA, "a reason is required: why the settings are kept uninterpreted")
+            ok = False
+        names = item.get("names")
+        pattern = item.get("name_pattern")
+        if (names is None) == (pattern is None):
+            v.add(path, IssueCode.INVALID_SELECTOR, "give exactly one of names or name_pattern")
+            continue
+        if names is not None:
+            if not isinstance(names, list) or not names or not all(isinstance(n, str) and n.strip() for n in names):
+                v.add(f"{path}.names", IssueCode.INVALID_SELECTOR, "names must be a non-empty list of names")
+                continue
+            for j, name in enumerate(names):
+                _check_template(v, f"{path}.names[{j}]", name, _ZONE_VARS, zones)
+        else:
+            if not isinstance(pattern, str) or not pattern:
+                v.add(f"{path}.name_pattern", IssueCode.INVALID_SELECTOR, "name_pattern must be a non-empty string")
+                continue
+            _check_template(v, f"{path}.name_pattern", pattern, _ZONE_VARS, zones)
+            ok = v.regex(_TEMPLATE.sub("x", pattern), f"{path}.name_pattern") and ok
+        if ok and targets:
+            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern))
+    return tuple(out)
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +598,8 @@ def _check_template(v: _Validator, path: str, text: str, allowed: set[str], zone
             v.add(path, IssueCode.INVALID_SELECTOR, f"template variable {{{var}}} is not available here (allowed: {sorted(allowed) or 'none'})")
         elif var in ("n", "nn") and zones is not None and zones.mode != "discover":
             v.add(path, IssueCode.INVALID_SELECTOR, f"{{{var}}} needs discovered zones; this catalog lists its zones, use {{zone}}")
+        elif var == "key" and zones is not None and zones.mode == "discover":
+            v.add(path, IssueCode.INVALID_SELECTOR, "{key} needs listed zones; this catalog discovers its zones, use {n} / {nn}")
 
 
 def _indexed_family(v: _Validator, raw: Any, path: str, zones: ZoneModel | None, scoped: bool) -> Family | None:

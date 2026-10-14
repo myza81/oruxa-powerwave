@@ -196,6 +196,9 @@ class ZoneModel:
     id_template: str = "Z{n}"
     name_template: str = "Zone {n}"
     static: tuple[tuple[str, str], ...] = ()  # (zone id, zone name)
+    #: Listed zones only: (zone id, key) -- the token ``{key}`` stands for in templates (default: the id),
+    #: for sheets whose parameter names use a zone token other than the zone id (``Z_PP1``, ``Z_Rev``).
+    keys: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -213,15 +216,57 @@ class Identification:
 
 
 @dataclass(frozen=True)
+class NoteSubject:
+    """What a zone note is about and the figure it states. ``pattern`` is searched in the note's text;
+    ``value`` is a template whose ``{1}`` is the pattern's first group (e.g. ``"{1} s"``)."""
+
+    subject: str                     # "timer" | "status"
+    pattern: str
+    value: str
+
+
+@dataclass(frozen=True)
+class ZoneNoteRule:
+    """Document notes about a zone (scheme requirements, design intent). A matching row becomes a
+    `SourceNote` of the zone it names -- provenance only: it never supplies a value, a status or a
+    default. ``pattern`` is searched in a row's text (name and value) and has a named group ``zone``;
+    ``zone_id`` turns that token into a zone id (``{zone}``), ``zone_ids`` overrides listed tokens.
+    A note naming no zone of the document stays a raw, not-interpreted row."""
+
+    pattern: str
+    zone_id: str = "Z{zone}"
+    zone_ids: tuple[tuple[str, str], ...] = ()
+    subjects: tuple[NoteSubject, ...] = ()
+
+
+@dataclass(frozen=True)
+class PreservedSettings:
+    """Raw zone settings the catalog recognises but gives no canonical meaning (blinder geometry, reach
+    multipliers ...). They are kept with their zone -- shown in its review group as unsupported, never
+    resolvable items carrying ``reason`` -- instead of in the document's leftovers. Exactly one of
+    ``names`` (templated names) or ``name_pattern`` (a templated regex) is set; ``{zone}`` / ``{n}`` /
+    ``{nn}`` are filled per zone (regex-escaped in a pattern). A setting a mapping already reads is never
+    taken."""
+
+    zones: tuple[str, ...]
+    reason: str
+    names: tuple[str, ...] = ()
+    name_pattern: str | None = None
+
+
+@dataclass(frozen=True)
 class DistanceScope:
     code_prefixes: tuple[str, ...] = ()
     section_contains: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
+    #: Regular expressions over setting names (for codes written inside the name, e.g. ``21.901.``).
+    name_patterns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class Applicability:
-    manufacturer: str
+    #: ``None`` when the catalog explicitly does not assert a manufacturer (not established by the project).
+    manufacturer: str | None
     family: str
     model: str
     #: Firmware / template version patterns the catalog covers; ``("*",)`` = any.
@@ -243,6 +288,10 @@ class Catalog:
     #: Interpretation notes added to every model this catalog produces (relay-level statements the
     #: settings themselves do not carry, e.g. how zone instances are numbered).
     notes: tuple[str, ...] = ()
+    #: Document notes about zones, kept as zone source notes (never values).
+    source_notes: tuple[ZoneNoteRule, ...] = ()
+    #: Raw zone settings kept with their zone, uninterpreted.
+    zone_preserved: tuple[PreservedSettings, ...] = ()
     #: The canonical registry version the catalog was validated against.
     registry_version: str = ""
     #: ``catalog_id@version`` -- what an import records as the interpretation's origin.

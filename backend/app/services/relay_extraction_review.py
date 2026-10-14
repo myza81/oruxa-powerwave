@@ -673,6 +673,15 @@ def _transformer_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> 
         b.item("base.voltage", "Voltage Base", "", t.voltage_base_v, unit="V", path="transformers.voltage_base_v"),
         b.item("base.current", "Current Base", "", t.current_base_a, unit="A", path="transformers.current_base_a"),
     ]
+    # A relay that states its CT / VT as ratios: shown only when the profile touched them, so a
+    # relay that states primary / secondary values keeps exactly its rows.
+    ratios = [
+        (2, b.item("ct.ratio", "CT Ratio", "", t.ct_ratio, path="transformers.ct_ratio"), t.ct_ratio),
+        (4, b.item("vt.ratio", "VT Ratio", "", t.vt_ratio, path="transformers.vt_ratio"), t.vt_ratio),
+    ]
+    for position, item, value in reversed(ratios):
+        if _touched(value):
+            items.insert(position, item)
     return ReviewGroup("ct_vt", "transformers", "CT / VT", items=tuple(items))
 
 

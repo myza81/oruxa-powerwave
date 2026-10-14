@@ -69,8 +69,8 @@ class CatalogStore:
         the firmware ``version`` (when given) matching one of the catalog's version patterns, and a
         lifecycle in ``lifecycles``. The highest catalog version wins; only ``active`` is used by
         default, so a draft or merely validated catalog can never interpret a real import."""
-        def norm(text: str) -> str:
-            return " ".join(text.split()).casefold()
+        def norm(text: str | None) -> str:
+            return " ".join((text or "").split()).casefold()
 
         fits = [
             c for c in self.catalogs
@@ -86,8 +86,8 @@ class CatalogStore:
 def applicabilities_overlap(a: Catalog, b: Catalog) -> bool:
     """True when two catalogs claim the same relay (manufacturer / family / model, case- and
     spacing-insensitive) for at least one common firmware version."""
-    def norm(text: str) -> str:
-        return " ".join(text.split()).casefold()
+    def norm(text: str | None) -> str:
+        return " ".join((text or "").split()).casefold()
 
     pa, pb = a.applicability, b.applicability
     if (norm(pa.manufacturer), norm(pa.family), norm(pa.model)) != (norm(pb.manufacturer), norm(pb.family), norm(pb.model)):
@@ -102,7 +102,11 @@ def _semver(version: str) -> tuple[int, ...]:
 def semantics_digest(data: dict[str, Any]) -> str:
     """Digest of everything that defines a catalog's *meaning* (not its lifecycle or description)."""
     keys = ("applicability", "profile_id", "identification", "zones", "distance_scope", "mappings", "interpretation_notes")
-    canonical = json.dumps({k: data.get(k) for k in keys}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    meaning = {k: data.get(k) for k in keys}
+    # sections added later count only when a catalog uses them, so the digests of catalogs written
+    # before they existed (and locked) are unchanged
+    meaning.update({k: data[k] for k in ("source_notes", "zone_preserved") if k in data})
+    canonical = json.dumps(meaning, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

@@ -1,7 +1,7 @@
 {
   "schema": "oruxa.canonical-registry/1",
   "registry_id": "distance_protection",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Application-level engineering parameters of the Distance Protection import. OEM-neutral: labels, units, grouping and order here are what the review shows; the engine reads only the canonical model these parameters populate. OEM meaning lives in the OEM catalogs, never here.",
   "groups": [
     {"id": "relay", "label": "Relay / source information", "order": 10},
@@ -20,8 +20,10 @@
 
     {"id": "ct_vt.ct_primary", "label": "CT Primary", "data_type": "number", "unit": "A", "group": "ct_vt", "order": 10, "scope": "document", "engine_path": "transformers.ct_primary_a"},
     {"id": "ct_vt.ct_secondary", "label": "CT Secondary", "data_type": "number", "unit": "A", "group": "ct_vt", "order": 20, "scope": "document", "engine_path": "transformers.ct_secondary_a"},
+    {"id": "ct_vt.ct_ratio", "label": "CT Ratio", "data_type": "number", "unit": "", "group": "ct_vt", "order": 25, "scope": "document", "engine_path": "transformers.ct_ratio"},
     {"id": "ct_vt.vt_primary", "label": "VT Primary", "data_type": "number", "unit": "V", "group": "ct_vt", "order": 30, "scope": "document", "engine_path": "transformers.vt_primary_v"},
     {"id": "ct_vt.vt_secondary", "label": "VT Secondary", "data_type": "number", "unit": "V", "group": "ct_vt", "order": 40, "scope": "document", "engine_path": "transformers.vt_secondary_v"},
+    {"id": "ct_vt.vt_ratio", "label": "VT Ratio", "data_type": "number", "unit": "", "group": "ct_vt", "order": 45, "scope": "document", "engine_path": "transformers.vt_ratio"},
     {"id": "ct_vt.impedance_basis", "label": "Setting Values Basis", "data_type": "enum", "enum_type": "SettingBasis", "unit": "", "group": "ct_vt", "order": 50, "scope": "document", "engine_path": "transformers.setting_basis"},
     {"id": "ct_vt.voltage_base", "label": "Voltage Base", "data_type": "number", "unit": "V", "group": "ct_vt", "order": 60, "scope": "document", "engine_path": "transformers.voltage_base_v"},
     {"id": "ct_vt.current_base", "label": "Current Base", "data_type": "number", "unit": "A", "group": "ct_vt", "order": 70, "scope": "document", "engine_path": "transformers.current_base_a"},

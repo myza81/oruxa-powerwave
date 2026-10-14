@@ -182,6 +182,10 @@ class InstrumentTransformers:
     #: Whether the relay's impedance settings are primary or secondary ohms
     #: (a `SettingBasis`).
     setting_basis: Sourced = _unresolved_field()
+    #: CT / VT turns ratios (dimensionless), for relays that state a ratio instead of
+    #: primary and secondary values. Kept as stated; never split into primary / secondary.
+    ct_ratio: Sourced = _unresolved_field()
+    vt_ratio: Sourced = _unresolved_field()
 
 
 @dataclass(frozen=True)

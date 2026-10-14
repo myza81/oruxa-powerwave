@@ -36,7 +36,7 @@ def _validate(args: argparse.Namespace) -> int:
         return 1
     c = result.catalog
     print(f"OK: {c.catalog_id} {c.version} ({c.lifecycle}) -- {len(c.mappings)} mappings, "
-          f"{len({m.canonical for m in c.mappings})} canonical targets, relay {c.applicability.manufacturer} "
+          f"{len({m.canonical for m in c.mappings})} canonical targets, relay {c.applicability.manufacturer or '(manufacturer not asserted)'} "
           f"{c.applicability.model}, firmware {', '.join(c.applicability.versions)}")
     if c.lifecycle != "active":
         print(f'It is "{c.lifecycle}": the service will not use it until "lifecycle" is "active".')
@@ -75,7 +75,7 @@ def _dry_run(args: argparse.Namespace) -> int:
 def _list(args: argparse.Namespace) -> int:
     store = load_store(Path(args.root))
     for c in sorted(store.catalogs, key=lambda c: (c.catalog_id, c.version)):
-        print(f"{c.catalog_id} {c.version}  {c.lifecycle:<9} {c.applicability.manufacturer} {c.applicability.model}")
+        print(f"{c.catalog_id} {c.version}  {c.lifecycle:<9} {c.applicability.manufacturer or '(manufacturer not asserted)'} {c.applicability.model}")
     for r in store.rejected:
         print(f"REJECTED {r}")
     return 1 if store.rejected else 0

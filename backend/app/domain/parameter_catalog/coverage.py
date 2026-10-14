@@ -39,7 +39,8 @@ class CatalogCoverage:
     catalog_unresolved_settings: int
     #: Not the catalog's: read by the profile extension that still owns this relay's remaining semantics.
     extension_interpreted_settings: int
-    #: Distance-related, retained raw and marked "Not interpreted"; never enters the engine.
+    #: Distance-related, retained raw and marked "Not interpreted" (document notes about zones included);
+    #: never enters the engine.
     not_interpreted_settings: int
     #: Not a distance-protection setting; retained raw, not interpreted.
     outside_distance_settings: int
@@ -110,13 +111,16 @@ def compute_coverage(
             unresolved_ids |= ids
     unresolved_ids -= mapped_ids
     unsupported_ids -= mapped_ids | unresolved_ids
+    # raw zone settings the catalog keeps uninterpreted with their zone: recognised, a capability gap
+    unsupported_ids |= run.preserved_ids - mapped_ids - unresolved_ids
     # the scheme / template field the relay identity is cited to is consumed by the catalog without being a target
-    mapped_ids |= run.consumed - mapped_ids - unresolved_ids - unsupported_ids
+    # (document notes are consumed too, but they are never values: they stay "not interpreted")
+    mapped_ids |= run.consumed - mapped_ids - unresolved_ids - unsupported_ids - run.note_ids
     recognised = mapped_ids | unresolved_ids | unsupported_ids
     unmapped = {u.setting_id: u for u in final.unmapped_settings}
     all_ids = {s.setting_id for s in document.settings}
     rest = all_ids - recognised
-    not_interpreted = {i for i in rest if i in unmapped and not unmapped[i].out_of_scope}
+    not_interpreted = {i for i in rest if (i in unmapped and not unmapped[i].out_of_scope) or i in run.note_ids}
     outside = {i for i in rest if i in unmapped and unmapped[i].out_of_scope}
     extension = rest - not_interpreted - outside
     return CatalogCoverage(

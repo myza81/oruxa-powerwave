@@ -45,6 +45,8 @@ from app.domain.relay_import.canonical_distance import (
     ProtectedLine,
     RelayMetadata,
     ResidualCompensation,
+    SourceNote,
+    SourceNoteKind,
     UnresolvedSetting,
 )
 from app.domain.relay_import.provenance import (
@@ -92,6 +94,14 @@ def _range_text(s: RawSetting) -> str | None:
             if len(cells) >= 4 and cells[-1]:
                 return cells[-1]
     return None
+
+
+#: The extractor's rule for a table row whose value cell is blank while its range cell is filled.
+_BLANK_VALUE_RULE = "row:blank_value_range"
+
+
+def _blank_setting_cell(s: RawSetting) -> bool:
+    return s.extraction is not None and _BLANK_VALUE_RULE in s.extraction.notes
 
 
 @dataclass
@@ -148,6 +158,17 @@ class CatalogRun:
     model: CanonicalDistanceProtectionModel
     outcomes: dict[tuple[str, str], Outcome]
     consumed: frozenset[str]
+    #: Rows kept as zone document notes (provenance only, never values).
+    note_ids: frozenset[str] = frozenset()
+    #: Rows kept raw with their zone (recognised, not interpreted: a capability gap).
+    preserved_ids: frozenset[str] = frozenset()
+
+
+#: Said once when any zone carries document notes.
+ZONE_NOTES_STATEMENT = (
+    "The sheet's notes about zones (scheme requirements such as proposed timers or states) are shown beside "
+    "their zones as document notes. They are not settings and are never used as values, states or defaults."
+)
 
 
 class CatalogInterpreter:
@@ -165,7 +186,8 @@ class CatalogInterpreter:
         settings a mapping consumed. The catalog-first profile and the dry-run read this."""
         run = _Run(self.catalog, self.registry, document)
         model = run.run()
-        return CatalogRun(model, dict(run.results), frozenset(run.consumed))
+        return CatalogRun(model, dict(run.results), frozenset(run.consumed), frozenset(run.note_ids),
+                          frozenset(run.preserved_ids))
 
     def trace(self, document: RawRelayDocument) -> dict[tuple[str, str], Outcome]:
         """Every resolved canonical target with the mapping that supplied it (for tests and tooling)."""
@@ -193,6 +215,10 @@ class _Run:
         self.notes: list[str] = []
         self.results: dict[tuple[str, str], Outcome] = {}
         self.zone_vars: list[dict[str, Any]] = []
+        self.note_ids: set[str] = set()
+        self.preserved_ids: set[str] = set()
+        self.zone_notes: dict[str, list[SourceNote]] = {}
+        self.zone_kept: dict[str, dict[str, UnresolvedSetting]] = {}
 
     # --- provenance plumbing ----------------------------------------------------
 
@@ -281,7 +307,14 @@ class _Run:
             r.raw = " / ".join(sorted(values))
             return r
         r.raw = _clean(found[0].raw_value)
-        if not r.raw:
+        if not r.raw and _blank_setting_cell(found[0]):
+            # the extractor established that the configured-setting cell is empty and that the text beside
+            # it sits in the range column: the setting is not stated (Missing), and the range is not a value
+            shown = _range_text(found[0])
+            r.fail("the configured setting cell is blank" + (f" (the range column shows {shown!r}, which is not a setting)" if shown else "")
+                   + "; no value is assumed", UnresolvedCause.MISSING)
+            r.raw = None
+        elif not r.raw:
             r.fail("no value found", UnresolvedCause.UNREADABLE)
             r.raw = None
         elif len(found) > 1:
@@ -466,7 +499,10 @@ class _Run:
                 if why:
                     whys.append(why)
             else:
-                inputs[name] = self.parse(self.locate(sel, variables), sel, m, param, name)
+                read = self.parse(self.locate(sel, variables), sel, m, param, name)
+                if read.problem and sel.note:                 # the catalog's own words on why it cannot be read
+                    read.problem = f"{read.problem} -- {_fill(sel.note, variables)}"
+                inputs[name] = read
 
         gate_reads, failure = self._check_gates(m, param, variables, inputs)
         if failure is not None:
@@ -608,7 +644,68 @@ class _Run:
                 if (m.canonical, zid) not in done:
                     done.add((m.canonical, zid))
                     self._resolve(m.canonical, zid)
+        # after the mappings, so neither can take a setting a mapping reads
+        self._preserve_zone_settings()
+        self._collect_zone_notes()
         return self._assemble()
+
+    # --- zone-level raw settings and document notes --------------------------------------------
+
+    def _preserve_zone_settings(self) -> None:
+        """Keep the catalog's declared raw zone settings with their zone (shared settings with every
+        zone that declares them), uninterpreted, each with the catalog's reason."""
+        taken = set(self.consumed)
+        for rule in self.cat.zone_preserved:
+            for z in self.zone_vars:
+                if "*" not in rule.zones and z["zone"] not in rule.zones:
+                    continue
+                if rule.names:
+                    wanted = {norm_text(_fill(n, z)) for n in rule.names}
+                    hits = [s for s in self.doc.settings if s.name and norm_text(s.name) in wanted]
+                else:
+                    pattern = re.compile(_fill(rule.name_pattern or "", {k: re.escape(str(v)) for k, v in z.items()}))
+                    hits = [s for s in self.doc.settings if s.name and pattern.search(s.name)]
+                kept = self.zone_kept.setdefault(z["zone"], {})
+                for s in hits:
+                    if s.setting_id in taken:
+                        continue
+                    kept.setdefault(s.setting_id, UnresolvedSetting(s.setting_id, s.name, s.raw_value, s.unit, reason=rule.reason))
+                    self.preserved_ids.add(s.setting_id)
+        self.consumed |= self.preserved_ids
+
+    def _collect_zone_notes(self) -> None:
+        """Rows the catalog declares to be notes about a zone become that zone's `SourceNote`s: the
+        document's own words with their source -- never a value, a status or a default."""
+        if not self.cat.source_notes:
+            return
+        known = {z["zone"] for z in self.zone_vars}
+        for s in self.doc.settings:
+            if s.setting_id in self.consumed or s.parameter_id:
+                continue
+            value = _clean(s.raw_value)
+            text = f"{_clean(s.name)}  {value}".strip() if value else _clean(s.name)
+            for rule in self.cat.source_notes:
+                m = re.search(rule.pattern, text) if text else None
+                if not m:
+                    continue
+                token = m.group("zone")
+                zone_id = dict(rule.zone_ids).get(token) or _fill(rule.zone_id, {"zone": token})
+                if zone_id not in known:
+                    continue
+                subject = value_text = None
+                for sub in rule.subjects:
+                    found = re.search(sub.pattern, text)
+                    if found:
+                        groups = {str(i): g or "" for i, g in enumerate(found.groups(), start=1)}
+                        subject, value_text = sub.subject, re.sub(r"\{(\d+)\}", lambda g: groups.get(g.group(1), g.group(0)), sub.value)
+                        break
+                self.zone_notes.setdefault(zone_id, []).append(
+                    SourceNote(SourceNoteKind.PROPOSED_REQUIREMENT, text, subject, value_text, sources=self.refs(s))
+                )
+                self.note_ids.add(s.setting_id)
+                break
+        if self.zone_notes:
+            self.note(ZONE_NOTES_STATEMENT)
 
     def _zones(self) -> None:
         z = self.cat.zones
@@ -620,7 +717,8 @@ class _Run:
                 for n in numbers
             ]
         else:
-            self.zone_vars = [{"zone": zid, "name": name} for zid, name in z.static]
+            keys = dict(z.keys)
+            self.zone_vars = [{"zone": zid, "name": name, "key": keys.get(zid, zid)} for zid, name in z.static]
 
     def _resolve(self, canonical: str, zone_id: str) -> None:
         """Evaluate every mapping of one target, strongest first; the first that resolves wins."""
@@ -668,6 +766,9 @@ class _Run:
         zone = holder["zone"]
         if compensation and len(kinds) == 1:
             zone = replace(zone, compensation=ResidualCompensation(kind=CompensationKind(next(iter(kinds))), **compensation))
+        notes, kept = self.zone_notes.get(z["zone"]), self.zone_kept.get(z["zone"])
+        if notes or kept:
+            zone = replace(zone, source_notes=tuple(notes or ()), unresolved_settings=tuple((kept or {}).values()))
         return zone
 
     def _metadata(self) -> RelayMetadata:
@@ -700,10 +801,16 @@ class _Run:
         version = unresolved(**ids, canonical_id="relay.version")
         if ident.version_pattern and (v := re.search(ident.version_pattern, token)):
             version = good(v.group(1), "relay.version", "the version marker written in the scheme / device designation")
+        manufacturer = (
+            good(app.manufacturer, "relay.manufacturer",
+                 "normalised from the relay model per the catalog; the manufacturer is not named in the document")
+            if app.manufacturer is not None
+            else unresolved(notes=("the manufacturer of this relay line is not established by the project and is not asserted",),
+                            cause=UnresolvedCause.MISSING, **ids, canonical_id="relay.manufacturer")
+        )
         return RelayMetadata(
             **base, scheme_name=scheme, version=version,
-            manufacturer=good(app.manufacturer, "relay.manufacturer",
-                              "normalised from the relay model per the catalog; the manufacturer is not named in the document"),
+            manufacturer=manufacturer,
             family=good(app.family, "relay.family", "family label from the catalog"),
             model=good(app.model, "relay.model"),
         )
@@ -721,7 +828,9 @@ class _Run:
             section = f"{' / '.join(s.section_path)} {running}"
             distance = (
                 bool(scope.code_prefixes) and (s.parameter_id or "").upper().startswith(scope.code_prefixes)
-            ) or any(k in section for k in scope.section_contains) or norm_text(s.name) in names
+            ) or any(k in section for k in scope.section_contains) or norm_text(s.name) in names or any(
+                re.search(p, s.name or "") for p in scope.name_patterns
+            )
             out.append(UnresolvedSetting(
                 s.setting_id, s.name, s.raw_value, s.unit,
                 reason=(f"distance-related setting not interpreted by {self.cat.profile_version}" if distance
