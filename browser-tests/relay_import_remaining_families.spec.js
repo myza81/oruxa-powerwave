@@ -62,7 +62,7 @@ test("REL670: identified and reviewed through its catalog, with Zone 4 enabled i
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Unsupported");
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("not the relay's geometry");
   // the scheme requirement is a document note beside the zone, never the value
-  await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 timer requirement: 0.15 s");
+  await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 Forward direction timer set to 0.15s");
   await expect(row(page, "zone.Z1.timer.pp")).toContainText("0.15 s");
   await expect(readiness(page)).toContainText("Not ready");
   await expect(applyBtn(page)).toHaveCount(0);
@@ -86,6 +86,83 @@ test("REL670: Ready to apply after the approximation and confirmations; Apply pl
   expect(await cy("zone4")).toBeGreaterThan(await cy("zone1"));
 });
 
+// Document notes are audit context, never settings: one collapsed, neutral disclosure under the zone's settings.
+const notes = (page, id) => zoneGroup(page, id).locator("details[data-source-notes]");
+
+test("REL670: a zone's document note is a collapsed, secondary disclosure -- never the configured setting", async ({ page }) => {
+  await openReview(page, rel670Pdf(), 4);
+  const note = notes(page, "Z1");
+  const summary = note.locator(":scope > summary");
+  const text = note.locator(".ww-rr-source-note-text");
+  const disclaimer = note.locator(".ww-rr-source-notes-disclaimer");
+  await expect(summary).toBeVisible();
+  await expect(note.locator(".ww-rr-source-notes-label")).toHaveText("Document note");
+  // collapsed by default: the document's words, the source and the disclaimer stay hidden
+  expect(await note.evaluate((d) => d.open)).toBe(false);
+  await expect(text).toBeHidden();
+  await expect(disclaimer).toBeHidden();
+  // neutral and subordinate: dim like a setting's label, smaller than a setting's value, never warning / error styled
+  const style = await summary.evaluate((s) => {
+    const css = getComputedStyle(s);
+    const label = getComputedStyle(document.querySelector('#wwRelayReviewPanel li[data-key="zone.Z1.timer.pp"] .ww-rr-label'));
+    const value = getComputedStyle(document.querySelector('#wwRelayReviewPanel li[data-key="zone.Z1.timer.pp"] .ww-rr-value'));
+    return { color: css.color, labelColor: label.color, size: parseFloat(css.fontSize), valueSize: parseFloat(value.fontSize), weight: Number(css.fontWeight) };
+  });
+  expect(style.color).toBe(style.labelColor);
+  expect(style.size).toBeLessThan(style.valueSize);
+  expect(style.weight).toBeLessThan(600);
+  // expand: the document's exact words, page / line provenance and the non-authoritative statement
+  await summary.click();
+  await expect(text).toBeVisible();
+  await expect(text).toHaveText("Zone 1 Forward direction timer set to 0.15s");
+  await expect(note.locator(".ww-rr-source-note")).toContainText(/Source: Page \d+ · line \d+/);
+  await expect(disclaimer).toBeVisible();
+  await expect(disclaimer).toHaveText("Not used as the configured setting.");
+  // the zone's configured TAP SETTING is untouched by the note
+  await expect(row(page, "zone.Z1.timer.pp")).toContainText("0.15 s");
+  // collapse again
+  await summary.click();
+  await expect(text).toBeHidden();
+  expect(await note.evaluate((d) => d.open)).toBe(false);
+  // a zone without notes has no disclosure at all
+  await expect(zoneGroup(page, "Z2").locator("[data-source-notes]")).toHaveCount(0);
+  await expect(zoneGroup(page, "Z2")).not.toContainText("Document note");
+});
+
+test("REL670: several notes on one zone are one compact disclosure that expands to all of them", async ({ page }) => {
+  await openReview(page, rel670Pdf({ notes: [["Zone 1 Forward direction timer set to 0.15s"], ["Zone 1 Forward direction delayed for backup scheme"]] }), 4);
+  const note = notes(page, "Z1");
+  await expect(note).toHaveCount(1);
+  await expect(note.locator(".ww-rr-source-notes-label")).toHaveText("2 document notes");
+  const texts = note.locator(".ww-rr-source-note-text");
+  await expect(texts).toHaveCount(2);
+  await expect(texts.first()).toBeHidden();
+  await note.locator(":scope > summary").click();
+  await expect(texts).toHaveText(["Zone 1 Forward direction timer set to 0.15s", "Zone 1 Forward direction delayed for backup scheme"]);
+  await expect(note.locator(".ww-rr-source-note").nth(1)).toContainText(/Source: Page \d+ · line \d+/);
+  await expect(note.locator(".ww-rr-source-notes-disclaimer")).toHaveText("Not used as configured settings.");
+});
+
+test("REL670: document notes never change readiness or what Apply fills in", async ({ page }) => {
+  const run = async (pdf, expandNotes) => {
+    await openReview(page, pdf, 4);
+    if (expandNotes) await notes(page, "Z1").locator(":scope > summary").click();
+    await expect(readiness(page)).toHaveAttribute("data-readiness", "not_ready");
+    const before = await readiness(page).textContent();
+    for (const n of ["1", "2", "3", "4"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
+    await page.locator("#wwRelayReviewConfirmAll").click();
+    await expect(readiness(page)).toHaveAttribute("data-readiness", "ready");
+    const after = await readiness(page).textContent();
+    await applyBtn(page).click();
+    await expect(page.locator("#wwRelayReviewApplyStatus")).toHaveText("Relay settings applied to Distance Protection analysis.");
+    return { before, after, z1: await input(page, 1, "Delay").inputValue(), z4: await input(page, 4, "Delay").inputValue() };
+  };
+  const withNotes = await run(rel670Pdf(), true);
+  const withoutNotes = await run(rel670Pdf({ notes: [] }), false);
+  expect(withNotes).toEqual(withoutNotes);
+  expect(withNotes.z1).toBe("0.15"); // the configured tPP, not the note
+});
+
 test("7SL87: blank timer cells are Missing (not the Infinity range), basis from Edit mode, tilt and inclined boundary preserved", async ({ page }) => {
   await openReview(page, sl87Pdf(), 2);
   await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SL87");
@@ -96,7 +173,7 @@ test("7SL87: blank timer cells are Missing (not the Infinity range), basis from 
   await expect(timer).not.toContainText("Infinity s");
   await timer.getByRole("button", { name: /Source/ }).first().click();
   await expect(timer).toContainText("blank");
-  await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 timer requirement: 0.15 s");
+  await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 Forward direction timer set to 0.15s");
   await expect(row(page, "zone.Z1.x_reach")).toContainText("4.7 Ω");
   await expect(row(page, "zone.Z1.rr.pp")).toContainText("3.1 Ω");
   await expect(row(page, "zone.Z1.tilt")).toContainText("Unsupported");

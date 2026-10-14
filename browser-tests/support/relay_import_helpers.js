@@ -189,8 +189,10 @@ function rowsPdf(rows, X = [40, 230, 340], perPage = 58) {
 }
 
 // A synthetic Hitachi Energy REL670-shaped sheet: the same Relion 670 ZMQPDIS naming as RED670, but bare channel labels
-// (IL1..UL3) and no ChannelType rows; Zone 4 is an enabled reverse zone. Invented numbers.
-function rel670Pdf() {
+// (IL1..UL3) and no ChannelType rows; Zone 4 is an enabled reverse zone. Invented numbers. `notes` replaces the
+// trailing scheme-requirement lines (document notes, never settings).
+const REL670_NOTES = [["Zone 1 Forward direction timer set to 0.15s"], ["Zone 4 Reverse direction timer set to 3s"]];
+function rel670Pdf({ notes = REL670_NOTES } = {}) {
   const rows = [
     ["LZOP: 132kV AAAA - BBBB No 1", "Scheme: REL670_V1.2_21"], ["Utility ID: 1", "Active Group: SET-TEST-R1"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
     ["HW Configuration/TRM_61_6U_3I"],
@@ -204,7 +206,7 @@ function rel670Pdf() {
   rows.push(...red670Zone(3, { x1: "20", rfpp: "18", rfpe: "28", t: "3", ubase: "132", ibase: "900" }));
   rows.push(...red670Zone(4, { direction: "Reverse", x1: "2", rfpp: "3", rfpe: "5", t: "3", ubase: "132", ibase: "900" }));
   rows.push(["IMP_PROT/DirectionalImpedance/ZDRDIR:1"], ["ZD01-:ArgNegRes", "115", "90-175"], ["ZD01-:ArgDir", "15", "5-45"]);
-  rows.push(["Zone 1 Forward direction timer set to 0.15s"], ["Zone 4 Reverse direction timer set to 3s"]);
+  rows.push(...notes);
   return rowsPdf(rows);
 }
 

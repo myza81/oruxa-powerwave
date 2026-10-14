@@ -132,12 +132,17 @@ test("the loop-value RFPP is shown halved with the OEM value and transformation 
 
 test("the scheme-requirement lines are document notes beside the zone, not settings", async ({ page }) => {
   await openReview(page);
-  const note = panel(page).locator('details[data-group="zone-Z1"] [data-source-notes] .ww-rr-source-note');
+  const notes = panel(page).locator('details[data-group="zone-Z1"] details[data-source-notes]');
+  const note = notes.locator(".ww-rr-source-note");
   await expect(note).toHaveCount(1);
-  await expect(note).toContainText("Document note / proposed requirement");
-  await expect(note).toContainText("Zone 1 timer requirement: 0.15 s");
-  const z4 = panel(page).locator('details[data-group="zone-Z4"] [data-source-notes]');
-  await expect(z4).toContainText("Inactive (out of service)");
+  await expect(notes.locator(".ww-rr-source-notes-label")).toHaveText("Document note");
+  await expect(note).toBeHidden(); // collapsed by default
+  await notes.locator(":scope > summary").click();
+  await expect(note).toContainText("Forward direction timer set to 0.15s");
+  await expect(note).toContainText(/Source: Page \d+ · line \d+/);
+  await expect(notes).toContainText("Not used as the configured setting.");
+  const z4 = panel(page).locator('details[data-group="zone-Z4"] details[data-source-notes]');
+  await expect(z4).toContainText("Inactive (Having duplicated BB Protection)");
 });
 
 test("Apply Settings fills the dynamic cards and draws only the enabled zones on the R-X plane", async ({ page }) => {

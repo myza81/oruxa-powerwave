@@ -610,7 +610,9 @@ class TestExplicitRxGeometryInTheFrontend:
     def test_the_review_shows_document_notes_as_notes(self):
         source = _source()
         fn = _function_body(source, "function wwRrSourceNotes", "function wwRrRawList")
-        assert "not a current setting, not applied" in fn
+        # one collapsed disclosure (a native <details> never opened by code), with the non-authoritative statement
+        assert 'wwRrEl("details", "ww-rr-source-notes")' in fn and ".open" not in fn
+        assert "Not used as the configured setting." in fn
         assert "wwRrSourceNotes(group.source_notes)" in source
 
     def test_no_relay_family_branch_exists_in_the_geometry_code(self):

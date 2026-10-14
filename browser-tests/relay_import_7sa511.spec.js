@@ -110,17 +110,23 @@ test("a 7SA511 sheet is identified and opens the generic review with every zone"
 test("the sheet's page notes are shown as document notes beside the zone, not as settings", async ({ page }) => {
   await openReview(page);
   const z1 = panel(page).locator('details[data-group="zone-Z1"]');
-  const note = z1.locator("[data-source-notes] .ww-rr-source-note");
+  const notes = z1.locator("details[data-source-notes]");
+  const note = notes.locator(".ww-rr-source-note");
   await expect(note).toHaveCount(1);
-  await expect(note).toContainText("Document note / proposed requirement");
-  await expect(note).toContainText("not a current setting, not applied");
-  await expect(note).toContainText("Zone 1 timer requirement: 0.15 s");
-  await expect(note).toContainText("Delayed Zone 1");
+  // a collapsed, secondary disclosure: the note's words are hidden until the user asks for them
+  await expect(notes.locator(".ww-rr-source-notes-label")).toHaveText("Document note");
+  await expect(note).toBeHidden();
+  await notes.locator(":scope > summary").click();
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("Forward direction timer set to 0.15s (Delayed Zone 1)");
+  await expect(note).toContainText(/Source: Page \d+ · line \d+/);
+  await expect(notes).toContainText("Not used as the configured setting.");
   // the timer the note talks about is still Missing -- the note filled nothing in
   await expect(row(page, "zone.Z1.timer.pp")).toContainText("Missing");
   await expect(row(page, "zone.Z1.timer.pp")).not.toContainText("0.15");
-  const z1b = panel(page).locator('details[data-group="zone-Z1B"] [data-source-notes]');
-  await expect(z1b).toContainText("Inactive (out of service)");
+  const z1b = panel(page).locator('details[data-group="zone-Z1B"] details[data-source-notes]');
+  await expect(z1b).toContainText("Zone 1B Inactive timer set to oos (Infinity)");
+  await expect(row(page, "zone.Z1B.status")).toContainText("Missing"); // the "inactive" note is not the zone's state
 });
 
 test("the zone state of the 7SA511 is never assumed: the user states it, then it is Ready to apply", async ({ page }) => {
