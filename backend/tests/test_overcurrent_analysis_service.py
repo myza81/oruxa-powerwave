@@ -30,6 +30,7 @@ from app.domain.overcurrent import IEC_STANDARD_INVERSE, evaluate_idmt_operating
 from app.services.overcurrent_analysis_service import (
     check_overcurrent_readiness,
     compute_overcurrent_analysis,
+    compute_overcurrent_equipment_loading_analysis,
     compute_overcurrent_manual_analysis,
 )
 from app.services.workspace_registry import WorkspaceRegistry
@@ -511,3 +512,92 @@ class TestManualOvercurrentAnalysis:
                     ct_primary=None, ct_secondary=None, pickup_current_secondary=pickup,
                 )
                 assert result.status == "computed"
+
+
+class TestEquipmentLoadingOvercurrentAnalysis:
+    """Manual Input's Equipment Loading input method -- an input
+    conversion only. The equivalent primary current must be evaluated by
+    the UNCHANGED manual pipeline exactly as if it had been typed
+    directly as a primary current."""
+
+    def _loading(self, **overrides):
+        kwargs = dict(
+            characteristic_id="iec_standard_inverse", tms=0.10, pickup_current_secondary=1.0,
+            equipment_rating_mva=141.0, loading_percent=150.0, system_voltage_kv=132.0,
+            ct_primary=800.0, ct_secondary=1.0,
+        )
+        kwargs.update(overrides)
+        return compute_overcurrent_equipment_loading_analysis(**kwargs)
+
+    def test_reference_case_141_mva_150_percent_132_kv_ct_800_to_1(self):
+        result = self._loading()
+        assert result.analysis.status == "computed"
+        assert result.loading.actual_loading_mva == pytest.approx(211.5, rel=1e-12)
+        assert result.loading.primary_current_a == pytest.approx(925.07, abs=0.01)
+        assert result.analysis.relay_secondary_current == pytest.approx(1.156, abs=0.0005)
+        assert result.analysis.multiple_of_pickup == pytest.approx(result.analysis.relay_secondary_current, rel=1e-12)
+        expected_time = evaluate_idmt_operating_time(
+            IEC_STANDARD_INVERSE.constants, 0.10, result.analysis.multiple_of_pickup,
+        )
+        assert result.analysis.expected_operating_time_seconds == pytest.approx(expected_time, rel=1e-12)
+
+    def test_identical_to_the_equivalent_direct_primary_current(self):
+        loading = self._loading()
+        direct = compute_overcurrent_manual_analysis(
+            characteristic_id="iec_standard_inverse", tms=0.10, pickup_current_secondary=1.0,
+            input_current=loading.loading.primary_current_a, input_current_unit="A", input_basis="primary",
+            ct_primary=800.0, ct_secondary=1.0,
+        )
+        for name in ("relay_secondary_current", "multiple_of_pickup", "expected_operating_time_seconds"):
+            assert getattr(loading.analysis, name) == getattr(direct, name)
+        assert loading.analysis.input_basis == "primary"
+        assert loading.analysis.input_current_unit == "A"
+        assert loading.analysis.input_current == loading.loading.primary_current_a
+
+    def test_ct_ratio_is_always_applied(self):
+        at_800 = self._loading(ct_primary=800.0, ct_secondary=1.0).analysis.relay_secondary_current
+        at_400 = self._loading(ct_primary=400.0, ct_secondary=1.0).analysis.relay_secondary_current
+        at_800_5 = self._loading(ct_primary=800.0, ct_secondary=5.0).analysis.relay_secondary_current
+        assert at_400 == pytest.approx(2.0 * at_800, rel=1e-12)
+        assert at_800_5 == pytest.approx(5.0 * at_800, rel=1e-12)
+
+    def test_loading_below_pickup_reports_no_operating_time(self):
+        result = self._loading(loading_percent=50.0)
+        assert result.analysis.status == "computed"
+        assert result.analysis.multiple_of_pickup < 1.0
+        assert result.analysis.expected_operating_time_seconds is None
+
+    def test_loading_well_above_100_percent_is_supported(self):
+        result = self._loading(loading_percent=400.0)
+        assert result.analysis.status == "computed"
+        assert result.loading.actual_loading_mva == pytest.approx(564.0)
+        assert result.analysis.expected_operating_time_seconds is not None
+
+    @pytest.mark.parametrize(
+        ("field", "reason_code"),
+        [
+            ("equipment_rating_mva", "invalid_equipment_rating"),
+            ("loading_percent", "invalid_loading_percent"),
+            ("system_voltage_kv", "invalid_system_voltage"),
+        ],
+    )
+    @pytest.mark.parametrize("bad_value", [0.0, -10.0, float("nan"), float("inf")])
+    def test_invalid_loading_inputs_short_circuit(self, field, reason_code, bad_value):
+        result = self._loading(**{field: bad_value})
+        assert result.analysis.status == STATUS_NEEDS_CONFIGURATION
+        assert result.analysis.reason_code == reason_code
+        assert result.loading is None
+        assert result.analysis.relay_secondary_current is None
+        assert result.analysis.expected_operating_time_seconds is None
+
+    def test_missing_ct_still_reports_the_conversion(self):
+        result = self._loading(ct_primary=None, ct_secondary=None)
+        assert result.analysis.status == STATUS_NEEDS_CONFIGURATION
+        assert result.analysis.reason_code == "invalid_ct_values"
+        assert result.loading is not None
+        assert result.loading.primary_current_a == pytest.approx(925.07, abs=0.01)
+
+    def test_relay_setting_failures_are_the_manual_pipelines_own(self):
+        assert self._loading(tms=5.0).analysis.reason_code == "invalid_tms"
+        assert self._loading(pickup_current_secondary=0.0).analysis.reason_code == "invalid_pickup"
+        assert self._loading(characteristic_id="nope").analysis.reason_code == "unknown_characteristic"

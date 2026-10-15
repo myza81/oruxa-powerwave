@@ -4,8 +4,34 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
-Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+Last updated: **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Waveform toolbar refinement: Synchronize Sources removed, t0 migrated))))
+
+## Overcurrent Equipment Loading input method (2026-10-15, `feat/oc-equipment-loading`)
+
+**What was built.** An owner-requested feature, built in its own worktree (`../oruxa-powerwave-oc-loading`, branched from `main` at `b2d796a`) while Distance Protection work continues on `feature/remaining-relay-imports` in the main checkout. Overcurrent's Manual Input now has a **Direct Current | Equipment Loading** method toggle.
+
+- Equipment Loading takes the MVA rating, loading % and a line-to-line kV.
+- It is converted on the backend: `app/domain/equipment_loading.py`, service `compute_overcurrent_equipment_loading_analysis()`, endpoint `GET .../overcurrent-manual-loading`.
+- The resulting primary current goes through the unchanged `compute_overcurrent_manual_analysis()`, exactly like a Direct Current primary entry: shared CT ratio, pickup, TMS and IEC curve.
+- The reference case (141 MVA, 150 %, 132 kV, CT 800/1) gives 211.5 MVA, 925.1 A and 1.156 A, and is tested at every layer.
+- No new DEC was recorded. The implementation choices are described in OVERCURRENT_ANALYSIS.md ("Equipment Loading input method"), with the defaults marked `[PROPOSAL]`.
+
+**Tests.**
+
+- Backend full suite: 8,925 passed, 185 skipped, 0 failed. This includes 52 new tests.
+- `overcurrent_analysis.spec.js`: 70 scenarios, 11 of them new. All new ones pass.
+- "Minor X and Minor Y are OFF by default" failed once in a full-spec run and 1 of 3 in a group repeat. It passed 6/6 in isolation on both this branch and the `main` baseline. It is a Recording-mode test that reads the gridline count once with no retry, so it is classified as pre-existing timing sensitivity and left unchanged.
+- Ports 8000/8101 were held by another session, so the browser runs used isolated ports: backend :8200 and a frontend copy on :8102.
+
+**Open.**
+
+- Owner UAT.
+- The three `[OPEN]` items in OVERCURRENT_ANALYSIS.md, all pre-existing Direct Current behaviour that was left unchanged per governance:
+  1. live-values precision;
+  2. the Manual status row is hidden;
+  3. a stale-response race on an invalid Direct Current value.
+- Not merged, not deployed.
 
 ## Workspace-wide channel presentation (2026-10-13, `feature/workspace-channel-presentation`, DEC-070 Amendment 1)
 

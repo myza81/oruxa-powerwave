@@ -309,3 +309,78 @@ class TestManualAnalysisEndpoint:
         assert "should trip" not in text
         assert "relay operated" not in text
         assert "failed to trip" not in text
+
+
+class TestManualLoadingEndpoint:
+    """Manual Input's Equipment Loading input method
+    (`GET .../overcurrent-manual-loading`) -- workspace-scoped, no upload
+    or Engineering Context needed."""
+
+    def _loading(self, client, workspace_id="ws-manual-loading-1", **params):
+        defaults = dict(
+            characteristic_id="iec_standard_inverse", tms=0.10, pickup_current_secondary=1.0,
+            equipment_rating_mva=141.0, loading_percent=150.0, system_voltage_kv=132.0,
+            ct_primary=800.0, ct_secondary=1.0,
+        )
+        defaults.update(params)
+        query = {k: v for k, v in defaults.items() if v is not None}
+        return client.get(f"/api/v1/workspaces/{workspace_id}/overcurrent-manual-loading", params=query)
+
+    def test_reference_case_via_http(self, client):
+        resp = self._loading(client)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "computed"
+        loading = body["equipment_loading"]
+        assert loading["equipment_rating_mva"] == pytest.approx(141.0)
+        assert loading["loading_percent"] == pytest.approx(150.0)
+        assert loading["system_voltage_kv"] == pytest.approx(132.0)
+        assert loading["actual_loading_mva"] == pytest.approx(211.5)
+        assert loading["primary_current_a"] == pytest.approx(925.07, abs=0.01)
+        assert body["relay_secondary_current"] == pytest.approx(1.156, abs=0.0005)
+        assert body["input_basis"] == "primary"
+        assert body["input_current_unit"] == "A"
+        assert body["expected_operating_time_seconds"] is not None
+
+    def test_matches_the_direct_manual_endpoint_for_the_same_primary_current(self, client):
+        loading_body = self._loading(client).json()
+        direct = client.get(
+            "/api/v1/workspaces/ws-manual-loading-1/overcurrent-manual",
+            params=dict(
+                characteristic_id="iec_standard_inverse", tms=0.10, pickup_current_secondary=1.0,
+                input_current=loading_body["equipment_loading"]["primary_current_a"], input_current_unit="A",
+                recording_basis="primary", ct_primary=800.0, ct_secondary=1.0,
+            ),
+        ).json()
+        for name in ("relay_secondary_current", "multiple_of_pickup", "expected_operating_time_seconds"):
+            assert loading_body[name] == pytest.approx(direct[name], rel=1e-12)
+
+    def test_no_recording_only_fields_in_response(self, client):
+        body = self._loading(client).json()
+        for absent_field in ("engineering_context_id", "phase", "analysis_time", "channel_ref", "above_pickup_duration_seconds", "threshold_exceeded"):
+            assert absent_field not in body
+
+    def test_invalid_loading_is_needs_configuration_not_an_error(self, client):
+        resp = self._loading(client, loading_percent=0.0)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "needs_configuration"
+        assert body["reason_code"] == "invalid_loading_percent"
+        assert body["equipment_loading"] is None
+
+    def test_negative_rating_and_voltage(self, client):
+        assert self._loading(client, equipment_rating_mva=-141.0).json()["reason_code"] == "invalid_equipment_rating"
+        assert self._loading(client, system_voltage_kv=-132.0).json()["reason_code"] == "invalid_system_voltage"
+
+    def test_missing_ct_reports_conversion_and_needs_configuration(self, client):
+        body = self._loading(client, ct_primary=None, ct_secondary=None).json()
+        assert body["status"] == "needs_configuration"
+        assert body["reason_code"] == "invalid_ct_values"
+        assert body["equipment_loading"]["primary_current_a"] == pytest.approx(925.07, abs=0.01)
+
+    def test_missing_required_loading_param_is_422(self, client):
+        resp = client.get(
+            "/api/v1/workspaces/ws-manual-loading-1/overcurrent-manual-loading",
+            params=dict(characteristic_id="iec_standard_inverse", tms=0.1, pickup_current_secondary=1.0),
+        )
+        assert resp.status_code == 422

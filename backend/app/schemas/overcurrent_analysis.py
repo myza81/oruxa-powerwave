@@ -95,3 +95,25 @@ class OvercurrentManualAnalysisResultOut(BaseModel):
     expected_operating_time_seconds: float | None
     reason_code: str | None
     message: str
+
+
+class EquipmentLoadingConversionOut(BaseModel):
+    """Manual Input's Equipment Loading conversion (balanced three-phase):
+    `actual_loading_mva = equipment_rating_mva * loading_percent / 100`,
+    `primary_current_a = actual_loading_mva * 1000 / (sqrt(3) *
+    system_voltage_kv)`. See `app.domain.equipment_loading`."""
+
+    equipment_rating_mva: float
+    loading_percent: float
+    system_voltage_kv: float
+    actual_loading_mva: float
+    primary_current_a: float
+
+
+class OvercurrentManualLoadingResultOut(OvercurrentManualAnalysisResultOut):
+    """The ordinary manual result (the equivalent primary current
+    evaluated as `input_current`, unit `A`, basis `primary`) plus the
+    conversion that produced it. `equipment_loading` is `None` only when
+    the loading inputs themselves were invalid."""
+
+    equipment_loading: EquipmentLoadingConversionOut | None
