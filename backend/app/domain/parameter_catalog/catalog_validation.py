@@ -71,7 +71,7 @@ _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "app
 _NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
 _NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
 _NOTE_SUBJECTS = ("timer", "status")
-_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason"}
+_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason", "unverified_when"}
 _APPLICABILITY_KEYS = {"manufacturer", "family", "model", "versions"}
 _IDENT_KEYS = {"model_patterns", "family_markers", "parameter_signatures", "scheme_pattern", "scheme_model_pattern", "version_pattern"}
 _ZONES_KEYS = {"discover", "static"}
@@ -380,6 +380,10 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
             ok = False
         names = item.get("names")
         pattern = item.get("name_pattern")
+        material = item.get("unverified_when", [])
+        if not isinstance(material, list) or not all(isinstance(x, str) and x.strip() for x in material):
+            v.add(f"{path}.unverified_when", IssueCode.MALFORMED, "unverified_when must be a list of raw setting values")
+            ok, material = False, []
         if (names is None) == (pattern is None):
             v.add(path, IssueCode.INVALID_SELECTOR, "give exactly one of names or name_pattern")
             continue
@@ -396,7 +400,7 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
             _check_template(v, f"{path}.name_pattern", pattern, _ZONE_VARS, zones)
             ok = v.regex(_TEMPLATE.sub("x", pattern), f"{path}.name_pattern") and ok
         if ok and targets:
-            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern))
+            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern, tuple(material)))
     return tuple(out)
 
 

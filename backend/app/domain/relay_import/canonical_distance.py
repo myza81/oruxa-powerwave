@@ -148,6 +148,10 @@ class UnresolvedSetting:
     #: (recorders, communications, labels...). It is still retained so no
     #: source setting is silently discarded, but it is not an open question.
     out_of_scope: bool = False
+    #: DEC-198: the interpretation declares that, with this value, the setting may materially change the
+    #: zone's operation while its meaning is not verified. An enabled zone carrying one is not
+    #: applicable (the engine adapter refuses it); no meaning is ever assigned to the value.
+    material: bool = False
 
 
 # ---------------------------------------------------------------------------

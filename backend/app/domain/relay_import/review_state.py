@@ -31,6 +31,7 @@ from enum import StrEnum
 
 from app.domain.relay_import.canonical_distance import (
     CanonicalDistanceProtectionModel,
+    DistanceZone,
     ZoneDirection,
     ZoneStatus,
     item_label,
@@ -171,6 +172,33 @@ def suggestion_spec(path: str) -> SuggestionSpec | None:
     """The suggestion Oruxa may offer for the value at ``path`` (if it is missing),
     or ``None`` -- no other item has one."""
     return next((spec for pattern, spec in _SUGGESTIONS if pattern.match(path)), None)
+
+
+def directional_boundary_stated(zone: DistanceZone | None) -> bool:
+    """The zone states its directional-element boundary (a resolved directional boundary angle), i.e.
+    the relay behaviour a visualization approximation of its left boundary would stand for is known."""
+    if zone is None:
+        return False
+    return any(
+        e.name.startswith("directional_arg") and e.value.is_resolved for e in zone.characteristic.parameters
+    )
+
+
+def offered_suggestion(path: str, sourced: Sourced, zone: DistanceZone | None) -> tuple[SuggestionSpec, str] | None:
+    """The suggestion (and its rationale) offered for the unresolved value at ``path``, or ``None``.
+
+    A value missing from the source takes it as before (DEC-185). DEC-198: for a value the source states
+    but Oruxa cannot represent (Unsupported), the visualization approximation is offered only where the
+    zone states the relay behaviour it approximates (its directional boundary angles) -- never as a
+    stand-in for a boundary whose behaviour is not established."""
+    spec = suggestion_spec(path)
+    if spec is None or sourced.is_resolved:
+        return None
+    cause = sourced.provenance.cause
+    if cause is UnresolvedCause.UNSUPPORTED and not directional_boundary_stated(zone):
+        return None
+    rationale = suggestion_text(spec, cause)
+    return (spec, rationale) if rationale else None
 
 
 def _manual_value(path: str, spec: ResolutionSpec, raw: object) -> tuple[object, str]:
@@ -359,7 +387,7 @@ def apply_review(
         zone = _ZONE_ID.match(path)
         if zone and zone["zone"] in inactive:
             raise ReviewDecisionError("This value is not required while its zone is disabled.")
-        if suggestion_text(spec, sourced.provenance.cause) is None:
+        if offered_suggestion(path, sourced, model.zone(zone["zone"]) if zone else None) is None:
             raise ReviewDecisionError(
                 "A suggestion is offered only for a value missing from the source, or one that is not representable."
             )
@@ -399,16 +427,26 @@ class BlockingIssue:
     message: str
     zone_ids: tuple[str, ...] = ()
     paths: tuple[str, ...] = ()
+    #: DEC-198: ``unverified`` when the issue is a meaning that is not verified (nothing in the review can
+    #: clear it, and it is not an engine limit); ``""`` otherwise.
+    kind: str = ""
+
+
+#: Adapter reasons that are a semantic unknown rather than an engine limit (DEC-198).
+_UNVERIFIED_CODES = frozenset({UnsupportedCode.UNVERIFIED_SETTING})
 
 
 def blocking_issues(adaptation: EngineAdaptation) -> tuple[BlockingIssue, ...]:
-    merged: dict[str, tuple[list[str], list[str]]] = {}
+    merged: dict[str, tuple[list[str], list[str], str]] = {}
     for reason in adaptation.reasons:
-        zones, paths = merged.setdefault(reason.message, ([], []))
+        kind = "unverified" if reason.code in _UNVERIFIED_CODES else ""
+        zones, paths, _ = merged.setdefault(reason.message, ([], [], kind))
         if reason.zone_id and reason.zone_id not in zones:
             zones.append(reason.zone_id)
         paths.extend(p for p in reason.paths if p not in paths)
-    return tuple(BlockingIssue(message, tuple(zones), tuple(paths)) for message, (zones, paths) in merged.items())
+    return tuple(
+        BlockingIssue(message, tuple(zones), tuple(paths), kind) for message, (zones, paths, kind) in merged.items()
+    )
 
 
 def blocking_paths(adaptation: EngineAdaptation) -> frozenset[str]:

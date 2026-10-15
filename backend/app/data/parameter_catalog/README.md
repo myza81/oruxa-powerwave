@@ -92,6 +92,13 @@ A mapping may declare `"verification": "verified"` -- a **verified documented de
 refused (`unverified_reference`). A `documented_derivation` value that is `mapped` is shown as **Documented relay
 behaviour**, not as Mapped.
 
+**Gated constants.** A `constant` mapping honours its `requires` gates like any other mapping (e.g. a documented zone
+behaviour applies only while the zone's own switch is On); the gate's setting is cited as evidence.
+
+**Material preserved settings** (DEC-198). A `zone_preserved` entry may list `unverified_when: [raw values]`: a preserved
+setting with such a value may change the zone's operation while its meaning is not verified. It is shown Unverified
+("Not yet supported"), keeps its exact value (never interpreted) and blocks an **enabled** zone.
+
 **Not exposed** (DEC-198). `"not_exposed": {"note": ...}` on a mapping (no source, transform, gate, evidence, authority or
 gap) states that the relay has **no configurable setting** for this canonical parameter -- inherent / fixed behaviour.
 It is *not* a missing source value (shown "Not a relay setting", never counted as Missing) and it **never supplies a
@@ -132,7 +139,7 @@ to the extracted settings), plus canonical values by outcome. Review rows are no
 | `schneider/p44x.json` | MiCOM P441 | catalog-first (+ hand-written extension) |
 | `hitachi_energy/red670.json` | RED670 | catalog-first (+ hand-written extension) |
 | `hitachi_energy/rel670.json` | REL670 | catalog-only |
-| `hitachi_energy/rel511.json` | REL511 | catalog-only (verified subset) |
+| `hitachi_energy/rel511.json` | REL511 | catalog-only, 1.1.0: documented characteristic / loops (ABB 1MDB06309-YN), unverified basis / RF / ZnBlock |
 | `siemens/siprotec5_7sl87.json` | 7SL87 | catalog-only (verified subset) |
 | `siemens/siprotec4_7sa613.json` | 7SA613 | catalog-only (verified subset) |
 | `toshiba/grz100.json` | GRZ100 | catalog-only (verified subset) |

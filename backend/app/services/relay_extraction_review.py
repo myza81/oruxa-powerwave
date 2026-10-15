@@ -74,14 +74,18 @@ from app.domain.relay_import.review_state import (
     blocking_paths,
     compute_readiness,
     engine_limits,
+    offered_suggestion,
     resolution_spec,
-    suggestion_spec,
-    suggestion_text,
 )
 from app.domain.parameter_catalog.loader import canonical_registry
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 NOT_STATED = "No value is stated in the document."
+#: DEC-198: why a catalog-declared material setting blocks an enabled zone (its value is never interpreted).
+MATERIAL_UNVERIFIED = (
+    "With this value the setting may change the zone's operation, and what it does is not yet verified, "
+    "so the zone cannot be applied."
+)
 NOT_REQUIRED_REASON = "Not required while zone is disabled"
 _ZONE_PATH = re.compile(r"^zones\[(?P<zone>[^\]]+)\]\.(?P<rest>.+)$")
 
@@ -282,6 +286,8 @@ class ReviewBlockingIssue:
     message: str
     zone_ids: tuple[str, ...] = ()
     item_ids: tuple[str, ...] = ()
+    #: ``unverified`` when the issue is a meaning that is not yet verified (DEC-198); ``""`` otherwise.
+    kind: str = ""
 
 
 @dataclass(frozen=True)
@@ -505,17 +511,15 @@ def _resolution_origin(sourced: Sourced) -> str | None:
     return None
 
 
-def _suggestion(path: str | None, sourced: Sourced, category: str) -> ReviewSuggestion | None:
+def _suggestion(path: str | None, sourced: Sourced, category: str, zone: DistanceZone | None) -> ReviewSuggestion | None:
     """Offered only for a value that is still Missing, or that the source states but Oruxa cannot
-    represent (an *Unsupported* value, worded as a visualization approximation), and only where
-    Oruxa has a specific neutral suggestion. Never for a conflict, an unreadable cell or an engine limit."""
+    represent (an *Unsupported* value, worded as a visualization approximation, and only where the zone
+    states the behaviour it approximates -- DEC-198), and only where Oruxa has a specific neutral
+    suggestion. Never for a conflict, an unreadable cell, an unverified meaning or an engine limit."""
     if path is None or sourced.is_resolved or category not in ("missing", "unsupported"):
         return None
-    spec = suggestion_spec(path)
-    if spec is None:
-        return None
-    rationale = suggestion_text(spec, sourced.provenance.cause)
-    return ReviewSuggestion(spec.value_text, rationale) if rationale else None
+    offered = offered_suggestion(path, sourced, zone)
+    return ReviewSuggestion(offered[0].value_text, offered[1]) if offered else None
 
 
 def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
@@ -547,6 +551,8 @@ class _Builder:
         #: The geometry mode of the zone being built (``explicit_rx`` / ``polar_reach``): it selects the
         #: registry's label variant (e.g. "Right Resistive Reach (+R)" for an explicit R/X zone).
         self.geometry: str | None = None
+        #: The zone being built (``None`` outside a zone group): decides whether an offer applies.
+        self.zone: DistanceZone | None = None
         self._blocking = blocking
         self._limits = limits or {}
         self._inactive = inactive_zones
@@ -626,7 +632,7 @@ class _Builder:
             left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
             user_value_text=record.user_value_text if record else None,
             resolution=_resolution(path, sourced, category),
-            suggestion=None if not_required else _suggestion(path, sourced, category),
+            suggestion=None if not_required else _suggestion(path, sourced, category, self.zone),
             not_required=not_required,
             not_required_reason=NOT_REQUIRED_REASON if not_required else None,
             resolution_origin=_resolution_origin(sourced),
@@ -678,23 +684,28 @@ class _Builder:
             for i, e in enumerate(extras)
         ]
 
-    def unresolved_setting(self, key: str, group_label: str, setting: UnresolvedSetting) -> ReviewItem:
+    def unresolved_setting(self, key: str, group_label: str, setting: UnresolvedSetting, *, active: bool = False) -> ReviewItem:
         raw = self._raw.get(setting.setting_id)
         sources = (self.source_from_setting(setting.setting_id),) if raw else ()
+        notes = (setting.reason,) if setting.reason else (NOT_STATED,)
+        if setting.material:
+            notes = (*notes, MATERIAL_UNVERIFIED)
         return ReviewItem(
             key=key,
             label=setting.name or setting.setting_id,
             full_label=f"{group_label} {setting.name or setting.setting_id}".strip(),
             value_text=None,
             status=MappingStatus.UNRESOLVED.value,
-            notes=(setting.reason,) if setting.reason else (NOT_STATED,),
+            notes=notes,
             raw_value=None if setting.raw_value is None else str(setting.raw_value),
             sources=sources,
             review_status="unresolved",
             # Retained raw because this profile version has no canonical meaning for it
             # (e.g. a per-loop tilt): Oruxa cannot represent or use it, and nothing the
-            # user does with it changes that.
-            category="unsupported",
+            # user does with it changes that. DEC-198: a catalog-declared material setting is an
+            # unverified meaning instead, and it blocks an enabled zone.
+            category="unverified" if setting.material else "unsupported",
+            blocking=setting.material and active,
         )
 
     def source_from_setting(self, setting_id: str) -> ReviewSource:
@@ -802,6 +813,7 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     zp = f"zones[{zone.zone_id}]"
     items: list[ReviewItem] = []
     b.geometry = zone.characteristic.geometry_mode.value
+    b.zone = zone
 
     state_text = None if not zone.status.is_resolved else _zone_state(zone)[0]
     items.append(b.item(f"{pre}.status", "Status", name, zone.status, text=state_text, path=f"{zp}.status"))
@@ -847,7 +859,9 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
             path=f"{zp}.resistive_reach.phase_earth",
         )
     )
-    quadrilateral = ctype.is_resolved and ctype.value == CharacteristicType.QUADRILATERAL
+    # Explicit R/X limits describe a quadrilateral even while its characteristic is not named, so the
+    # left limit the engine needs is listed too (DEC-198: one review shows every blocker).
+    quadrilateral = (ctype.is_resolved and ctype.value == CharacteristicType.QUADRILATERAL) or explicit
     if quadrilateral or _touched(rr.reverse):
         items.append(
             b.item(
@@ -875,9 +889,10 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     if _touched(zone.tilt_deg):
         items.append(b.item(f"{pre}.tilt", "Tilt Angle", name, zone.tilt_deg, unit="deg", path=f"{zp}.tilt_deg"))
     items += b.extras(f"{pre}.char", name, zone.characteristic.parameters, f"{zp}.characteristic.parameters")
+    active = zone_active(zone) is True
     for u in zone.unresolved_settings:
         if not u.out_of_scope:
-            items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u))
+            items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u, active=active))
 
     state_label, state_status, state_review = _zone_state(zone)
     note = None
@@ -958,6 +973,7 @@ def build_extraction_review(
     b = _Builder(document, blocking_paths(adaptation), engine_limits(adaptation), inactive)
     groups = [_relay_group(b, model), _transformer_group(b, model), _line_group(b, model)]
     groups += [_zone_group(b, z) for z in model.zones]
+    b.zone = None
     comp = _compensation_group(b, model)
     if comp:
         groups.append(comp)
@@ -1007,7 +1023,7 @@ def build_extraction_review(
         not_required_count=sum(1 for item in counted if item.not_required),
         readiness=ReviewReadiness(readiness.value, pending, blocking_unresolved),
         blocking_issues=tuple(
-            ReviewBlockingIssue(issue.message, issue.zone_ids, issue.paths) for issue in blocking_issues(adaptation)
+            ReviewBlockingIssue(issue.message, issue.zone_ids, issue.paths, issue.kind) for issue in blocking_issues(adaptation)
         ),
         interpretation="reviewable" if model.zones else "incomplete",
         engine=ReviewEngine(

@@ -181,6 +181,8 @@ class ReviewBlockingIssueOut(BaseModel):
     zone_ids: list[str] = []
     #: Canonical values that would address the issue (it can outlive them all).
     item_ids: list[str] = []
+    #: DEC-198: ``unverified`` -- a meaning that is not yet verified (not an engine limit); ``""`` otherwise.
+    kind: Literal["", "unverified"] = ""
 
 
 class ReviewReadinessOut(BaseModel):

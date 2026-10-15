@@ -610,6 +610,11 @@ class _Run:
         return out
 
     def _constant(self, m: Mapping, param: CanonicalParameter, variables: dict[str, Any]) -> Sourced | PlainValue:
+        # A gate holds for a constant as for a read value (e.g. a documented zone behaviour applies only
+        # while the zone's own switch is On); the gate's setting is then cited as evidence.
+        gate_reads, failure = self._check_gates(m, param, variables, {})
+        if failure is not None:
+            return failure
         value = self._coerce(param, m.steps[0].params["value"])
         note = m.unresolved_note or "the evidence for this value was not found in the document"
         zone_id = variables.get("zone", "")
@@ -625,7 +630,7 @@ class _Run:
             return unresolved(sources=self.refs(*evidence), notes=(note,), cause=UnresolvedCause.MISSING, **self._ids(m))
         if param.plain:
             return PlainValue(value)
-        cited = list(evidence)
+        cited = list(evidence) + [e for g in gate_reads for e in g.entries if e not in evidence]
         for cid in m.evidence_from:
             held = self.results.get((cid, zone_id)) or self.results.get((cid, ""))
             if held is not None and isinstance(held.result, Sourced) and held.result.is_resolved:
@@ -639,7 +644,7 @@ class _Run:
         note = _fill(m.gap.note, {**variables, "evidence": shown})
         unverified = m.gap.kind == "unverified"
         if unverified:
-            self.note(f"{param.label}: meaning not verified - the source states a value whose meaning is not established for this relay")
+            self.note(f"{param.label}: not yet verified for this relay - what it means, or how it converts, is not established")
         else:
             self.note(f"{param.label}: capability gap - the source states a value Oruxa cannot represent")
         return unresolved(
@@ -690,10 +695,14 @@ class _Run:
                     pattern = re.compile(_fill(rule.name_pattern or "", {k: re.escape(str(v)) for k, v in z.items()}))
                     hits = [s for s in self.doc.settings if s.name and pattern.search(s.name)]
                 kept = self.zone_kept.setdefault(z["zone"], {})
+                material = {norm_text(x) for x in rule.unverified_when}
                 for s in hits:
                     if s.setting_id in taken:
                         continue
-                    kept.setdefault(s.setting_id, UnresolvedSetting(s.setting_id, s.name, s.raw_value, s.unit, reason=rule.reason))
+                    kept.setdefault(s.setting_id, UnresolvedSetting(
+                        s.setting_id, s.name, s.raw_value, s.unit, reason=rule.reason,
+                        material=s.raw_value is not None and norm_text(_clean(s.raw_value)) in material,
+                    ))
                     self.preserved_ids.add(s.setting_id)
         self.consumed |= self.preserved_ids
 

@@ -292,6 +292,10 @@ class PreservedSettings:
     reason: str
     names: tuple[str, ...] = ()
     name_pattern: str | None = None
+    #: DEC-198: raw values (case-folded) with which the setting may materially change the zone's
+    #: operation although its meaning is not verified -- such a row is Unverified and blocks an
+    #: enabled zone. The value is never interpreted.
+    unverified_when: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

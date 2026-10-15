@@ -9,7 +9,7 @@ Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every oth
 is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-196/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
 **2026-10-13: the RED670 semantics are corrected (DEC-193) and a data-driven Parameter Catalog Foundation is added (DEC-194; last section).**
 **2026-10-14: every remaining sample relay family is interpreted by a catalog-only JSON parameter catalog (DEC-197, branch `feature/remaining-relay-imports`; section "Remaining relay families", with the consolidated owner-UAT matrix).**
-**2026-10-15: Relay Import Assistance for Non-Expert Users -- generic foundation (DEC-198; last section): catalog references and verified documented derivations, "Documented relay behaviour", Unverified vs Unsupported, Not exposed, the approximation data model, `ready_approximate`, Apply `approximations[]`. No relay behaviour changed.**
+**2026-10-15: Relay Import Assistance for Non-Expert Users -- generic foundation (DEC-198; last section): catalog references and verified documented derivations, "Documented relay behaviour", Unverified vs Unsupported, Not exposed, the approximation data model, `ready_approximate`, Apply `approximations[]`. Then REL511 knowledge integration (DEC-198 Amendment 1, catalog 1.1.0): REL511 artificial characteristic/loop blockers resolved through documented relay behaviour; REL511 still blocked by genuine unresolved engineering semantics.**
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -1205,7 +1205,7 @@ PDF -> generic extractor -> identifier (unchanged descriptors) -> active OEM cat
 | Relay | Catalog | Status |
 |---|---|---|
 | Hitachi Energy REL670 | `hitachi_energy/rel670.json` | **READY FOR OWNER UAT** (catalog-only proof) |
-| Hitachi Energy REL511 | `hitachi_energy/rel511.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Hitachi Energy REL511 | `hitachi_energy/rel511.json` (1.1.0, DEC-198 Am. 1) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRZ100 | `toshiba/grz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
@@ -1439,24 +1439,34 @@ basis / characteristic / R-RE loops; RFPP / 2 for RED670 / REL670), zone status 
 or a fixed direction (GRZ100, GRL200, RCS-941, RELZ100), and the per-zone 0.00 Ω acceptance for the ZDRDIR directional
 boundary (a candidate approximation rule). The 0.00 Ω suggestion for a *missing* left reach (P441) stays a user value.
 
-### REL511 -- recorded verification evidence (not encoded)
+### REL511 -- knowledge integration (DEC-198 Amendment 1, catalog 1.1.0)
 
-| Item | Status | Next step |
+**Reference (owner-supplied, verified):** *Line distance protection terminal REL 511* -- ABB **1MDB06309-YN**, issued April
+1999, changed since June 1998. Scope: the REL 511 / REx 5xx family distance-protection function; applicability by matching
+function and parameter structure, **not** a confirmed firmware match (`REL511_V1.2_TNB` is not asserted to be firmware V1.2).
+Catalog reference ids: `abb-1mdb06309-yn-fig1` (Fig. 1, pp. 2-3) and `abb-1mdb06309-yn-p2` (p. 2).
+
+| Item | Now | Classification |
 |---|---|---|
-| Characteristic | **Accepted family evidence**: derivable from ABB / Hitachi Energy REx5xx documentation | record the verified reference, then a verified documented derivation (catalog 1.1.0) |
-| PP / PE loop behaviour (inherent, no per-loop tap) | **Accepted family evidence** | `not_exposed` + verified documented derivation (catalog 1.1.0) |
-| Inclined resistive boundary | **Understood conceptually**; the engine does not represent it exactly | an approximation rule with an established, classified effect -- only after RFZn is resolved |
-| Impedance basis (primary / secondary) | **Still unresolved** | stays blocking |
-| RFZn conversion (per-loop / per-phase) | **Still unresolved** | stays blocking (candidate `gap.kind: unverified`) |
-| Left / directional boundary | **Unsupported** | stays blocking |
+| Characteristic | Quadrilateral, `documented_derivation` (Fig. 1), enabled zones; selector `not_exposed` | Documented relay behaviour |
+| PP / PE loops | Enabled, `documented_derivation` (p. 2), enabled zones; selectors `not_exposed` | Documented relay behaviour |
+| Impedance basis | `gap.kind: unverified` | **Semantic unknown** -- blocking |
+| RFZn -> +R | `gap.kind: unverified`, raw value preserved and cited | **Semantic unknown** -- blocking |
+| RFNZn | `gap.kind: unverified`, raw value preserved (not plotted) | Semantic unknown -- not blocking |
+| ZnBlock = On, enabled zone | preserved, `unverified_when: ["on"]` | **Semantic unknown** -- blocking (owner decision; no meaning assigned) |
+| Left / directional boundary | `gap` (unsupported); no 0.00 Ω offer | **Engine geometry limitation** -- blocking |
+| Line-angle-adjusted resistive lines (Fig. 1) | interpretation note | Engine geometry limitation -- not approximated |
+| Firmware version | not asserted (scheme `V<n>` marker is not firmware) | Source-data gap -- not blocking |
 
-The documents behind the accepted evidence are not yet in the repository (no title / publication number / section). REL511
-stays PARTIALLY SUPPORTED / Not ready; its catalog (`hitachi-rel511-catalog@1.0.0`) is unchanged.
+Real sheet: blocking settings **9 -> 13** -- before, 8 of the 9 were artificial (characteristic 4, PP loops 4) and hid the
++R / −R gaps; after, every one is genuine: semantic unknowns 9 (basis 1, RFZn 4, ZnBlock 4), engine geometry 4 (left
+boundary), source-data gaps 0 blocking. 12 documented values; 5 assumptions (unchanged gating); `approximations[]` empty;
+**PARTIALLY SUPPORTED / NOT_READY**. Generic capabilities, wording and side effects (7SL87 6 -> 9, 7SA613 16 -> 21 blocking
+settings; P441 / RED670 / REL670 unchanged): DECISIONS.md, DEC-198 Amendment 1.
 
 ### Recommended next slices (not started)
 
-1. Supply the REL511 / Relion 670 references; encode the REL511 characteristic and loops as verified documented derivations;
-   reclassify REL511 RFZn / RELZ100 Rn gaps as `unverified` (catalog version bumps).
+1. ~~REL511 references + verified derivations~~ -- done (Amendment 1). Still open: Relion 670 references; RELZ100 Rn as `unverified`.
 2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
 3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.

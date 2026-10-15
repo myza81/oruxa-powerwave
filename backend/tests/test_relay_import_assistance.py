@@ -301,7 +301,7 @@ class TestUnverifiedVersusUnsupported:
         model = interpret(acme_with_right_reach_gap("unverified"), acme_document())
         rr = model.zone("Z1").resistive_reach.phase_phase
         assert not rr.is_resolved and rr.provenance.cause is UnresolvedCause.UNVERIFIED and rr.provenance.raw_value == "4"
-        assert any("meaning not verified" in n for n in model.interpretation_notes)
+        assert any("not yet verified for this relay" in n for n in model.interpretation_notes)
         review = review_of(model)
         item = items(review)["zones[Z1].resistive_reach.phase_phase"]
         assert item.category == "unverified" and item.blocking and item.resolution is None and item.suggestion is None
@@ -504,8 +504,11 @@ class TestShippedCatalogsUnchanged:
         store = default_store()
         assert not store.rejected and check_lock(store, load_lock()) == []
 
-    def test_no_shipped_catalog_uses_the_new_declarations(self):
+    def test_no_other_shipped_catalog_uses_the_new_declarations(self):
+        # REL511 1.1.0 is the first catalog to use them (its own tests: test_relay_rel511_documented_behaviour.py)
         for catalog in default_store().catalogs:
+            if catalog.catalog_id == "hitachi-rel511-catalog":
+                continue
             assert catalog.references == ()
             assert all(m.not_exposed is None and m.verification is None and not m.references for m in catalog.mappings)
             assert all(m.gap is None or m.gap.kind == "unsupported" for m in catalog.mappings)
@@ -522,3 +525,91 @@ class TestShippedCatalogsUnchanged:
                             pp_not_exposed(), right_reach_gap("unverified"), references=[VERIFIED_REF])
         catalog = parse_catalog(data, canonical_registry(), source="test")
         assert {m.id for m in catalog.mappings} == {"char.*", "pp.inherent", "r_right.gap"}
+
+
+# ---------------------------------------------------------------------------
+# 9. REL511 knowledge-integration mechanisms, generic (DEC-198)
+# ---------------------------------------------------------------------------
+
+
+def acme_without(*canonicals: str, extra: tuple[dict, ...] = (), preserved: list | None = None) -> dict:
+    data = acme_catalog()
+    data["mappings"] = [m for m in data["mappings"] if m["canonical"] not in canonicals] + list(extra)
+    if preserved is not None:
+        data["zone_preserved"] = preserved
+    return data
+
+
+def reasons(model) -> set[tuple[str, str | None]]:
+    return {(r.code.value, r.zone_id) for r in engine_adaptation(model).reasons}
+
+
+class TestCompleteBlockerPicture:
+    def test_a_missing_x_limit_no_longer_hides_the_missing_resistive_limits(self):
+        rows = [tuple(r) if len(r) == 3 else (r[0], r[1]) for r in ACME_ROWS[2:]]
+        document = doc(*[r for r in rows if r[0] not in ("Z1 X Reach", "Z1 R Right", "Z1 R Left")])
+        messages = {r.message for r in engine_adaptation(interpret(acme_catalog(), document)).reasons if r.zone_id == "Z1"}
+        assert {"The Reactive Reach (X) is unresolved.", "The Right Resistive Reach (+R) is unresolved.",
+                "The Left Resistive Reach (−R) is unresolved."} <= messages
+
+    def test_an_unnamed_characteristic_of_explicit_rx_limits_still_reports_their_gaps(self):
+        model = interpret(acme_without("distance.zone.characteristic", "distance.zone.r_left"), acme_document())
+        assert {("characteristic_unresolved", "Z1"), ("resistive_reach_unresolved", "Z1")} <= reasons(model)
+        review = review_of(model)
+        assert items(review)["zones[Z1].resistive_reach.reverse"].blocking              # the row exists to point at
+
+    def test_an_unverified_fault_resistance_is_worded_as_such(self):
+        model = interpret(acme_with_right_reach_gap("unverified"), acme_document())
+        msgs = {r.message for r in engine_adaptation(model).reasons}
+        assert ("A source fault-resistance setting is available, but its conversion to the plotted resistive "
+                "boundary has not yet been verified.") in msgs
+        assert not any("Only a phase-earth" in m for m in msgs)
+
+    def test_an_unverified_basis_is_worded_as_such(self):
+        gap = mapping("basis.gap", "ct_vt.impedance_basis", gap={"kind": "unverified", "note": "Not verified for this format."})
+        model = interpret(acme_without("ct_vt.impedance_basis", extra=(gap,)), acme_document())
+        assert any("has not yet been verified for this relay" in r.message for r in engine_adaptation(model).reasons)
+
+
+class TestGatedDocumentedConstant:
+    def gated(self) -> dict:
+        derived = mapping("pp.doc", "distance.zone.pp_enabled", zone="*", transform={"type": "constant", "value": True},
+                          evidence=[{"name": "{zone} X Reach"}], authority="documented_derivation",
+                          requires=[{"source": {"name": "{zone} Enable", "allowed_text": ["yes", "no"]}, "equals": ["yes"]}])
+        return acme_without_pp(pp_not_exposed(), derived)
+
+    def test_the_constant_applies_only_while_its_gate_holds_and_cites_the_gate(self):
+        model = interpret(self.gated(), acme_document())
+        pp = model.zone("Z1").phase_phase_enabled
+        assert pp.value is True and {s.parameter_name for s in pp.provenance.sources} == {"Z1 X Reach", "Z1 Enable"}
+
+    def test_a_closed_gate_leaves_the_not_exposed_declaration(self):
+        document = doc(*[(r[0], "No", *r[2:]) if r[0] == "Z2 Enable" else r for r in
+                         (tuple(x) if len(x) == 3 else (x[0], x[1]) for x in ACME_ROWS[2:])])
+        pp = interpret(self.gated(), document).zone("Z2").phase_phase_enabled
+        assert not pp.is_resolved and pp.provenance.cause is UnresolvedCause.NOT_EXPOSED
+
+
+class TestMaterialPreservedSetting:
+    def preserved(self, values=("on",)) -> list:
+        return [{"zone": ["Z1", "Z2"], "names": ["{zone} Lock"], "reason": "Effect not verified.", "unverified_when": list(values)}]
+
+    def test_a_material_value_blocks_an_enabled_zone_as_unverified(self):
+        document = doc(*[tuple(r) if len(r) == 3 else (r[0], r[1]) for r in ACME_ROWS[2:]], ("Z1 Lock", "On"), ("Z2 Lock", "Off"))
+        model = interpret(acme_without(preserved=self.preserved()), document)
+        lock1 = next(u for u in model.zone("Z1").unresolved_settings if u.name == "Z1 Lock")
+        lock2 = next(u for u in model.zone("Z2").unresolved_settings if u.name == "Z2 Lock")
+        assert (lock1.material, lock1.raw_value, lock2.material) == (True, "On", False)
+        assert ("unverified_setting", "Z1") in reasons(model) and ("unverified_setting", "Z2") not in reasons(model)
+        review = review_of(model, document)
+        rows = {i.label: i for g in review.groups for i in g.items if i.item_id is None}
+        assert (rows["Z1 Lock"].category, rows["Z1 Lock"].blocking) == ("unverified", True)
+        assert (rows["Z2 Lock"].category, rows["Z2 Lock"].blocking) == ("unsupported", False)
+        assert review.readiness.status == Readiness.NOT_READY.value
+        issue = next(b for b in review.blocking_issues if b.kind == "unverified")
+        assert issue.zone_ids == ("Z1",) and issue.item_ids == ()
+
+    def test_unverified_when_must_list_raw_values(self):
+        with pytest.raises(CatalogValidationError) as exc:
+            parse(catalog_json(zone_preserved=[{"zone": "*", "names": ["{zone} Lock"], "reason": "x", "unverified_when": "on"}]))
+        assert IssueCode.MALFORMED in codes(exc)

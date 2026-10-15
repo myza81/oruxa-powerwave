@@ -49,6 +49,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneDirection,
     ZoneStatus,
 )
+from app.domain.relay_import.provenance import UnresolvedCause
 
 #: Canonical path of the setting basis (see `UnsupportedReason.paths`).
 BASIS_PATH = "transformers.setting_basis"
@@ -82,6 +83,9 @@ class UnsupportedCode(StrEnum):
     TILT_UNSUPPORTED = "tilt_unsupported"
     TIMER_UNRESOLVED = "timer_unresolved"
     TIMER_CONFLICT = "timer_conflict"
+    #: DEC-198: an enabled zone carries a setting that may change its operation and whose meaning is
+    #: not verified (a raw zone setting the interpretation marks as material). Nothing in the review can clear it.
+    UNVERIFIED_SETTING = "unverified_setting"
 
 
 @dataclass(frozen=True)
@@ -144,7 +148,10 @@ def adapt_to_engine(
     if not basis.is_resolved or basis.value is SettingBasis.UNKNOWN:
         fail(
             UnsupportedCode.BASIS_UNRESOLVED,
-            "The primary/secondary basis of the impedance settings is unknown; it is not inferred.",
+            # DEC-198: a basis whose meaning for this relay's setting format is not verified is not a missing row
+            "The primary/secondary basis of the impedance settings has not yet been verified for this relay; it is not inferred."
+            if basis.provenance.cause is UnresolvedCause.UNVERIFIED
+            else "The primary/secondary basis of the impedance settings is unknown; it is not inferred.",
             paths=(BASIS_PATH,),
         )
     elif basis.value.value != engine_basis:
@@ -294,11 +301,20 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         warn(f"{zone.zone_id}: earth timer is preserved in the model but not used by the phase-phase engine.")
     if zone.compensation is not None:
         warn(f"{zone.zone_id}: residual compensation is preserved in the model but not used by the engine.")
-    if ctype is None:
-        return ZoneSettings()
+    if any(u.material for u in zone.unresolved_settings):
+        fail(
+            UnsupportedCode.UNVERIFIED_SETTING,
+            "A setting that may change this zone's operation has a meaning that is not yet verified.", zone,
+        )
 
+    # DEC-198: one review gives the complete picture. Explicit R/X limits describe a quadrilateral, so
+    # their reach and resistive limits are still checked while the characteristic is unresolved, and a
+    # missing X limit does not hide a missing resistive limit. Nothing is returned for such a zone.
     explicit = zone.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
-    if explicit and ctype is not CharacteristicType.QUADRILATERAL:
+    if ctype is None and not explicit:
+        return ZoneSettings()
+    incomplete = ctype is None
+    if explicit and ctype not in (None, CharacteristicType.QUADRILATERAL):
         fail(
             UnsupportedCode.GEOMETRY_UNSUPPORTED,
             "Explicit R/X limits describe a quadrilateral; they are not a mho reach and no reach is derived from them.",
@@ -319,7 +335,7 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
                 UnsupportedCode.REACH_UNRESOLVED, "The Reactive Reach (X) is unresolved.", zone,
                 (zone_path(zone, "x_reach_ohm"),),
             )
-            return ZoneSettings()
+            incomplete = True
     elif reach.is_resolved:
         z = reach.value
         if not z.is_polar:
@@ -342,20 +358,22 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         return ZoneSettings(enabled=True, reach_ohm=reach_ohm, delay_s=delay, direction=direction, **angle_kw)
 
     forward = _forward_resistive(zone, fail)
-    if forward is _CONFLICT:
-        return ZoneSettings()
     rr = zone.resistive_reach
-    if forward is None and not allow_incomplete:
+    if forward is _CONFLICT:
+        incomplete = True
+    elif forward is None and not allow_incomplete:
         fail(
             UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, "The Right Resistive Reach (+R) is unresolved.", zone,
             (zone_path(zone, "resistive_reach.phase_phase"), zone_path(zone, "resistive_reach.common")),
         )
-        return ZoneSettings()
+        incomplete = True
     if not rr.reverse.is_resolved and not allow_incomplete:
         fail(
             UnsupportedCode.RESISTIVE_REACH_UNRESOLVED, "The Left Resistive Reach (−R) is unresolved.", zone,
             (zone_path(zone, "resistive_reach.reverse"),),
         )
+        incomplete = True
+    if incomplete:
         return ZoneSettings()
     return ZoneSettings(
         enabled=True,
@@ -389,6 +407,17 @@ def _forward_resistive(zone: DistanceZone, fail):
         return pp.value
     if common.is_resolved:
         return common.value
+    if pp.provenance.cause is UnresolvedCause.UNVERIFIED:
+        # The source states a fault-resistance setting, but how it becomes the plotted boundary is not
+        # established (DEC-198): say so, rather than that only a phase-earth value exists.
+        fail(
+            UnsupportedCode.RESISTIVE_REACH_UNRESOLVED,
+            "A source fault-resistance setting is available, but its conversion to the plotted resistive "
+            "boundary has not yet been verified.",
+            zone,
+            (zone_path(zone, "resistive_reach.phase_phase"), zone_path(zone, "resistive_reach.common")),
+        )
+        return _CONFLICT
     if rr.phase_earth.is_resolved:
         fail(
             UnsupportedCode.LOOP_TYPE_UNSUPPORTED,

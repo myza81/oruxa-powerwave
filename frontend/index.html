@@ -56255,7 +56255,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ? { status: e.status === "ready" ? "ready" : "not_ready", warnings: Array.isArray(e.warnings) ? e.warnings : [] }
                 : { status: "not_ready", warnings: [] };
             const issues = (Array.isArray(src.blocking_issues) ? src.blocking_issues : []).filter((i) => i && typeof i.message === "string")
-                .map((i) => ({ message: i.message, zone_ids: Array.isArray(i.zone_ids) ? i.zone_ids : [], item_ids: Array.isArray(i.item_ids) ? i.item_ids : [] }));
+                .map((i) => ({ message: i.message, zone_ids: Array.isArray(i.zone_ids) ? i.zone_ids : [], item_ids: Array.isArray(i.item_ids) ? i.item_ids : [],
+                    kind: i.kind === "unverified" ? "unverified" : "" }));
             return {
                 mapped_count: num(src.mapped_count), to_confirm_count: num(src.to_confirm_count),
                 confirmed_count: num(src.confirmed_count), resolved_manually_count: num(src.resolved_manually_count), suggested_count: num(src.suggested_count),
@@ -56443,6 +56444,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         .filter((item) => item && wwRrView(item).blocking);
                     if (open.length) {
                         li.appendChild(wwRrEl("div", "ww-rr-dim", "Needs: " + open.map((item) => item.full_label).join("; ")));
+                    } else if (issue.kind === "unverified") {
+                        // DEC-198: a meaning not yet verified for this relay -- not an engine limit.
+                        li.appendChild(wwRrEl("div", "ww-rr-dim",
+                            "No value in this review can clear it; what the setting does is not yet verified."));
                     } else {
                         li.appendChild(wwRrEl("div", "ww-rr-dim",
                             "No value in this review can clear it; it is a limit of the current engine."));

@@ -102,14 +102,18 @@ FAMILIES = {
 }
 
 
+#: The active catalog version per family (REL511 1.1.0: documented relay behaviour, DEC-198).
+CATALOG_VERSIONS = {name: "1.1.0" if name == "rel511" else "1.0.0" for name in FAMILIES}
+
+
 class TestEveryFamilyIsCatalogOnly:
     @pytest.mark.parametrize("name", FAMILIES)
     def test_identified_and_interpreted_by_its_own_active_catalog(self, client, name):
         pdf, profile_id, catalog_id, model = FAMILIES[name]
         body = upload(client, pdf())
         assert (body["identification_status"], body["profile_id"], body["model"]) == ("identified", profile_id, model)
-        assert (body["catalog_id"], body["catalog_version"]) == (catalog_id, "1.0.0")
-        assert body["profile_version"] == f"{catalog_id}-v1.0.0"
+        assert (body["catalog_id"], body["catalog_version"]) == (catalog_id, CATALOG_VERSIONS[name])
+        assert body["profile_version"] == f"{catalog_id}-v{CATALOG_VERSIONS[name]}"
         assert body["interpretation_status"] == "interpreted" and body["review"] is not None
         assert_every_raw_setting_is_accounted_for(body)
 
@@ -125,7 +129,7 @@ class TestEveryFamilyIsCatalogOnly:
         review = upload(client, FAMILIES[name][0]())["review"]
         for item in items(review).values():
             if item["value_text"] is not None and item["item_id"].startswith(("zones[", "transformers.", "line.")):
-                assert item["catalog_id"] == FAMILIES[name][2] and item["catalog_version"] == "1.0.0"
+                assert item["catalog_id"] == FAMILIES[name][2] and item["catalog_version"] == CATALOG_VERSIONS[name]
                 assert item["canonical_id"] and item["sources"], item["item_id"]
 
 
@@ -204,15 +208,17 @@ class TestRel511:
         assert (i["zones[Z1].x_reach_ohm"]["value_text"], i["zones[Z1].common_timer_s"]["value_text"]) == ("3 Ω", "0 s")
         assert i["transformers.ct_primary_a"]["value_text"] == "600 A"
 
-    def test_not_invented_basis_characteristic_rf_convention_zone_block(self, client):
+    def test_not_invented_basis_rf_convention_zone_block(self, client):
+        """DEC-198: the characteristic and loops are documented relay behaviour (see
+        test_relay_rel511_documented_behaviour.py); the basis, the RF conversion and ZnBlock stay unverified."""
         review = upload(client, F.rel511_pdf())["review"]
         i = items(review)
-        assert unresolved(i["transformers.setting_basis"], "missing")
-        assert unresolved(i["zones[Z1].characteristic.type"], "missing")
+        assert unresolved(i["transformers.setting_basis"], "unverified")
+        assert i["zones[Z1].characteristic.type"]["category"] == "documented"
         rf = i["zones[Z1].resistive_reach.phase_phase"]
-        assert unresolved(rf, "unsupported") and rf["raw_value"] == "4.6"            # preserved, neither halved nor used
+        assert unresolved(rf, "unverified") and rf["raw_value"] == "4.6"            # preserved, neither halved nor used
         assert raw_rows(review, "Z1")["Z1Block"]["raw_value"] == "On"                 # preserved, never a state
-        assert i["zones[Z1].resistive_reach.phase_earth"]["category"] == "assumption"  # RFN as printed, to confirm
+        assert unresolved(i["zones[Z1].resistive_reach.phase_earth"], "unverified")   # RFN preserved, not used
 
     def test_a_10_s_timer_switched_off_neither_delays_nor_defeats_the_zone_by_itself(self, client):
         i = items(upload(client, F.rel511_pdf())["review"])

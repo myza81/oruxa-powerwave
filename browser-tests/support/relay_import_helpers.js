@@ -233,6 +233,22 @@ function sl87Pdf() {
   return rowsPdf(rows, [20, 330, 450]);
 }
 
+// A synthetic Hitachi Energy (ABB) REL511-shaped sheet (flat TAP NAME | TAP SETTING | TAP RANGE): Zone 1 On with Z1Block On,
+// Zone 2 Off with Z2Block Off. Invented numbers.
+function rel511Pdf() {
+  const zone = (n, op, dir, x, rf, rfn, block) => [
+    [`Operation_Z${n}`, op, "On/Off"], [`X1Z${n}`, x, "0.1-150"], [`R1Z${n}`, "0.5", "0.1-150"], [`X0Z${n}`, "9", "0.1-1200"],
+    [`R0Z${n}`, "3", "0.1-1200"], [`RFZ${n}`, rf, "0.1-150"], [`RFNZ${n}`, rfn, "0.1-150"], [`Timer t${n}`, "On", "On/Off"],
+    [`t${n}`, "0", "0.0-10.0 s"], [`DirZ${n}`, dir, "Non/Forward/Reverse"], [`Z${n}Block`, block, "On/Off"]];
+  const rows = [
+    ["LZOP: 132kV AAAA - BBBB No 1", "Scheme: REL511_V1.2_TNB"], ["Utility ID: 1", "Active Group: SET-TEST"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["Ur", "110", "100/110/115/120"], ["Ir", "1", "1"], ["VTPrim Uphases", "132", "1-9999"], ["CTPrim Iphases", "600", "1-9999"],
+    ...zone(1, "On", "Forward", "3", "4.6", "15", "On"), ...zone(2, "Off", "Forward", "5", "6", "17", "Off"),
+    ["Length unit", "KM", "KM/MI"], ["Line Length", "16", "0-10,000"],
+  ];
+  return rowsPdf(rows);
+}
+
 // A synthetic Toshiba GRZ100-shaped sheet: CT / VT stated as ratios, Quad phase and Mho earth selections, blinders. Invented.
 function grz100Pdf() {
   const rows = [
@@ -267,4 +283,4 @@ async function openDistance(page) {
 const pick = (page, name, buffer) =>
   page.locator("#wwRelayImportFileInput").setInputFiles({ name, mimeType: "application/pdf", buffer });
 
-module.exports = { BACKEND_PORT, buildPdf, p441Pdf, siemens7sa511Pdf, red670Pdf, rel670Pdf, sl87Pdf, grz100Pdf, routeConfig, openDistance, pick };
+module.exports = { BACKEND_PORT, buildPdf, p441Pdf, siemens7sa511Pdf, red670Pdf, rel670Pdf, rel511Pdf, sl87Pdf, grz100Pdf, routeConfig, openDistance, pick };

@@ -41,7 +41,8 @@ class TestShippedCatalogs:
         for profile_id in ("hitachi-rel670", "hitachi-rel511", "siemens-siprotec5-7sl87", "siemens-7sa613",
                            "toshiba-grz100", "toshiba-grl200", "nr-rcs941", "lfzp111", "relz100"):
             assert by_id[profile_id].extension is None                               # catalog-only: no Python
-            assert by_id[profile_id].version == f"{by_id[profile_id].catalog_id}-v1.0.0"
+            version = "1.1.0" if profile_id == "hitachi-rel511" else "1.0.0"         # REL511: documented behaviour (DEC-198)
+            assert by_id[profile_id].version == f"{by_id[profile_id].catalog_id}-v{version}"
 
     def test_the_lock_matches_the_shipped_locked_catalogs(self):
         assert check_lock(default_store(), load_lock()) == []

@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "hitachi-rel511-catalog",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "lifecycle": "active",
   "profile_id": "hitachi-rel511",
   "registry_version": "1.1.0",
-  "description": "Hitachi Energy (ABB) REx5xx REL511 distance zones as a flat REL511 setting sheet prints them (TAP NAME | TAP SETTING | TAP RANGE). Catalog-only, verified subset: per-zone Operation_Zn (status), DirZn (direction), gated Timer tn / tn, X1Zn (reactive reach), R1Zn, X0Zn / R0Zn, RFNZn as printed, the CT / VT values and the line data. Not interpreted (owner-verified semantics missing): the characteristic, the impedance basis, the RF loop / per-phase convention (RFZn is preserved, never used as +R), the ZnBlock switches and any directional / left boundary.",
+  "description": "Hitachi Energy (ABB) REx5xx REL511 distance zones as a flat REL511 setting sheet prints them (TAP NAME | TAP SETTING | TAP RANGE). Catalog-only. Configured settings: per-zone Operation_Zn (status), DirZn (direction), gated Timer tn / tn, X1Zn (reactive reach), R1Zn, X0Zn / R0Zn, the CT / VT values and the line data. Documented relay behaviour (DEC-198, ABB 1MDB06309-YN, verified): the fixed X/R polygonal (quadrilateral) characteristic and the full-scheme phase-phase / phase-earth loops of every enabled zone -- REL511 exposes no selector for either. Not verified (blocking): the impedance setting basis, the RFZn / RFNZn conversion (preserved, never used), ZnBlock = On on an enabled zone. Not representable: the left / directional boundary and the line-angle-adjusted resistive lines.",
   "applicability": {
     "manufacturer": "Hitachi Energy",
     "family": "REx5xx",
@@ -14,8 +14,7 @@
   },
   "identification": {
     "model_patterns": ["REL-?511"],
-    "scheme_model_pattern": "(?<![A-Za-z0-9])REL-?511(?![A-Za-z0-9])",
-    "version_pattern": "(?<![A-Za-z0-9])(V\\d+(?:\\.\\d+)*)(?![A-Za-z0-9.])"
+    "scheme_model_pattern": "(?<![A-Za-z0-9])REL-?511(?![A-Za-z0-9])"
   },
   "zones": {
     "discover": {"name_pattern": "^Operation_Z(?P<n>\\d+)$", "id": "Z{n}", "name": "Zone {n}"}
@@ -29,9 +28,18 @@
   },
   "interpretation_notes": [
     "Zone N is the parameter set ending in ZN (Operation_ZN, X1ZN, R1ZN, X0ZN, R0ZN, RFZN, RFNZN, Timer tN, tN, DirZN, ZNBlock); the numbering follows the sheet.",
-    "The sheet does not name the zone characteristic and does not state whether the impedance settings are primary or secondary ohms: neither is assumed (Missing).",
-    "RFZn is the phase-phase fault-resistance setting. Whether it is a per-loop or a per-phase value is not established for this relay family, so no Right Resistive Reach (+R) is derived from it; it is preserved with the zone. RFNZn is kept as printed as the earth resistive reach (not plotted).",
-    "No left (-R) boundary or directional-element geometry is stated; none is assumed. ZnBlock switches are preserved uninterpreted."
+    "Documented relay behaviour (ABB 1MDB06309-YN, Line distance protection terminal REL 511): every enabled distance zone has the fixed X/R polygonal (quadrilateral) characteristic and measures the phase-phase and phase-earth loops (full scheme). The reference applies to the REL 511 / REx 5xx distance function by its matching function and parameter structure, not to a confirmed firmware revision.",
+    "A 'V<n>' marker in the scheme name is not established as the firmware version (it may be a scheme / template version), so no firmware version is asserted.",
+    "Not yet verified: whether the impedance settings are primary or secondary ohms, and how RFZn / RFNZn convert to the plotted resistive boundaries (per loop or per phase). Both are preserved and block; nothing is assumed.",
+    "Geometry limitation: the relay adjusts its operate characteristic to the line characteristic angle (ABB 1MDB06309-YN, Fig. 1); the current engine draws vertical resistive limits and does not reproduce this. No left (-R) / directional boundary is representable. No approximation is applied."
+  ],
+  "references": [
+    {"id": "abb-1mdb06309-yn-fig1", "title": "Line distance protection terminal REL 511", "verification": "verified",
+     "document": "ABB 1MDB06309-YN (issued April 1999; changed since June 1998)", "section": "Fig. 1", "page": "2-3",
+     "scope": "REL 511 / REx 5xx family distance-protection function. Applicability rests on the matching REL511 function and parameter structure, not on a confirmed firmware-version match."},
+    {"id": "abb-1mdb06309-yn-p2", "title": "Line distance protection terminal REL 511", "verification": "verified",
+     "document": "ABB 1MDB06309-YN (issued April 1999; changed since June 1998)", "page": "2",
+     "scope": "REL 511 / REx 5xx family distance-protection function. Applicability rests on the matching REL511 function and parameter structure, not on a confirmed firmware-version match."}
   ],
   "source_notes": [
     {
@@ -44,7 +52,8 @@
     }
   ],
   "zone_preserved": [
-    {"zone": "*", "names": ["Z{n}Block"], "reason": "ZnBlock is an On / Off switch whose effect (what it blocks) the sheet does not state; it is preserved and does not decide the zone's state."}
+    {"zone": "*", "names": ["Z{n}Block"], "unverified_when": ["on"],
+     "reason": "ZnBlock is an On / Off switch whose effect (what it blocks) is not verified; its value is preserved and never interpreted as a zone state."}
   ],
   "mappings": [
     {
@@ -131,12 +140,87 @@
       "note": "DirZn as printed. A value that is not one of the printed options (Non / Forward / Reverse) is not interpreted."
     },
     {
+      "id": "rel511.basis",
+      "canonical": "ct_vt.impedance_basis",
+      "gap": {
+        "kind": "unverified",
+        "note": "The impedance setting basis (primary or secondary ohms) for this REL511 setting format has not yet been verified."
+      }
+    },
+
+    {
       "id": "rel511.geometry_mode",
       "canonical": "distance.zone.geometry_mode",
       "zone": "*",
       "transform": {"type": "constant", "value": "explicit_rx"},
       "authority": "documented_derivation",
       "note": "The sheet states a reactance (X1Zn) and resistances, never a reach angle: the reach is stated as orthogonal R / X values."
+    },
+    {
+      "id": "rel511.characteristic",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "quadrilateral"},
+      "evidence": [{"name": "X1Z{n}"}],
+      "requires": [{
+        "source": {"name": "Operation_Z{n}", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "Zone {n} is switched off (Operation_Z{n} = Off): the documented zone behaviour is not applied to it.",
+        "missing_note": "the zone's Operation_Z{n} switch was not found"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["abb-1mdb06309-yn-fig1"],
+      "note": "REL 511 distance zones have a fixed X/R polygonal (quadrilateral) characteristic (ABB 1MDB06309-YN, Fig. 1, pp. 2-3), applied to an enabled zone. The relay adjusts the operate characteristic to the line characteristic angle; the current engine does not reproduce that inclination."
+    },
+    {
+      "id": "rel511.characteristic.not_exposed",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "not_exposed": {"note": "REL511 has no characteristic selector: the X/R polygonal characteristic of its distance zones is fixed relay behaviour."}
+    },
+    {
+      "id": "rel511.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "transform": {"type": "constant", "value": true},
+      "evidence": [{"name": "X1Z{n}"}],
+      "requires": [{
+        "source": {"name": "Operation_Z{n}", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "Zone {n} is switched off (Operation_Z{n} = Off): the documented zone behaviour is not applied to it.",
+        "missing_note": "the zone's Operation_Z{n} switch was not found"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["abb-1mdb06309-yn-p2"],
+      "note": "The REL 511 full-scheme distance function measures the phase-phase impedances of each zone (ABB 1MDB06309-YN, p. 2); applied to an enabled zone."
+    },
+    {
+      "id": "rel511.pp_enabled.not_exposed",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "not_exposed": {"note": "REL511 has no phase-phase loop selector: the full-scheme function measures the phase-phase loops of each zone."}
+    },
+    {
+      "id": "rel511.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "transform": {"type": "constant", "value": true},
+      "evidence": [{"name": "X1Z{n}"}],
+      "requires": [{
+        "source": {"name": "Operation_Z{n}", "allowed_text": ["on", "off"]}, "equals": ["on"],
+        "off_note": "Zone {n} is switched off (Operation_Z{n} = Off): the documented zone behaviour is not applied to it.",
+        "missing_note": "the zone's Operation_Z{n} switch was not found"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["abb-1mdb06309-yn-p2"],
+      "note": "The REL 511 full-scheme distance function measures the phase-earth impedances of each zone (ABB 1MDB06309-YN, p. 2); applied to an enabled zone."
+    },
+    {
+      "id": "rel511.pe_enabled.not_exposed",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "not_exposed": {"note": "REL511 has no phase-earth loop selector: the full-scheme function measures the phase-earth loops of each zone."}
     },
     {
       "id": "rel511.x_reach",
@@ -168,18 +252,28 @@
       "canonical": "distance.zone.r_right",
       "zone": "*",
       "gap": {
-        "note": "The sheet states the phase-phase fault-resistance setting ({evidence}), but whether it is a per-loop or a per-phase value is not established for this relay family. No Right Resistive Reach (+R) is derived from it (no division, no as-printed use); the value is preserved here.",
+        "kind": "unverified",
+        "note": "The source fault-resistance setting ({evidence}) is available, but its conversion to the plotted resistive boundary (per loop or per phase) has not yet been verified. No Right Resistive Reach (+R) is derived from it; the value is preserved here.",
         "evidence": [{"name": "RFZ{n}"}]
+      }
+    },
+    {
+      "id": "rel511.r_left",
+      "canonical": "distance.zone.r_left",
+      "zone": "*",
+      "gap": {
+        "note": "No left (-R) resistive boundary is stated for this relay; its left / directional boundary is not yet representable."
       }
     },
     {
       "id": "rel511.r_phase_earth",
       "canonical": "distance.zone.r_phase_earth",
       "zone": "*",
-      "source": {"name": "RFNZ{n}", "type": "number", "unit": "ohm"},
-      "authority": "assumption",
-      "confidence": "inferred",
-      "note": "RFNZn, the phase-earth fault-resistance setting, kept as printed (not scaled). Its per-loop / per-phase convention is not stated. The phase-phase engine does not draw it."
+      "gap": {
+        "kind": "unverified",
+        "note": "The source phase-earth fault-resistance setting ({evidence}) is preserved; its per-loop / per-phase convention has not yet been verified, so it is not used as a resistive reach. The phase-phase engine does not draw it.",
+        "evidence": [{"name": "RFNZ{n}"}]
+      }
     },
     {
       "id": "rel511.delay",
