@@ -26,7 +26,7 @@ from app.domain.relay_import.review_state import ReviewDecisionError, ReviewDeci
 from app.services.relay_extraction_review import ExtractionReview, build_extraction_review
 from app.services.relay_interpretation_summary import engine_adaptation
 
-__all__ = ["InvalidReviewError", "reviewed_state", "validate_review"]
+__all__ = ["InvalidReviewError", "manual_entry_paths", "reviewed_state", "validate_review"]
 
 #: The review state needs no source lines (the browser already holds them), so
 #: the raw document is empty: item sources come back empty and are not used.
@@ -42,16 +42,31 @@ def reviewed_state(
 ) -> tuple[CanonicalDistanceProtectionModel, EngineAdaptation, ExtractionReview]:
     """Re-derive everything from the original interpretation and the decisions:
     the effective model, the engine adaptation (re-run) and the review state.
-    Nothing the browser computed is trusted. Shared by validation and Apply."""
+    Nothing the browser computed is trusted. Shared by validation and Apply.
+
+    DEC-198 Amendment 4: manual resolution authority is generated here, not taken from
+    the client -- a manual value is accepted only for a path that the server-generated
+    review of the original interpretation offers an entry for."""
     try:
         original = decode_model(context)
-        effective = apply_review(original, decisions)
+        offered = manual_entry_paths(original) if decisions.manual else frozenset()
+        effective = apply_review(original, decisions, offered_manual=offered)
     except (SnapshotError, ReviewDecisionError) as exc:
         raise InvalidReviewError(str(exc)) from exc
     adaptation = engine_adaptation(effective)
     review = build_extraction_review(effective, _NO_DOCUMENT, adaptation, not_interpreted=0)
     _refuse_confirming_engine_limits(review, decisions)
     return effective, adaptation, review
+
+
+def manual_entry_paths(original: CanonicalDistanceProtectionModel) -> frozenset[str]:
+    """The exact paths the server-generated review of ``original`` (no decisions) offers a typed
+    value for. A path the review does not show -- or shows without an entry -- is not in it."""
+    review = build_extraction_review(original, _NO_DOCUMENT, engine_adaptation(original), not_interpreted=0)
+    return frozenset(
+        item.item_id for group in review.groups for item in group.items
+        if item.item_id is not None and item.resolution is not None
+    )
 
 
 def validate_review(context: dict, decisions: ReviewDecisions) -> ExtractionReview:

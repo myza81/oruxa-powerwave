@@ -114,6 +114,34 @@ def resolution_spec(path: str) -> ResolutionSpec | None:
     return next((spec for pattern, spec in _RESOLUTION_SPECS if pattern.match(path)), None)
 
 
+#: Refusal for a manual value the review does not offer (DEC-198 Amendment 4). Generic on purpose.
+MANUAL_NOT_OFFERED = "This setting cannot be resolved manually in the current review."
+
+#: The unresolved causes a typed value may resolve: the source simply lacks the value, or its cell
+#: could not be read. Never a conflict, an unsupported / unverified meaning or a setting the relay
+#: does not have -- those are engineering semantics a typed value must not override (DEC-198).
+_MANUAL_CAUSES = frozenset({None, UnresolvedCause.MISSING, UnresolvedCause.UNREADABLE})
+
+
+def manual_entry_spec(path: str, sourced: Sourced) -> ResolutionSpec | None:
+    """The single rule for whether the review offers a typed value for ``path``: the spec to type
+    it with, or ``None``. Offered for a zone status Oruxa merely assumed, and for a value that is
+    unresolved because the source lacks it or it could not be read (a value already resolved in the
+    session -- typed or an accepted suggestion -- keeps its entry, judged by its original cause). Both
+    the review presentation and `apply_review` use it, so a client can never resolve what the review
+    does not offer."""
+    spec = resolution_spec(path)
+    if spec is None:
+        return None
+    if is_overridable_assumption(path, sourced):
+        return spec
+    record = sourced.provenance.review
+    session = (ReviewStatus.RESOLVED_MANUALLY, ReviewStatus.SUGGESTION_ACCEPTED)
+    if sourced.is_resolved and (record is None or record.status not in session):
+        return None
+    return spec if sourced.provenance.cause in _MANUAL_CAUSES else None
+
+
 def _number_text(value: float) -> str:
     return str(int(value)) if value == int(value) and abs(value) < 1e15 else f"{value:.10g}"
 
@@ -334,14 +362,21 @@ def _suggestion_accepted(sourced: Sourced, spec: SuggestionSpec) -> Sourced:
 
 
 def apply_review(
-    model: CanonicalDistanceProtectionModel, decisions: ReviewDecisions
+    model: CanonicalDistanceProtectionModel,
+    decisions: ReviewDecisions,
+    *,
+    offered_manual: frozenset[str] | None = None,
 ) -> CanonicalDistanceProtectionModel:
     """The effective reviewed model: ``model`` with the decisions overlaid.
 
     ``model`` is not modified. Raises `ReviewDecisionError` for a decision that
     names an unknown item, the wrong kind of item (only an inferred value can be
     confirmed; only an unresolved one can be resolved or left), an invalid value,
-    or two contradictory decisions about one item."""
+    or two contradictory decisions about one item.
+
+    A manual value is accepted only where `manual_entry_spec` offers one and -- when the
+    caller passes ``offered_manual`` (the paths the server-generated review of ``model``
+    offers an entry for) -- only for one of those exact paths (DEC-198 Amendment 4)."""
     index = dict(model.iter_sourced())
     overlay: dict[str, Sourced] = {}
     # A zone that is authoritatively disabled needs none of its own settings, so there is
@@ -369,11 +404,9 @@ def apply_review(
         overlay[path] = _left_unresolved(sourced)
     for path in sorted(decisions.manual):
         sourced = claim(path)
-        if sourced.is_resolved and not is_overridable_assumption(path, sourced):
-            raise ReviewDecisionError("Only an unresolved value can be resolved manually.")
-        spec = resolution_spec(path)
-        if spec is None:
-            raise ReviewDecisionError("This value cannot be entered manually.")
+        spec = manual_entry_spec(path, sourced)
+        if spec is None or (offered_manual is not None and path not in offered_manual):
+            raise ReviewDecisionError(MANUAL_NOT_OFFERED)
         value, text = _manual_value(path, spec, decisions.manual[path])
         overlay[path] = _resolved_manually(sourced, value, text)
 

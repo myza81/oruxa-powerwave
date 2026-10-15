@@ -75,7 +75,7 @@ from app.domain.relay_import.review_state import (
     compute_readiness,
     engine_limits,
     offered_suggestion,
-    resolution_spec,
+    manual_entry_spec,
 )
 from app.domain.parameter_catalog.loader import canonical_registry
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
@@ -522,16 +522,15 @@ def _suggestion(path: str | None, sourced: Sourced, category: str, zone: Distanc
     return ReviewSuggestion(offered[0].value_text, offered[1]) if offered else None
 
 
-def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
+def _resolution(path: str | None, sourced: Sourced) -> ReviewResolution | None:
     overridable = is_overridable_assumption(path or "", sourced)
     if path is None or (_review_status(sourced) not in ("unresolved", "resolved_manually") and not overridable):
         return None
     # Typing a value is offered only where the source simply lacks it (or could not be
-    # read) and the canonical type is known; a conflict, or a limit of the engine, is
-    # not something a typed value resolves.
-    if category not in ("missing", "unreadable") and _review_status(sourced) != "resolved_manually" and not overridable:
-        return None
-    spec: ResolutionSpec | None = resolution_spec(path)
+    # read) and the canonical type is known; a conflict, an unsupported or unverified
+    # meaning, or a limit of the engine, is not something a typed value resolves. The
+    # same domain rule decides what validation and Apply accept (DEC-198 Amendment 4).
+    spec: ResolutionSpec | None = manual_entry_spec(path, sourced)
     if spec is None:
         return None
     if spec.kind is ResolutionKind.NUMBER:
@@ -631,7 +630,7 @@ class _Builder:
             blocking=path is not None and not sourced.is_resolved and path in self._blocking,
             left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
             user_value_text=record.user_value_text if record else None,
-            resolution=_resolution(path, sourced, category),
+            resolution=_resolution(path, sourced),
             suggestion=None if not_required else _suggestion(path, sourced, category, self.zone),
             not_required=not_required,
             not_required_reason=NOT_REQUIRED_REASON if not_required else None,
