@@ -102,8 +102,8 @@ FAMILIES = {
 }
 
 
-#: The active catalog version per family (REL511 1.1.0: documented relay behaviour, DEC-198).
-CATALOG_VERSIONS = {name: "1.1.0" if name == "rel511" else "1.0.0" for name in FAMILIES}
+#: The active catalog version per family (REL511 1.2.0: documented relay behaviour, DEC-198 Amendments 1-2).
+CATALOG_VERSIONS = {name: "1.2.0" if name == "rel511" else "1.0.0" for name in FAMILIES}
 
 
 class TestEveryFamilyIsCatalogOnly:
@@ -208,17 +208,18 @@ class TestRel511:
         assert (i["zones[Z1].x_reach_ohm"]["value_text"], i["zones[Z1].common_timer_s"]["value_text"]) == ("3 Ω", "0 s")
         assert i["transformers.ct_primary_a"]["value_text"] == "600 A"
 
-    def test_not_invented_basis_rf_convention_zone_block(self, client):
-        """DEC-198: the characteristic and loops are documented relay behaviour (see
-        test_relay_rel511_documented_behaviour.py); the basis, the RF conversion and ZnBlock stay unverified."""
+    def test_documented_basis_and_rf_semantics_zone_block_not_invented(self, client):
+        """DEC-198: the characteristic, loops, basis and RF meanings are documented relay behaviour (see
+        test_relay_rel511_documented_behaviour.py); the RFZn boundary is not plotted, ZnBlock stays unverified."""
         review = upload(client, F.rel511_pdf())["review"]
         i = items(review)
-        assert unresolved(i["transformers.setting_basis"], "unverified")
+        assert (i["transformers.setting_basis"]["value_text"], i["transformers.setting_basis"]["category"]) == ("Secondary", "documented")
         assert i["zones[Z1].characteristic.type"]["category"] == "documented"
         rf = i["zones[Z1].resistive_reach.phase_phase"]
-        assert unresolved(rf, "unverified") and rf["raw_value"] == "4.6"            # preserved, neither halved nor used
+        assert unresolved(rf, "unsupported") and rf["raw_value"] == "4.6"           # preserved, neither halved nor used
         assert raw_rows(review, "Z1")["Z1Block"]["raw_value"] == "On"                 # preserved, never a state
-        assert unresolved(i["zones[Z1].resistive_reach.phase_earth"], "unverified")   # RFN preserved, not used
+        pe = i["zones[Z1].resistive_reach.phase_earth"]
+        assert (pe["value_text"], pe["category"]) == ("15 Ω", "documented")           # RFN as printed, ohm/loop
 
     def test_a_10_s_timer_switched_off_neither_delays_nor_defeats_the_zone_by_itself(self, client):
         i = items(upload(client, F.rel511_pdf())["review"])

@@ -505,7 +505,7 @@ class TestShippedCatalogsUnchanged:
         assert not store.rejected and check_lock(store, load_lock()) == []
 
     def test_no_other_shipped_catalog_uses_the_new_declarations(self):
-        # REL511 1.1.0 is the first catalog to use them (its own tests: test_relay_rel511_documented_behaviour.py)
+        # REL511 (1.1.0 / 1.2.0) is the only catalog to use them (its own tests: test_relay_rel511_documented_behaviour.py)
         for catalog in default_store().catalogs:
             if catalog.catalog_id == "hitachi-rel511-catalog":
                 continue
@@ -564,6 +564,32 @@ class TestCompleteBlockerPicture:
         assert ("A source fault-resistance setting is available, but its conversion to the plotted resistive "
                 "boundary has not yet been verified.") in msgs
         assert not any("Only a phase-earth" in m for m in msgs)
+
+    def documented_unsupported_right_reach(self, *, references: list[str] | None) -> dict:
+        gap = right_reach_gap(None)                                                   # unsupported (default kind)
+        if references is not None:
+            gap["references"] = references
+        earth = mapping("pe", "distance.zone.r_phase_earth", zone="*", source={"name": "{zone} R Left", "type": "number", "unit": "ohm"})
+        data = acme_without("distance.zone.r_right", extra=(gap, earth))
+        data["references"] = [VERIFIED_REF, UNVERIFIED_REF]
+        return data
+
+    def test_a_documented_boundary_the_engine_cannot_draw_is_worded_as_an_engine_limitation(self):
+        # DEC-198 Amendment 2: a fault-resistance setting whose boundary a verified reference documents, but which
+        # the engine cannot represent, is neither "not yet verified" nor "only a phase-earth reach is available".
+        model = interpret(self.documented_unsupported_right_reach(references=["acme-manual-dist"]), acme_document())
+        msgs = {r.message for r in engine_adaptation(model).reasons if r.zone_id == "Z1"}
+        assert ("A source fault-resistance setting is available and its resistive boundary is documented, but the "
+                "current engine cannot represent that boundary exactly.") in msgs
+        assert not any("Only a phase-earth" in m or "not yet been verified" in m for m in msgs)
+        assert ("resistive_reach_unresolved", "Z1") in reasons(model) and ("loop_type_unsupported", "Z1") not in reasons(model)
+
+    @pytest.mark.parametrize("refs", [None, ["acme-app-note"]])
+    def test_without_a_verified_reference_the_previous_wording_stays(self, refs):
+        model = interpret(self.documented_unsupported_right_reach(references=refs), acme_document())
+        msgs = {r.message for r in engine_adaptation(model).reasons if r.zone_id == "Z1"}
+        assert "Only a phase-earth resistive reach is available; the engine evaluates phase-phase loops only." in msgs
+        assert not any("resistive boundary is documented" in m for m in msgs)
 
     def test_an_unverified_basis_is_worded_as_such(self):
         gap = mapping("basis.gap", "ct_vt.impedance_basis", gap={"kind": "unverified", "note": "Not verified for this format."})

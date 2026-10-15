@@ -1,9 +1,10 @@
 // REL511 under DEC-198 through the unchanged generic review UI.
 //
-// Documented relay behaviour (ABB 1MDB06309-YN, verified) replaces the artificial "Missing" characteristic and loop
-// blockers; the genuine unknowns stay visible and blocking: the impedance basis and the RFZn conversion (not yet
-// verified), ZnBlock = On on the enabled zone, and the left / directional boundary (no 0.00 ohm offer). Not ready,
-// no Apply. The sheet is synthetic (the owner's real sheet is never committed). Nothing here uses a REL511-specific
+// Documented relay behaviour (ABB 1MDB06309-YN; ABB REL 511 2.3 / 2.5 manuals, verified) replaces the artificial
+// "Missing" characteristic and loop blockers and the unverified basis / RFNZn: Secondary basis, RFNZn as printed
+// (phase-earth, ohm/loop). RFZn's documented inclined boundary is "not yet supported" by the engine (an engine limit,
+// not an unknown); ZnBlock = On on the enabled zone stays not yet verified; the left / directional boundary has no
+// 0.00 ohm offer. Not ready, no Apply. The sheet is synthetic (the owner's real sheet is never committed). Nothing here uses a REL511-specific
 // selector. Runs against LOCAL code.
 
 const { test, expect } = require("@playwright/test");
@@ -49,19 +50,32 @@ test("characteristic and fault loops read as documented relay behaviour, cited t
   await expect(chip(page, "zone.Z2.pp_enabled")).toHaveText("Not a relay setting");
 });
 
-test("basis, RFZn conversion and ZnBlock = On stay visible as not yet verified, and block", async ({ page }) => {
-  await expect(chip(page, "basis")).toHaveText("Not yet supported");
-  await expect(row(page, "basis")).toHaveAttribute("data-blocking", "true");
+test("the basis and RFNZn read as documented relay behaviour, cited to the ABB REL 511 manuals", async ({ page }) => {
+  await expect(chip(page, "basis")).toHaveText("Documented relay behaviour");
+  await expect(row(page, "basis")).toContainText("Secondary");
+  await expect(row(page, "basis")).toHaveAttribute("data-blocking", "false");
   await source(page, "basis").click();
-  await expect(row(page, "basis")).toContainText("has not yet been verified");
+  await expect(row(page, "basis")).toContainText("1MRK 506 109-UEN");
+  await expect(row(page, "basis")).toContainText("Not inferred from the CT / VT ratios");
 
+  const pe = row(page, "zone.Z1.rr.pe");
+  await expect(chip(page, "zone.Z1.rr.pe")).toHaveText("Documented relay behaviour");
+  await expect(pe).toContainText("15");
+  await expect(pe).toHaveAttribute("data-blocking", "false");
+  await source(page, "zone.Z1.rr.pe").click();
+  await expect(pe).toContainText("not converted into a phase-phase reach");
+});
+
+test("RFZn is documented but not yet supported by the engine; ZnBlock = On stays not yet verified; both block", async ({ page }) => {
   const rf = row(page, "zone.Z1.rr.pp");
   await expect(chip(page, "zone.Z1.rr.pp")).toHaveText("Not yet supported");
   await expect(rf).toHaveAttribute("data-blocking", "true");
   await source(page, "zone.Z1.rr.pp").click();
-  await expect(rf).toContainText("RFZ1");                                     // the source setting exists ...
+  await expect(rf).toContainText("RFZ1");                                     // the source setting is preserved ...
   await expect(rf).toContainText("4.6");
-  await expect(rf).toContainText("conversion to the plotted resistive boundary"); // ... its conversion is not verified
+  await expect(rf).toContainText("Rright(X) = R1Z1 * X / X1Z1 + RFZ1 / 2");   // ... with its documented boundary
+  await expect(rf).toContainText("1MRK 506 109-UEN");
+  await expect(rf).not.toContainText("has not yet been verified");
 
   const block = rawRow(page, "Z1Block");
   await expect(block.locator(".ww-rr-status").first()).toHaveText("Not yet supported");
@@ -80,9 +94,9 @@ test("REL511 is not ready, lists every genuine blocker at once, and offers no Ap
   await expect(page.locator("#wwRelayReviewReadiness")).toHaveAttribute("data-readiness", "not_ready");
   await expect(page.locator("#wwRelayReviewApply")).toHaveCount(0);
   const reasons = page.locator("#wwRelayReviewBlocking");
-  await expect(reasons.locator("> li")).toHaveCount(4);
-  await expect(reasons).toContainText("has not yet been verified for this relay");
-  await expect(reasons).toContainText("its conversion to the plotted resistive boundary has not yet been verified");
+  await expect(reasons.locator("> li")).toHaveCount(3);
+  await expect(reasons).toContainText("its resistive boundary is documented, but the current engine cannot represent that boundary exactly");
+  await expect(reasons).not.toContainText("has not yet been verified");               // neither the basis nor RFZn
   await expect(reasons).toContainText("what the setting does is not yet verified");      // ZnBlock: not an engine limit
   await expect(reasons).not.toContainText("Characteristic type is unresolved");
   await expect(reasons).not.toContainText("Only a phase-earth resistive reach");

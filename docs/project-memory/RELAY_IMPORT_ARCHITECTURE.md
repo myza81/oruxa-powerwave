@@ -9,7 +9,7 @@ Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every oth
 is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-196/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
 **2026-10-13: the RED670 semantics are corrected (DEC-193) and a data-driven Parameter Catalog Foundation is added (DEC-194; last section).**
 **2026-10-14: every remaining sample relay family is interpreted by a catalog-only JSON parameter catalog (DEC-197, branch `feature/remaining-relay-imports`; section "Remaining relay families", with the consolidated owner-UAT matrix).**
-**2026-10-15: Relay Import Assistance for Non-Expert Users -- generic foundation (DEC-198; last section): catalog references and verified documented derivations, "Documented relay behaviour", Unverified vs Unsupported, Not exposed, the approximation data model, `ready_approximate`, Apply `approximations[]`. Then REL511 knowledge integration (DEC-198 Amendment 1, catalog 1.1.0): REL511 artificial characteristic/loop blockers resolved through documented relay behaviour; REL511 still blocked by genuine unresolved engineering semantics.**
+**2026-10-15: Relay Import Assistance for Non-Expert Users -- generic foundation (DEC-198; last section): catalog references and verified documented derivations, "Documented relay behaviour", Unverified vs Unsupported, Not exposed, the approximation data model, `ready_approximate`, Apply `approximations[]`. Then REL511 knowledge integration (DEC-198 Amendment 1, catalog 1.1.0): REL511 artificial characteristic/loop blockers resolved through documented relay behaviour; REL511 still blocked by genuine unresolved engineering semantics. Then REL511 semantic integration (DEC-198 Amendment 2, catalog 1.2.0): basis (Secondary) and RFZn / RFNZn meanings verified from the ABB REL 511 2.3 / 2.5 manuals; the only semantic unknown left is ZnBlock; the RFZn inclined boundary and the left / directional boundary are known engine limitations; still NOT_READY.**
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -1205,7 +1205,7 @@ PDF -> generic extractor -> identifier (unchanged descriptors) -> active OEM cat
 | Relay | Catalog | Status |
 |---|---|---|
 | Hitachi Energy REL670 | `hitachi_energy/rel670.json` | **READY FOR OWNER UAT** (catalog-only proof) |
-| Hitachi Energy REL511 | `hitachi_energy/rel511.json` (1.1.0, DEC-198 Am. 1) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Hitachi Energy REL511 | `hitachi_energy/rel511.json` (1.2.0, DEC-198 Am. 1-2) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRZ100 | `toshiba/grz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
@@ -1258,7 +1258,8 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
 * **REL511** -- Operation_Zn -> status, DirZn -> direction (`None` is not a printed option: Unsupported), `Timer tn` gates `tn`,
   X1Zn -> X, R1Zn / R0Zn / X0Zn preserved, RFNZn as printed (assumption), CT / VT (Ir / Ur as secondaries: assumptions; VT kV:
   assumption), line data. **Not interpreted:** characteristic, basis, RF loop/per-phase convention (RFZn preserved as an
-  Unsupported +R with its raw value), ZnBlock (preserved), directional boundary.
+  Unsupported +R with its raw value), ZnBlock (preserved), directional boundary. *(Superseded by DEC-198 Amendments 1-2 -- see
+  the last section: characteristic, loops, basis and the RFZn / RFNZn meanings are now documented relay behaviour.)*
 * **7SL87** -- Edit mode -> basis (Primary), Mode -> status, Directional mode -> direction, Function mode -> PP / PE loops,
   X reach / R (ph-ph) / R (ph-g), Zone-inclination angle -> tilt (an explicit 0° is a valid configured value -- no inclination --
   and does not block readiness by itself; any other tilt stays Unsupported; DEC-197 Amendment 1), zone-specific Kr / Kx
@@ -1297,7 +1298,7 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
 | Relay | Zones | Review counts (mapped / assumption / missing / unsupported / unreadable / blocking) | Raw settings: extracted = catalog mapped + unsupported + unresolved + not interpreted + outside DP | Readiness after accepting every offered approximation and confirming every assumption |
 |---|---|---|---|---|
 | REL670 | 4 (Z1-Z3 fwd, Z4 rev, all enabled) | 62 / 9 / 2 / 4 / 0 / 4 | 993 = 88 + 0 + 0 + 117 + 788 | **Ready to apply**; Apply returns 4 zones |
-| REL511 | 5 | 35 / 10 / 17 / 11 / 0 / 9 | 238 = 53 + 11 + 2 + 46 + 126 | Not ready (basis, characteristic, PP loops) |
+| REL511 | 5 | 35 / 10 / 17 / 11 / 0 / 9 | 238 = 53 + 11 + 2 + 46 + 126 | Not ready (basis, characteristic, PP loops) -- *DEC-197 snapshot; now 12 blocking settings, see the last section* |
 | 7SL87 | 6 | 63 / 2 / 14 / 36 / 0 / 6 | 794 = 60 + 31 + 21 + 84 + 598 | Not ready (characteristic, delays); tilt 0° Mapped, not a blocker |
 | 7SA613 | 6 | 51 / 0 / 26 / 9 / 3 / 16 | 343 = 38 + 3 + 9 + 38 + 255 | Not ready (basis, characteristic, delays, loops, non-dir Z5) |
 | GRZ100 | 8 | 30 / 2 / 75 / 58 / 0 / 17 | 858 = 24 + 32 + 0 + 58 + 744 | Not ready (basis, zone status) |
@@ -1338,9 +1339,11 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
 
 1. Whether the RFPP / 2 convention approved for RED670 applies to REL670 unchanged (same ZMQPDIS parameters; implemented so).
 2. The impedance basis of REL511, 7SA613, GRZ100, GRL200, RCS-941 and RELZ100 sheets (not stated; never inferred from magnitudes).
+   **REL511 resolved (DEC-198 Amendment 2):** Secondary, documented relay behaviour (ABB 1MRK 506 109-UEN Eq. 39); the others stay open.
 3. The characteristic of REL511, 7SL87, 7SA613, RCS-941, RELZ100 (not named on the sheets; the parameter sets suggest
-   quadrilateral / mho, but nothing is assumed).
-4. The per-loop / per-phase meaning of REL511 RFZn / RELZ100 Rn (preserved, not used).
+   quadrilateral / mho, but nothing is assumed). **REL511 resolved (DEC-198 Amendment 1):** quadrilateral, documented.
+4. The per-loop / per-phase meaning of REL511 RFZn / RELZ100 Rn (preserved, not used). **REL511 resolved (DEC-198 Amendment 2):**
+   RFZn phase-phase and RFNZn phase-earth, both ohm/loop; RELZ100 Rn stays open.
 5. ~~Whether a zero tilt (7SL87 Zone-inclination angle 0) should be acceptable to the engine.~~ **Resolved (owner, 2026-10-14,
    DEC-197 Amendment 1):** explicit tilt = 0° is a valid configured value and does not block readiness by itself. Generic rule in
    the engine adapter: a stated, finite 0 on explicit R/X geometry is accepted (the X limit is drawn horizontally); any non-zero /
@@ -1439,34 +1442,71 @@ basis / characteristic / R-RE loops; RFPP / 2 for RED670 / REL670), zone status 
 or a fixed direction (GRZ100, GRL200, RCS-941, RELZ100), and the per-zone 0.00 Ω acceptance for the ZDRDIR directional
 boundary (a candidate approximation rule). The 0.00 Ω suggestion for a *missing* left reach (P441) stays a user value.
 
-### REL511 -- knowledge integration (DEC-198 Amendment 1, catalog 1.1.0)
+### REL511 -- knowledge integration (DEC-198 Amendments 1-2, catalog 1.2.0)
 
-**Reference (owner-supplied, verified):** *Line distance protection terminal REL 511* -- ABB **1MDB06309-YN**, issued April
-1999, changed since June 1998. Scope: the REL 511 / REx 5xx family distance-protection function; applicability by matching
-function and parameter structure, **not** a confirmed firmware match (`REL511_V1.2_TNB` is not asserted to be firmware V1.2).
-Catalog reference ids: `abb-1mdb06309-yn-fig1` (Fig. 1, pp. 2-3) and `abb-1mdb06309-yn-p2` (p. 2).
+**References (owner-approved, verified).** Applicability by matching function and parameter structure, **not** a confirmed
+firmware match (`REL511_V1.2_TNB` is not asserted to be firmware V1.2).
 
-| Item | Now | Classification |
+| Catalog reference id | Document | Used for |
+|---|---|---|
+| `abb-1mdb06309-yn-fig1`, `-p2` | ABB *Line distance protection terminal REL 511*, **1MDB06309-YN** (April 1999), Fig. 1 pp. 2-3, p. 2 | Characteristic; PP / PE loops (Amendment 1) |
+| `abb-1mrk506101-uen-zm` | *Technical reference manual REL 511-C2\*2.3*, **1MRK 506 101-UEN** (May 2001), ZM 1.10-1.14, Tables 66-76 | Units (X / R ohm/ph, RF ohm/loop), Ir = 1 A ranges, ArgDir / ArgNegRes ranges |
+| `abb-1mrk506109-uen-conv` | *Application manual REL 511\*2.3*, **1MRK 506 109-UEN** (July 2001), p. 74, Eq. 39 | Conversion to secondary impedances -- the basis |
+| `abb-1mrk506109-uen-pp` | same, Fig. 29-30, Eq. 31-37, Eq. 72 (pp. 56-57, 65-67, 88) | Phase-phase boundary; `RFZ1 ≤ 3·X1Z1` names RFZn as the PP reach |
+| `abb-1mrk506109-uen-pe` | same, Eq. 24-30, Eq. 69-70 (pp. 63-65, 87-88) | Phase-earth loop boundary; `R = ⅓(2·R1Zn + R0Zn) + RFNZn` |
+| `abb-1mrk506167-uen-zm` | *Installation and commissioning manual REL 511\*2.5*, **1MRK 506 167-UEN** (Dec 2006), Tables 25-26 | Test points in ohm/loop (PP: R = RFPP at X = 0) |
+
+The 2.3 / 2.5 manuals are **verified for the REL 511 family (2.3 generation)** and **likely but version-dependent** for the TNB
+1.x-style sheet (one X1Zn / R1Zn / X0Zn / R0Zn / RFZn / RFNZn set per zone -- the 2.3 "simplified setting parameters" structure,
+whose names the Application manual itself uses in Eq. 69 / 72). The scope note travels with every citation.
+
+| Item | Now (1.2.0) | Classification |
 |---|---|---|
 | Characteristic | Quadrilateral, `documented_derivation` (Fig. 1), enabled zones; selector `not_exposed` | Documented relay behaviour |
 | PP / PE loops | Enabled, `documented_derivation` (p. 2), enabled zones; selectors `not_exposed` | Documented relay behaviour |
-| Impedance basis | `gap.kind: unverified` | **Semantic unknown** -- blocking |
-| RFZn -> +R | `gap.kind: unverified`, raw value preserved and cited | **Semantic unknown** -- blocking |
-| RFNZn | `gap.kind: unverified`, raw value preserved (not plotted) | Semantic unknown -- not blocking |
-| ZnBlock = On, enabled zone | preserved, `unverified_when: ["on"]` | **Semantic unknown** -- blocking (owner decision; no meaning assigned) |
-| Left / directional boundary | `gap` (unsupported); no 0.00 Ω offer | **Engine geometry limitation** -- blocking |
-| Line-angle-adjusted resistive lines (Fig. 1) | interpretation note | Engine geometry limitation -- not approximated |
+| Impedance basis | **Secondary**, `documented_derivation` (verified; evidence `Ir`); never from the CT / VT ratios | Documented relay behaviour |
+| RFZn -> +R | `gap` (**unsupported**); raw value, references and the exact relation in the provenance; no +R plotted | **Engine geometry limitation** -- blocking |
+| RFNZn | Earth Resistive Reach as printed (ohm/loop, loop domain), `documented_derivation` (verified); not plotted | Documented relay behaviour -- not blocking |
+| ZnBlock = On, enabled zone | preserved, `unverified_when: ["on"]` (unchanged) | **Semantic unknown** -- blocking (owner decision; no meaning assigned) |
+| Left / directional boundary | `gap` (unsupported), documented relation + references in the note; no 0.00 Ω offer | **Engine geometry limitation** -- blocking |
 | Firmware version | not asserted (scheme `V<n>` marker is not firmware) | Source-data gap -- not blocking |
 
-Real sheet: blocking settings **9 -> 13** -- before, 8 of the 9 were artificial (characteristic 4, PP loops 4) and hid the
-+R / −R gaps; after, every one is genuine: semantic unknowns 9 (basis 1, RFZn 4, ZnBlock 4), engine geometry 4 (left
-boundary), source-data gaps 0 blocking. 12 documented values; 5 assumptions (unchanged gating); `approximations[]` empty;
-**PARTIALLY SUPPORTED / NOT_READY**. Generic capabilities, wording and side effects (7SL87 6 -> 9, 7SA613 16 -> 21 blocking
-settings; P441 / RED670 / REL670 unchanged): DECISIONS.md, DEC-198 Amendment 1.
+**Documented geometry (recorded in the catalog's interpretation notes and the +R / −R provenance; the engine is unchanged).**
+Phase-phase, per-phase R-X plane, forward zone n:
+
+```text
+top:   X <= X1Zn                          (horizontal -- the engine's top line is exact)
+right: R <= R1Zn * X / X1Zn + RFZn / 2    (inclined at atan(X1Zn / R1Zn), crosses the R axis at +RFZn / 2)
+left:  R >= R1Zn * X / X1Zn - RFZn / 2    (parallel to the right line, crosses at -RFZn / 2)
+directional: -ArgDir (4th quadrant, 5-45 deg) .. ArgNegRes (2nd quadrant, 90-175 deg from the R axis),
+             common to all zones, not on the sheet; reverse zone = forward rotated 180 deg
+```
+
+Phase-earth, loop domain (not drawn): reactive reach `(2·X1Zn + X0Zn) / 3`; resistive reach at the zone end
+`(2·R1Zn + R0Zn) / 3 + RFNZn`; lines inclined at `atan((2·X1Zn + X0Zn) / (2·R1Zn + R0Zn))`.
+
+**Approximation candidates -- documented, NOT approved, NOT in `APPROVED_RULES`, no records emitted.**
+
+| Candidate | Rule | Class | Condition | Envelope / domain |
+|---|---|---|---|---|
+| A | +R = RFZn / 2 (vertical) | conservative | R1Zn ≥ 0 | shortfall ≤ R1Zn at X = X1Zn, 0 at X = 0 (real Z1: 2.31 Ω plotted vs 2.87 Ω documented at X1Z1) |
+| B | −R = 0, X ≥ 0 | conservative | RFZn ≥ 2·R1Zn (with the documented ArgDir ≥ 5°, ArgNegRes ≥ 90° ranges) | first quadrant / current engine idealisation (the directional element is voltage-polarised); omits the 2nd-quadrant wedge and the 4th-quadrant sliver |
+
+Each needs an owner-approved, relay-neutral rule; REL511 would also need ZnBlock resolved before `ready_approximate`.
+
+**Result (owner REL511 sheet).** Blocking settings **13 -> 12**: semantic unknowns 9 -> **4** (ZnBlock = On × 4 -- the only
+one left), engine geometry limitations 4 -> **8** (RFZn inclined boundary × 4, left / directional boundary × 4), source-data
+gaps 0 blocking. Documented relay behaviour 12 -> **18** (+ basis, + RFNZn × 5); 5 assumptions (gating unchanged);
+`approximations[]` empty; **PARTIALLY SUPPORTED / NOT_READY**. Generic: an Unsupported +R whose gap cites a verified reference
+reads "A source fault-resistance setting is available and its resistive boundary is documented, but the current engine cannot
+represent that boundary exactly." (without a verified reference -- e.g. RELZ100 -- the previous wording stays). Amendment 1's
+history (9 -> 13; 7SL87 / 7SA613 side effects): DECISIONS.md, DEC-198 Amendments 1-2.
 
 ### Recommended next slices (not started)
 
 1. ~~REL511 references + verified derivations~~ -- done (Amendment 1). Still open: Relion 670 references; RELZ100 Rn as `unverified`.
+   ~~REL511 basis / RFZn / RFNZn semantics~~ -- done (Amendment 2). Still open for REL511: **ZnBlock** (needs OEM evidence:
+   the REL 511\*1.2 User's Guide 1MRK 506 002-UEN or TNB's template definition), then candidates A / B for owner approval.
 2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
 3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.

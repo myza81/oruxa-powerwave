@@ -418,6 +418,19 @@ def _forward_resistive(zone: DistanceZone, fail):
             (zone_path(zone, "resistive_reach.phase_phase"), zone_path(zone, "resistive_reach.common")),
         )
         return _CONFLICT
+    if (pp.provenance.cause is UnresolvedCause.UNSUPPORTED and pp.provenance.sources
+            and any(ref.verified for ref in pp.provenance.references)):
+        # The source states a fault-resistance setting and a verified reference documents the boundary it
+        # forms, but the engine cannot draw that boundary exactly (DEC-198): an engine limitation, not a
+        # semantic unknown, and not "only a phase-earth value".
+        fail(
+            UnsupportedCode.RESISTIVE_REACH_UNRESOLVED,
+            "A source fault-resistance setting is available and its resistive boundary is documented, but the "
+            "current engine cannot represent that boundary exactly.",
+            zone,
+            (zone_path(zone, "resistive_reach.phase_phase"), zone_path(zone, "resistive_reach.common")),
+        )
+        return _CONFLICT
     if rr.phase_earth.is_resolved:
         fail(
             UnsupportedCode.LOOP_TYPE_UNSUPPORTED,
