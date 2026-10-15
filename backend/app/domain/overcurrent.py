@@ -84,6 +84,7 @@ from app.domain.calculated_channel import ChannelRef
 from app.domain.calculated_channel import evaluate_rms as evaluate_rms_array
 from app.domain.channel_classification import ENGINEERING_QUANTITY_CURRENT
 from app.domain.engineering_units import convert_array_to_canonical, convert_value_to_canonical
+from app.domain.equipment_loading import EquipmentLoadingCurrent
 
 #: Bump ONLY when the estimation algorithm/interpretation itself changes
 #: -- never for an unrelated refactor. Included, unconditionally, in
@@ -581,6 +582,9 @@ REASON_WAVEFORM_FORM_NOT_ELIGIBLE = "waveform_form_not_eligible"
 REASON_CHANNEL_UNAVAILABLE = "channel_unavailable"
 REASON_UNSUPPORTED_CURRENT_UNIT = "unsupported_current_unit"
 REASON_INVALID_INPUT_CURRENT = "invalid_input_current"
+REASON_INVALID_EQUIPMENT_RATING = "invalid_equipment_rating"
+REASON_INVALID_LOADING_PERCENT = "invalid_loading_percent"
+REASON_INVALID_SYSTEM_VOLTAGE = "invalid_system_voltage"
 
 
 @dataclass(slots=True)
@@ -668,6 +672,22 @@ class ManualOvercurrentAnalysisResult:
     expected_operating_time_seconds: float | None = None
     reason_code: str | None = None
     message: str = ""
+
+
+@dataclass(slots=True)
+class EquipmentLoadingOvercurrentResult:
+    """Manual Input's Equipment Loading input method: the loading ->
+    primary-current conversion (`app.domain.equipment_loading`) paired
+    with the UNCHANGED `ManualOvercurrentAnalysisResult` that primary
+    current produced as an ordinary primary-basis manual input -- never a
+    second result shape for the relay evaluation itself. `loading` is
+    `None` only when the loading inputs themselves were invalid; it is
+    still present when the relay evaluation needs configuration (e.g. a
+    missing CT ratio), so the engineer can see the derived primary current
+    while completing the settings."""
+
+    analysis: ManualOvercurrentAnalysisResult
+    loading: EquipmentLoadingCurrent | None = None
 
 
 # ---------------------------------------------------------------------------

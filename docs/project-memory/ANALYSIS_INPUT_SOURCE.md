@@ -379,6 +379,17 @@ and in a real browser
 (`browser-tests/overcurrent_analysis.spec.js`'s own "golden example"
 scenario).
 
+**Input method within Manual (2026-10-15, Overcurrent only).** Inside
+Overcurrent's Manual source, an *input method* chooses how the manual
+current is obtained: Direct Current (the endpoint above) or Equipment
+Loading (`GET .../overcurrent-manual-loading`). Equipment Loading converts
+MVA × loading % at a line-to-line kV into a primary current, then calls
+the same manual service function. This is not a third Analysis Input
+Source. Input Source still answers *recording vs. manual*; input method is
+an Overcurrent-specific sub-choice of Manual (`WW_OC_INPUT_METHOD_*`). See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md), "Equipment Loading
+input method".
+
 ## What Phasor's own implementation looks like end to end
 
 ```text

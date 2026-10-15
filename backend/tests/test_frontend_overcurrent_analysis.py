@@ -1459,7 +1459,14 @@ class TestManualInputCalculatorMode:
         source = _source()
         fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
         assert "wwOvercurrentState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;" in fn
-        assert "wwOvercurrentState.manual = { inputCurrent: 30000, inputCurrentUnit: \"A\", inputBasis: \"primary\", latestResult: null };" in fn
+        # Equipment Loading input method: the reset also returns to Direct
+        # Current and the loading defaults.
+        assert (
+            "wwOvercurrentState.manual = {\n"
+            "                inputMethod: WW_OC_INPUT_METHOD_DIRECT, inputCurrent: 30000, inputCurrentUnit: \"A\", inputBasis: \"primary\",\n"
+            "                equipmentRatingMva: 100, loadingPercent: 100, systemVoltageKv: 132, latestResult: null,\n"
+            "            };"
+        ) in fn.replace("\r\n", "\n")
 
     def test_manual_fields_use_change_event_never_per_keystroke_input_event(self):
         """Design choice (documented in the task's own final report): the
@@ -1654,3 +1661,86 @@ class TestManualModeIsIndependentOfRecordings:
         )
         for forbidden in ("selectedContextId", "activeTimeGroupId", "sourceId", "phase:"):
             assert forbidden not in fn
+
+
+class TestManualEquipmentLoadingInputMethod:
+    """Manual Input's Equipment Loading input method -- an input
+    conversion inside the existing Manual Input section, never a second
+    analyzer, relay-settings block or calculation engine."""
+
+    def _manual_section(self, source: str) -> str:
+        return _function_body(source, 'id="wwOvercurrentManualInputSection"', 'id="wwOvercurrentValuesList"')
+
+    def test_method_toggle_and_both_field_groups_live_inside_the_manual_section(self):
+        section = self._manual_section(_source())
+        assert 'id="wwOvercurrentInputMethodDirectBtn"' in section
+        assert 'id="wwOvercurrentInputMethodLoadingBtn"' in section
+        assert 'data-input-method="direct_current"' in section
+        assert 'data-input-method="equipment_loading"' in section
+        assert 'class="ww-oc-axis-toggle-group" role="group" aria-label="Manual input method"' in section
+        assert section.index('id="wwOvercurrentManualDirectFields"') < section.index('id="wwOvercurrentManualCurrentInput"')
+        assert 'id="wwOvercurrentManualLoadingFields" hidden' in section
+        for field_id in ("wwOvercurrentLoadingRatingInput", "wwOvercurrentLoadingPercentInput", "wwOvercurrentLoadingVoltageInput"):
+            assert f'id="{field_id}"' in section
+        assert 'id="wwOvercurrentLoadingResults"' in section
+        assert 'id="wwOvercurrentLoadingStatus"' in section
+
+    def test_relay_settings_and_ct_controls_are_never_duplicated(self):
+        source = _source()
+        section = self._manual_section(source)
+        for shared_id in ("wwOvercurrentCtPrimaryInput", "wwOvercurrentCtSecondaryInput", "wwOvercurrentPickupInput", "wwOvercurrentTmsInput", "wwOvercurrentCharacteristicSelect"):
+            assert shared_id not in section
+            assert source.count(f'id="{shared_id}"') == 1
+        # Browser locators such as `#wwOvercurrentBody .ww-oc-settings-grid`
+        # rely on the Relay Settings grid being the only one in the body.
+        assert "ww-oc-settings-grid" not in section
+
+    def test_loading_inputs_have_no_upper_bound(self):
+        section = self._manual_section(_source())
+        loading_input = section[section.index('id="wwOvercurrentLoadingPercentInput"'):]
+        loading_input = loading_input[:loading_input.index(">")]
+        assert "max=" not in loading_input
+
+    def test_loading_request_uses_its_own_backend_endpoint_never_a_client_side_formula(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRequestManualLoadingAnalysis()", "function wwOvercurrentRenderManualLoadingResult")
+        assert "wwOvercurrentFetchManualLoadingAnalysis(" in fn
+        for param in ("equipment_rating_mva", "loading_percent", "system_voltage_kv", "ct_primary", "ct_secondary"):
+            assert param in fn
+        assert "Math.sqrt" not in fn
+        assert "/overcurrent-manual-loading?" in source
+
+    def test_manual_request_dispatches_on_input_method(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRequestManualAnalysis()", "// Mirrors wwOvercurrentRenderResult()")
+        assert "wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING" in fn
+        assert "wwOvercurrentRequestManualLoadingAnalysis();" in fn
+
+    def test_stale_responses_are_discarded(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRequestManualLoadingAnalysis()", "function wwOvercurrentRenderManualLoadingResult")
+        # The generation is bumped before the pre-flight, so an invalid
+        # edit also invalidates an in-flight response.
+        assert fn.index("++wwOvercurrentState.manualRequestGeneration") < fn.index("wwOvercurrentLoadingInputError()")
+        assert "wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING" in fn
+        switch = _function_body(source, "function wwOvercurrentSetManualInputMethod(", "const WW_OC_LOADING_FIELDS")
+        assert "wwOvercurrentState.manual.latestResult = null;" in switch
+        assert "wwOvercurrentState.manualRequestGeneration += 1;" in switch
+
+    def test_ct_fields_are_always_needed_for_equipment_loading(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentCtFieldsNeeded()", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert "wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING" in fn
+
+    def test_loading_fields_use_change_event(self):
+        source = _source()
+        assert "WW_OC_LOADING_FIELDS.forEach((field) => {\n            document.getElementById(field.inputId).addEventListener(\"change\"" in source.replace("\r\n", "\n")
+        for field_id in ("wwOvercurrentLoadingRatingInput", "wwOvercurrentLoadingPercentInput", "wwOvercurrentLoadingVoltageInput"):
+            assert f'inputId: "{field_id}"' in source
+
+    def test_reset_returns_to_direct_current(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
+        assert "inputMethod: WW_OC_INPUT_METHOD_DIRECT" in fn
+        sync = _function_body(source, "function wwOvercurrentSyncManualInputFields()", "function wwOvercurrentSyncInputMethodUi()")
+        assert "wwOvercurrentSyncInputMethodUi();" in sync
