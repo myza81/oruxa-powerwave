@@ -98,7 +98,7 @@ test("every decision type keeps the readiness defined: confirm, undo, confirm al
   await form.getByRole("button", { name: "Set value" }).click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Resolved manually");
   await button(page, "Clear the value of Zone 1 Left Resistive Reach (−R)").click();
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
   await button(page, "Leave Zone 1 Left Resistive Reach (−R) unresolved").click();
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Left unresolved");

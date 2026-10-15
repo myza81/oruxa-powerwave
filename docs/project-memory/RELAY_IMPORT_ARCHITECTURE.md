@@ -8,7 +8,8 @@ baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
 is identification-only; **Slice 9 (Apply Settings, DEC-188), Slice 10 (Dynamic Distance Zones, DEC-189) and Slice 11 (Siemens 7SA511 profile, DEC-196/191) are implemented; the 7SA511 profile is PAUSED pending verified source data (DEC-192). Slice 12 (Hitachi Energy RED670 profile, DEC-192) is implemented and awaiting owner UAT**. Approval record:
 **2026-10-13: the RED670 semantics are corrected (DEC-193) and a data-driven Parameter Catalog Foundation is added (DEC-194; last section).**
-**2026-10-14: every remaining sample relay family is interpreted by a catalog-only JSON parameter catalog (DEC-197, branch `feature/remaining-relay-imports`; section "Remaining relay families" at the end, with the consolidated owner-UAT matrix).**
+**2026-10-14: every remaining sample relay family is interpreted by a catalog-only JSON parameter catalog (DEC-197, branch `feature/remaining-relay-imports`; section "Remaining relay families", with the consolidated owner-UAT matrix).**
+**2026-10-15: Relay Import Assistance for Non-Expert Users -- generic foundation (DEC-198; last section): catalog references and verified documented derivations, "Documented relay behaviour", Unverified vs Unsupported, Not exposed, the approximation data model, `ready_approximate`, Apply `approximations[]`. No relay behaviour changed.**
 [DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -913,6 +914,9 @@ Status: **Implemented / Awaiting owner UAT** (with Slice 8). Presentation and
 classification only: no engineering value, mapping rule, engine or readiness rule
 changed. This section supersedes the visible "To confirm" / "Unresolved" wording
 used in the Slice 6-8 text above (those names survive only as internal fields).
+**DEC-198 (2026-10-15)** in turn renames the visible "Missing" chip "Source value missing" and "Unsupported" "Not yet
+supported", and adds Documented relay behaviour / Approximate plot / Not a relay setting (and the internal category
+`unverified`) -- see the last section; the internal category names below are unchanged.
 
 The user may not be a protection engineer, so the review explains *why* a value is
 uncertain instead of asking everything to be confirmed. Six compact categories
@@ -1343,3 +1347,118 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
    NaN / infinite tilt and a zero tilt on a polar reach (reference angle not established) stay Unsupported; a blank tilt stays
    Missing, a non-numeric one Unreadable. 7SL87 stays Not ready (characteristic not named; Z1-Z3 delays Missing -- blank cells).
 6. A first-class angle-defined / inclined boundary geometry (ZDRDIR, SIPROTEC polygon, Toshiba blinders) -- a future engine slice.
+
+## Relay Import Assistance for Non-Expert Users -- foundation (DEC-198)
+
+Status: **Foundation implemented on `feature/remaining-relay-imports` (not merged); awaiting owner review.** Generic model
+only: no shipped catalog, relay mapping, geometry, readiness rule or confirmation gate changed. Governing decision:
+[DECISIONS.md -- DEC-198](DECISIONS.md#dec-198----relay-import-assistance-for-non-expert-users).
+
+**Principle.** Relay-family interpretation belongs in the catalog knowledge layer, with cited and verified provenance; the
+user is not asked to decide OEM semantics. Documented relay behaviour is derived automatically; known engine limits may be
+drawn approximately only under an explicit, versioned, relay-neutral rule whose effect is established (conservative or
+bounded); anything unverified that can change the result stays blocking.
+
+```text
+Can the semantics be established?  no -> block (Unverified)
+        | yes
+Can the engine represent it exactly?  yes -> exact (Mapped / Documented relay behaviour)
+        | no
+Approved conservative / bounded rule?  yes -> automatic approximation (Approximate plot, ready_approximate)
+        | no
+block (Not yet supported)
+```
+
+### Taxonomy (internal -> what the user sees)
+
+| Internal | Presentation category | Chip | Blocks? |
+|---|---|---|---|
+| `MAPPED`, authority `configured_setting` / `engineering_instruction` | `mapped` | Mapped | no |
+| `MAPPED`, authority `documented_derivation` | `documented` | Documented relay behaviour | no |
+| `MAPPED`, origin `engine_approximation` + `ApproximationRecord` | `approximate` | Approximate plot | no (readiness `ready_approximate`) |
+| `INFERRED` (any authority, incl. an inferred documented derivation such as RFPP / 2) | `assumption` | Assumption | until confirmed (unchanged) |
+| `UNRESOLVED` + `MISSING` | `missing` | Source value missing | if the engine needs it |
+| `UNRESOLVED` + `UNSUPPORTED` (understood, not representable) | `unsupported` | Not yet supported | if the engine needs it |
+| `UNRESOLVED` + `UNVERIFIED` (meaning / conversion not established) -- new | `unverified` | Not yet supported (other explanation) | if the engine needs it |
+| `UNRESOLVED` + `NOT_EXPOSED` (the relay has no such setting) -- new | `not_exposed` | Not a relay setting | if the engine needs it |
+| `UNRESOLVED` + `CONFLICT` / `UNREADABLE` | `conflict` / `unreadable` | Conflict / Unreadable | as before |
+
+This supersedes the visible Slice 8A words "Missing" and "Unsupported" (the internal category names are unchanged). Review
+counts: `mapped_count` now excludes documented values; new `documented_count`, `approximate_count`, `unverified_count`,
+`not_exposed_count` (review DTO, state DTO, card line, summary chips). Internal words (gap, adapter, `geometry_mode`,
+`UNVERIFIED`) appear only in the Source disclosure, never in the normal UI (browser-tested).
+
+### Catalog additions (`oruxa.parameter-catalog/1`, additive; README of `backend/app/data/parameter_catalog/`)
+
+* `references: [{id, title, verification, document?, section?, page?, scope?}]` -- identification only, length-capped,
+  unknown keys refused. A mapping cites `references: [ids]` (carried as `Provenance.references` / `DocumentReference`,
+  shown under Source as "Reference: <title> (<document> · <section> · p. N) -- verified / not yet verified").
+* `"verification": "verified"` on a mapping = a verified documented derivation: requires `documented_derivation` +
+  `mapped` + at least one verified reference, else the catalog is refused (`unverified_reference`).
+* `"not_exposed": {"note"}` -- reads / transforms / asserts nothing; a documented-derivation mapping of the same target is
+  tried first and wins when it resolves; a configured-setting mapping of the same target is a conflict.
+* `gap.kind`: `unsupported` (default, unchanged behaviour) | `unverified`.
+* Lock: `references` counts in the semantic digest only when used -- every shipped digest is unchanged (tested). No
+  shipped catalog uses any of the new keys yet.
+* Coverage / dry-run: new `canonical_values_unverified` / `canonical_values_not_exposed`; unverified sources are
+  recognised-unsupported raw settings.
+
+### Approximations (data model only)
+
+`domain/relay_import/approximation.py` (relay-neutral; guard test): `ApproximationClass` conservative / bounded / unbounded
+(only the first two may be applied automatically), `ErrorEnvelope`, `ApproximationRule` (`rule_id`, `rule_version`, affected
+field, classification, description, envelope -- a bounded rule needs one), `ApproximationRecord` (on the approximated value's
+`Provenance`, origin `engine_approximation`; an unbounded record cannot be constructed). **`APPROVED_RULES = ()`** -- no rule
+is approved and no OEM catalog can opt into one yet; the future opt-in is a catalog declaration naming a relay-neutral rule id,
+allowed only once the catalog has established the relay semantics. The review context sent by the browser can never carry an
+approximation (not decodable): approximations will be derived server-side after decoding, before the user's decisions.
+
+### Readiness and Apply
+
+| Readiness | Meaning | Apply |
+|---|---|---|
+| `not_ready` | the adapter refuses, or a blocking value is open | no |
+| `ready_after_confirmation` | accepted, assumptions still unconfirmed (gating unchanged) | no |
+| `ready` | accepted, exact under the current verified model | yes |
+| `ready_approximate` -- new | accepted, at least one automatic approximation | yes |
+
+No current relay reaches `ready_approximate`. `ApplySettingsOut.approximations[]` (rule id / version, field, classification,
+description, envelope, zone id) is empty for every relay; the browser validates it atomically with the rest of the payload
+(an unbounded entry or a bounded one without an envelope refuses the Apply), stores it as
+`wwDistanceState.appliedApproximations`, shows "Approximate plot" in the R-X legend while non-empty, and releases it together
+with the configuration (Remove / newly accepted import: cleared while unedited; a hand-edited configuration keeps it). The
+`d032dcd` / `9ceb7a6` ownership rules are unchanged (browser-tested).
+
+### Manual resolution -- intended rule (nothing removed)
+
+*User correction is primarily for source-data problems, not OEM-semantic interpretation.* Appropriate (stays primary):
+genuinely missing / blank source values (e.g. 7SL87 / 7SA613 / 7SA511 delays), unreadable cells, extraction / row
+association errors. Expert semantic decisions to move into catalog knowledge (later; manual stays as an advanced fallback,
+UAT slice): confirming family-convention assumptions (P441 characteristic / loops / Z1-Z4 direction / reach angle; 7SA511
+basis / characteristic / R-RE loops; RFPP / 2 for RED670 / REL670), zone status / direction for relays with no per-zone switch
+or a fixed direction (GRZ100, GRL200, RCS-941, RELZ100), and the per-zone 0.00 Ω acceptance for the ZDRDIR directional
+boundary (a candidate approximation rule). The 0.00 Ω suggestion for a *missing* left reach (P441) stays a user value.
+
+### REL511 -- recorded verification evidence (not encoded)
+
+| Item | Status | Next step |
+|---|---|---|
+| Characteristic | **Accepted family evidence**: derivable from ABB / Hitachi Energy REx5xx documentation | record the verified reference, then a verified documented derivation (catalog 1.1.0) |
+| PP / PE loop behaviour (inherent, no per-loop tap) | **Accepted family evidence** | `not_exposed` + verified documented derivation (catalog 1.1.0) |
+| Inclined resistive boundary | **Understood conceptually**; the engine does not represent it exactly | an approximation rule with an established, classified effect -- only after RFZn is resolved |
+| Impedance basis (primary / secondary) | **Still unresolved** | stays blocking |
+| RFZn conversion (per-loop / per-phase) | **Still unresolved** | stays blocking (candidate `gap.kind: unverified`) |
+| Left / directional boundary | **Unsupported** | stays blocking |
+
+The documents behind the accepted evidence are not yet in the repository (no title / publication number / section). REL511
+stays PARTIALLY SUPPORTED / Not ready; its catalog (`hitachi-rel511-catalog@1.0.0`) is unchanged.
+
+### Recommended next slices (not started)
+
+1. Supply the REL511 / Relion 670 references; encode the REL511 characteristic and loops as verified documented derivations;
+   reclassify REL511 RFZn / RELZ100 Rn gaps as `unverified` (catalog version bumps).
+2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
+3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
+   RED670 / REL670; resolve the open 670 resistive-line inclination question first.
+4. Non-expert UI pass (Advanced section for manual overrides) -- `[DECISION MODE: UAT]`.
+5. Polygon / half-plane engine geometry (turns most approximations into exact plots).

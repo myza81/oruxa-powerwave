@@ -45,6 +45,14 @@ AUTHORITY_PRECEDENCE = {name: rank for rank, name in enumerate(AUTHORITIES)}
 
 CONFIDENCES = ("mapped", "inferred")
 
+#: DEC-198: how far a cited reference has been checked. Only a ``verified`` reference can carry a
+#: mapping that declares itself a verified documented derivation.
+REFERENCE_VERIFICATIONS = ("verified", "unverified")
+#: DEC-198: what a declared gap is about. ``unsupported`` -- the meaning is understood but Oruxa's
+#: canonical model / engine cannot represent it (the default, as before); ``unverified`` -- what the
+#: value means, or how it converts, is not established for this relay.
+GAP_KINDS = ("unsupported", "unverified")
+
 
 @dataclass(frozen=True)
 class PrintedUnitRule:
@@ -155,12 +163,37 @@ class Gate:
 
 @dataclass(frozen=True)
 class Gap:
-    """A declared capability gap: the document states something Oruxa's canonical model cannot
-    represent. The canonical value stays unresolved (cause *unsupported*) but the evidence is
-    preserved and cited."""
+    """A declared gap: the document states something Oruxa does not turn into a canonical value. The
+    canonical value stays unresolved but the evidence is preserved and cited. ``kind`` (DEC-198) says
+    why: ``unsupported`` (understood, not representable -- cause *unsupported*) or ``unverified``
+    (meaning / conversion not established -- cause *unverified*)."""
 
     note: str
     evidence: tuple[Selector, ...] = ()
+    kind: str = "unsupported"
+
+
+@dataclass(frozen=True)
+class NotExposed:
+    """DEC-198: the relay does not expose this canonical parameter as a configurable setting (fixed /
+    inherent behaviour). It is *not* a missing source value. It never supplies a value: only a
+    verified documented derivation mapping of the same target can, and wins when it resolves."""
+
+    note: str
+
+
+@dataclass(frozen=True)
+class Reference:
+    """DEC-198: an authoritative reference a catalog cites (an OEM manual section, an application note,
+    an owner decision). Identification only -- the catalog never carries the reference's text."""
+
+    id: str
+    title: str
+    verification: str
+    document: str | None = None
+    section: str | None = None
+    page: str | None = None
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -183,6 +216,13 @@ class Mapping:
     requires_resolved: tuple[str, ...] = ()
     unresolved_note: str = ""
     gap: Gap | None = None
+    #: DEC-198: the relay does not expose this setting (see `NotExposed`).
+    not_exposed: NotExposed | None = None
+    #: DEC-198: ids of the catalog `references` this mapping cites.
+    references: tuple[str, ...] = ()
+    #: DEC-198: ``"verified"`` declares a verified documented derivation (it must cite a verified
+    #: reference); ``None`` when not declared.
+    verification: str | None = None
     #: Computed by the validator: 0 = document level, 1 = zone level, 2 = document level that
     #: reads zone results (a zone family).
     stage: int = 0
@@ -292,10 +332,15 @@ class Catalog:
     source_notes: tuple[ZoneNoteRule, ...] = ()
     #: Raw zone settings kept with their zone, uninterpreted.
     zone_preserved: tuple[PreservedSettings, ...] = ()
+    #: DEC-198: the authoritative references the mappings cite, by id.
+    references: tuple[Reference, ...] = ()
     #: The canonical registry version the catalog was validated against.
     registry_version: str = ""
     #: ``catalog_id@version`` -- what an import records as the interpretation's origin.
     source_path: str = ""
+
+    def reference(self, reference_id: str) -> Reference | None:
+        return next((r for r in self.references if r.id == reference_id), None)
 
     @property
     def key(self) -> str:

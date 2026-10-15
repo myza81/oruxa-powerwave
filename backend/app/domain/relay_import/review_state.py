@@ -275,6 +275,7 @@ def _resolved_manually(sourced: Sourced, value: object, text: str) -> Sourced:
             catalog_id=p.catalog_id,
             catalog_version=p.catalog_version,
             canonical_id=p.canonical_id,
+            references=p.references,
         ),
     )
 
@@ -299,6 +300,7 @@ def _suggestion_accepted(sourced: Sourced, spec: SuggestionSpec) -> Sourced:
             catalog_id=p.catalog_id,
             catalog_version=p.catalog_version,
             canonical_id=p.canonical_id,
+            references=p.references,
         ),
     )
 
@@ -381,6 +383,10 @@ class Readiness(StrEnum):
     READY_AFTER_CONFIRMATION = "ready_after_confirmation"
     #: The engine accepts the model and every inferred value is confirmed.
     READY = "ready"
+    #: DEC-198: as ``ready``, but the accepted model contains at least one automatic engine
+    #: approximation of an approved rule (conservative or bounded). No import reaches it until
+    #: such a rule is approved.
+    READY_APPROXIMATE = "ready_approximate"
 
 
 @dataclass(frozen=True)
@@ -442,13 +448,20 @@ def engine_limits(adaptation: EngineAdaptation) -> dict[str, tuple[str, str]]:
     return out
 
 
-def compute_readiness(*, engine_supported: bool, pending_confirmations: int, blocking_unresolved: int) -> Readiness:
+def compute_readiness(
+    *, engine_supported: bool, pending_confirmations: int, blocking_unresolved: int, approximations: int = 0
+) -> Readiness:
     """``Ready`` only when the engine adapter accepts the effective model, no
     blocking item is open and no inferred value awaits confirmation. A "required
     canonical field" is one the adapter needs, so an unresolved one always makes
-    the adapter refuse the model."""
+    the adapter refuse the model. DEC-198: an accepted model that contains an
+    automatic engine approximation is ``ready_approximate`` instead of ``ready``."""
     if not engine_supported or blocking_unresolved > 0:
         return Readiness.NOT_READY
     if pending_confirmations > 0:
         return Readiness.READY_AFTER_CONFIRMATION
-    return Readiness.READY
+    return Readiness.READY_APPROXIMATE if approximations > 0 else Readiness.READY
+
+
+#: Readiness states that allow Apply (the model is accepted, nothing awaits the user).
+APPLICABLE_READINESS = frozenset({Readiness.READY, Readiness.READY_APPROXIMATE})

@@ -50,6 +50,7 @@ from app.domain.relay_import.canonical_distance import (
     UnresolvedSetting,
 )
 from app.domain.relay_import.provenance import (
+    DocumentReference,
     MappingAuthority,
     Sourced,
     SourceRef,
@@ -240,7 +241,17 @@ class _Run:
             self.notes.append(text)
 
     def _ids(self, m: Mapping) -> dict[str, Any]:
-        return {"catalog_id": self.cat.catalog_id, "catalog_version": self.cat.version, "canonical_id": m.canonical}
+        return {"catalog_id": self.cat.catalog_id, "catalog_version": self.cat.version, "canonical_id": m.canonical,
+                "references": self._references(m)}
+
+    def _references(self, m: Mapping) -> tuple[DocumentReference, ...]:
+        """DEC-198: the catalog references a mapping cites, as provenance (identification only)."""
+        out = []
+        for rid in m.references:
+            ref = self.cat.reference(rid)
+            if ref is not None:
+                out.append(DocumentReference(ref.id, ref.title, ref.verification, ref.document, ref.section, ref.page, ref.scope))
+        return tuple(out)
 
     def good(self, m: Mapping, value: Any, reads: list[_Read], *, transformation: str | None = None,
              raw: str | None = None) -> Sourced:
@@ -487,6 +498,8 @@ class _Run:
         variables = zone or {}
         if m.gap is not None:
             return self._gap(m, param, variables)
+        if m.not_exposed is not None:
+            return self._not_exposed(m, param, variables)
         first = PRIMITIVES[m.steps[0].type] if m.steps else None
         if first is not None and first.inputs == "none":
             return self._constant(m, param, variables)
@@ -624,12 +637,23 @@ class _Run:
         reads = [self.locate(sel, variables) for sel in m.gap.evidence]
         shown = ", ".join(f"{e.name} = {_clean(e.raw_value)}" for r in reads for e in r.entries[:1])
         note = _fill(m.gap.note, {**variables, "evidence": shown})
-        self.note(f"{param.label}: capability gap - the source states a value Oruxa cannot represent")
+        unverified = m.gap.kind == "unverified"
+        if unverified:
+            self.note(f"{param.label}: meaning not verified - the source states a value whose meaning is not established for this relay")
+        else:
+            self.note(f"{param.label}: capability gap - the source states a value Oruxa cannot represent")
         return unresolved(
             " | ".join(r.raw for r in reads if r.raw is not None) or None,
-            sources=self.refs(*(e for r in reads for e in r.entries)), notes=(note,), cause=UnresolvedCause.UNSUPPORTED,
+            sources=self.refs(*(e for r in reads for e in r.entries)), notes=(note,),
+            cause=UnresolvedCause.UNVERIFIED if unverified else UnresolvedCause.UNSUPPORTED,
             **self._ids(m),
         )
+
+    def _not_exposed(self, m: Mapping, param: CanonicalParameter, variables: dict[str, Any]) -> Sourced:
+        """DEC-198: the relay has no such setting. Never a value and never *Missing*: only a documented
+        derivation mapping of the same target can supply the value (it is tried first)."""
+        assert m.not_exposed is not None
+        return unresolved(notes=(_fill(m.not_exposed.note, variables),), cause=UnresolvedCause.NOT_EXPOSED, **self._ids(m))
 
     # --- running the catalog --------------------------------------------------------------------
 
@@ -726,7 +750,10 @@ class _Run:
             m for m in self.cat.mappings
             if m.canonical == canonical and (not zone_id or "*" in m.zones or zone_id in m.zones)
         ]
-        candidates.sort(key=lambda m: (AUTHORITY_PRECEDENCE[m.authority], VALUE_SOURCE_PRECEDENCE.index(m.value_source)))
+        # A not-exposed declaration never resolves: it is tried last, and if nothing resolves it is the
+        # result kept (the relay has no such setting -- not a missing source value). DEC-198.
+        candidates.sort(key=lambda m: (m.not_exposed is not None, AUTHORITY_PRECEDENCE[m.authority],
+                                       VALUE_SOURCE_PRECEDENCE.index(m.value_source)))
         zone = next((z for z in self.zone_vars if z["zone"] == zone_id), None) if zone_id else None
         first: Sourced | PlainValue | None = None
         chosen = candidates[0]
@@ -736,8 +763,9 @@ class _Run:
             if result.is_resolved:
                 final, chosen = result, m
                 break
-            if first is None:
+            if first is None or m.not_exposed is not None:
                 first = result
+                chosen = m
         self.results[(canonical, zone_id)] = Outcome(final if final is not None else first, chosen, zone_id)  # type: ignore[arg-type]
 
     # --- assembling the canonical model ---------------------------------------------------------

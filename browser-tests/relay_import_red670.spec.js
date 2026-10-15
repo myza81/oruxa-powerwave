@@ -74,8 +74,9 @@ test("a RED670 sheet is identified and opens the generic review with every zone"
   await expect(row(page, "zone.Z2.rr.pp")).toContainText("Right Resistive Reach (+R)");
   await expect(row(page, "zone.Z2.rr.pe")).toContainText("Earth Resistive Reach");
   await expect(row(page, "zone.Z2.characteristic")).toContainText("Explicit R/X");
-  // ZMQPDIS is the quadrilateral function: authoritative family semantics, so Mapped (not an Assumption)
-  await expect(row(page, "zone.Z2.characteristic")).toContainText("Mapped");
+  // ZMQPDIS is the quadrilateral function: authoritative family semantics -- not an Assumption, and
+  // presented as documented relay behaviour rather than a setting the sheet states (DEC-198)
+  await expect(row(page, "zone.Z2.characteristic").locator(".ww-rr-status")).toHaveText("Documented relay behaviour");
   // timers are the actual tPP / tPE settings
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("0.45");
   await expect(row(page, "zone.Z2.timer.pe")).toContainText("0.45");
@@ -87,8 +88,8 @@ test("a RED670 sheet is identified and opens the generic review with every zone"
 test("the Left (−R) reach is Unsupported (a capability gap), keeps its ZDRDIR source, and is the only thing blocking", async ({ page }) => {
   await openReview(page);
   const left = row(page, "zone.Z1.rr.reverse");
-  await expect(left).toContainText("Unsupported");
-  await expect(left).not.toContainText("Missing");
+  await expect(left).toContainText("Not yet supported");
+  await expect(left).not.toContainText("Source value missing");
   // the offered value is worded concisely as an optional visualization approximation, never a mapped setting
   await expect(left.locator(".ww-rr-offer")).toHaveText(
     "Relay directional boundary is not yet representable. 0.00 Ω is an optional visualization approximation only and is not a mapped relay setting.");
@@ -104,7 +105,7 @@ test("the Left (−R) reach is Unsupported (a capability gap), keeps its ZDRDIR 
   await expect(row(page, "zone.Z1.char.directional_arg_dir")).toContainText("15");
   await expect(row(page, "zone.Z1.char.directional_arg_neg_res")).toContainText("115");
   // the disabled Zone 4's left reach does not block
-  await expect(row(page, "zone.Z4.rr.reverse")).toContainText("Unsupported");
+  await expect(row(page, "zone.Z4.rr.reverse")).toContainText("Not yet supported");
 });
 
 test("accepting the approximation reads as a suggestion, not as the relay's setting", async ({ page }) => {
@@ -116,7 +117,7 @@ test("accepting the approximation reads as a suggestion, not as the relay's sett
   await expect(left).toContainText("accepted by you, for this import session only");
   await expect(left).toContainText("the relay's setting, and not mapped from a profile");
   await button(page, `Clear the value of Zone 1 ${LEFT}`).click();
-  await expect(left).toContainText("Unsupported");
+  await expect(left).toContainText("Not yet supported");
 });
 
 test("the loop-value RFPP is shown halved with the OEM value and transformation kept in Source", async ({ page }) => {

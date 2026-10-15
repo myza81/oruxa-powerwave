@@ -28,7 +28,8 @@ class IssueCode:
     INVALID_VALUE_SOURCE = "invalid_value_source"  # e.g. a printed range read as the configured value
     INVALID_LIFECYCLE = "invalid_lifecycle"
     INVALID_VERSION = "invalid_version"
-    INVALID_REFERENCE = "invalid_reference"      # a dependency on a canonical value that is not available first
+    INVALID_REFERENCE = "invalid_reference"      # a dependency on a canonical value / reference that is not available
+    UNVERIFIED_REFERENCE = "unverified_reference"  # DEC-198: a verified documented derivation without a verified reference
 
 
 @dataclass(frozen=True)

@@ -25,10 +25,11 @@ import math
 from dataclasses import dataclass
 
 from app.domain.distance_protection import CHARACTERISTIC_MHO, GEOMETRY_POLAR
+from app.domain.relay_import.approximation import ApproximationRecord
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel
 from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_direction
 
-__all__ = ["ApplyPlan", "ApplyRejectedError", "ApplyZone", "build_apply_plan"]
+__all__ = ["ApplyApproximation", "ApplyPlan", "ApplyRejectedError", "ApplyZone", "build_apply_plan", "model_approximations"]
 
 
 class ApplyRejectedError(ValueError):
@@ -62,10 +63,34 @@ class ApplyZone:
 
 
 @dataclass(frozen=True)
+class ApplyApproximation:
+    """DEC-198: one engine approximation in the applied configuration (relay-neutral rule data only;
+    nothing from the document)."""
+
+    rule_id: str
+    rule_version: str
+    field: str
+    classification: str
+    description: str
+    envelope: str | None = None
+    zone_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ApplyPlan:
     characteristic: str
     impedance_basis: str
     zones: tuple[ApplyZone, ...]
+    #: DEC-198: the engine approximations the applied configuration contains (empty = exact).
+    approximations: tuple[ApplyApproximation, ...] = ()
+
+
+def model_approximations(model: CanonicalDistanceProtectionModel) -> tuple[ApproximationRecord, ...]:
+    """Every approximation record carried by the model's values, in model order."""
+    return tuple(
+        sourced.provenance.approximation for _, sourced in model.iter_sourced()
+        if sourced.provenance.approximation is not None
+    )
 
 
 def _finite(value: float | None, name: str, *, non_negative: bool = True) -> float | None:
@@ -123,4 +148,11 @@ def build_apply_plan(
                 settings.geometry_mode,
             )
         )
-    return ApplyPlan(adaptation.characteristic, impedance_basis, tuple(zones))
+    approximations = tuple(
+        ApplyApproximation(
+            r.rule_id, r.rule_version, r.field, r.classification.value, r.description,
+            r.envelope.description if r.envelope else None, r.zone_id,
+        )
+        for r in model_approximations(model)
+    )
+    return ApplyPlan(adaptation.characteristic, impedance_basis, tuple(zones), approximations)

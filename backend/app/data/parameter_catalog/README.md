@@ -78,7 +78,25 @@ Units convert only where `units.CONVERSIONS` lists the pair (kV -> V ...), autom
 `unit` to the canonical unit.
 
 **Capability gaps.** `gap` declares that the document states something the canonical model cannot represent: the value
-stays *Unsupported*, the evidence is cited and preserved, nothing is approximated.
+stays *Unsupported*, the evidence is cited and preserved, nothing is approximated. DEC-198: `gap.kind` says why --
+`"unsupported"` (default: the meaning is understood, the engine cannot represent it; shown "Not yet supported") or
+`"unverified"` (what the value means, or how it converts, is not established for this relay; shown "Not yet supported"
+with a different explanation). Both keep the raw value and block where the engine needs the value.
+
+**Authoritative references** (DEC-198). A top-level `references` list of `{id, title, verification, document?, section?,
+page?, scope?}` (`verification`: `verified` | `unverified`). A reference *identifies* its source (OEM manual number,
+section, page, an owner decision) and never copies its text: unknown keys are refused and every field is length-capped.
+A mapping cites them with `"references": [ids]`; they appear in the value's provenance and the review's *Source*.
+A mapping may declare `"verification": "verified"` -- a **verified documented derivation** -- only when its authority is
+`documented_derivation`, its confidence `mapped`, and it cites at least one `verified` reference; otherwise the catalog is
+refused (`unverified_reference`). A `documented_derivation` value that is `mapped` is shown as **Documented relay
+behaviour**, not as Mapped.
+
+**Not exposed** (DEC-198). `"not_exposed": {"note": ...}` on a mapping (no source, transform, gate, evidence, authority or
+gap) states that the relay has **no configurable setting** for this canonical parameter -- inherent / fixed behaviour.
+It is *not* a missing source value (shown "Not a relay setting", never counted as Missing) and it **never supplies a
+value**: only a separate documented-derivation mapping of the same target can, and wins when it resolves. A relay cannot
+both state and not expose a setting (a configured-setting mapping of the same target is a conflict).
 
 **Zone document notes** (`source_notes`, DEC-197). A list of rules `{pattern, zone_id, zone_ids, subjects}`: `pattern` is
 searched in a raw row's text (name and value) and has a named group `zone`; `zone_id` (default `Z{zone}`) turns the token into a

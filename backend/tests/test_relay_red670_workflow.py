@@ -142,8 +142,9 @@ class TestUploadAndReview:
             assert "Zero-Sequence Reach R" in labels  # preserved, distinct, not plotted
             assert not any(label in ("Reach Angle", "Tilt Angle") for label in labels) and "Reach" not in labels
             ch = next(i for i in group["items"] if i["label"] == "Characteristic")
-            # ZMQPDIS is the quadrilateral function: authoritative family semantics, not an assumption
-            assert ch["value_text"] == "Quadrilateral · Explicit R/X" and ch["category"] == "mapped"
+            # ZMQPDIS is the quadrilateral function: authoritative family semantics, not an assumption --
+            # presented as documented relay behaviour (DEC-198), not as a setting the sheet states
+            assert ch["value_text"] == "Quadrilateral · Explicit R/X" and ch["category"] == "documented"
             assert ch["authority"] == "documented_derivation"
             labels_all = [i["label"] for i in group["items"]]
             # the ZDRDIR angles are kept, under the registry's OEM-neutral labels (the relay's names live in Source)
@@ -205,7 +206,8 @@ class TestReadinessAndApply:
 
     def test_payload_is_the_generic_dto_and_holds_no_relay_or_document_data(self, client):
         out = client.post(APPLY, json=user_decisions(upload(client)["review"])).json()
-        assert set(out) == {"characteristic", "impedance_basis", "zones"}
+        # DEC-198: approximations[] is part of the generic payload; empty because no rule is approved
+        assert set(out) == {"characteristic", "impedance_basis", "zones", "approximations"} and out["approximations"] == []
         text = json.dumps(out)
         for token in ("RED670", "Hitachi", "Relion", "ZM0", "ZMQPDIS", "pdf", "sheet", "raw", "requirement"):
             assert token not in text

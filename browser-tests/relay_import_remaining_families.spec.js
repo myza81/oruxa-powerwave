@@ -62,7 +62,7 @@ test("REL670: identified and reviewed through its catalog, with Zone 4 enabled i
   await expect(pp).toContainText("÷ 2");
   await expect(pp).toContainText("hitachi-rel670-catalog");
   // the ZDRDIR left boundary is a capability gap, offered only as a worded approximation
-  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Unsupported");
+  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Not yet supported");
   await expect(row(page, "zone.Z1.rr.reverse").locator(".ww-rr-offer")).toHaveText(LEFT_OFFER);
   // the scheme requirement is a document note beside the zone, never the value
   await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 Forward direction timer set to 0.15s");
@@ -96,7 +96,7 @@ test("REL670: the concise Left (-R) explanation -- 0.00 Ω stays optional and ne
   await expect(left.locator(".ww-rr-offer")).toHaveText(LEFT_OFFER);
   for (const fragment of OLD_LEFT_OFFER_FRAGMENTS) await expect(panel(page)).not.toContainText(fragment);
   // optional: offered, not applied -- the row stays Unsupported (blocking) and the review Not ready until the user acts
-  await expect(left.locator(".ww-rr-status")).toHaveText("Unsupported");
+  await expect(left.locator(".ww-rr-status")).toHaveText("Not yet supported");
   await expect(left).toHaveAttribute("data-blocking", "true");
   await expect(readiness(page)).toContainText("Not ready");
   // accepting it is a visualization resolution only: Resolved · Suggested, still classified Unsupported, never Mapped
@@ -227,7 +227,7 @@ test("7SL87: blank timer cells are Missing (not the Infinity range), basis from 
   await expect(row(page, "basis")).toContainText("Primary");
   await expect(row(page, "basis")).toContainText("Mapped");
   const timer = row(page, "zone.Z1.timer.pp");
-  await expect(timer).toContainText("Missing");
+  await expect(timer).toContainText("Source value missing");
   await expect(timer).not.toContainText("Infinity s");
   await timer.getByRole("button", { name: /Source/ }).first().click();
   await expect(timer).toContainText("blank");
@@ -237,10 +237,10 @@ test("7SL87: blank timer cells are Missing (not the Infinity range), basis from 
   // an explicit 0° tilt on an explicit R/X zone is a valid configured value (DEC-197 Amendment 1), not a blocker
   await expect(row(page, "zone.Z1.tilt")).toContainText("0°");
   await expect(row(page, "zone.Z1.tilt")).toContainText("Mapped");
-  await expect(row(page, "zone.Z1.tilt")).not.toContainText("Unsupported");
+  await expect(row(page, "zone.Z1.tilt")).not.toContainText("Not yet supported");
   await expect(row(page, "zone.Z1.tilt")).toHaveAttribute("data-blocking", "false");
   await expect(zoneGroup(page, "Z1")).toContainText("Dist. characteristic angle");
-  await expect(row(page, "zone.Z1.characteristic")).toContainText("Missing"); // not named by the sheet: not assumed
+  await expect(row(page, "zone.Z1.characteristic")).toContainText("Source value missing"); // not named by the sheet: not assumed
   await page.locator("#wwRelayReviewConfirmAll").click().catch(() => {});
   await expect(readiness(page)).toContainText("Not ready");
   await expect(applyBtn(page)).toHaveCount(0);
@@ -252,11 +252,11 @@ test("GRZ100: CT / VT ratios, a phase / earth characteristic mismatch and blinde
   await expect(row(page, "ct.ratio")).toContainText("CT Ratio");
   await expect(row(page, "ct.ratio")).toContainText("1200");
   await expect(row(page, "vt.ratio")).toContainText("1200");
-  await expect(row(page, "ct.primary")).toContainText("Missing"); // a ratio is never split into primary / secondary
-  await expect(row(page, "zone.Z1.characteristic")).toContainText("Unsupported"); // Quad phase vs Mho earth
+  await expect(row(page, "ct.primary")).toContainText("Source value missing"); // a ratio is never split into primary / secondary
+  await expect(row(page, "zone.Z1.characteristic")).toContainText("Not yet supported"); // Quad phase vs Mho earth
   await expect(zoneGroup(page, "Z1")).toContainText("BFRS");
   await expect(zoneGroup(page, "Z1")).toContainText("BFLS-angle");
-  await expect(row(page, "zone.Z1.status")).toContainText("Missing"); // no zone switch: not invented
+  await expect(row(page, "zone.Z1.status")).toContainText("Source value missing"); // no zone switch: not invented
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("0.3 s");
   await expect(applyBtn(page)).toHaveCount(0);
 });

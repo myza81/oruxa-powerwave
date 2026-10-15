@@ -62,7 +62,7 @@ test("review: the missing left reach is Missing, blocking, and offers 0.00 Ω wi
   await expect(z1.locator(".ww-rr-label")).toHaveAttribute("title", /does not mean the zone is reverse-directional/);
   await expect(z1).toHaveAttribute("data-category", "missing");
   await expect(z1).toHaveAttribute("data-blocking", "true");
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await expect(z1.locator(".ww-rr-value")).toHaveText("Not available");
   await expect(z1.locator(".ww-rr-offer")).toContainText("This value was not found in the relay setting file.");
   await expect(z1.locator(".ww-rr-offer")).toContainText("Suggested for visualization: 0.00 Ω");
@@ -100,12 +100,12 @@ test("review: accepting the suggestion resolves it as Suggested, keeps Missing i
   await expect(prov).toContainText("Suggested value: 0.00 Ω");
   await expect(prov).toContainText("accepted by you");
   await expect(prov).toContainText("Source value: unavailable / missing");
-  await expect(prov).toContainText("Classified as: Missing");
+  await expect(prov).toContainText("Classified as: Source value missing");
   await expect(prov).toContainText("the relay's setting, and not mapped from a profile");
   await expect(prov).not.toContainText("User resolution");
   // Clear returns to Missing / blocking and offers the suggestion again.
   await button(page, "Clear the value of Zone 1 " + LEFT).click();
-  await expect(chip(page, key)).toHaveText("Missing");
+  await expect(chip(page, key)).toHaveText("Source value missing");
   await expect(row(page, key)).toHaveAttribute("data-blocking", "true");
   await expect(row(page, key).locator(".ww-rr-offer")).toBeVisible();
 });

@@ -37,7 +37,7 @@ test("a defeated zone's missing Left Resistive Reach is visible, not required, n
   await expect(z4).toHaveAttribute("data-category", "missing");
   await expect(z4).toHaveAttribute("data-blocking", "false");
   await expect(z4).toHaveAttribute("data-not-required", "true");
-  await expect(chip(page, "zone.Z4.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z4.rr.reverse")).toHaveText("Source value missing");
   await expect(z4.locator(".ww-rr-notreq")).toContainText(NOT_REQUIRED);
   await expect(z4.locator(".ww-rr-blocking")).toHaveCount(0);
   await expect(z4.locator(".ww-rr-offer")).toBeHidden();
@@ -55,7 +55,7 @@ test("Zone P with settings, no decoded state and a delay that is not defeated is
   await expect(zoneP(page).locator("> summary")).toContainText("Status missing");
   await expect(zoneP(page)).not.toContainText("was not found in the uploaded relay settings");
   await expect(row(page, "zone.ZP.status")).toHaveAttribute("data-blocking", "true");
-  await expect(chip(page, "zone.ZP.status")).toHaveText("Missing");
+  await expect(chip(page, "zone.ZP.status")).toHaveText("Source value missing");
 });
 
 test("an absent Zone P is assumed Disabled: an Assumption with helper text, nothing to confirm, not blocking", async ({ page }) => {

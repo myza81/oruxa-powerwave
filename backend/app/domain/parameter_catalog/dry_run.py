@@ -20,7 +20,7 @@ from app.domain.parameter_catalog.registry import CanonicalRegistry
 from app.domain.relay_import.canonical_distance import ImpedanceValue
 from app.domain.relay_import.raw_document import RawRelayDocument
 
-STATES = ("mapped", "assumption", "unsupported", "conflict", "unreadable", "missing")
+STATES = ("mapped", "assumption", "unsupported", "conflict", "unreadable", "missing", "unverified", "not_exposed")
 
 
 @dataclass(frozen=True)
@@ -163,7 +163,8 @@ def render_text(report: DryRunReport, *, show_unmapped: int = 15) -> str:
         f"Canonical values:          {c.canonical_values_total}"
         f"  (mapped {c.canonical_values_mapped}, assumption {c.canonical_values_assumed},"
         f" unsupported {c.canonical_values_unsupported}, conflict {c.canonical_values_conflicting},"
-        f" unreadable {c.canonical_values_unreadable}, missing {c.canonical_values_missing})",
+        f" unreadable {c.canonical_values_unreadable}, missing {c.canonical_values_missing},"
+        f" unverified {c.canonical_values_unverified}, not exposed {c.canonical_values_not_exposed})",
         f"Transformed:               {len(report.transformed)}",
         "",
     ]

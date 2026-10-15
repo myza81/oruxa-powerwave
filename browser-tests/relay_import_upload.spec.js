@@ -414,7 +414,7 @@ function p441Pdf(notes = ["Zone 4 Defeated"], extraRows = []) {
 // Slice 8/8A: the line is the live review count by category, so confirmed / resolved / blocking
 // parts appear as they become non-zero and zero parts are dropped.
 const P441_SUMMARY =
-  /^\d+ zones found · \d+ settings mapped( · \d+ assumptions?)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ suggested)?( · \d+ missing)?( · \d+ conflicts?)?( · \d+ unsupported)?( · \d+ unreadable)?( · \d+ blocking settings?)?$/;
+  /^\d+ zones found · \d+ settings mapped( · \d+ assumptions?)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ suggested)?( · \d+ missing)?( · \d+ conflicts?)?( · \d+ not yet supported)?( · \d+ unreadable)?( · \d+ blocking settings?)?$/;
 
 test("a P441 is interpreted, summarised, and NOTHING is applied to the form", async ({ page }) => {
   await openDistance(page);
@@ -580,7 +580,7 @@ test("review summary names the relay, profile, zones and counts", async ({ page 
   await expect(summary).toContainText(/\d+ mapped/);
   await expect(summary).toContainText(/\d+ assumptions/);
   await expect(summary).toContainText(/\d+ missing/);
-  await expect(summary).toContainText(/\d+ unsupported/);
+  await expect(summary).toContainText(/\d+ not yet supported/);
   await expect(summary).toContainText(/\d+ not interpreted/);
 });
 
@@ -623,7 +623,7 @@ test("mapped, assumption and missing states are all visible", async ({ page }) =
   await expect(item(page, "ct.primary")).toContainText("Mapped");
   await expect(item(page, "zone.Z1.reach")).toContainText("Assumption");
   await expect(item(page, "zone.Z1.reach.angle")).toContainText("Assumption");
-  await expect(item(page, "zone.Z1.rr.reverse")).toContainText("Missing");
+  await expect(item(page, "zone.Z1.rr.reverse")).toContainText("Source value missing");
   await expect(item(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-status", "unresolved");
   await expect(item(page, "ct.primary")).toHaveAttribute("data-status", "mapped");
   await expect(item(page, "zone.Z1.reach")).toHaveAttribute("data-status", "inferred");
@@ -687,7 +687,7 @@ test("inferred and unresolved items explain themselves in their provenance", asy
 
 test("tilt settings are preserved as unsupported, and other settings stay secondary and paginated", async ({ page }) => {
   await reviewP441(page);
-  await expect(group(page, "zone-Z1").locator("li", { hasText: "Z1m Tilt Angle" })).toContainText("Unsupported");
+  await expect(group(page, "zone-Z1").locator("li", { hasText: "Z1m Tilt Angle" })).toContainText("Not yet supported");
   const other = page.locator("#wwRelayReviewOther");
   await expect(other).not.toHaveAttribute("open", "");
   await expect(other.locator(".ww-rr-other-row")).toHaveCount(0); // closed: nothing dumped into view

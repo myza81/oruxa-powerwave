@@ -6,7 +6,7 @@ computed is trusted:
 
     original interpretation + decisions
         -> effective reviewed model, engine adapter re-run, readiness re-derived
-        -> refused unless readiness is exactly ``ready``
+        -> refused unless readiness is ``ready`` or ``ready_approximate`` (DEC-198)
         -> apply plan: only what the existing Distance Protection form can hold
 
 Either a complete plan is returned or an error -- never a partial plan. Nothing is
@@ -17,7 +17,7 @@ its own form with the returned values.
 from __future__ import annotations
 
 from app.domain.relay_import.apply_settings import ApplyPlan, ApplyRejectedError, build_apply_plan
-from app.domain.relay_import.review_state import Readiness, ReviewDecisions
+from app.domain.relay_import.review_state import APPLICABLE_READINESS, Readiness, ReviewDecisions
 from app.domain.relay_import.canonical_distance import SettingBasis
 from app.services.relay_review_validation import reviewed_state
 
@@ -36,7 +36,7 @@ _NOT_READY = {
 
 def apply_reviewed_settings(context: dict, decisions: ReviewDecisions) -> ApplyPlan:
     effective, adaptation, review = reviewed_state(context, decisions)
-    if review.readiness.status != Readiness.READY.value:
+    if review.readiness.status not in {r.value for r in APPLICABLE_READINESS}:
         raise ApplyNotReadyError(_NOT_READY.get(review.readiness.status, _NOT_READY[Readiness.NOT_READY.value]))
     basis = effective.transformers.setting_basis
     if not basis.is_resolved or basis.value is SettingBasis.UNKNOWN:

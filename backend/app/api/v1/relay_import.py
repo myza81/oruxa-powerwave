@@ -136,6 +136,7 @@ def _review_state_out(review: ExtractionReview) -> ReviewStateOut:
             resolution_origin=item.resolution_origin,
             not_required=item.not_required,
             not_required_reason=item.not_required_reason,
+            approximation=item.approximation,
         )
         for group in full.groups
         for item in group.items
@@ -224,4 +225,5 @@ def apply_relay_review(body: ReviewValidationIn) -> ApplySettingsOut:
         characteristic=plan.characteristic,
         impedance_basis=plan.impedance_basis,
         zones=[_apply_zone_out(zone) for zone in plan.zones],
+        approximations=[asdict(a) for a in plan.approximations],
     )

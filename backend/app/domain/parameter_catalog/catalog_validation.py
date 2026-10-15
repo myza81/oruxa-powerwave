@@ -10,6 +10,12 @@ missing conversion, duplicate / conflicting mappings, unsupported or mistyped tr
 enum maps outside the canonical enum, zone targets the catalog's zone model does not define,
 selectors that cannot match, a printed range / default / note offered as the configured
 setting, and references to canonical values that are not available at that point.
+
+DEC-198: authoritative ``references`` (identification only, length-capped so no manual text is
+copied), a mapping's cited ``references`` and ``"verification": "verified"`` (a verified documented
+derivation must be certain and must cite a verified reference, else it is refused), ``not_exposed``
+declarations (the relay has no such setting: they read, transform and assert nothing) and a gap's
+``kind`` (``unsupported`` engine limit vs ``unverified`` semantic unknown).
 """
 
 from __future__ import annotations
@@ -22,7 +28,9 @@ from app.domain.parameter_catalog.catalog_model import (
     AUTHORITY_PRECEDENCE,
     CATALOG_SCHEMA,
     CONFIDENCES,
+    GAP_KINDS,
     LIFECYCLES,
+    REFERENCE_VERIFICATIONS,
     VALUE_SOURCE_PRECEDENCE,
     VALUE_SOURCES,
     Applicability,
@@ -35,9 +43,11 @@ from app.domain.parameter_catalog.catalog_model import (
     Gate,
     Identification,
     Mapping,
+    NotExposed,
     NoteSubject,
     PreservedSettings,
     PrintedUnitRule,
+    Reference,
     Selector,
     Step,
     Validation,
@@ -57,7 +67,7 @@ _FAMILY_VARS = {"n"}
 
 _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "applicability", "profile_id",
              "identification", "zones", "distance_scope", "mappings", "registry_version", "interpretation_notes",
-             "source_notes", "zone_preserved"}
+             "source_notes", "zone_preserved", "references"}
 _NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
 _NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
 _NOTE_SUBJECTS = ("timer", "status")
@@ -67,7 +77,8 @@ _IDENT_KEYS = {"model_patterns", "family_markers", "parameter_signatures", "sche
 _ZONES_KEYS = {"discover", "static"}
 _SCOPE_KEYS = {"code_prefixes", "section_contains", "names", "name_patterns"}
 _MAPPING_KEYS = {"id", "canonical", "zone", "source", "sources", "transform", "requires", "value_source", "authority",
-                 "confidence", "note", "evidence", "evidence_from", "requires_resolved", "unresolved_note", "gap"}
+                 "confidence", "note", "evidence", "evidence_from", "requires_resolved", "unresolved_note", "gap",
+                 "references", "verification", "not_exposed"}
 _SELECTOR_KEYS = {"name", "code", "name_pattern", "pattern_in_text", "indexed_family", "zone_family", "section", "type",
                   "unit", "printed_unit", "validate", "allowed_text", "note"}
 _PRINTED_KEYS = {"policy", "accept", "accept_if", "missing_when_unprinted"}
@@ -76,7 +87,16 @@ _FAMILY_KEYS = {"index", "member", "expected_count", "aggregate"}
 _ZONE_FAMILY_KEYS = {"member", "where", "aggregate", "min_count"}
 _INDEX_KEYS = {"name_pattern", "value_pattern", "filter"}
 _GATE_KEYS = {"source", "equals", "off_note", "missing_note"}
-_GAP_KEYS = {"note", "evidence"}
+_GAP_KEYS = {"note", "evidence", "kind"}
+_NOT_EXPOSED_KEYS = {"note"}
+_REFERENCE_KEYS = {"id", "title", "verification", "document", "section", "page", "scope"}
+#: DEC-198: a reference identifies its source; it never carries the source's text. Field length caps
+#: keep manual text out of the catalog.
+_REFERENCE_LIMITS = {"title": 200, "document": 120, "section": 160, "page": 20, "scope": 240}
+#: Keys a not-exposed declaration cannot be combined with: it states that there is no setting, so it
+#: reads nothing, transforms nothing and asserts no authority.
+_NOT_EXPOSED_EXCLUSIVE = ("source", "sources", "transform", "requires", "evidence", "evidence_from",
+                          "requires_resolved", "gap", "value_source", "authority", "confidence", "verification")
 _AGGREGATES = ("all_equal", "any")
 
 
@@ -156,6 +176,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
     scope = _distance_scope(v, data.get("distance_scope"))
     note_rules = _source_notes(v, data.get("source_notes"))
     preserved = _zone_preserved(v, data.get("zone_preserved"), zones)
+    references = _references(v, data.get("references"))
 
     raw_mappings = data.get("mappings")
     mappings: list[Mapping] = []
@@ -165,7 +186,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
         if not raw_mappings and lifecycle != "draft":
             v.add("mappings", IssueCode.MISSING_METADATA, "a catalog past 'draft' needs at least one mapping")
         for i, raw in enumerate(raw_mappings):
-            mapping = _mapping(v, raw, f"mappings[{i}]", zones, mappings)
+            mapping = _mapping(v, raw, f"mappings[{i}]", zones, mappings, references)
             if mapping is not None:
                 mappings.append(mapping)
         _cross_checks(v, mappings, zones)
@@ -176,7 +197,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
         catalog_id=catalog_id, version=version, lifecycle=lifecycle, applicability=applicability, profile_id=profile_id,
         mappings=tuple(_with_stage(m) for m in mappings), zones=zones, identification=identification,
         distance_scope=scope, description=str(data.get("description") or ""), notes=tuple(notes),
-        source_notes=note_rules, zone_preserved=preserved,
+        source_notes=note_rules, zone_preserved=preserved, references=references,
         registry_version=registry_version or registry.version,
         source_path=source_path,
     )
@@ -384,7 +405,59 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
 # ---------------------------------------------------------------------------
 
 
-def _mapping(v: _Validator, raw: Any, path: str, zones: ZoneModel | None, earlier: list[Mapping]) -> Mapping | None:
+def _references(v: _Validator, raw: Any) -> tuple[Reference, ...]:
+    """DEC-198: the catalog's authoritative references (id, title, verification and where to look)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        v.add("references", IssueCode.MALFORMED, "references must be a list of reference objects")
+        return ()
+    out: list[Reference] = []
+    seen: set[str] = set()
+    for k, item in enumerate(raw):
+        path = f"references[{k}]"
+        if not isinstance(item, dict):
+            v.add(path, IssueCode.MALFORMED, "a reference must be an object")
+            continue
+        v.keys(item, _REFERENCE_KEYS, path)
+        rid = v.string(item, "id", path)
+        title = v.string(item, "title", path)
+        verification = v.string(item, "verification", path)
+        ok = bool(rid and title and verification)
+        if rid and not _KEBAB.match(rid):
+            v.add(f"{path}.id", IssueCode.MALFORMED, "a reference id must be lower-case kebab-case")
+            ok = False
+        if rid and rid in seen:
+            v.add(f"{path}.id", IssueCode.DUPLICATE, f"duplicate reference id {rid!r}")
+            ok = False
+        if verification and verification not in REFERENCE_VERIFICATIONS:
+            v.add(f"{path}.verification", IssueCode.MALFORMED, f"verification must be one of {list(REFERENCE_VERIFICATIONS)}")
+            ok = False
+        fields: dict[str, str | None] = {}
+        for key in ("document", "section", "page", "scope"):
+            value = item.get(key)
+            if key == "page" and isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                value = str(value)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                v.add(f"{path}.{key}", IssueCode.MALFORMED, f"{key} must be a non-empty string")
+                ok = False
+                continue
+            fields[key] = value
+        for key, limit in _REFERENCE_LIMITS.items():
+            value = title if key == "title" else fields.get(key)
+            if isinstance(value, str) and len(value) > limit:
+                v.add(f"{path}.{key}", IssueCode.MALFORMED,
+                      f"{key} is longer than {limit} characters: a reference identifies its source, it does not copy its text")
+                ok = False
+        if rid:
+            seen.add(rid)
+        if ok:
+            out.append(Reference(rid, title, verification, **fields))  # type: ignore[arg-type]
+    return tuple(out)
+
+
+def _mapping(v: _Validator, raw: Any, path: str, zones: ZoneModel | None, earlier: list[Mapping],
+             references: tuple[Reference, ...] = ()) -> Mapping | None:
     if not isinstance(raw, dict):
         v.add(path, IssueCode.MALFORMED, "a mapping must be an object")
         return None
@@ -457,7 +530,14 @@ def _mapping(v: _Validator, raw: Any, path: str, zones: ZoneModel | None, earlie
             v.add(f"{path}.gap", IssueCode.MALFORMED, "a gap needs a note")
         else:
             v.keys(g, _GAP_KEYS, f"{path}.gap")
-            gap = Gap(str(g["note"]), tuple(_selector_list(v, g.get("evidence"), f"{path}.gap.evidence", selector_vars, zones, scoped, param)))
+            kind = g.get("kind", "unsupported")
+            if kind not in GAP_KINDS:
+                v.add(f"{path}.gap.kind", IssueCode.MALFORMED, f"a gap kind must be one of {list(GAP_KINDS)}")
+                kind = "unsupported"
+            evidence_sel = _selector_list(v, g.get("evidence"), f"{path}.gap.evidence", selector_vars, zones, scoped, param)
+            gap = Gap(str(g["note"]), tuple(evidence_sel), kind)
+    not_exposed = _not_exposed(v, raw, path)
+    cited, verification = _mapping_references(v, raw, path, references, authority, confidence)
     evidence_from = tuple(_canonical_list(v, raw.get("evidence_from"), f"{path}.evidence_from"))
     requires_resolved = tuple(_canonical_list(v, raw.get("requires_resolved"), f"{path}.requires_resolved"))
 
@@ -468,7 +548,8 @@ def _mapping(v: _Validator, raw: Any, path: str, zones: ZoneModel | None, earlie
         if steps and steps[0].type == "constant" and not param.plain and not (evidence or evidence_from):
             v.add(path, IssueCode.INVALID_TRANSFORM,
                   "a constant needs evidence (a selector or evidence_from) so that the value cites a source setting")
-        _check_chain(v, path, param, source, sources, steps, gap)
+        if not_exposed is None:
+            _check_chain(v, path, param, source, sources, steps, gap)
         _check_units(v, path, param, source, sources, steps)
     if mid is None or canonical is None or param is None:
         return None
@@ -478,8 +559,60 @@ def _mapping(v: _Validator, raw: Any, path: str, zones: ZoneModel | None, earlie
         authority=authority if isinstance(authority, str) else "configured_setting",
         confidence=confidence if isinstance(confidence, str) else "mapped", note=str(raw.get("note") or ""),
         evidence=tuple(evidence), evidence_from=evidence_from, requires_resolved=requires_resolved,
-        unresolved_note=str(raw.get("unresolved_note") or ""), gap=gap,
+        unresolved_note=str(raw.get("unresolved_note") or ""), gap=gap, not_exposed=not_exposed,
+        references=cited, verification=verification,
     )
+
+
+def _not_exposed(v: _Validator, raw: dict, path: str) -> NotExposed | None:
+    """DEC-198: ``"not_exposed": {"note": ...}`` -- the relay has no such setting. It reads nothing and
+    asserts no authority; a value can come only from a separate documented-derivation mapping."""
+    item = raw.get("not_exposed")
+    if item is None:
+        return None
+    if not isinstance(item, dict) or not isinstance(item.get("note"), str) or not item["note"].strip():
+        v.add(f"{path}.not_exposed", IssueCode.MALFORMED, "not_exposed needs a note saying what the relay does instead")
+        return None
+    v.keys(item, _NOT_EXPOSED_KEYS, f"{path}.not_exposed")
+    clash = [key for key in _NOT_EXPOSED_EXCLUSIVE if key in raw]
+    if clash:
+        v.add(f"{path}.not_exposed", IssueCode.MALFORMED,
+              f"a not-exposed setting reads, transforms and asserts nothing; remove {clash} "
+              "(a documented derivation of the value is a separate mapping)")
+        return None
+    return NotExposed(item["note"].strip())
+
+
+def _mapping_references(v: _Validator, raw: dict, path: str, references: tuple[Reference, ...],
+                        authority: Any, confidence: Any) -> tuple[tuple[str, ...], str | None]:
+    """The reference ids a mapping cites and its declared verification. A mapping declared as a
+    *verified documented derivation* must be a documented derivation that is certain (confidence
+    ``mapped``) and must cite at least one verified reference -- otherwise it is refused."""
+    ids = raw.get("references", [])
+    cited: list[str] = []
+    if not isinstance(ids, list) or not all(isinstance(x, str) and x for x in ids):
+        v.add(f"{path}.references", IssueCode.MALFORMED, "references must be a list of reference ids")
+        ids = []
+    known = {r.id: r for r in references}
+    for rid in ids:
+        if rid not in known:
+            v.add(f"{path}.references", IssueCode.INVALID_REFERENCE, f"reference {rid!r} is not defined in the catalog's references")
+        elif rid not in cited:
+            cited.append(rid)
+    verification = raw.get("verification")
+    if verification is None:
+        return tuple(cited), None
+    if verification != "verified":
+        v.add(f"{path}.verification", IssueCode.MALFORMED, "verification can only be declared as 'verified'")
+        return tuple(cited), None
+    if authority != "documented_derivation" or confidence != "mapped":
+        v.add(f"{path}.verification", IssueCode.MALFORMED,
+              "only a documented derivation that is certain (authority 'documented_derivation', confidence 'mapped') "
+              "can be declared a verified documented derivation")
+    if not any(known[rid].verification == "verified" for rid in cited):
+        v.add(f"{path}.verification", IssueCode.UNVERIFIED_REFERENCE,
+              "a verified documented derivation must cite at least one verified reference")
+    return tuple(cited), "verified"
 
 
 def _zone_targets(v: _Validator, raw: Any, path: str, zones: ZoneModel | None) -> tuple[str, ...]:

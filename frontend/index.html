@@ -8788,6 +8788,17 @@
             border-style: dashed;
         }
         :is(.ww-rr-status)[data-status="unsupported"]::before { background: var(--text-dim); }
+        /* DEC-198: documented relay behaviour reads as quietly as Mapped (accent dot); an approximate plot is a
+           dashed accent chip; "Not a relay setting" is neutral (nothing to find in the file). */
+        :is(.ww-rr-status)[data-status="documented"]::before { background: var(--accent); }
+        :is(.ww-rr-status)[data-status="approximate"] {
+            color: var(--accent);
+            border-style: dashed;
+            border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        }
+        :is(.ww-rr-status)[data-status="approximate"]::before { background: var(--accent); }
+        :is(.ww-rr-status)[data-status="not_exposed"] { color: var(--text-dim); }
+        :is(.ww-rr-status)[data-status="not_exposed"]::before { background: var(--text-dim); }
         :is(.ww-rr-status)[data-status="unreadable"] {
             color: var(--warn);
             border-style: dashed;
@@ -8848,6 +8859,7 @@
         :is(.ww-rr-readiness)[data-readiness="pending"] { border-left: 3px solid var(--panel-border); }
         :is(.ww-rr-readiness)[data-readiness="ready_after_confirmation"] { border-left: 3px solid var(--accent); }
         :is(.ww-rr-readiness)[data-readiness="ready"] { border-left: 3px solid var(--ok); }
+        :is(.ww-rr-readiness)[data-readiness="ready_approximate"] { border-left: 3px dashed var(--ok); }
         :is(.ww-rr-link) {
             padding: 0 4px;
             border: 0;
@@ -54577,6 +54589,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // `edited` is false the configuration is still exactly the import's, so removing that
             // import restores the defaults; a hand edit makes it the user's and Remove keeps it.
             appliedImport: null,
+            // DEC-198: the engine approximations the applied configuration contains (the Apply
+            // payload's `approximations`). Empty = exact; reset with the configuration it describes.
+            appliedApproximations: [],
         };
 
         // ---- The generic zone collection (Slice 10) ----
@@ -55456,6 +55471,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_DISTANCE_REVERSE_DASH_NOTE = "Dashed = reverse zone (display cue only)";
         const WW_DISTANCE_REVERSE_DASH_TITLE = "Reverse operation comes from the zone's direction setting. "
             + "The dashed line is a display convention only and has no protection meaning.";
+        // DEC-198: stated once while the applied configuration contains an engine approximation.
+        const WW_DISTANCE_APPROXIMATE_NOTE = "Approximate plot";
         function wwDistanceZoneLegendLabel(key) {
             const z = wwDistanceState.zones[key];
             const base = key === "zone4" && !(z && z.dynamic) ? "Zone 4" : wwDistanceZoneLabel(key);
@@ -55484,6 +55501,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (anyReverse) {
                 items.push('<span class="ww-dist-zone-legend-note" data-legend-note="reverse-dash" title="' +
                     escapeHtml(WW_DISTANCE_REVERSE_DASH_TITLE) + '">' + escapeHtml(WW_DISTANCE_REVERSE_DASH_NOTE) + '</span>');
+            }
+            // DEC-198: the applied relay configuration is drawn approximately (relay settings unchanged).
+            const approximations = wwDistanceState.appliedApproximations || [];
+            if (items.length && approximations.length) {
+                const title = approximations.map((a) => a.description + (a.envelope ? " (" + a.envelope + ")" : "")).join(" ")
+                    + " The relay settings are unchanged.";
+                items.push('<span class="ww-dist-zone-legend-note" data-legend-note="approximate" title="' +
+                    escapeHtml(title) + '">' + escapeHtml(WW_DISTANCE_APPROXIMATE_NOTE) + '</span>');
             }
             legend.innerHTML = items.join("");
             legend.hidden = items.length === 0;
@@ -55672,7 +55697,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             state.inferredCount = 0;
             state.unresolvedCount = 0;
         }
-        // "5 zones found · 32 settings mapped · 36 assumptions · 10 missing · 4 unsupported · 4 blocking settings"
+        // "5 zones found · 32 settings mapped · 36 assumptions · 10 missing · 4 not yet supported · 4 blocking settings"
+        // (DEC-198: plus "N documented relay behaviour" / "N approximate" / "N not relay settings" when present)
         // Counts are the live review counts once a review exists (Slice 8/8A): assumptions
         // move to "confirmed" as the user reviews, and zero parts are dropped (conflict and
         // unreadable only ever appear when there are some).
@@ -55682,11 +55708,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 mapped_count: state.mappedCount, assumption_count: state.inferredCount, confirmed_count: 0,
                 resolved_manually_count: 0, suggested_count: 0, missing_count: 0, conflict_count: 0,
                 unsupported_count: 0, unreadable_count: 0, blocking_count: 0,
+                documented_count: 0, approximate_count: 0, unverified_count: 0, not_exposed_count: 0,
             };
             // Without a review the upload's profile-level count cannot be split into categories.
             const uncategorised = state.review ? 0 : state.unresolvedCount;
             const parts = [plural(state.zoneCount, "zone found", "zones found"),
                 plural(live.mapped_count, "setting mapped", "settings mapped")];
+            if (live.documented_count > 0) parts.push(live.documented_count + " documented relay behaviour");
+            if (live.approximate_count > 0) parts.push(live.approximate_count + " approximate");
             if (live.assumption_count > 0) parts.push(plural(live.assumption_count, "assumption", "assumptions"));
             if (live.confirmed_count > 0) parts.push(live.confirmed_count + " confirmed");
             if (live.resolved_manually_count > 0) parts.push(live.resolved_manually_count + " resolved manually");
@@ -55694,7 +55723,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (uncategorised > 0) parts.push(uncategorised + " unresolved");
             if (live.missing_count > 0) parts.push(live.missing_count + " missing");
             if (live.conflict_count > 0) parts.push(plural(live.conflict_count, "conflict", "conflicts"));
-            if (live.unsupported_count > 0) parts.push(live.unsupported_count + " unsupported");
+            const notYet = live.unsupported_count + live.unverified_count;
+            if (notYet > 0) parts.push(notYet + " not yet supported");
+            if (live.not_exposed_count > 0) parts.push(plural(live.not_exposed_count, "not a relay setting", "not relay settings"));
             if (live.unreadable_count > 0) parts.push(live.unreadable_count + " unreadable");
             if (live.blocking_count > 0) parts.push(wwRrBlockingSettingsText(live.blocking_count));
             return parts.join(" · ");
@@ -55716,17 +55747,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //   Conflict    values or statements disagree; Oruxa did not choose.
         //   Unsupported Oruxa understands it, but the current engine cannot represent / use it.
         //   Unreadable  the source text could not be read reliably.
+        // DEC-198 (non-expert wording; the internal names never appear in the normal UI):
+        //   documented   "Documented relay behaviour": derived from documented relay semantics, not a
+        //                setting the file states.
+        //   approximate  "Approximate plot": known relay behaviour the engine draws approximately.
+        //   missing      "Source value missing".
+        //   unsupported  "Not yet supported" (understood, the engine cannot represent it) and
+        //   unverified   "Not yet supported" (what the value means is not yet verified) -- one chip,
+        //                two different explanations.
+        //   not_exposed  "Not a relay setting": the relay has no such setting (never "missing").
         // Not every uncertainty is a question for the user: only an Assumption is confirmable.
         const WW_RR_CATEGORY_LABELS = {
-            mapped: "Mapped", assumption: "Assumption", missing: "Missing",
-            conflict: "Conflict", unsupported: "Unsupported", unreadable: "Unreadable",
+            mapped: "Mapped", documented: "Documented relay behaviour", approximate: "Approximate plot",
+            assumption: "Assumption", missing: "Source value missing", conflict: "Conflict",
+            unsupported: "Not yet supported", unverified: "Not yet supported", not_exposed: "Not a relay setting",
+            unreadable: "Unreadable",
         };
         // Chip / header styling hooks (assumption keeps the amber "inferred" look, missing the
         // dashed red "unresolved" look).
         const WW_RR_CATEGORY_STYLE = {
-            mapped: "mapped", assumption: "inferred", missing: "unresolved",
-            conflict: "conflict", unsupported: "unsupported", unreadable: "unreadable",
+            mapped: "mapped", documented: "documented", approximate: "approximate", assumption: "inferred",
+            missing: "unresolved", conflict: "conflict", unsupported: "unsupported", unverified: "unsupported",
+            not_exposed: "not_exposed", unreadable: "unreadable",
         };
+        // No user decision changes these: their chip always states the category.
+        const WW_RR_FIXED_CATEGORIES = ["unsupported", "unverified", "not_exposed", "conflict", "documented", "approximate"];
         // The user's own decision, shown in place of the category once they have made one.
         const WW_RR_DECISION_LABELS = { confirmed: "Confirmed", resolved_manually: "Resolved manually" };
         const WW_RR_DECISION_STYLE = { confirmed: "confirmed", resolved_manually: "resolved" };
@@ -55742,15 +55787,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Why-lines in the Source disclosure, by category (and for a confirmed assumption).
         const WW_RR_WHY_LABELS = {
             assumption: "Assumption", missing: "Why missing", conflict: "Why conflicting",
-            unsupported: "Why unsupported", unreadable: "Why unreadable", mapped: "Note",
+            unsupported: "Why not yet supported", unverified: "Why not yet supported", unreadable: "Why unreadable",
+            mapped: "Note", documented: "Documented relay behaviour", approximate: "Approximation",
+            not_exposed: "Why not a relay setting",
         };
         const WW_RR_CATEGORY_HELP = {
             conflict: "No choice was made between the conflicting source values.",
-            unsupported: "This is a limit of the current software, not something to confirm.",
+            unsupported: "The meaning of this setting is understood, but the current Distance Protection engine cannot represent it yet. "
+                + "This is a limit of the current software, not something to confirm.",
+            unverified: "What this setting means for this relay has not yet been verified, so it is not used. "
+                + "This is not something to confirm.",
+            not_exposed: "This relay has no configurable setting for this: it is fixed relay behaviour. "
+                + "A value is used only where documented relay behaviour establishes it.",
+            documented: "Not a setting stated in the file: derived from documented behaviour of this relay.",
+            approximate: "The plot represents known relay behaviour approximately. The relay settings are unchanged.",
             unreadable: "Provide a clearer source document, or enter the value manually where that is offered.",
         };
         const WW_RR_READINESS_LABELS = {
             not_ready: "Not ready", ready_after_confirmation: "Ready after confirmation", ready: "Ready to apply",
+            ready_approximate: "Ready — approximate plot",
+        };
+        // DEC-198: readiness states that offer Apply Settings (the backend decides; this only shows the button).
+        const WW_RR_APPLICABLE_READINESS = ["ready", "ready_approximate"];
+        const WW_RR_APPROXIMATION_CLASS_LABELS = {
+            conservative: "Conservative — the plotted zone lies wholly within the relay's",
+            bounded: "Bounded — the plotted zone may differ either way, within the stated error",
         };
         // Why a value was accepted (the mapping authority), most to least direct.
         const WW_RR_AUTHORITY_LABELS = {
@@ -55782,7 +55843,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (category === "unsupported" && !view.engine_reason && view.review_status === "resolved_manually" && view.resolution_origin === "suggestion") {
                 return { label: WW_RR_SUGGESTED_LABEL, style: "resolved", category };
             }
-            if (category === "unsupported" || category === "conflict") return { label: WW_RR_CATEGORY_LABELS[category], style: WW_RR_CATEGORY_STYLE[category], category };
+            if (WW_RR_FIXED_CATEGORIES.includes(category)) return { label: WW_RR_CATEGORY_LABELS[category], style: WW_RR_CATEGORY_STYLE[category], category };
             if (view.review_status === "resolved_manually" && view.resolution_origin === "suggestion") {
                 return { label: WW_RR_SUGGESTED_LABEL, style: "resolved", category };
             }
@@ -55790,6 +55851,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return { label: WW_RR_DECISION_LABELS[view.review_status], style: WW_RR_DECISION_STYLE[view.review_status], category };
             }
             return { label: WW_RR_CATEGORY_LABELS[category], style: WW_RR_CATEGORY_STYLE[category], category };
+        }
+        // The chip wording inside a sentence ("Status missing", "unavailable / missing"): the chip says
+        // "Source value missing", which already reads as the subject, so composed text keeps the short word.
+        function wwRrInlineLabel(kind) {
+            return kind.label === WW_RR_CATEGORY_LABELS.missing ? "missing" : kind.label.toLowerCase();
         }
         function wwRrStatusChip(view) {
             const kind = wwRrChipKind(view);
@@ -55821,6 +55887,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 resolution_origin: s ? s.resolution_origin : item.resolution_origin,
                 not_required: s ? !!s.not_required : !!item.not_required,
                 not_required_reason: s ? s.not_required_reason : item.not_required_reason,
+                approximation: s ? (s.approximation || null) : (item.approximation || null),
             };
         }
         // Only an Assumption can be confirmed (never a missing, conflicting, unsupported or
@@ -55840,7 +55907,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 box.appendChild(line);
             };
             if (view.review_status === "resolved_manually" && view.resolution_origin === "suggestion") {
-                labelled("Source value", "unavailable / " + WW_RR_CATEGORY_LABELS[kind.category].toLowerCase());
+                labelled("Source value", "unavailable / " + wwRrInlineLabel({ label: WW_RR_CATEGORY_LABELS[kind.category] }));
                 labelled("Suggested value", (view.user_value_text || view.value_text || "") + " \u2014 accepted by you, for this import session only");
                 labelled("Not", "the relay's setting, and not mapped from a profile");
             } else if (view.review_status === "resolved_manually") {
@@ -55891,6 +55958,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (item.profile_version) box.appendChild(wwRrEl("div", "ww-rr-dim", "Profile: " + item.profile_version));
             if (item.catalog_id) box.appendChild(wwRrEl("div", "ww-rr-dim", "Catalog: " + item.catalog_id + (item.catalog_version ? " " + item.catalog_version : "")));
             if (item.canonical_id) box.appendChild(wwRrEl("div", "ww-rr-dim", "Canonical: " + item.canonical_id));
+            // DEC-198: the authoritative reference behind documented relay behaviour, and what an
+            // approximation does (what is approximate, that the settings are unchanged, how far it may differ).
+            (Array.isArray(item.references) ? item.references : []).forEach((ref) => {
+                const where = [ref.document, ref.section, ref.page ? "p. " + ref.page : null].filter(Boolean).join(" · ");
+                labelled("Reference", ref.title + (where ? " (" + where + ")" : "")
+                    + (ref.verification === "verified" ? " — verified" : " — not yet verified"));
+                if (ref.scope) box.appendChild(wwRrEl("div", "ww-rr-dim", "Applies to: " + ref.scope));
+            });
+            const approx = view.approximation || item.approximation;
+            if (approx) {
+                labelled("Approximate", approx.description);
+                labelled("Classification", WW_RR_APPROXIMATION_CLASS_LABELS[approx.classification] || approx.classification);
+                if (approx.envelope) labelled("Error envelope", approx.envelope);
+                labelled("Relay settings", "unchanged");
+            }
             return box;
         }
         function wwRrAction(label, ariaLabel, handler) {
@@ -56086,7 +56168,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRrUi.groups.push(() => {
                     const view = wwRrView(statusItem);
                     state.textContent = " — " + (view.value_text === null
-                        ? "Status " + wwRrChipKind(view).label.toLowerCase() : view.value_text)
+                        ? "Status " + wwRrInlineLabel(wwRrChipKind(view)) : view.value_text)
                         + (view.review_status === "assumed" ? " · " + wwRrChipKind(view).label : "");
                     state.dataset.status = wwRrChipKind(view).style;
                 });
@@ -56181,6 +56263,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 assumption_count: num(src.assumption_count), missing_count: num(src.missing_count),
                 conflict_count: num(src.conflict_count), unsupported_count: num(src.unsupported_count),
                 unreadable_count: num(src.unreadable_count), not_required_count: num(src.not_required_count),
+                documented_count: num(src.documented_count), approximate_count: num(src.approximate_count),
+                unverified_count: num(src.unverified_count), not_exposed_count: num(src.not_exposed_count),
                 readiness, engine, blocking_issues: issues,
             };
         }
@@ -56216,14 +56300,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const counts = wwRrEl("div", "ww-rr-counts");
             // Conflict and Unreadable appear only when there are some.
+            const notYet = live.unsupported_count + live.unverified_count;
             const chipDefs = [["mapped", "mapped", live.mapped_count + " mapped", true],
+                ["documented", "documented", live.documented_count + " documented relay behaviour", live.documented_count > 0],
+                ["approximate", "approximate", live.approximate_count + " approximate", live.approximate_count > 0],
                 ["inferred", "assumption", wwRrPlural(live.assumption_count, "assumption", "assumptions"), true],
                 ["confirmed", "assumption", live.confirmed_count + " confirmed", live.confirmed_count > 0],
                 ["resolved", "missing", live.resolved_manually_count + " resolved manually", live.resolved_manually_count > 0],
                 ["suggested", "missing", live.suggested_count + " suggested", live.suggested_count > 0],
                 ["unresolved", "missing", live.missing_count + " missing", true],
                 ["conflict", "conflict", live.conflict_count + " conflict" + (live.conflict_count === 1 ? "" : "s"), live.conflict_count > 0],
-                ["unsupported", "unsupported", live.unsupported_count + " unsupported", true],
+                ["unsupported", "unsupported", notYet + " not yet supported", true],
+                ["not_exposed", "not_exposed", wwRrPlural(live.not_exposed_count, "not a relay setting", "not relay settings"), live.not_exposed_count > 0],
                 ["unreadable", "unreadable", live.unreadable_count + " unreadable", live.unreadable_count > 0]];
             chipDefs.forEach(([style, category, text, shown]) => {
                 if (!shown) return;
@@ -56255,7 +56343,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 all.addEventListener("click", () => wwRrCommit((d) => { pending.forEach((id) => d.confirmed.add(id)); }));
                 bulk.appendChild(all);
                 bulk.appendChild(wwRrEl("span", "ww-rr-dim ww-rr-bulk-note",
-                    "Only Assumption items are affected. Missing, Conflict, Unsupported and Unreadable values are unchanged."));
+                    "Only Assumption items are affected. Source value missing, Conflict, Not yet supported and Unreadable values are unchanged."));
             }
             if (live.confirmed_count > 0) {
                 const undo = wwRrEl("button", "ww-rr-btn", "Undo all confirmations");
@@ -56300,9 +56388,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 box.appendChild(wwRrEl("div", "",
                     wwRrPlural(r.pending_confirmations, "assumption still needs", "assumptions still need") + " confirmation."));
             }
-            if (r.status === "ready") {
+            if (WW_RR_APPLICABLE_READINESS.includes(r.status)) {
                 box.appendChild(wwRrEl("div", "",
                     "Every required active setting is mapped, confirmed or resolved, and the current engine accepts the active configuration."));
+                if (r.status === "ready_approximate") {
+                    box.appendChild(wwRrEl("div", "",
+                        "Part of the plot is approximate (see the Approximate plot rows): the engine draws known relay behaviour "
+                        + "approximately. The relay settings are unchanged."));
+                }
                 box.appendChild(wwRrEl("div", "ww-rr-dim",
                     "Apply Settings copies these reviewed settings into the Distance Protection analysis. "
                     + "You can edit them there afterwards."));
@@ -56377,7 +56470,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!live.readiness) return "";
             const { status: readinessStatus } = live.readiness; // non-null: checked above
             if (live.blocking_count > 0 || readinessStatus === "not_ready") return "blocking";
-            const open = live.missing_count + live.conflict_count + live.unsupported_count + live.unreadable_count + live.to_confirm_count;
+            const open = live.missing_count + live.conflict_count + live.unsupported_count + live.unverified_count
+                + live.unreadable_count + live.to_confirm_count;
             return open > 0 || readinessStatus !== "ready" ? "issue" : "clear";
         }
         function wwRelayCardApplyStatus() {
@@ -57081,6 +57175,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!payload || !Array.isArray(payload.zones) || payload.zones.length < 1) return false;
             if (payload.characteristic !== "mho" && payload.characteristic !== "quadrilateral") return false;
             if (payload.impedance_basis !== "primary" && payload.impedance_basis !== "secondary") return false;
+            // DEC-198: which parts of the applied configuration are engine approximations (empty = exact).
+            const approximations = payload.approximations === undefined ? [] : payload.approximations;
+            if (!Array.isArray(approximations)) return false;
+            for (const a of approximations) {
+                if (!a || typeof a.rule_id !== "string" || !a.rule_id || typeof a.rule_version !== "string"
+                    || typeof a.field !== "string" || typeof a.description !== "string" || !a.description) return false;
+                if (a.classification !== "conservative" && a.classification !== "bounded") return false;
+                if (a.classification === "bounded" && (typeof a.envelope !== "string" || !a.envelope)) return false;
+            }
             const zones = wwDistanceStandardZones();
             const extras = [];
             const seenIds = new Set();
@@ -57120,6 +57223,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.zones = zones;
             wwDistanceState.view = null; // automatic view, so the applied zones are in frame
             wwDistanceState.appliedImport = importId === undefined ? null : { importId, edited: false };
+            wwDistanceState.appliedApproximations = approximations.map((a) => ({
+                ruleId: a.rule_id, ruleVersion: a.rule_version, field: a.field, classification: a.classification,
+                description: a.description, envelope: typeof a.envelope === "string" ? a.envelope : null,
+                zoneId: typeof a.zone_id === "string" ? a.zone_id : null,
+            }));
             wwDistanceConfigurationReplaced();
             const plot = document.getElementById("wwDistanceSvg");
             if (plot && plot.scrollIntoView) plot.scrollIntoView({ block: "nearest" });
@@ -57134,6 +57242,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.zones = wwDistanceStandardZones();
             wwDistanceState.view = null;
             wwDistanceState.appliedImport = null;
+            wwDistanceState.appliedApproximations = [];
         }
         // Removing a relay import releases what it applied. Still exactly the import's (no hand edit
         // since its Apply): the configuration returns to the defaults, so no imported card, extra zone

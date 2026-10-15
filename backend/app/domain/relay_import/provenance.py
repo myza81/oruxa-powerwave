@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Generic, TypeVar
 
+from app.domain.relay_import.approximation import ApproximationRecord
+
 T = TypeVar("T")
 
 
@@ -33,6 +35,10 @@ class ProvenanceOrigin(StrEnum):
     #: zone that is absent from a reliably read document). Not read from the source, so
     #: it cites none; an Assumption that needs no confirmation and never blocks.
     DEFAULT_ASSUMPTION = "default_assumption"
+    #: DEC-198: the value is a known relay behaviour the current engine draws approximately, under an
+    #: approved relay-neutral rule (see `approximation`). Carries an `ApproximationRecord`; never a
+    #: source value. Not produced by any import yet (no rule is approved).
+    ENGINE_APPROXIMATION = "engine_approximation"
 
 
 class MappingStatus(StrEnum):
@@ -78,8 +84,18 @@ class UnresolvedCause(StrEnum):
     CONFLICT = "conflict"
     #: The text was found but could not be read reliably (empty cell, not a number).
     UNREADABLE = "unreadable"
-    #: The value was read but the profile has no meaning for it.
+    #: The meaning is understood, but the current canonical model / engine cannot represent it
+    #: (a capability gap, e.g. a directional-element boundary). Hand-written profiles also use it for
+    #: a read value they have no meaning for.
     UNSUPPORTED = "unsupported"
+    #: DEC-198: the value was read, but what it means (or how it converts) is not established for
+    #: this relay -- a semantic unknown, not an engine limit (e.g. a fault-resistance setting whose
+    #: per-loop / per-phase convention is not verified).
+    UNVERIFIED = "unverified"
+    #: DEC-198: the relay does not expose this as a configurable setting (inherent / fixed
+    #: behaviour). Not a missing source value: there is nothing on the sheet to find. Carries no
+    #: value unless a verified documented derivation establishes one.
+    NOT_EXPOSED = "not_exposed"
 
 
 class ReviewStatus(StrEnum):
@@ -122,6 +138,28 @@ class SourceRef:
 
 
 @dataclass(frozen=True)
+class DocumentReference:
+    """DEC-198: an authoritative reference behind a documented derivation (an OEM manual section,
+    an application note, an owner decision). Identification only -- never the manual's text."""
+
+    reference_id: str
+    title: str
+    #: ``verified`` (checked against the reference) | ``unverified`` (cited, not yet checked).
+    verification: str
+    #: Document number / identifier (e.g. an OEM publication number), if known.
+    document: str | None = None
+    #: Section / chapter and page, if known.
+    section: str | None = None
+    page: str | None = None
+    #: What the reference applies to (firmware range, function block), if narrower than the catalog.
+    scope: str | None = None
+
+    @property
+    def verified(self) -> bool:
+        return self.verification == "verified"
+
+
+@dataclass(frozen=True)
 class Provenance:
     status: MappingStatus
     sources: tuple[SourceRef, ...] = ()
@@ -148,11 +186,20 @@ class Provenance:
     catalog_version: str | None = None
     #: The canonical parameter id the value was written to (``None`` for a hand-written profile).
     canonical_id: str | None = None
+    #: DEC-198: the authoritative references the catalog mapping cites (documented derivations).
+    references: tuple[DocumentReference, ...] = ()
+    #: DEC-198: set exactly when the value is an engine approximation (origin ``engine_approximation``).
+    approximation: ApproximationRecord | None = None
 
     def __post_init__(self) -> None:
         needs_source = self.origin is ProvenanceOrigin.RELAY_DOCUMENT
         if needs_source and self.status is not MappingStatus.UNRESOLVED and not self.sources:
             raise ValueError(f"a {self.status.value} value must cite at least one source setting")
+        approximated = self.origin is ProvenanceOrigin.ENGINE_APPROXIMATION
+        if approximated != (self.approximation is not None):
+            raise ValueError("an engine approximation must carry its approximation record, and only it may")
+        if approximated and self.status is not MappingStatus.MAPPED:
+            raise ValueError("an engine approximation is a resolved value of an approved rule")
 
 
 @dataclass(frozen=True)
@@ -190,13 +237,14 @@ def unresolved(
     catalog_id: str | None = None,
     catalog_version: str | None = None,
     canonical_id: str | None = None,
+    references: tuple[DocumentReference, ...] = (),
 ) -> Sourced:
     """A value the importer saw (or expected) but could not interpret."""
     return Sourced(
         None,
         Provenance(
             MappingStatus.UNRESOLVED, sources=sources, raw_value=raw_value, notes=notes, cause=cause,
-            catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id,
+            catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id, references=references,
         ),
     )
 
@@ -205,10 +253,11 @@ def mapped(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile
            raw_value: str | float | None = None, notes: tuple[str, ...] = (),
            transformation: str | None = None, authority: MappingAuthority | None = None,
            catalog_id: str | None = None, catalog_version: str | None = None,
-           canonical_id: str | None = None) -> Sourced[T]:
+           canonical_id: str | None = None, references: tuple[DocumentReference, ...] = ()) -> Sourced[T]:
     return Sourced(value, Provenance(
         MappingStatus.MAPPED, sources, profile_id, profile_version, raw_value, notes, transformation=transformation,
         authority=authority, catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id,
+        references=references,
     ))
 
 
@@ -216,10 +265,11 @@ def inferred(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profi
              raw_value: str | float | None = None, notes: tuple[str, ...] = (),
              transformation: str | None = None, authority: MappingAuthority | None = None,
              catalog_id: str | None = None, catalog_version: str | None = None,
-             canonical_id: str | None = None) -> Sourced[T]:
+             canonical_id: str | None = None, references: tuple[DocumentReference, ...] = ()) -> Sourced[T]:
     return Sourced(value, Provenance(
         MappingStatus.INFERRED, sources, profile_id, profile_version, raw_value, notes, transformation=transformation,
         authority=authority, catalog_id=catalog_id, catalog_version=catalog_version, canonical_id=canonical_id,
+        references=references,
     ))
 
 

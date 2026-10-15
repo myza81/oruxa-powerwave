@@ -97,7 +97,7 @@ test("a 7SA511 sheet is identified and opens the generic review with every zone"
   await expect(row(page, "zone.Z2.rr.pp")).toContainText("Right Resistive Reach (+R)");
   await expect(row(page, "zone.Z2.characteristic")).toContainText("Explicit R/X");
   // the timer cell is blank: Missing, never the "Infinity" printed in the range column
-  await expect(row(page, "zone.Z2.timer.pp")).toContainText("Missing");
+  await expect(row(page, "zone.Z2.timer.pp")).toContainText("Source value missing");
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("Not available"); // no delay value is shown
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("not the configured delay");
   await expect(row(page, "zone.Z3.direction")).toContainText("Reverse");
@@ -122,18 +122,18 @@ test("the sheet's page notes are shown as document notes beside the zone, not as
   await expect(note).toContainText(/Source: Page \d+ · line \d+/);
   await expect(notes).toContainText("Not used as the configured setting.");
   // the timer the note talks about is still Missing -- the note filled nothing in
-  await expect(row(page, "zone.Z1.timer.pp")).toContainText("Missing");
+  await expect(row(page, "zone.Z1.timer.pp")).toContainText("Source value missing");
   await expect(row(page, "zone.Z1.timer.pp")).not.toContainText("0.15");
   const z1b = panel(page).locator('details[data-group="zone-Z1B"] details[data-source-notes]');
   await expect(z1b).toContainText("Zone 1B Inactive timer set to oos (Infinity)");
-  await expect(row(page, "zone.Z1B.status")).toContainText("Missing"); // the "inactive" note is not the zone's state
+  await expect(row(page, "zone.Z1B.status")).toContainText("Source value missing"); // the "inactive" note is not the zone's state
 });
 
 test("the zone state of the 7SA511 is never assumed: the user states it, then it is Ready to apply", async ({ page }) => {
   await openReview(page);
-  await expect(row(page, "zone.Z1.status")).toContainText("Missing");
-  await expect(row(page, "zone.Z1B.status")).toContainText("Missing"); // the sheet's "inactive" line is a note, not a setting
-  await expect(row(page, "zone.Z2.status")).toContainText("Missing"); // DIST.PROT. = ON is the function, not a zone
+  await expect(row(page, "zone.Z1.status")).toContainText("Source value missing");
+  await expect(row(page, "zone.Z1B.status")).toContainText("Source value missing"); // the sheet's "inactive" line is a note, not a setting
+  await expect(row(page, "zone.Z2.status")).toContainText("Source value missing"); // DIST.PROT. = ON is the function, not a zone
   await makeReady(page);
   await expect(applyBtn(page)).toBeVisible();
 });
@@ -174,7 +174,7 @@ test("Apply Settings fills the dynamic cards and draws only the enabled zones on
 
 test("an enabled Zone 1B becomes a dynamic card with the sheet's own label, is plotted and fitted", async ({ page }) => {
   await openReview(page, { notes: false });
-  await expect(row(page, "zone.Z1B.status")).toContainText("Missing");
+  await expect(row(page, "zone.Z1B.status")).toContainText("Source value missing");
   await makeReady(page, { extra: true });
   await applyBtn(page).click();
   await expect(page.locator("#wwRelayReviewApplyStatus")).toHaveText("Relay settings applied to Distance Protection analysis.");

@@ -168,7 +168,8 @@ class TestInterpretationDisplay:
         js = _relay_import_js(_source())
         for needle in (
             '"zone found"', '"zones found"', '"setting mapped"', '"settings mapped"', '"assumption"', '"assumptions"',
-            '" missing"', '"conflict"', '"conflicts"', '" unsupported"', '" unreadable"', '" unresolved"',
+            '" missing"', '"conflict"', '"conflicts"', '" not yet supported"', '" unreadable"', '" unresolved"',
+            '" documented relay behaviour"', '" approximate"', '"not a relay setting"', '"not relay settings"',
         ):
             assert needle in js, needle
         # the old catch-all wording is gone from the visible summary
@@ -302,10 +303,22 @@ class TestExtractionReview:
 
     def test_status_labels_match_the_interpretation_vocabulary(self):
         js = _review_js(_source())
-        assert 'mapped: "Mapped", assumption: "Assumption", missing: "Missing"' in js
-        assert 'conflict: "Conflict", unsupported: "Unsupported", unreadable: "Unreadable"' in js
+        # DEC-198 non-expert vocabulary: the internal category names never reach the normal UI
+        assert 'mapped: "Mapped", documented: "Documented relay behaviour", approximate: "Approximate plot"' in js
+        assert 'assumption: "Assumption", missing: "Source value missing", conflict: "Conflict"' in js
+        assert 'unsupported: "Not yet supported", unverified: "Not yet supported", not_exposed: "Not a relay setting"' in js
+        assert 'unreadable: "Unreadable"' in js
         assert 'confirmed: "Confirmed", resolved_manually: "Resolved manually"' in js
         assert "To confirm" not in js
+
+    def test_ready_approximate_is_labelled_and_offers_apply(self):
+        """DEC-198: the new readiness reads "Ready -- approximate plot" and, like Ready, shows Apply Settings."""
+        js = _review_js(_source())
+        assert 'ready_approximate: "Ready — approximate plot"' in js
+        assert 'const WW_RR_APPLICABLE_READINESS = ["ready", "ready_approximate"];' in js
+        assert "if (WW_RR_APPLICABLE_READINESS.includes(r.status)) {" in js
+        # a reference and an approximation are explained in the Source disclosure
+        assert 'labelled("Reference", ' in js and 'labelled("Relay settings", "unchanged")' in js
 
     def test_provenance_toggle_is_an_accessible_disclosure(self):
         js = _review_js(_source())

@@ -16,6 +16,11 @@ on it (Apply) must re-derive or re-verify rather than trust it.
 
 The document-level ``unmapped_settings`` (hundreds of retained raw lines the
 adapter never reads) are left out to keep the snapshot small.
+
+DEC-198: catalog references (`DocumentReference`) travel with the snapshot, but an
+engine approximation never does -- its record type is deliberately not decodable,
+so a context that claims one is refused. Approximations are derived by the backend
+from the original interpretation, never trusted from the browser.
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
 )
 from app.domain.relay_import.provenance import (
+    DocumentReference,
     MappingAuthority,
     MappingStatus,
     Provenance,
@@ -63,7 +69,7 @@ _DATACLASSES = {
     for cls in (
         CanonicalDistanceProtectionModel, RelayMetadata, InstrumentTransformers, ProtectedLine, DistanceZone,
         CharacteristicSpec, ResistiveReach, ResidualCompensation, ExtraQuantity, UnresolvedSetting,
-        ImpedanceValue, Sourced, Provenance, SourceRef, ReviewRecord, SourceNote,
+        ImpedanceValue, Sourced, Provenance, SourceRef, ReviewRecord, SourceNote, DocumentReference,
     )
 }
 _ENUMS = {

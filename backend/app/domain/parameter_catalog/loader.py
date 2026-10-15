@@ -105,7 +105,7 @@ def semantics_digest(data: dict[str, Any]) -> str:
     meaning = {k: data.get(k) for k in keys}
     # sections added later count only when a catalog uses them, so the digests of catalogs written
     # before they existed (and locked) are unchanged
-    meaning.update({k: data[k] for k in ("source_notes", "zone_preserved") if k in data})
+    meaning.update({k: data[k] for k in ("source_notes", "zone_preserved", "references") if k in data})
     canonical = json.dumps(meaning, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

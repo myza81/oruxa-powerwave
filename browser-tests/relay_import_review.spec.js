@@ -142,7 +142,7 @@ test("Confirm all assumptions shows its count, changes only Assumption rows, and
   const after = await counts(page);
   expect(after).toMatchObject({
     confirmed: before.assumptions, mapped: before.mapped, missing: before.missing,
-    unsupported: before.unsupported, blocking: before.blocking,
+    "not yet supported": before["not yet supported"], blocking: before.blocking,
   });
   expect(after.assumptions).toBe(0);
   await expect(panel(page).locator('li[data-review="to_confirm"]')).toHaveCount(0);
@@ -150,7 +150,7 @@ test("Confirm all assumptions shows its count, changes only Assumption rows, and
   await expect(panel(page).locator('li[data-review="confirmed"]:not([data-category="assumption"])')).toHaveCount(0);
   // missing and unsupported rows were not touched by the bulk action
   await expect(row(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-review", "unresolved");
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await page.locator("#wwRelayReviewUndoAll").click();
   await expect(page.locator("#wwRelayReviewUndoAll")).toHaveCount(0); // the backend has answered
   expect(await counts(page)).toEqual(before);
@@ -164,7 +164,7 @@ test("a manual resolution keeps the source value unavailable and shows the user'
   // a blank is not a value
   await form.getByRole("button", { name: "Set value" }).click();
   await expect(form.locator(".ww-rr-resolve-error")).toContainText("Enter a value");
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await form.locator("input").fill("2.5");
   await form.getByRole("button", { name: "Set value" }).click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Resolved manually");
@@ -178,10 +178,10 @@ test("a manual resolution keeps the source value unavailable and shows the user'
   expect(after.missing).toBe(before.missing - 1);
   expect(after.blocking).toBe(before.blocking - 1);
   // the original classification stays traceable beside the user's decision
-  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Classified as: Missing");
+  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Classified as: Source value missing");
   // clear returns it to missing, never to a default
   await button(page, "Clear the value of Zone 1 Left Resistive Reach (−R)").click();
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await expect(row(page, "zone.Z1.rr.reverse").locator(".ww-rr-value")).toHaveText("Not available");
   expect(await counts(page)).toEqual(before);
 });
@@ -196,7 +196,7 @@ test("an explicit zero is a value; leaving an item unresolved is a decision of i
   await button(page, "Resolve Zone 1 Left Resistive Reach (−R)").click();
   await button(page, "Leave Zone 1 Left Resistive Reach (−R) unresolved").click();
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Left unresolved");
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await expect(row(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-blocking", "true"); // still blocks
   expect(await counts(page)).toEqual(before);
   await button(page, "Undo leaving Zone 1 Left Resistive Reach (−R) unresolved").click();
@@ -238,7 +238,7 @@ test("the summary names the uncertainty categories; conflict and unreadable appe
   const summary = page.locator("#wwRelayReviewSummary .ww-rr-counts");
   await expect(summary).toContainText("30 assumptions");
   await expect(summary).toContainText("12 missing"); // defeated Zones 4 and P: their missing values are not required
-  await expect(summary).toContainText("0 unsupported"); // this sheet has no per-loop tilt rows
+  await expect(summary).toContainText("0 not yet supported"); // this sheet has no per-loop tilt rows
   await expect(summary).not.toContainText("to confirm");
   await expect(summary).not.toContainText("unresolved");
   await expect(summary).not.toContainText("conflict");
@@ -250,7 +250,7 @@ test("each uncertain row is classified by why it is uncertain, with the reason i
   await reviewP441(page);
   const expected = {
     "ct.primary": "Mapped", "zone.Z1.reach": "Assumption", "zone.Z1.direction": "Assumption",
-    "zone.Z1.rr.reverse": "Missing", "base.voltage": "Missing", "zone.ZP.status": "Assumption",
+    "zone.Z1.rr.reverse": "Source value missing", "base.voltage": "Source value missing", "zone.ZP.status": "Assumption",
   };
   for (const [key, label] of Object.entries(expected)) await expect(chip(page, key)).toHaveText(label);
   // the full reason sits in the Source disclosure, under a label that names the category
@@ -270,16 +270,16 @@ test("a setting the profile keeps raw (a per-loop tilt) is Unsupported and canno
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   const tilt = panel(page).locator("li", { hasText: "Z1m Tilt Angle" });
-  await expect(tilt.locator(".ww-rr-status").first()).toHaveText("Unsupported");
+  await expect(tilt.locator(".ww-rr-status").first()).toHaveText("Not yet supported");
   await expect(tilt.getByRole("button", { name: /^(Confirm|Resolve|Edit)/ })).toHaveCount(0);
-  await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText(/1 unsupported/);
+  await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText(/1 not yet supported/);
   await tilt.getByRole("button", { name: /^Source of/ }).click();
-  await expect(tilt).toContainText("Why unsupported: tilt applies per fault-loop type");
+  await expect(tilt).toContainText("Why not yet supported: tilt applies per fault-loop type");
   await expect(tilt).toContainText("limit of the current software, not something to confirm");
   // the bulk action does not touch it
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(page.locator("#wwRelayReviewConfirmAll")).toHaveCount(0);
-  await expect(tilt.locator(".ww-rr-status").first()).toHaveText("Unsupported");
+  await expect(tilt.locator(".ww-rr-status").first()).toHaveText("Not yet supported");
 });
 
 test("a conflicting source value is a Conflict: no Confirm, no typed value, and nothing is chosen", async ({ page }) => {
@@ -338,7 +338,7 @@ test("Zone P enabled is an ordinary answer: it is then held to the same rules as
   // Slice 10: an enabled fifth zone is not an engine limit. The answer is a settled manual resolution ...
   await expect(chip(page, "zone.ZP.status")).toHaveText("Resolved manually");
   await expect(row(page, "zone.ZP.status").locator(".ww-rr-value")).toHaveText("Enabled");
-  await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText("0 unsupported");
+  await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText("0 not yet supported");
   // ... and the zone is blocked only for the values this sheet does not give it, never for its number
   await expect(readiness(page)).toContainText("Readiness: Not ready");
   const blocking = page.locator("#wwRelayReviewBlocking");
@@ -394,7 +394,7 @@ test("Remove, a new upload and a refresh each discard every decision", async ({ 
   await pick(page, "document.pdf", p441Pdf());
   await page.locator("#wwRelayReviewBtn").click();
   await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption");
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   // replacing the file with another upload also starts clean
   await button(page, "Confirm Zone 1 Reach").click();
   await pick(page, "document.pdf", p441Pdf());

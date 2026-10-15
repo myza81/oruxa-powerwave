@@ -21,7 +21,42 @@ ReviewStatusName = Literal["mapped", "to_confirm", "assumed", "confirmed", "unre
 #: Slice 8A presentation category: how an item's uncertainty is explained, kept apart
 #: from the interpretation ``status`` (a profile's mapped / inferred / unresolved).
 #: Assumption = the source was read but an engineering assumption was needed.
-CategoryName = Literal["mapped", "assumption", "missing", "conflict", "unsupported", "unreadable"]
+#: DEC-198: documented = documented relay behaviour (a documented derivation, not a stated setting);
+#: approximate = an engine approximation of an approved rule; unverified = the meaning / conversion of
+#: a stated value is not established; not_exposed = the relay has no such setting (never "missing").
+CategoryName = Literal[
+    "mapped", "documented", "approximate", "assumption", "missing", "conflict", "unsupported", "unverified",
+    "not_exposed", "unreadable",
+]
+ApproximationClassName = Literal["conservative", "bounded"]
+ReadinessName = Literal["not_ready", "ready_after_confirmation", "ready", "ready_approximate"]
+
+
+class ReviewReferenceOut(BaseModel):
+    """DEC-198: an authoritative reference behind a value (identification only)."""
+
+    reference_id: str
+    title: str
+    verification: Literal["verified", "unverified"]
+    document: str | None = None
+    section: str | None = None
+    page: str | None = None
+    scope: str | None = None
+
+
+class ApproximationOut(BaseModel):
+    """DEC-198: an engine approximation of an approved, relay-neutral rule. ``unbounded`` never occurs:
+    an unbounded approximation is never applied automatically."""
+
+    rule_id: str
+    rule_version: str
+    #: The canonical path of the approximated value.
+    field: str
+    classification: ApproximationClassName
+    description: str
+    #: The verified error envelope, in words (always present for a bounded rule).
+    envelope: str | None = None
+    zone_id: str | None = None
 
 
 class ReviewSourceOut(BaseModel):
@@ -92,6 +127,10 @@ class ReviewItemOut(BaseModel):
     catalog_id: str | None = None
     catalog_version: str | None = None
     canonical_id: str | None = None
+    #: DEC-198: the authoritative references the catalog cites for this value.
+    references: list[ReviewReferenceOut] = []
+    #: DEC-198: present when the value is an engine approximation.
+    approximation: ApproximationOut | None = None
 
 
 class ReviewSourceNoteOut(BaseModel):
@@ -145,7 +184,7 @@ class ReviewBlockingIssueOut(BaseModel):
 
 
 class ReviewReadinessOut(BaseModel):
-    status: Literal["not_ready", "ready_after_confirmation", "ready"]
+    status: ReadinessName
     pending_confirmations: int
     blocking_unresolved: int
 
@@ -175,6 +214,12 @@ class ReviewStateFieldsOut(BaseModel):
     conflict_count: int
     unsupported_count: int
     unreadable_count: int
+    #: DEC-198 presentation counts: documented relay behaviour (not in `mapped_count`), engine
+    #: approximations, values whose meaning is not verified, settings the relay does not expose.
+    documented_count: int = 0
+    approximate_count: int = 0
+    unverified_count: int = 0
+    not_exposed_count: int = 0
     readiness: ReviewReadinessOut
     blocking_issues: list[ReviewBlockingIssueOut] = []
     engine: ReviewEngineOut
@@ -242,6 +287,7 @@ class ReviewItemStateOut(BaseModel):
     resolution_origin: Literal["manual", "suggestion"] | None = None
     not_required: bool = False
     not_required_reason: str | None = None
+    approximation: ApproximationOut | None = None
 
 
 class ReviewStateOut(ReviewStateFieldsOut):
@@ -292,6 +338,9 @@ class ApplySettingsOut(BaseModel):
     characteristic: Literal["mho", "quadrilateral"]
     impedance_basis: Literal["primary", "secondary"]
     zones: Annotated[list[ApplyZoneOut], Field(min_length=1)]
+    #: DEC-198: every engine approximation in the applied configuration (empty = exact). The R-X view
+    #: uses it to say the plot is approximate. Empty for every relay today: no rule is approved.
+    approximations: list[ApproximationOut] = []
 
 
 class RelayImportUploadOut(BaseModel):

@@ -208,7 +208,8 @@ class TestReadinessAndApply:
 
     def test_payload_is_the_generic_dto_and_holds_no_relay_or_document_data(self, client):
         out = client.post(APPLY, json=user_decisions(upload(client)["review"])).json()
-        assert set(out) == {"characteristic", "impedance_basis", "zones"}
+        # DEC-198: approximations[] is part of the generic payload; empty because no rule is approved
+        assert set(out) == {"characteristic", "impedance_basis", "zones", "approximations"} and out["approximations"] == []
         assert all(set(z) <= {"id", "display_name", "enabled", "direction", "delay_s", "geometry_mode", "characteristic_angle_deg",
                               "reach_ohm", "reactive_reach_ohm", "resistive_reach_forward_ohm", "resistive_reach_reverse_ohm"}
                    for z in out["zones"])

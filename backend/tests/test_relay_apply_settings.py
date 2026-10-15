@@ -118,7 +118,8 @@ class TestPayload:
 
     def test_payload_holds_no_document_data(self, client, review):
         out = self._apply(client, review)
-        assert set(out) == {"characteristic", "impedance_basis", "zones"}
+        # DEC-198: approximations[] is part of the generic payload; empty because no rule is approved
+        assert set(out) == {"characteristic", "impedance_basis", "zones", "approximations"} and out["approximations"] == []
         assert set(out["zones"][0]) == set(ApplyZoneOut.model_fields)
         text = json.dumps(out)
         for token in ("P441", "MiCOM", "pdf", "sheet", "Schneider", "raw"):

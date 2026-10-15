@@ -29,6 +29,13 @@ three facts kept separate -- the profile's interpretation status, the recorded
 cause of an unresolved value (source / extraction) and the engine adapter's
 verdict (capability) -- and it never replaces them: ``status`` stays the profile's
 own mapped / inferred / unresolved, and a confirmation leaves the category alone.
+
+DEC-198 adds four categories, still derived, never stored: *documented* (a mapped value
+whose authority is a documented derivation -- documented relay behaviour, not a setting
+the sheet states), *approximate* (an engine approximation of an approved rule; none is
+approved yet), *unverified* (the meaning / conversion of a stated value is not
+established) and *not_exposed* (the relay has no such setting). Each item also carries
+the catalog references behind it and, for an approximation, its record.
 """
 
 from __future__ import annotations
@@ -50,7 +57,14 @@ from app.domain.relay_import.canonical_distance import (
     item_label,
 )
 from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_active
-from app.domain.relay_import.provenance import MappingStatus, ProvenanceOrigin, ReviewStatus, Sourced, SourceRef
+from app.domain.relay_import.provenance import (
+    MappingAuthority,
+    MappingStatus,
+    ProvenanceOrigin,
+    ReviewStatus,
+    Sourced,
+    SourceRef,
+)
 from app.domain.relay_import.defeated_zone import is_defeated_delay_assumption
 from app.domain.relay_import.review_state import (
     is_overridable_assumption,
@@ -102,6 +116,36 @@ class ReviewSuggestion:
 
     value_text: str
     rationale: str
+
+
+@dataclass(frozen=True)
+class ReviewReference:
+    """DEC-198: an authoritative reference behind a value (identification only, never its text)."""
+
+    reference_id: str
+    title: str
+    #: verified | unverified
+    verification: str
+    document: str | None = None
+    section: str | None = None
+    page: str | None = None
+    scope: str | None = None
+
+
+@dataclass(frozen=True)
+class ReviewApproximation:
+    """DEC-198: what an approximated value is (the rule and its effect), in review vocabulary."""
+
+    rule_id: str
+    rule_version: str
+    #: The canonical path of the approximated value.
+    field: str
+    #: conservative | bounded
+    classification: str
+    description: str
+    #: The error envelope sentence (bounded rules always have one).
+    envelope: str | None = None
+    zone_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +212,10 @@ class ReviewItem:
     catalog_id: str | None = None
     catalog_version: str | None = None
     canonical_id: str | None = None
+    #: DEC-198: the authoritative references the catalog cites for this value.
+    references: tuple[ReviewReference, ...] = ()
+    #: DEC-198: set when the value is an engine approximation.
+    approximation: ReviewApproximation | None = None
 
 
 @dataclass(frozen=True)
@@ -238,7 +286,7 @@ class ReviewBlockingIssue:
 
 @dataclass(frozen=True)
 class ReviewReadiness:
-    #: not_ready | ready_after_confirmation | ready (see `review_state.Readiness`).
+    #: not_ready | ready_after_confirmation | ready | ready_approximate (see `review_state.Readiness`).
     status: str
     #: Inferred values still waiting for the user's confirmation.
     pending_confirmations: int
@@ -303,6 +351,13 @@ class ExtractionReview:
     catalog_id: str | None = None
     catalog_version: str | None = None
     catalog_coverage: dict | None = None
+    #: DEC-198 presentation counts, per canonical value: documented relay behaviour (not in
+    #: ``mapped_count``), engine approximations, values whose meaning is not verified, and settings
+    #: the relay does not expose (never in ``missing_count``).
+    documented_count: int = 0
+    approximate_count: int = 0
+    unverified_count: int = 0
+    not_exposed_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -411,16 +466,32 @@ def _category(sourced: Sourced, limit: tuple[str, str] | None) -> str:
       was read, an engineering assumption was needed);
     * source / extraction -- an unresolved value is Missing, Conflict, Unreadable
       or Unsupported according to its recorded cause (unclassified means Missing).
+
+    DEC-198: a mapped value whose authority is a documented derivation is *documented*
+    (documented relay behaviour); an engine approximation is *approximate*; the causes
+    *unverified* and *not_exposed* keep their own category (never Missing).
     """
     if limit is not None and sourced.is_resolved:
         return limit[0]
+    prov = sourced.provenance
+    if prov.origin is ProvenanceOrigin.ENGINE_APPROXIMATION:
+        return "approximate"
     original = _interpretation_status(sourced)
     if original == MappingStatus.MAPPED.value:
-        return "mapped"
+        return "documented" if prov.authority is MappingAuthority.DOCUMENTED_DERIVATION else "mapped"
     if original == MappingStatus.INFERRED.value:
         return "assumption"
     cause = sourced.provenance.cause
     return cause.value if cause else "missing"
+
+
+def _approximation(record) -> ReviewApproximation | None:
+    if record is None:
+        return None
+    return ReviewApproximation(
+        record.rule_id, record.rule_version, record.field, record.classification.value, record.description,
+        record.envelope.description if record.envelope else None, record.zone_id,
+    )
 
 
 def _resolution_origin(sourced: Sourced) -> str | None:
@@ -566,6 +637,11 @@ class _Builder:
             catalog_id=prov.catalog_id,
             catalog_version=prov.catalog_version,
             canonical_id=prov.canonical_id,
+            references=tuple(
+                ReviewReference(r.reference_id, r.title, r.verification, r.document, r.section, r.page, r.scope)
+                for r in prov.references
+            ),
+            approximation=_approximation(prov.approximation),
         )
 
     def impedance(
@@ -901,8 +977,10 @@ def build_extraction_review(
 
     blocking_unresolved = sum(1 for item in counted if item.blocking)
     pending = count("to_confirm")
+    approximations = in_category("approximate")
     readiness = compute_readiness(
-        engine_supported=adaptation.supported, pending_confirmations=pending, blocking_unresolved=blocking_unresolved
+        engine_supported=adaptation.supported, pending_confirmations=pending, blocking_unresolved=blocking_unresolved,
+        approximations=approximations,
     )
     return ExtractionReview(
         manufacturer=meta.manufacturer.value,
@@ -941,4 +1019,8 @@ def build_extraction_review(
         groups=tuple(groups),
         not_interpreted=tuple(b.raw_row(u) for u in model.unmapped_settings if not u.out_of_scope),
         out_of_scope=tuple(b.raw_row(u) for u in model.unmapped_settings if u.out_of_scope),
+        documented_count=in_category("documented"),
+        approximate_count=approximations,
+        unverified_count=in_category("unverified"),
+        not_exposed_count=in_category("not_exposed"),
     )

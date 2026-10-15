@@ -33,7 +33,8 @@ class CatalogCoverage:
     extracted_settings: int
     #: Cited by a canonical value the catalog resolved.
     catalog_mapped_settings: int
-    #: Recognised by the catalog, which states the model cannot represent them (a capability gap).
+    #: Recognised by the catalog, which states the model cannot represent them (a capability gap) or that
+    #: their meaning is not verified (DEC-198): recognised, kept, never used.
     catalog_unsupported_settings: int
     #: Recognised by the catalog, but every value they feed is conflicting, unreadable or missing.
     catalog_unresolved_settings: int
@@ -51,6 +52,10 @@ class CatalogCoverage:
     canonical_values_conflicting: int
     canonical_values_unreadable: int
     canonical_values_missing: int
+    #: DEC-198: canonical values whose source the catalog states but whose meaning is not verified.
+    canonical_values_unverified: int = 0
+    #: DEC-198: canonical values the relay does not expose as a setting (never counted as missing).
+    canonical_values_not_exposed: int = 0
 
     @property
     def catalog_recognised_settings(self) -> int:
@@ -63,7 +68,8 @@ class CatalogCoverage:
     @property
     def canonical_values_total(self) -> int:
         return (self.canonical_values_mapped + self.canonical_values_assumed + self.canonical_values_unsupported
-                + self.canonical_values_conflicting + self.canonical_values_unreadable + self.canonical_values_missing)
+                + self.canonical_values_conflicting + self.canonical_values_unreadable + self.canonical_values_missing
+                + self.canonical_values_unverified + self.canonical_values_not_exposed)
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -75,7 +81,8 @@ class CatalogCoverage:
 
 
 def outcome_state(outcome: Outcome) -> str:
-    """``mapped`` / ``assumption`` / ``unsupported`` / ``conflict`` / ``unreadable`` / ``missing``."""
+    """``mapped`` / ``assumption`` / ``unsupported`` / ``conflict`` / ``unreadable`` / ``missing`` /
+    ``unverified`` / ``not_exposed`` (DEC-198)."""
     result = outcome.result
     if result.is_resolved:
         prov = getattr(result, "provenance", None)
@@ -85,6 +92,8 @@ def outcome_state(outcome: Outcome) -> str:
         UnresolvedCause.UNSUPPORTED: "unsupported",
         UnresolvedCause.CONFLICT: "conflict",
         UnresolvedCause.UNREADABLE: "unreadable",
+        UnresolvedCause.UNVERIFIED: "unverified",
+        UnresolvedCause.NOT_EXPOSED: "not_exposed",
     }.get(cause, "missing")
 
 
@@ -94,7 +103,8 @@ def compute_coverage(
     """Coverage of ``document`` by ``catalog``; ``final`` is the model actually produced (the catalog's own
     model in a dry run, the catalog-first merge in production) -- its ``unmapped_settings`` are the
     settings that were retained as "Not interpreted"."""
-    states = {"mapped": 0, "assumption": 0, "unsupported": 0, "conflict": 0, "unreadable": 0, "missing": 0}
+    states = {"mapped": 0, "assumption": 0, "unsupported": 0, "conflict": 0, "unreadable": 0, "missing": 0,
+              "unverified": 0, "not_exposed": 0}
     mapped_ids: set[str] = set()
     unresolved_ids: set[str] = set()
     unsupported_ids: set[str] = set()
@@ -105,7 +115,7 @@ def compute_coverage(
         ids = {ref.setting_id for ref in prov.sources} if prov is not None else set()
         if state in ("mapped", "assumption"):
             mapped_ids |= ids
-        elif state == "unsupported":
+        elif state in ("unsupported", "unverified"):
             unsupported_ids |= ids
         else:
             unresolved_ids |= ids
@@ -139,4 +149,6 @@ def compute_coverage(
         canonical_values_conflicting=states["conflict"],
         canonical_values_unreadable=states["unreadable"],
         canonical_values_missing=states["missing"],
+        canonical_values_unverified=states["unverified"],
+        canonical_values_not_exposed=states["not_exposed"],
     )
