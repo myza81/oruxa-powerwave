@@ -211,7 +211,8 @@ function rel670Pdf({ notes = REL670_NOTES } = {}) {
 }
 
 // A synthetic Siemens SIPROTEC 5 7SL87-shaped sheet: DIGSI addresses inside the names (a wide name column), Edit mode
-// Primary, and operate-delay setting cells that are BLANK with "Infinity" in the range column. Invented numbers.
+// Primary, operate-delay setting cells that are BLANK with "Infinity" in the range column, a distance characteristic
+// angle of 82.7 deg and the phase-phase load cutout in use. Invented numbers.
 function sl87Pdf() {
   const zone = (n, mode, dir, x, rpp, rpg) => {
     const p = `21.901.357${n}.`;
@@ -227,6 +228,8 @@ function sl87Pdf() {
     ["11.931.8881.101 Rated primary current", "1500", "1-100000"], ["11.931.8881.102 Rated secondary current", "1", "1-5"],
     ["11.941.8911.101 Rated primary voltage", "275", "0.2-1200"], ["11.941.8911.102 Rated secondary voltage", "110", "80-230"],
     ["21.901.2311.107 Dist. characteristic angle", "82.7", "30-90"],
+    ["21.901.3661.105 Use ph-ph load cutout", "YES", "NO/YES"], ["21.901.3661.106 R load cutout (ph-ph)", "44.8", "0.092-1375"],
+    ["21.901.3661.107 Angle load cutout (ph-ph)", "45", "15-65"],
     ...zone(1, "on", "Forward", "4.7", "3.1", "11"), ...zone(2, "on", "Forward", "8.5", "3.6", "14"),
     ["Zone 1", "Forward direction timer set to 0.15s"],
   ];

@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "siemens-siprotec5-7sl87-catalog",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "lifecycle": "active",
   "profile_id": "siemens-siprotec5-7sl87",
   "registry_version": "1.1.0",
-  "description": "Siemens SIPROTEC 5 7SL87 distance zones (function '21 Distance prot.1', zones Z1..Zn) as a DIGSI 5 setting sheet prints them, with the DIGSI address written inside each setting name (21.901.357n.xxx). Catalog-only, verified subset: per-zone Mode (status), Directional mode, Function mode (loops), X reach, R (ph-ph), R (ph-g), Zone-inclination angle (tilt), zone-specific Kr / Kx, the CT / VT ratings, the Edit-mode basis and the line data. The operating-delay setting cells on the sheet are blank (Infinity is printed in the range column): every delay is Missing. The characteristic is not named by the sheet and is not assumed; the polygon's inclined resistance boundaries (Dist. characteristic angle) cannot be represented and are preserved as a capability gap.",
+  "description": "Siemens SIPROTEC 5 7SL87 distance zones (function '21 Distance prot.1', zones Z1..Zn) as a DIGSI 5 setting sheet prints them, with the DIGSI address written inside each setting name (21.901.357n.xxx). Catalog-only. Configured settings: per-zone Mode (status), Directional mode, Function mode (loops), X reach, R (ph-g), Zone-inclination angle (tilt), zone-specific Kr / Kx, the CT / VT ratings, the Edit-mode basis and the line data. Documented relay behaviour (DEC-198, Siemens C53000-G5040-C011-9, V07.50, version-dependent for the 7SL87_8.81 sheet): the quadrilateral characteristic of every enabled zone stated with the quadrilateral parameter set (no selector exists), R (ph-ph) / R (ph-g) as per-phase values, and the operate-delay loop assignment. Source-data gaps: the operating-delay setting cells on the sheet are blank (Infinity is printed in the range column), so every delay is Missing. Not representable (blocking): the resistance boundary inclined at the distance characteristic angle (exact relation preserved; no vertical +R mapped unless the angle is 90 deg) and the left / directional boundary. Not yet verified (blocking while in use): the phase-phase load cutout's effect on the zone.",
   "applicability": {
     "manufacturer": "Siemens",
     "family": "SIPROTEC 5",
@@ -28,7 +28,28 @@
     "Zone N is the zone 'Z N' of function '21 Distance prot.1' (DIGSI addresses 21.901.357N.xxx); the numbering follows the sheet.",
     "The sheet's Edit mode is Primary: the impedance values on the sheet are primary ohms.",
     "Every operating delay (1-phase and multi-phase) has a blank setting cell; the 'Infinity' beside it is the range column, not a configured delay. No delay is assumed, and the document notes' timers are not used.",
-    "The sheet does not name the zone characteristic, so none is assumed. The zone geometry is stated as X reach, R (ph-ph) and R (ph-g) limits; the resistance boundaries are inclined at the distance characteristic angle (21.901.2311.107), which the current model cannot draw; that setting is preserved with every zone. No left (-R) boundary is stated."
+    "Documented relay behaviour (Siemens C53000-G5040-C011-9, SIPROTEC 5 manual V07.50, 6.6 Distance protection with classic method): each distance zone is a zone function block of one operate-curve type -- quadrilateral, quadrilateral with adaptive pickup, MHO or circular (6.6.2.2) -- and the device has no characteristic selector. A zone stated with X reach, R (ph-g), R (ph-ph) and Zone-inclination angle is a quadrilateral zone (MHO and circular zones are set by Zr impedance reach). The reference is V07.50; the owner sheet is scheme 7SL87_8.81: applicability rests on the matching function and parameter structure and is version-dependent, not a firmware match.",
+    "Documented phase-phase geometry (per-phase R-X plane, forward zone): top X <= X reach, inclined by the Zone-inclination angle in the first quadrant (0 deg = horizontal, drawn exactly); right Rright(X) = R (ph-ph) + X * cot(phi), the resistance line inclined at the distance characteristic angle phi (21.901.2311.107, common to all zones of the function) so that it runs parallel to the line impedance (6.6.15.4, Fig. 6-141). R (ph-ph) and R (ph-g) are per-phase (conductor / positive-sequence) values: the loop fault resistance is halved for R (ph-ph) and divided by (1 + Kr) for R (ph-g) (6.6.15.6). The left side of a forward zone is formed by the quadrilateral's own resistance limit and the device's fixed directional characteristic (6.6.4, Fig. 6-102), whose exact geometry is not established from the verified sources.",
+    "Geometry limitation: the current engine draws vertical resistive limits. With phi = 82.7 deg the inclined right boundary cannot be represented, so no Right (+R) Resistive Reach is plotted; the left / directional boundary is not represented either. No approximation is applied (candidate A7, +R = R (ph-ph), conservative with shortfall X * cot(phi) at the X reach, is documented only and not approved).",
+    "The load cutout (21.901.3661.1xx, Pickup Z<) removes the load area from the operate area (6.6.5). The phase-phase load cutout is in use on this sheet; its exact shape relative to the polygon (Fig. 6-106) is not yet verified, so its effect on an enabled zone is not established and it blocks. The phase-ground load cutout acts on the phase-earth loops, which the phase-phase engine does not draw."
+  ],
+  "references": [
+    {"id": "siemens-c53000-g5040-c011-9-zones", "title": "SIPROTEC 5 Distance and Line Differential Protection, Breaker Management for 1-Pole and 3-Pole Tripping 7SA87, 7SD87, 7SL87, 7VK87 -- Manual", "verification": "verified",
+     "document": "Siemens C53000-G5040-C011-9 (V07.50, Edition 11.2017)",
+     "section": "6.6.2.2 Structure of the Function: zone assignment to quadrilateral, adaptive quadrilateral, MHO or circular operate curves", "page": "472-476",
+     "scope": "SIPROTEC 5 distance protection with classic method. The owner sheet is scheme 7SL87_8.81: applicability by matching function and parameter structure, version-dependent; not a firmware-version match."},
+    {"id": "siemens-c53000-g5040-c011-9-quad", "title": "SIPROTEC 5 Distance and Line Differential Protection, Breaker Management for 1-Pole and 3-Pole Tripping 7SA87, 7SD87, 7SL87, 7VK87 -- Manual", "verification": "verified",
+     "document": "Siemens C53000-G5040-C011-9 (V07.50, Edition 11.2017)",
+     "section": "6.6.15.4-6.6.15.6 Application example, quadrilateral zones: Dist. characteristic angle (Fig. 6-141), R (ph-ph), R (ph-g), operate delays, Zone-inclination angle", "page": "569-580",
+     "scope": "SIPROTEC 5 distance protection with classic method. The owner sheet is scheme 7SL87_8.81: applicability by matching function and parameter structure, version-dependent; not a firmware-version match."},
+    {"id": "siemens-c53000-g5040-c011-9-direction", "title": "SIPROTEC 5 Distance and Line Differential Protection, Breaker Management for 1-Pole and 3-Pole Tripping 7SA87, 7SD87, 7SL87, 7VK87 -- Manual", "verification": "verified",
+     "document": "Siemens C53000-G5040-C011-9 (V07.50, Edition 11.2017)",
+     "section": "6.6.4 Direction Determination: direction-characteristic curve in the R-X diagram (Fig. 6-102)", "page": "500-504",
+     "scope": "SIPROTEC 5 distance protection with classic method. The owner sheet is scheme 7SL87_8.81: applicability by matching function and parameter structure, version-dependent; not a firmware-version match."},
+    {"id": "siemens-c53000-g5040-c011-9-load", "title": "SIPROTEC 5 Distance and Line Differential Protection, Breaker Management for 1-Pole and 3-Pole Tripping 7SA87, 7SD87, 7SL87, 7VK87 -- Manual", "verification": "verified",
+     "document": "Siemens C53000-G5040-C011-9 (V07.50, Edition 11.2017)",
+     "section": "6.6.5.1-6.6.5.2 Impedance pickup: load cutout (Fig. 6-106)", "page": "504-508",
+     "scope": "SIPROTEC 5 distance protection with classic method. The owner sheet is scheme 7SL87_8.81: applicability by matching function and parameter structure, version-dependent; not a firmware-version match."}
   ],
   "source_notes": [
     {
@@ -41,12 +62,16 @@
     }
   ],
   "zone_preserved": [
-    {"zone": "*", "names": ["21.901.2311.107 Dist. characteristic angle"],
-     "reason": "The polygon's resistance boundaries are inclined at the distance characteristic angle. The current model draws resistance limits as vertical lines, so this geometry cannot be represented; the setting is preserved, not approximated."},
     {"zone": "*", "name_pattern": "^21\\.901\\.357{n}\\.(?:2|11|121) ",
      "reason": "A zone operating / blocking switch of the vendor's scheme logic; it does not change the zone's geometry and is not interpreted."},
     {"zone": "*", "name_pattern": "^21\\.901\\.357{n}\\.(?:107|108) ",
-     "reason": "K0 / Angle (K0) are the other residual-compensation format; this sheet is set to the Kr, Kx format (91.115). Preserved, not used."}
+     "reason": "K0 / Angle (K0) are the other residual-compensation format; this sheet is set to the Kr, Kx format (91.115). Preserved, not used."},
+    {"zone": "*", "names": ["21.901.3661.105 Use ph-ph load cutout"], "unverified_when": ["yes"],
+     "reason": "Geometry-affecting: the phase-phase load cutout removes the load area (R load cutout, Angle load cutout) from the phase-phase operate area (Siemens C53000-G5040-C011-9, 6.6.5). Its exact shape relative to this zone's polygon is not yet verified, so whether it cuts the zone is not established. Preserved, not drawn; not assumed to have no effect."},
+    {"zone": "*", "names": ["21.901.3661.106 R load cutout (ph-ph)", "21.901.3661.107 Angle load cutout (ph-ph)"],
+     "reason": "Geometry-affecting: the phase-phase load-cutout limits (minimum load resistance and opening angle) of the load area removed from the operate area. Preserved, not drawn; their effect on the zone is not yet verified."},
+    {"zone": "*", "names": ["21.901.3661.102 Use ph-g load cutout", "21.901.3661.103 R load cutout (ph-g)", "21.901.3661.104 Angle load cutout (ph-g)"],
+     "reason": "Geometry-affecting for the phase-earth loops: the phase-ground load cutout removes the load area from the phase-ground operate area. The phase-phase engine does not draw the phase-earth loops. Preserved, not drawn."}
   ],
   "mappings": [
     {
@@ -112,20 +137,45 @@
       "transform": {"type": "enum", "map": {"forward": "forward", "reverse": "reverse", "non-directional": "non_directional", "non-dir": "non_directional"}}
     },
     {
+      "id": "7sl87.characteristic",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "quadrilateral"},
+      "evidence": [
+        {"name": "21.901.357{n}.102 X reach"}, {"name": "21.901.357{n}.104 R (ph-ph)"},
+        {"name": "21.901.357{n}.103 R (ph-g)"}, {"name": "21.901.357{n}.113 Zone-inclination angle"}
+      ],
+      "requires": [{
+        "source": {"name": "21.901.357{n}.1 Mode", "allowed_text": ["on", "off", "test"]}, "equals": ["on"],
+        "off_note": "Zone {n} is not switched on (Mode = off): the documented zone behaviour is not applied to it.",
+        "missing_note": "the zone's Mode setting (21.901.357{n}.1) was not found"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g5040-c011-9-zones", "siemens-c53000-g5040-c011-9-quad"],
+      "note": "A SIPROTEC 5 distance zone is a zone function block of one operate-curve type, and the device has no characteristic selector (Siemens C53000-G5040-C011-9, 6.6.2.2). This zone is stated with the quadrilateral parameter set (X reach, R (ph-g), R (ph-ph), Zone-inclination angle; MHO and circular zones use Zr impedance reach), so it is a quadrilateral zone; applied to an enabled zone. The resistance lines are inclined at the distance characteristic angle, which the current engine does not reproduce."
+    },
+    {
+      "id": "7sl87.characteristic.not_exposed",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "not_exposed": {"note": "SIPROTEC 5 has no characteristic selector: a zone's operate curve is fixed by the type of its zone function block."}
+    },
+    {
       "id": "7sl87.pp_enabled",
       "canonical": "distance.zone.pp_enabled",
       "zone": "*",
       "source": {"name": "21.901.357{n}.101 Function mode"},
-      "transform": {"type": "enum", "map": {"ph-gnd and ph-ph": true, "ph-ph": true, "ph-gnd": false}},
-      "note": "Function mode states which loops the zone measures."
+      "transform": {"type": "enum", "map": {"ph-gnd and ph-ph": true, "ph-ph": true, "ph-ph only": true, "ph-gnd": false, "ph-gnd only": false}},
+      "note": "Function mode states which loops the zone measures (Siemens options: ph-gnd and ph-ph, ph-gnd only, ph-ph only)."
     },
     {
       "id": "7sl87.pe_enabled",
       "canonical": "distance.zone.pe_enabled",
       "zone": "*",
       "source": {"name": "21.901.357{n}.101 Function mode"},
-      "transform": {"type": "enum", "map": {"ph-gnd and ph-ph": true, "ph-ph": false, "ph-gnd": true}},
-      "note": "Function mode states which loops the zone measures."
+      "transform": {"type": "enum", "map": {"ph-gnd and ph-ph": true, "ph-ph": false, "ph-ph only": false, "ph-gnd": true, "ph-gnd only": true}},
+      "note": "Function mode states which loops the zone measures (Siemens options: ph-gnd and ph-ph, ph-gnd only, ph-ph only)."
     },
     {
       "id": "7sl87.geometry_mode",
@@ -133,7 +183,7 @@
       "zone": "*",
       "transform": {"type": "constant", "value": "explicit_rx"},
       "authority": "documented_derivation",
-      "note": "The zone is stated as X and R limits (X reach, R (ph-ph), R (ph-g)), not as a polar reach. Its resistance boundaries are inclined at the distance characteristic angle, which this representation cannot carry (preserved with the zone)."
+      "note": "The zone is stated as X and R limits (X reach, R (ph-ph), R (ph-g)), not as a polar reach. Its resistance boundaries are inclined at the distance characteristic angle, which this representation cannot carry (see the Right Resistive Reach (+R))."
     },
     {
       "id": "7sl87.x_reach",
@@ -145,40 +195,70 @@
       "id": "7sl87.r_right",
       "canonical": "distance.zone.r_right",
       "zone": "*",
+      "gap": {
+        "note": "R (ph-ph) is documented as a per-phase (conductor / positive-sequence) resistance reach: it is not a loop value and is not halved (Siemens C53000-G5040-C011-9, 6.6.15.6). The zone's resistance line is inclined at the distance characteristic angle phi, common to all zones, parallel to the line impedance (6.6.15.4): Rright(X) = R + X * cot(phi), with R = R (ph-ph) ({evidence}). The current engine draws only a vertical resistive limit (Rright = R), so this boundary cannot be represented exactly; no Right Resistive Reach (+R) is plotted and no approximation is applied. Only phi = 90 deg would make the boundary vertical.",
+        "evidence": [{"name": "21.901.357{n}.104 R (ph-ph)"}, {"name": "21.901.2311.107 Dist. characteristic angle"}]
+      },
+      "references": ["siemens-c53000-g5040-c011-9-quad"]
+    },
+    {
+      "id": "7sl87.r_right.vertical",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
       "source": {"name": "21.901.357{n}.104 R (ph-ph)", "type": "number", "unit": "ohm"},
-      "note": "R (ph-ph), the phase-phase resistance reach, as printed."
+      "requires": [{
+        "source": {"name": "21.901.2311.107 Dist. characteristic angle"}, "equals": ["90", "90.0", "90.00"],
+        "off_note": "The distance characteristic angle is not 90 deg, so the resistance line is inclined and R (ph-ph) is not a vertical +R.",
+        "missing_note": "the distance characteristic angle (21.901.2311.107) was not found, so the inclination of the resistance line is not established"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g5040-c011-9-quad"],
+      "note": "R (ph-ph) is a per-phase (conductor / positive-sequence) resistance reach, used directly (not halved; Siemens C53000-G5040-C011-9, 6.6.15.6). With the distance characteristic angle at 90 deg the resistance line is vertical, so R (ph-ph) is exactly the Right Resistive Reach (+R)."
+    },
+    {
+      "id": "7sl87.r_left",
+      "canonical": "distance.zone.r_left",
+      "zone": "*",
+      "gap": {
+        "note": "The relay has no separate left (-R) resistive-reach setting, which does not mean the zone has no left boundary: a forward zone's left side is formed by the quadrilateral's own resistance limit and the device's fixed directional characteristic (Siemens C53000-G5040-C011-9, 6.6.4, Fig. 6-102; its limits are not settings). Their exact geometry is not established from the verified sources, so no left boundary is drawn, offered or approximated."
+      },
+      "references": ["siemens-c53000-g5040-c011-9-direction"]
     },
     {
       "id": "7sl87.r_phase_earth",
       "canonical": "distance.zone.r_phase_earth",
       "zone": "*",
       "source": {"name": "21.901.357{n}.103 R (ph-g)", "type": "number", "unit": "ohm"},
-      "note": "R (ph-g), the phase-ground resistance reach, as printed. Not drawn by the phase-phase engine."
+      "references": ["siemens-c53000-g5040-c011-9-quad"],
+      "note": "R (ph-g), the phase-ground resistance reach, as printed: a per-phase value (the loop fault resistance divided by (1 + Kr); Siemens C53000-G5040-C011-9, 6.6.15.6), its resistance line inclined at the distance characteristic angle like R (ph-ph). Not drawn by the phase-phase engine."
     },
     {
       "id": "7sl87.tilt",
       "canonical": "distance.zone.tilt",
       "zone": "*",
       "source": {"name": "21.901.357{n}.113 Zone-inclination angle", "type": "number", "unit": "deg"},
-      "note": "The inclination of the zone's X reach line, as stated."
+      "note": "The inclination of the zone's X reach line in the first quadrant, as stated (0 deg: horizontal)."
     },
     {
       "id": "7sl87.phase_delay",
       "canonical": "distance.zone.phase_delay",
       "zone": "*",
       "source": {"name": "21.901.357{n}.112 Operate delay (multi-ph.)", "type": "number", "unit": "s"},
-      "authority": "assumption",
-      "confidence": "inferred",
-      "note": "Operate delay for multi-phase faults, read as the phase-phase loop delay (multi-phase faults include phase-phase-earth faults; the loop assignment is an assumption)."
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g5040-c011-9-quad"],
+      "note": "Operate delay (multi-ph.) is the zone's grading time for multi-phase faults (Siemens C53000-G5040-C011-9, 6.6.15.6): the phase-phase loop delay. A blank setting cell is a missing source value -- never Infinity, a range, a default or a note."
     },
     {
       "id": "7sl87.earth_delay",
       "canonical": "distance.zone.earth_delay",
       "zone": "*",
       "source": {"name": "21.901.357{n}.110 Operate delay (1-phase)", "type": "number", "unit": "s"},
-      "authority": "assumption",
-      "confidence": "inferred",
-      "note": "Operate delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g5040-c011-9-quad"],
+      "note": "Operate delay (1-phase) is the zone's grading time for 1-pole (single-phase-to-ground) faults (Siemens C53000-G5040-C011-9, 6.6.15.6): the phase-earth loop delay for single-phase faults (multi-phase faults use the multi-phase delay). A blank setting cell is a missing source value -- never Infinity, a range, a default or a note."
     },
     {
       "id": "7sl87.kr",

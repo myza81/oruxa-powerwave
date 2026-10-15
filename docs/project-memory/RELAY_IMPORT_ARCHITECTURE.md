@@ -1206,7 +1206,7 @@ PDF -> generic extractor -> identifier (unchanged descriptors) -> active OEM cat
 |---|---|---|
 | Hitachi Energy REL670 | `hitachi_energy/rel670.json` | **READY FOR OWNER UAT** (catalog-only proof) |
 | Hitachi Energy REL511 | `hitachi_energy/rel511.json` (1.2.0, DEC-198 Am. 1-2) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
-| Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` (1.1.0, DEC-198 Am. 3) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRZ100 | `toshiba/grz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRL200 | `toshiba/grl200.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
@@ -1266,7 +1266,9 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
   (gated by `Zone-spec. residu. comp.` = YES and format Kr, Kx), CT / VT (VT units assumed kV / V), line length / angle.
   Operate delays: **blank setting cells -> Missing** (never `Infinity`, never the notes' 0.15 / 0.45 / 3 s); the 1-phase / multi-phase
   -> earth / phase delay loop assignment is an assumption. **Not interpreted:** characteristic; the polygon's inclined resistance
-  boundary (Dist. characteristic angle preserved in every zone); K0 rows (other compensation format).
+  boundary (Dist. characteristic angle preserved in every zone); K0 rows (other compensation format). *(Superseded by DEC-198
+  Amendment 3 -- see "7SL87 -- documented relay behaviour": the characteristic is documented, the delay assignment is
+  documented, the inclined +R and the left boundary are Unsupported, the phase-phase load cutout in use blocks.)*
 * **7SA613** -- Op. mode Zn (+ 1201 FCT Distance) -> status and direction (Z4 Inactive -> Disabled, Z5 Non-directional),
   R(Zn) ph-ph / X(Zn) / RE(Zn) ph-E, Z5 `X+` -> X (`X-` preserved), RE/RL - XE/XL compensation (Z1 own, Z2..Z1B shared;
   format-gated), CT / VT with units from the printed range (kV, AMP), line angle / length / unit. Timers: blank -> Missing,
@@ -1299,7 +1301,7 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
 |---|---|---|---|---|
 | REL670 | 4 (Z1-Z3 fwd, Z4 rev, all enabled) | 62 / 9 / 2 / 4 / 0 / 4 | 993 = 88 + 0 + 0 + 117 + 788 | **Ready to apply**; Apply returns 4 zones |
 | REL511 | 5 | 35 / 10 / 17 / 11 / 0 / 9 | 238 = 53 + 11 + 2 + 46 + 126 | Not ready (basis, characteristic, PP loops) -- *DEC-197 snapshot; now 12 blocking settings, see the last section* |
-| 7SL87 | 6 | 63 / 2 / 14 / 36 / 0 / 6 | 794 = 60 + 31 + 21 + 84 + 598 | Not ready (characteristic, delays); tilt 0° Mapped, not a blocker |
+| 7SL87 | 6 | 63 / 2 / 14 / 36 / 0 / 6 | 794 = 60 + 31 + 21 + 84 + 598 | Not ready (characteristic, delays); tilt 0° Mapped, not a blocker -- *DEC-197 snapshot; now 12 blocking settings, characteristic documented (DEC-198 Am. 3)* |
 | 7SA613 | 6 | 51 / 0 / 26 / 9 / 3 / 16 | 343 = 38 + 3 + 9 + 38 + 255 | Not ready (basis, characteristic, delays, loops, non-dir Z5) |
 | GRZ100 | 8 | 30 / 2 / 75 / 58 / 0 / 17 | 858 = 24 + 32 + 0 + 58 + 744 | Not ready (basis, zone status) |
 | GRL200 | 6 | 47 / 2 / 22 / 246 / 0 / 7 | 2498 = 63 + 240 + 0 + 121 + 2074 | Not ready (basis, characteristic, zone status) |
@@ -1320,7 +1322,7 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | REL670 | rel670.pdf | READY FOR OWNER UAT | Hitachi Energy · REL670, V1.2, high | CT 900/1 A (IL1-IL3); VT 132 kV / 110 V (unit assumption) | Primary (IBase/UBase, documented) | Z1-Z4 | Z1-Z4 Enabled (Operation/OperationDir) | Z1-Z3 Fwd, Z4 Rev | Quadrilateral (ZMQPDIS) | X 0.65 / 1.3 / 4.65 / 0.16 Ω | RFPP/2: 0.49 / 0.97 / 3.49 / 0.125 Ω (raw 0.98 / 1.94 / 6.98 / 0.25) | RFPE 3.27 / 6.48 / 17.26 / 0.8 Ω | tPP = tPE 0.15 / 0.45 / 3 / 3 s | none stated (R0/X0 kept) | Not ready -> Ready after 4 × 0.00 Ω approximation + 9 confirmations | Yes | 4 explicit R/X boxes, Z4 dashed reverse | Left boundary is the ZDRDIR directional element (0 Ω is an approximation); PE not plotted | Z4 reverse in service correct?; RFPP/2 for REL670 like RED670; VT/UBase units; the 0 Ω approximation acceptable for viewing |
 | REL511 | rel511.pdf | PARTIAL | Hitachi Energy · REL511, V1.2, high | CT 1200 A, Ir 1 A (assumption); VT 132 kV (assumption) / Ur 110 V (assumption) | Missing | Z1-Z5 | Z1-Z4 Enabled, Z5 Disabled (Operation_Zn) | Z1-Z3 Fwd, Z4 Rev; Z5 'None' not interpreted | Missing | X1Zn 3.08 / 4.7 / 10.28 / 0.77 Ω | Unsupported: RFZn preserved (4.62 / 6.77 / 11.87 / 1.15) | RFNZn as printed 15.39 / 17.5 / 23.26 / 3.85 (assumption) | t1-t4 0 / 0.3 / 3 / 3 s (Timer on); Z5 Missing | none (R0/X0 kept) | Not ready (basis, characteristic, PP loops) | No | No | RF loop / per-phase, characteristic, basis, ZnBlock unknown | Is REL511 primary or secondary ohms? Characteristic? RF per loop or per phase? ZnBlock meaning? |
-| 7SL87 | 7sl87.pdf | PARTIAL | Siemens · 7SL87, high | CT 1500/1 A; VT 275 kV / 110 V (unit assumption) | Primary (Edit mode) | Z1-Z6 | Z1-Z3 Enabled, Z4-Z6 Disabled (Mode) | Z1-Z3 Fwd, Z4 Rev | Missing (not named) | X 4.7 / 8.5 / 30.5 Ω | R (ph-ph) 3.1 / 3.6 / 6.6 Ω | R (ph-g) 11.2 / 14.4 / 34 Ω | **all Missing** (blank cells; Infinity is the range) | Kr 1.72 / Kx 0.58 (Z1-Z3) | Not ready (characteristic, delays) | No | No | Inclined R boundary (82.7°) not representable; explicit tilt = 0° is a valid configured value (Mapped) and does not block readiness by itself | Notes' 0.15 / 0.45 / 3 s are not settings -- confirm the real delays; Z4 off matches "Zone 4 Inactive" note |
+| 7SL87 | 7sl87.pdf | PARTIAL | Siemens · 7SL87, high | CT 1500/1 A; VT 275 kV / 110 V (unit assumption) | Primary (Edit mode) | Z1-Z6 | Z1-Z3 Enabled, Z4-Z6 Disabled (Mode) | Z1-Z3 Fwd, Z4 Rev | Quadrilateral, documented (Siemens C53000-G5040-C011-9; DEC-198 Am. 3) | X 4.7 / 8.5 / 30.5 Ω | Not yet supported: R (ph-ph) 3.1 / 3.6 / 6.6 Ω inclined at 82.7° (per-phase, not halved) | R (ph-g) 11.2 / 14.4 / 34 Ω | **all Missing** (blank cells; Infinity is the range); loop assignment documented | Kr 1.72 / Kx 0.58 (Z1-Z3) | Not ready (delays, inclined +R, left boundary, ph-ph load cutout) | No | No | Inclined R boundary (82.7°) and left / directional boundary not representable (candidate A7 documented only); load cutout effect not verified; explicit tilt = 0° Mapped | Notes' 0.15 / 0.45 / 3 s are not settings -- confirm the real delays; Z4 off matches "Zone 4 Inactive" note |
 | 7SA613 | 7sa613.pdf | PARTIAL | Siemens · 7SA613, high | CT 1200/1 A; VT 275 kV / 110 V (units printed) | Missing | Z1, Z2, Z3, Z4, Z5, Z1B | Z1-Z3, Z5, Z1B Enabled; Z4 Disabled (Op. mode Inactive) | Z1-Z3, Z1B Fwd; Z5 Non-directional | Missing | X 2.4 / 3.6 / 8.8 / 250 / 10.6 (X+) / 3.2 Ω; Z5 X- 6.9 preserved | 1.5 / 1.7 / 2.4 / 250 / 2.9 / 1.6 Ω | 7.8 / 8.6 / 13.6 / 250 / 16.3 / 8.4 Ω | T1-T3 Missing (blank); T4, T5, T1B 'Infinity' (not a delay) | RE/RL 1.51, XE/XL 0.48 | Not ready (basis, characteristic, delays) | No | No | Inclined boundary (Distance Angle 82) and Zone Reduction preserved | Primary or secondary ohms? Real delays (blank on sheet) |
 | GRZ100 | grz100.pdf | PARTIAL | Toshiba · GRZ100, Ver 2.1, high | CT ratio 1200, VT ratio 1200 | Missing | Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2, ZND | Missing (no zone switch) | Missing (not stated) | Quadrilateral (ZS-C = ZG-C = Quad) | not interpreted (ZnS/ZnG preserved) | not interpreted (BFRS preserved) | not interpreted | TZ1S 0, TZ2S 0.3, TZFS 0.35, TZ3S 3, TZR1S 0.5, TZR2S 3, TZNDS 0.7 s (+G) | Krs 560 / Kxs 313 % preserved | Not ready (basis, status) | No | No | Blinder geometry (BFRS / BFLS-angle) a capability gap | Reach setting = reactance limit or impedance? Which zones are in service? Basis |
 | GRL200 | grl200.pdf | PARTIAL | Toshiba · GRL200, high | Missing (only in the notes) | Missing | Z1-Z5, Z1X | Missing; PP/PE enables Z1-Z3 on, Z4, Z5, Z1X off | Z1-Z3 Fwd, Z4 Rev (agreed) | Unknown -> Unsupported (MHO phase / QUAD earth) | mho 3.59 / 7.18 / 10.53 Ω ∠85° | not interpreted (blinder 4.2 / 5 / 5.32 preserved) | ZnG-R.Reach 15.42 / 18.34 / 21.06 Ω | TZnS = TZnG 0.15 / 0.45 / 3 s | Krs/Kxs preserved | Not ready (basis, characteristic, status) | No | No | Mho-with-blinders + quad earth needs a per-loop / blinder geometry model | Basis; CT/VT; is the review useful as it stands? |
@@ -1342,6 +1344,7 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
    **REL511 resolved (DEC-198 Amendment 2):** Secondary, documented relay behaviour (ABB 1MRK 506 109-UEN Eq. 39); the others stay open.
 3. The characteristic of REL511, 7SL87, 7SA613, RCS-941, RELZ100 (not named on the sheets; the parameter sets suggest
    quadrilateral / mho, but nothing is assumed). **REL511 resolved (DEC-198 Amendment 1):** quadrilateral, documented.
+   **7SL87 resolved (DEC-198 Amendment 3):** quadrilateral, documented (Siemens C53000-G5040-C011-9).
 4. The per-loop / per-phase meaning of REL511 RFZn / RELZ100 Rn (preserved, not used). **REL511 resolved (DEC-198 Amendment 2):**
    RFZn phase-phase and RFNZn phase-earth, both ohm/loop; RELZ100 Rn stays open.
 5. ~~Whether a zero tilt (7SL87 Zone-inclination angle 0) should be acceptable to the engine.~~ **Resolved (owner, 2026-10-14,
@@ -1502,11 +1505,70 @@ reads "A source fault-resistance setting is available and its resistive boundary
 represent that boundary exactly." (without a verified reference -- e.g. RELZ100 -- the previous wording stays). Amendment 1's
 history (9 -> 13; 7SL87 / 7SA613 side effects): DECISIONS.md, DEC-198 Amendments 1-2.
 
+### 7SL87 -- documented relay behaviour (DEC-198 Amendment 3, catalog 1.1.0)
+
+**7SL87 characteristic blocker resolved as documented relay behaviour.** **7SL87 remains partial because the source omits
+Z1-Z3 timers and the current engine cannot yet reproduce all quadrilateral geometry.** Investigation first (owner-accepted),
+then this slice; no approximation rule, no engine change.
+
+**Reference (verified; version-dependent).** Siemens *SIPROTEC 5 Distance and Line Differential Protection, Breaker Management
+for 1-Pole and 3-Pole Tripping 7SA87, 7SD87, 7SL87, 7VK87 -- Manual*, **C53000-G5040-C011-9** (V07.50, Edition 11.2017),
+chapter 6.6 (distance protection with classic method). The owner sheet is scheme `7SL87_8.81`: applicability rests on the
+matching function and parameter structure (`21 Distance prot.`, zones stated with X reach / R (ph-g) / R (ph-ph) /
+Zone-inclination angle), is version-dependent, and is **not** a firmware match. The scope note travels with every citation.
+The classic-method polygon description (6.6.9.1, pp. 523-525) was not available and was not researched further (owner
+instruction).
+
+| Catalog reference id | Section (pages) | Used for |
+|---|---|---|
+| `siemens-c53000-g5040-c011-9-zones` | 6.6.2.2 Structure of the Function -- zone assignment to quadrilateral / adaptive quadrilateral / MHO / circular operate curves (472-476) | Characteristic: no selector; the zone function-block type fixes the curve |
+| `siemens-c53000-g5040-c011-9-quad` | 6.6.15.4-6.6.15.6 Application example, quadrilateral zones (569-580): Dist. characteristic angle (Fig. 6-141), R (ph-ph), R (ph-g), operate delays, Zone-inclination angle | Characteristic; R convention; delay loop assignment; inclined resistance line |
+| `siemens-c53000-g5040-c011-9-direction` | 6.6.4 Direction Determination, Fig. 6-102 (500-504) | Left / directional boundary (fixed device characteristic, not a setting) |
+| `siemens-c53000-g5040-c011-9-load` | 6.6.5.1-6.6.5.2 Impedance pickup, load cutout, Fig. 6-106 (504-508) | Load cutout (geometry-affecting) |
+
+| Item | Now (1.1.0) | Classification |
+|---|---|---|
+| Characteristic | Quadrilateral, `documented_derivation` (verified), enabled zones (Mode = on), evidence the quadrilateral parameter set; selector `not_exposed` | Documented relay behaviour -- **no longer a blocker** |
+| PP / PE loops | Mapped from `Function mode` (configured); option texts `ph-gnd and ph-ph`, `ph-gnd only`, `ph-ph only` (and the shortened forms) | Mapped (unchanged result on the owner sheet) |
+| R (ph-ph) | per-phase (conductor / positive-sequence) value, used directly, **never halved** (the loop arc resistance is halved when setting it, 6.6.15.6) | Documented convention (in the +R provenance) |
+| +R at φ = 82.7° | `gap` (unsupported), evidence R (ph-ph) + `21.901.2311.107 Dist. characteristic angle` (raw `3.1 \| 82.7`); `Rright(X) = R + X·cot φ` in the provenance; no vertical +R | **Engine geometry limitation** -- blocking |
+| +R at φ = 90° | `7sl87.r_right.vertical`: R (ph-ph) direct, `documented_derivation` (verified), gated on the angle = 90 (the gap ranks first and wins at any other angle) | Documented relay behaviour (exact) |
+| R (ph-g) | as printed, per-phase (loop resistance / (1 + Kr)), cited; not drawn | Mapped -- not blocking |
+| Operate delays | `Operate delay (multi-ph.)` -> phase delay, `Operate delay (1-phase)` -> earth delay: `documented_derivation` (verified); a **blank cell stays Missing** (never Infinity, a range, a default, a note or a proposed timer) | Assignment documented; **source-data gap** -- Z1-Z3 phase delays block |
+| Left / directional boundary | `gap` (unsupported), cites 6.6.4; was Missing with a user 0.00 Ω offer; **no offer** (no directional angles stated -- the DEC-198 Amendment 1 rule) | **Engine geometry limitation / evidence gap** -- blocking |
+| Phase-phase load cutout | `Use ph-ph load cutout` preserved with every zone, `unverified_when: ["yes"]`; R / angle preserved; shape vs polygon not verified, so "no intersection" is **not** asserted | Geometry item requiring verification -- blocks an enabled zone while in use |
+| Phase-ground load cutout | preserved, not material (acts on the phase-earth loops, not drawn) | Not blocking |
+| Zone-inclination angle 0° | Mapped (DEC-197 Amendment 1) | Exact |
+| Kr / Kx / K0, parallel-line compensation (NO), PSB / SOTF / blocking switches | unchanged (earth-loop compensation / no effect at the configured state / scheme logic) | Not geometry blockers |
+
+**Approximation candidate -- documented only, NOT approved, NOT in `APPROVED_RULES`, no record emitted.**
+
+| Candidate | Rule | Class | Envelope | Owner sheet (shortfall at the X reach) |
+|---|---|---|---|---|
+| A7 | +R = R (ph-ph) (vertical) | conservative (first quadrant, φ ≤ 90°) | shortfall ≤ X·cot φ at X = X reach, 0 at X = 0 | Z1 ≈ 0.60 Ω, Z2 ≈ 1.09 Ω, Z3 ≈ 3.91 Ω (cot 82.7° = 0.1281) |
+
+A left-boundary candidate (−R = 0) is not documented: it needs the Siemens polygon / directional evidence (6.6.9.1, Fig. 6-102
+angles) first.
+
+**Result (owner 7SL87 sheet).** Blocking settings **9 -> 12**, all genuine: source-data gaps 3 (Z1-Z3 phase delays),
+engine geometry limitations 6 (inclined +R × 3, left / directional boundary × 3), geometry verification 3 (phase-phase load
+cutout in use × 3); characteristic 3 -> **0**. Documented relay behaviour 0 -> 3 (characteristic Z1-Z3); not exposed 3
+(characteristic Z4-Z6, switched off); 0.00 Ω offers 3 -> 0; 2 assumptions (VT units, unchanged); `approximations[]` empty.
+With the Z1-Z3 timers typed in, 9 still block. **PARTIALLY SUPPORTED / NOT_READY.**
+
+**Open (found in this slice, not changed -- change governance).** `review/validate` accepts a manual value for an
+Unsupported +R although the review offers no manual entry for it (also true for REL511 RFZn); a crafted request can clear
+that blocker. The browser never sends one. A generic fix (refuse manual values where no resolution is offered) needs owner
+approval.
+
 ### Recommended next slices (not started)
 
 1. ~~REL511 references + verified derivations~~ -- done (Amendment 1). Still open: Relion 670 references; RELZ100 Rn as `unverified`.
    ~~REL511 basis / RFZn / RFNZn semantics~~ -- done (Amendment 2). Still open for REL511: **ZnBlock** (needs OEM evidence:
    the REL 511\*1.2 User's Guide 1MRK 506 002-UEN or TNB's template definition), then candidates A / B for owner approval.
+   ~~7SL87 characteristic / delay assignment / R convention~~ -- done (Amendment 3). Still open for 7SL87: the real Z1-Z3
+   delays (source data), the Siemens polygon / directional evidence (6.6.9.1, Fig. 6-102) for the left boundary, the load-cutout
+   shape (Fig. 6-106), then candidate A7 for owner approval. Generic: refuse a manual value where the review offers none.
 2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
 3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.

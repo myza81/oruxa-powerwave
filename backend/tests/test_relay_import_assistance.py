@@ -505,9 +505,10 @@ class TestShippedCatalogsUnchanged:
         assert not store.rejected and check_lock(store, load_lock()) == []
 
     def test_no_other_shipped_catalog_uses_the_new_declarations(self):
-        # REL511 (1.1.0 / 1.2.0) is the only catalog to use them (its own tests: test_relay_rel511_documented_behaviour.py)
+        # REL511 (1.1.0 / 1.2.0) and 7SL87 (1.1.0) are the only catalogs to use them (their own tests:
+        # test_relay_rel511_documented_behaviour.py, test_relay_7sl87_documented_behaviour.py)
         for catalog in default_store().catalogs:
-            if catalog.catalog_id == "hitachi-rel511-catalog":
+            if catalog.catalog_id in ("hitachi-rel511-catalog", "siemens-siprotec5-7sl87-catalog"):
                 continue
             assert catalog.references == ()
             assert all(m.not_exposed is None and m.verification is None and not m.references for m in catalog.mappings)

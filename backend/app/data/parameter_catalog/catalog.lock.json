@@ -10,6 +10,7 @@
   "schneider-micom-p44x-catalog@1.0.0": "6cd1308892ef73ca1e97e82e4bb3be6ecd3d158dccbb80f5743d9f2d9b69b72c",
   "siemens-7sa613-catalog@1.0.0": "4be61e8e3c7704a315ca087d42ea99e6748d7c7fb5a33f4c8cd0dc10ead41b97",
   "siemens-siprotec5-7sl87-catalog@1.0.0": "e891b1fdfeb2d93c10f6439d8155e21587ae140a3add33503871480768a4f9b6",
+  "siemens-siprotec5-7sl87-catalog@1.1.0": "c8cc8ad94e5c7883e9d7e3e9c8880266fdda8a66f4fe464528492c3bf6eae35f",
   "toshiba-grl200-catalog@1.0.0": "66906a9ed5ce6566561a08fbc0c5d642efa10a5e9b4dcc56f3987086c9e89204",
   "toshiba-grz100-catalog@1.0.0": "7e555788414a7b29a8f94b14387d4efcbe3b13bec2e52ae4d0b6c958fd99ebab"
 }

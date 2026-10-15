@@ -102,8 +102,9 @@ FAMILIES = {
 }
 
 
-#: The active catalog version per family (REL511 1.2.0: documented relay behaviour, DEC-198 Amendments 1-2).
-CATALOG_VERSIONS = {name: "1.2.0" if name == "rel511" else "1.0.0" for name in FAMILIES}
+#: The active catalog version per family (documented relay behaviour, DEC-198: REL511 1.2.0, Amendments 1-2;
+#: 7SL87 1.1.0, Amendment 3).
+CATALOG_VERSIONS = {name: {"rel511": "1.2.0", "7sl87": "1.1.0"}.get(name, "1.0.0") for name in FAMILIES}
 
 
 class TestEveryFamilyIsCatalogOnly:
@@ -237,8 +238,10 @@ class TestSiprotec5_7SL87:
         review = upload(client, F.sl87_pdf())["review"]
         i = items(review)
         assert i["transformers.setting_basis"]["value_text"] == "Primary" and i["transformers.setting_basis"]["category"] == "mapped"
-        assert (i["zones[Z1].x_reach_ohm"]["value_text"], i["zones[Z1].resistive_reach.phase_phase"]["value_text"],
-                i["zones[Z1].resistive_reach.phase_earth"]["value_text"]) == ("4.7 Ω", "3.1 Ω", "11 Ω")
+        assert (i["zones[Z1].x_reach_ohm"]["value_text"], i["zones[Z1].resistive_reach.phase_earth"]["value_text"]) == ("4.7 Ω", "11 Ω")
+        # R (ph-ph) is kept with the inclination angle it is drawn at: an inclined +R is not a vertical one (DEC-198 Am. 3)
+        assert unresolved(i["zones[Z1].resistive_reach.phase_phase"], "unsupported")
+        assert i["zones[Z1].resistive_reach.phase_phase"]["raw_value"] == "3.1 | 82.7"
         assert i["zones[Z2].status"]["value_text"].startswith("Disabled") and i["zones[Z2].direction"]["value_text"] == "Reverse"
         assert i["zones[Z1].compensation.kr"]["value_text"] == "1.7"                  # zone-specific compensation: YES
         assert unresolved(i["zones[Z2].compensation.kr"], "missing")                  # NO: the zone's own Kr is not used
@@ -259,8 +262,10 @@ class TestSiprotec5_7SL87:
         tilt = i["zones[Z1].tilt_deg"]
         assert (tilt["value_text"], tilt["raw_value"], tilt["category"]) == ("0°", "0", "mapped")  # 0 kept as 0, not Missing
         assert not any("tilt" in r["message"].lower() for r in review["blocking_issues"])
-        assert raw_rows(review, "Z1")["21.901.2311.107 Dist. characteristic angle"]["raw_value"] == "82.7"
-        assert unresolved(i["zones[Z1].characteristic.type"], "missing")             # not named: not assumed
+        # the inclined resistance boundary is kept with the +R it inclines, and blocks (DEC-198 Amendment 3)
+        rr = i["zones[Z1].resistive_reach.phase_phase"]
+        assert "21.901.2311.107 Dist. characteristic angle" in [s["name"] for s in rr["sources"]] and rr["blocking"]
+        assert i["zones[Z1].characteristic.type"]["category"] == "documented"         # documented, not Missing
         assert client.post(VALIDATE, json=decisions(review)).json()["readiness"]["status"] == "not_ready"
 
     def test_a_non_zero_tilt_stays_unsupported_and_blocks(self, client):

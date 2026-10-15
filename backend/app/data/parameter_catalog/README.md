@@ -140,7 +140,7 @@ to the extracted settings), plus canonical values by outcome. Review rows are no
 | `hitachi_energy/red670.json` | RED670 | catalog-first (+ hand-written extension) |
 | `hitachi_energy/rel670.json` | REL670 | catalog-only |
 | `hitachi_energy/rel511.json` | REL511 | catalog-only, 1.2.0: documented characteristic / loops (ABB 1MDB06309-YN), documented Secondary basis and RFZn / RFNZn meanings (ABB 1MRK 506 101 / 109 / 167-UEN, REL 511 2.3 / 2.5 -- verified for the family, version-dependent for the 1.x-style sheet); RFZn inclined boundary and left / directional boundary unsupported; ZnBlock unverified |
-| `siemens/siprotec5_7sl87.json` | 7SL87 | catalog-only (verified subset) |
+| `siemens/siprotec5_7sl87.json` | 7SL87 | catalog-only, 1.1.0: documented quadrilateral characteristic (selector not exposed), per-phase R (ph-ph) / R (ph-g) and the operate-delay loop assignment (Siemens C53000-G5040-C011-9, V07.50 -- version-dependent for the 7SL87_8.81 sheet); +R inclined at the distance characteristic angle and the left / directional boundary unsupported (+R = R (ph-ph) only at 90 deg); phase-phase load cutout in use unverified; blank delays Missing |
 | `siemens/siprotec4_7sa613.json` | 7SA613 | catalog-only (verified subset) |
 | `toshiba/grz100.json` | GRZ100 | catalog-only (verified subset) |
 | `toshiba/grl200.json` | GRL200 | catalog-only (verified subset) |

@@ -130,15 +130,41 @@ SL87_ROWS: list[Row] = [
     ("11.941.8911.102 Rated secondary voltage", "110", "80-230"),
     ("21.9001.114 Line length", "20", "0.1-1000"), ("21.9001.108 Line angle", "82.7", "10-89"),
     ("21.901.2311.107 Dist. characteristic angle", "82.7", "30-90"),
+    ("21 Distance prot.1 > Pickup Z<",),
+    ("21.901.3661.102 Use ph-g load cutout", "YES", "NO/YES"), ("21.901.3661.103 R load cutout (ph-g)", "44.8", "0.092-1375"),
+    ("21.901.3661.104 Angle load cutout (ph-g)", "45", "15-65"),
+    ("21.901.3661.105 Use ph-ph load cutout", "YES", "NO/YES"), ("21.901.3661.106 R load cutout (ph-ph)", "44.8", "0.092-1375"),
+    ("21.901.3661.107 Angle load cutout (ph-ph)", "45", "15-65"),
     *_7sl87_zone(1, "on", "Forward", "4.7", "3.1", "11", "YES"),
     *_7sl87_zone(2, "off", "Reverse", "10", "5", "10", "NO"),
 ]
 SL87_NOTES: list[Row] = [("Zone 1", "Forward direction timer set to 0.15s"), ("Zone 2", "Inactive (duplicated protection)")]
 
 
-def sl87_pdf(*, tilt: str = "0") -> bytes:
-    """``tilt`` replaces every zone's Zone-inclination angle cell ("" = a blank cell beside its range)."""
-    rows = [(r[0], tilt, *r[2:]) if r[0].endswith(".113 Zone-inclination angle") else r for r in SL87_ROWS]
+def sl87_pdf(*, tilt: str = "0", angle: str = "82.7", function_mode: str = "ph-gnd and ph-ph", z1_delays: tuple[str, str] = ("", ""),
+             load_cutout_pp: str | None = "YES") -> bytes:
+    """``tilt`` replaces every zone's Zone-inclination angle cell ("" = a blank cell beside its range); ``angle`` the
+    distance characteristic angle; ``function_mode`` Zone 1's Function mode; ``z1_delays`` Zone 1's (1-phase, multi-ph.)
+    operate-delay cells (blank by default, as on the owner sheet); ``load_cutout_pp`` the 'Use ph-ph load cutout' cell
+    (``None`` drops the phase-phase load-cutout rows)."""
+    def cell(name: str) -> str | None:
+        if name.endswith(".113 Zone-inclination angle"):
+            return tilt
+        if name.endswith(".107 Dist. characteristic angle"):
+            return angle
+        if name == "21.901.3571.101 Function mode":
+            return function_mode
+        if name == "21.901.3571.110 Operate delay (1-phase)":
+            return z1_delays[0]
+        if name == "21.901.3571.112 Operate delay (multi-ph.)":
+            return z1_delays[1]
+        if name == "21.901.3661.105 Use ph-ph load cutout":
+            return load_cutout_pp
+        return None
+
+    pp_load_cutout = ("21.901.3661.105", "21.901.3661.106", "21.901.3661.107")
+    rows = [(r[0], cell(r[0]), *r[2:]) if len(r) > 1 and cell(r[0]) is not None else r for r in SL87_ROWS
+            if not (load_cutout_pp is None and r[0].split(" ", 1)[0] in pp_load_cutout)]
     return sheet_pdf("7SL87_8.81", rows, SL87_NOTES, columns=WIDE_COLUMNS)
 
 
