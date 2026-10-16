@@ -1,8 +1,8 @@
-"""Canonical distance-zone boundaries (DEC-199 Phase 2A) -- SHADOW MODE.
+"""Canonical distance-zone boundaries (DEC-199 Phase 2A / 2B) -- SHADOW MODE.
 
 A relay-neutral description of a zone boundary, compiled into the V2 geometry kernel (`app.domain.distance_geometry`).
-Phase 2A provides one boundary kind -- an **inclined resistive edge** -- and the shadow assembly of a zone from it. It is
-not used by any production path: V1 (`app.domain.distance_protection`) stays authoritative for membership, readiness,
+Two boundary kinds -- an **inclined resistive edge** (Phase 2A) and a **directional half-plane** through the origin
+(Phase 2B) -- and the shadow assembly of a zone from them. It is not used by any production path: V1 (`app.domain.distance_protection`) stays authoritative for membership, readiness,
 Apply and the plot, and nothing here changes a review, a blocker or a readiness state.
 
 ## The inclined resistive edge
@@ -24,6 +24,30 @@ As a half-plane (unit normal n, n . p <= c), multiplying ``R - X cot(angle) <= r
 At 90 deg this is the vertical ``R <= r_at_axis`` / ``R >= r_at_axis``. ``frame`` is explicit: ``absolute`` boundaries are
 used as stated; ``zone`` boundaries are stated in the zone's own frame and are point-reflected (180 deg) for a reverse
 zone, exactly as the kernel places any zone-local characteristic.
+
+## The directional half-plane (DEC-199 Phase 2B)
+
+``directional(angle_deg, retained_side, frame)``: the straight line through the origin along the ray at ``angle_deg``
+(degrees, counter-clockwise from +R; -180 < angle <= 180, so a fourth-quadrant ray has a negative angle). With the ray's
+unit direction u = (cos a, sin a), the cross product u x p = -sin a * R + cos a * X is >= 0 on the side reached by turning
+the ray counter-clockwise and <= 0 on the side reached by turning it clockwise:
+
+* ``counter_clockwise``: { (R, X) : -sin a * R + cos a * X >= 0 }  -- as a half-plane ( sin a, -cos a) . (R, X) <= 0;
+* ``clockwise``:         { (R, X) :  sin a * R - cos a * X >= 0 }  -- as a half-plane (-sin a,  cos a) . (R, X) <= 0.
+
+E.g. at 0 deg the counter-clockwise side is X >= 0; at 90 deg it is R <= 0. The retained side is stated
+mathematically, never as "forward" / "reverse": a relay's forward region is a statement about which side its
+documentation keeps, made by the mapping, not by this module.
+
+**Two rays bound a sector.** The region between a counter-clockwise-retained ray at ``a1`` and a clockwise-retained ray
+at ``a2`` is the sector swept counter-clockwise from ``a1`` to ``a2`` (``a1 < arg(Z) < a2``) only when that sweep is
+narrower than 180 deg: a wider sector is the *union* of the two half-planes, not their intersection, and the kernel
+has no union. `assemble_zone` therefore refuses a sweep of 180 deg or more rather than produce a different region.
+
+``fidelity`` says how the boundary relates to **relay behaviour** (exact | documented | static_equivalent). It is
+distinct from the geometry, which represents the documented relation exactly in every case: a ``static_equivalent``
+boundary is the exact half-plane of a documented static characteristic whose relay decision is dynamic (e.g. a
+polarising voltage with memory) -- the static R-X line is its steady-state equivalent, not the relay's every decision.
 """
 
 from __future__ import annotations
@@ -77,6 +101,8 @@ class BoundaryProvenance:
     reference_ids: tuple[str, ...] = ()
     #: Who supplied the mapping (e.g. a catalog key); never consulted by the geometry.
     origin: str | None = None
+    #: How the source states the value when it differs from the canonical convention (e.g. a magnitude below +R).
+    convention: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,10 +150,63 @@ class ResistiveBoundary:
         return hp
 
 
+class RetainedSide(StrEnum):
+    COUNTER_CLOCKWISE = "counter_clockwise"
+    CLOCKWISE = "clockwise"
+
+
+#: How a boundary relates to relay behaviour (the geometry itself is always the exact documented relation).
+DIRECTIONAL_FIDELITY = ("exact", "documented", "static_equivalent")
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionalBoundary:
+    """A directional half-plane through the origin (see the module docstring for the side convention)."""
+
+    zone_id: str
+    angle_deg: float
+    retained_side: RetainedSide
+    frame: BoundaryFrame
+    provenance: BoundaryProvenance
+    fidelity: str = "documented"
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.angle_deg) or not -180.0 < self.angle_deg <= 180.0:
+            raise ValueError("a directional boundary's angle must be finite, in (-180, 180] degrees")
+        if not isinstance(self.retained_side, RetainedSide):
+            raise ValueError("a directional boundary states its retained side")
+        if not isinstance(self.frame, BoundaryFrame):
+            raise ValueError("a directional boundary states its frame")
+        if self.fidelity not in DIRECTIONAL_FIDELITY:
+            raise ValueError("a canonical boundary is exact, documented or static_equivalent, never approximate")
+
+    def point_at(self, radius_ohm: float) -> tuple[float, float]:
+        """The point of the ray at the given distance from the origin (R, X), in the frame the boundary is stated in."""
+        a = math.radians(self.angle_deg)
+        return radius_ohm * math.cos(a), radius_ohm * math.sin(a)
+
+    def half_plane(self, direction: Direction | str = Direction.FORWARD) -> HalfPlane:
+        """The retained side as a kernel half-plane in the absolute frame (reflected once for a reverse zone-frame line)."""
+        a = math.radians(self.angle_deg)
+        s, c = math.sin(a), math.cos(a)
+        meta = BoundaryMeta(source_path=self.provenance.canonical_path, unit="deg", transform=self.provenance.transform,
+                            frame=Frame.ZONE_LOCAL if self.frame is BoundaryFrame.ZONE else Frame.ABSOLUTE,
+                            reference=",".join(self.provenance.reference_ids) or None, fidelity=self.fidelity)
+        hp = HalfPlane(s, -c, 0.0, meta) if self.retained_side is RetainedSide.COUNTER_CLOCKWISE else HalfPlane(-s, c, 0.0, meta)
+        if self.frame is BoundaryFrame.ZONE and Direction(direction) is Direction.REVERSE:
+            hp = hp.reflected()
+        return hp
+
+
+def sector_sweep_deg(ccw: DirectionalBoundary, cw: DirectionalBoundary) -> float:
+    """The angle swept counter-clockwise from the counter-clockwise-retained ray to the clockwise-retained one, [0, 360)."""
+    return (cw.angle_deg - ccw.angle_deg) % 360.0
+
+
 @dataclass(frozen=True, slots=True)
 class ShadowZoneGeometry:
     """A zone assembled from canonical boundaries, in the absolute frame. ``represented`` names the boundaries it holds;
-    ``not_represented`` those a later phase adds (Phase 2A: no lower / directional limit)."""
+    ``not_represented`` those a later phase adds (no lower limit yet; no directional limit unless one is given)."""
 
     zone_id: str
     characteristic: Characteristic
@@ -136,17 +215,35 @@ class ShadowZoneGeometry:
 
 
 def assemble_zone(zone_id: str, *, x_reach_ohm: float, direction: Direction | str,
-                  boundaries: tuple[ResistiveBoundary, ...]) -> ShadowZoneGeometry:
-    """A zone from its horizontal reactance limit (X <= x_reach_ohm, stated in the zone frame) and one right and one left
-    resistive boundary. Phase 2A represents no lower / directional limit: the region is open below and is reported so."""
+                  boundaries: tuple[ResistiveBoundary, ...],
+                  directional: tuple[DirectionalBoundary, ...] = ()) -> ShadowZoneGeometry:
+    """A zone from its horizontal reactance limit (X <= x_reach_ohm, stated in the zone frame), one right and one left
+    resistive boundary and, optionally, its directional half-planes (at most one per retained side). No lower limit is
+    represented: the region is open below and is reported so.
+
+    Every boundary is placed in the absolute frame exactly once, by its own frame and the zone direction; the result is
+    an absolute characteristic, which `Characteristic.to_absolute` leaves unchanged -- a reverse zone cannot be
+    reflected twice."""
     sides = {b.side: b for b in boundaries if b.zone_id == zone_id}
     if set(sides) != {BoundarySide.RIGHT, BoundarySide.LEFT}:
         raise ValueError(f"zone {zone_id} needs one right and one left resistive boundary")
     if not (math.isfinite(x_reach_ohm) and x_reach_ohm > 0.0):
         raise ValueError("the reactance limit must be a positive finite reach")
+    rays = [b for b in directional if b.zone_id == zone_id]
+    by_side = {b.retained_side: b for b in rays}
+    if len(by_side) != len(rays):
+        raise ValueError(f"zone {zone_id} has more than one directional boundary on one retained side")
+    if len(by_side) == 2:
+        sweep = sector_sweep_deg(by_side[RetainedSide.COUNTER_CLOCKWISE], by_side[RetainedSide.CLOCKWISE])
+        if not 0.0 < sweep < 180.0:
+            raise ValueError(f"the directional sector of zone {zone_id} sweeps {sweep:g} deg: only a sector narrower than "
+                             "180 deg is the intersection of its two half-planes (a wider one is their union, which the "
+                             "kernel does not represent)")
     d = Direction(direction)
     top = HalfPlane(0.0, 1.0, x_reach_ohm)
     if d is Direction.REVERSE:
         top = top.reflected()
-    region = Intersection((top, sides[BoundarySide.RIGHT].half_plane(d), sides[BoundarySide.LEFT].half_plane(d)))
-    return ShadowZoneGeometry(zone_id, Characteristic(region, Frame.ABSOLUTE), ("top", "right", "left"), ("lower",))
+    parts = (top, sides[BoundarySide.RIGHT].half_plane(d), sides[BoundarySide.LEFT].half_plane(d),
+             *(b.half_plane(d) for b in rays))
+    represented = ("top", "right", "left") + (("directional",) if rays else ())
+    return ShadowZoneGeometry(zone_id, Characteristic(Intersection(parts), Frame.ABSOLUTE), represented, ("lower",))

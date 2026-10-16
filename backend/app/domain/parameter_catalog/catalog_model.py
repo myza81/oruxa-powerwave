@@ -333,20 +333,34 @@ class Applicability:
 
 @dataclass(frozen=True)
 class BoundarySpec:
-    """DEC-199 Phase 2A: a canonical zone boundary the catalog derives from settings, evaluated in SHADOW mode only
-    (never part of the canonical model, a review or readiness). Phase 2A: ``kind`` "resistive" -- an inclined
-    resistive edge ``R(X) = r_at_axis + X * cot(angle_deg)`` (`app.domain.distance_boundaries`)."""
+    """DEC-199 Phase 2A / 2B: a canonical zone boundary the catalog derives from settings, evaluated in SHADOW mode only
+    (never part of the canonical model, a review or readiness) (`app.domain.distance_boundaries`):
+
+    * ``kind`` "resistive" -- an inclined resistive edge ``R(X) = r_at_axis + X * cot(angle)``, with
+      ``r_at_axis = r_sign * r_scale * source`` and the angle either ``angle_sign * source`` or
+      ``atan2(x source, r source)`` (a line parallel to the impedance R + jX);
+    * ``kind`` "directional" -- a half-plane through the origin along the ray at ``angle_sign * source`` degrees,
+      keeping ``retained_side``. ``convention`` states how the source writes the angle when it is not the canonical one.
+
+    ``angle_range`` is the documented setting range of the *source* value: a value outside it is not derived (it would
+    mean the documented convention does not hold for that value)."""
 
     id: str
     zones: tuple[str, ...]
-    kind: str
-    side: str                                         # right | left
+    kind: str                                         # resistive | directional
     frame: str                                        # zone | absolute
-    r_at_axis: Selector
-    r_sign: float                                     # +1 or -1: r_at_axis = sign * the source value
-    angle_deg: Selector
+    angle_deg: Selector | None = None
+    angle_sign: float = 1.0                           # +1 or -1: angle = sign * the source value
+    angle_range: tuple[float, float] | None = None
+    angle_atan2: tuple[Selector, Selector] | None = None   # (x source, r source): angle = atan2(x, r)
+    side: str | None = None                           # resistive: right | left
+    r_at_axis: Selector | None = None
+    r_sign: float = 1.0                               # +1 or -1
+    r_scale: float = 1.0                              # a documented factor (e.g. 0.5 for half a loop reach)
+    retained_side: str | None = None                  # directional: counter_clockwise | clockwise
+    convention: str | None = None
     gates: tuple[Gate, ...] = ()
-    fidelity: str = "documented"                      # exact | documented
+    fidelity: str = "documented"                      # exact | documented (| static_equivalent: directional)
     references: tuple[str, ...] = ()
     equation: str = ""
     #: The canonical value the boundary represents, templated (e.g. ``zones[{zone}].resistive_reach.phase_phase``).

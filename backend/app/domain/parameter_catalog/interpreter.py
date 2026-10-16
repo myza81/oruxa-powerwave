@@ -29,6 +29,7 @@ from typing import Any
 from app.domain.parameter_catalog.catalog_model import (
     AUTHORITY_PRECEDENCE,
     VALUE_SOURCE_PRECEDENCE,
+    BoundarySpec,
     Catalog,
     Family,
     Mapping,
@@ -40,7 +41,9 @@ from app.domain.distance_boundaries import (
     BoundaryProvenance,
     BoundarySide,
     BoundarySource,
+    DirectionalBoundary,
     ResistiveBoundary,
+    RetainedSide,
 )
 from app.domain.parameter_catalog.transforms import PRIMITIVES, TransformError, expected_unit, fmt, norm_text
 from app.domain.parameter_catalog.units import conversion_factor, printed_matches
@@ -209,11 +212,12 @@ class CatalogInterpreter:
         return dict(run.results)
 
     def shadow_boundaries(self, document: RawRelayDocument) -> "BoundaryRun":
-        """DEC-199 Phase 2A, SHADOW MODE: the catalog's canonical boundaries for this document. Never part of the
+        """DEC-199 Phase 2A / 2B, SHADOW MODE: the catalog's canonical boundaries for this document. Never part of the
         canonical model, a review or readiness, and nothing is consumed (coverage is unchanged)."""
         run = _Run(self.catalog, self.registry, document)
         run._zones()
         boundaries: list[ResistiveBoundary] = []
+        directional: list[DirectionalBoundary] = []
         unresolved: list[tuple[str, str, str]] = []
         for spec in self.catalog.boundaries:
             for z in run.zone_vars:
@@ -228,36 +232,73 @@ class CatalogInterpreter:
                 if closed:
                     unresolved.append((spec.id, z["zone"], closed))
                     continue
-                r, a = run._boundary_number(spec.r_at_axis, z), run._boundary_number(spec.angle_deg, z)
-                problem = next((f"{x.name}: {x.problem}" for x in (r, a) if x.problem), None)
-                if problem:
-                    unresolved.append((spec.id, z["zone"], problem))
-                    continue
-                sign = "-" if spec.r_sign < 0 else "+"
-                sources = tuple(
-                    BoundarySource(role, e.name, e.parameter_id, _clean(e.raw_value) or None, sel.unit, e.location.page, e.location.line)
-                    for role, read, sel in (("r_at_axis", r, spec.r_at_axis), ("angle_deg", a, spec.angle_deg)) for e in read.entries[:1]
-                )
                 try:
-                    boundaries.append(ResistiveBoundary(
-                        z["zone"], spec.r_sign * r.value, a.value, BoundarySide(spec.side), BoundaryFrame(spec.frame),
-                        BoundaryProvenance(
-                            sources, _fill(spec.canonical, z) if spec.canonical else None,
-                            f"r_at_axis = {sign}{r.name} (as printed, ohm); angle = {a.name} (deg)",
-                            spec.equation, spec.references, self.catalog.key),
-                        fidelity=spec.fidelity,
-                    ))
+                    derived = self._shadow_boundary(run, spec, z)
                 except ValueError as exc:
                     unresolved.append((spec.id, z["zone"], str(exc)))
-        return BoundaryRun(tuple(boundaries), tuple(unresolved))
+                    continue
+                (directional if isinstance(derived, DirectionalBoundary) else boundaries).append(derived)
+        return BoundaryRun(tuple(boundaries), tuple(unresolved), tuple(directional))
+
+    def _shadow_boundary(self, run: "_Run", spec: BoundarySpec, z: dict[str, Any]) -> "ResistiveBoundary | DirectionalBoundary":
+        """One boundary of one zone; a ValueError says why it is not derived."""
+        reads: list[tuple[str, _Read, Selector]] = []
+        if spec.r_at_axis is not None:
+            reads.append(("r_at_axis", run._boundary_number(spec.r_at_axis, z), spec.r_at_axis))
+        if spec.angle_atan2 is not None:
+            reads += [("angle_x", run._boundary_number(spec.angle_atan2[0], z), spec.angle_atan2[0]),
+                      ("angle_r", run._boundary_number(spec.angle_atan2[1], z), spec.angle_atan2[1])]
+        else:
+            reads.append(("angle_deg", run._boundary_number(spec.angle_deg, z), spec.angle_deg))
+        problem = next((f"{x.name}: {x.problem}" for _, x, _ in reads if x.problem), None)
+        if problem:
+            raise ValueError(problem)
+        sources = tuple(
+            BoundarySource(role, e.name, e.parameter_id, _clean(e.raw_value) or None, sel.unit, e.location.page, e.location.line)
+            for role, read, sel in reads for e in read.entries[:1]
+        )
+        values = {role: read for role, read, _ in reads}
+        if spec.angle_atan2 is not None:
+            x, r = values["angle_x"], values["angle_r"]
+            if not x.value > 0.0:
+                raise ValueError(f"{x.name}: the reactance an edge is parallel to must be positive")
+            angle = math.degrees(math.atan2(x.value, r.value))
+            angle_text = f"angle = atan2({x.name}, {r.name}) = {fmt(angle)} deg"
+        else:
+            a = values["angle_deg"]
+            if spec.angle_range is not None and not spec.angle_range[0] <= a.value <= spec.angle_range[1]:
+                lo, hi = spec.angle_range
+                raise ValueError(f"{a.name}: {fmt(a.value)} is outside the documented setting range {fmt(lo)}-{fmt(hi)} deg, "
+                                 "so the documented angle convention is not established for it")
+            angle = spec.angle_sign * a.value
+            angle_text = (f"angle = {'-' if spec.angle_sign < 0 else ''}{a.name} = {fmt(angle)} deg "
+                          f"({a.name} {fmt(a.value)} as printed, deg)")
+        canonical = _fill(spec.canonical, z) if spec.canonical else None
+        if spec.kind == "directional":
+            provenance = BoundaryProvenance(sources, canonical, f"canonical {angle_text}", spec.equation, spec.references,
+                                            self.catalog.key, spec.convention)
+            return DirectionalBoundary(z["zone"], angle, RetainedSide(spec.retained_side), BoundaryFrame(spec.frame),
+                                       provenance, fidelity=spec.fidelity)
+        rd = values["r_at_axis"]
+        sign = "-" if spec.r_sign < 0 else "+"
+        scale = "" if spec.r_scale == 1.0 else f"{fmt(spec.r_scale)} x "
+        transform = (f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); angle = {values['angle_deg'].name} (deg)"
+                     if spec.angle_atan2 is None else f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); {angle_text}")
+        return ResistiveBoundary(
+            z["zone"], spec.r_sign * spec.r_scale * rd.value, angle, BoundarySide(spec.side), BoundaryFrame(spec.frame),
+            BoundaryProvenance(sources, canonical, transform, spec.equation, spec.references, self.catalog.key, spec.convention),
+            fidelity=spec.fidelity,
+        )
 
 
 @dataclass(frozen=True)
 class BoundaryRun:
-    """The shadow boundaries of one document (DEC-199 Phase 2A) and the (boundary id, zone, why) of those not derived."""
+    """The shadow boundaries of one document (DEC-199 Phase 2A / 2B) and the (boundary id, zone, why) of those not
+    derived: resistive edges in ``boundaries``, directional half-planes in ``directional``."""
 
     boundaries: tuple["ResistiveBoundary", ...]
     unresolved: tuple[tuple[str, str, str], ...]
+    directional: tuple["DirectionalBoundary", ...] = ()
 
 
 class _Run:

@@ -1,5 +1,6 @@
-"""Canonical inclined resistive boundaries (DEC-199 Phase 2A, shadow mode): equations, sides, frames, reflection,
-provenance, the catalog ``boundaries`` section, and proof that production interpretation never sees them."""
+"""Canonical shadow boundaries (DEC-199 Phase 2A / 2B, shadow mode): inclined resistive edges and directional half-planes --
+equations, sides, frames, reflection, provenance, the catalog ``boundaries`` section, and proof that production
+interpretation never sees them."""
 
 from __future__ import annotations
 
@@ -14,7 +15,9 @@ from app.domain.distance_boundaries import (
     BoundaryProvenance,
     BoundarySide,
     BoundarySource,
+    DirectionalBoundary,
     ResistiveBoundary,
+    RetainedSide,
     assemble_zone,
 )
 from app.domain.distance_geometry import TOLERANCE_OHM, Frame
@@ -112,6 +115,7 @@ class TestValidationAndProvenance:
 
 
 SA613 = CATALOG_ROOT / "siemens" / "siprotec4_7sa613.json"
+REL511 = CATALOG_ROOT / "hitachi_energy" / "rel511.json"
 
 
 def catalog(data):
@@ -128,10 +132,12 @@ class TestCatalogSection:
             with pytest.raises(CatalogValidationError):
                 catalog(bad)
 
-    def test_production_interpretation_and_coverage_never_see_the_boundaries(self):
-        data = json.loads(SA613.read_text(encoding="utf-8"))
+    @pytest.mark.parametrize("path,sheet,overrides", [(SA613, "7sa613", {}), (REL511, "rel511", {"variant": "directional"}),
+                                                      (REL511, "rel511", {})])
+    def test_production_interpretation_and_coverage_never_see_the_boundaries(self, path, sheet, overrides):
+        data = json.loads(path.read_text(encoding="utf-8"))
         bare = {k: v for k, v in copy.deepcopy(data).items() if k != "boundaries"}
-        document = extract_pdf(sheet_pdf("7sa613")).document
+        document = extract_pdf(sheet_pdf(sheet, overrides)).document
         with_b, without = (CatalogInterpreter(catalog(d), canonical_registry()).run(document) for d in (data, bare))
         assert with_b.model == without.model
         assert with_b.consumed == without.consumed and with_b.preserved_ids == without.preserved_ids
@@ -155,9 +161,207 @@ class TestCatalogSection:
             assert not any(b.zone_id == "Z1" for b in run.boundaries)
 
 
+def rel511_run(overrides: dict) -> "object":
+    document = extract_pdf(sheet_pdf("rel511", overrides)).document
+    return CatalogInterpreter(catalog(json.loads(REL511.read_text(encoding="utf-8"))), canonical_registry()).shadow_boundaries(document)
+
+
+class TestDirectionalCatalogSection:
+    """The OEM -> canonical angle conversion is explicit in the catalog and its provenance (REL511 is the first case)."""
+
+    def test_a_fourth_quadrant_magnitude_becomes_a_negative_canonical_angle(self):
+        run = rel511_run({"variant": "directional"})
+        z1 = {b.retained_side: b for b in run.directional if b.zone_id == "Z1"}
+        assert (z1[CCW].angle_deg, z1[CW].angle_deg) == (-15.0, 115.0)     # ArgDir 15 -> -15; ArgNegRes 115 -> +115
+        assert [(s.role, s.name, s.raw_value, s.unit) for s in z1[CCW].provenance.sources] == [("angle_deg", "ArgDir", "15", "deg")]
+        assert z1[CCW].provenance.transform == "canonical angle = -ArgDir = -15 deg (ArgDir 15 as printed, deg)"
+        assert "Canonical angle = -ArgDir" in z1[CCW].provenance.convention
+        assert "Canonical angle = +ArgNegRes" in z1[CW].provenance.convention
+        assert {b.fidelity for b in run.directional} == {"static_equivalent"}
+        assert {b.frame for b in run.directional} == {BoundaryFrame.ZONE}
+        assert "abb-1mrk506109-uen-dir" in z1[CCW].provenance.reference_ids
+
+    def test_the_resistive_lines_cross_at_half_the_loop_reach_parallel_to_the_line_impedance(self):
+        z1 = {b.side: b for b in rel511_run({"variant": "directional"}).boundaries if b.zone_id == "Z1"}
+        assert (z1[BoundarySide.RIGHT].r_at_axis, z1[BoundarySide.LEFT].r_at_axis) == (2.3, -2.3)        # RFZ1 4.6 / 2
+        assert z1[BoundarySide.RIGHT].angle_deg == pytest.approx(80.5376777920, abs=1e-9)                # atan(3 / 0.5)
+        assert "0.5 x RFZ1" in z1[BoundarySide.RIGHT].provenance.transform
+
+    @pytest.mark.parametrize("name,value", [("ArgDir", "-15"), ("ArgDir", "50"), ("ArgNegRes", "25"), ("ArgNegRes", "-115")])
+    def test_a_value_outside_the_documented_range_is_not_derived(self, name, value):
+        # e.g. a sheet printing ArgDir already signed (-15), or ArgNegRes measured from the X axis (25): not inferred
+        run = rel511_run({"variant": "directional", "set": {name: value}})
+        assert not any(b.provenance.sources[0].name == name for b in run.directional)
+        assert any(name in why and "outside the documented setting range" in why for _, _, why in run.unresolved)
+
+    def test_a_sheet_without_the_directional_settings_derives_none(self):
+        run = rel511_run({})
+        assert run.directional == ()
+        assert {why for bid, z, why in run.unresolved if z == "Z1" and "directional" in bid} == {
+            "ArgDir: not present in the document", "ArgNegRes: not present in the document"}
+
+    def test_the_directional_section_is_validated(self):
+        data = json.loads(REL511.read_text(encoding="utf-8"))
+        k = next(i for i, b in enumerate(data["boundaries"]) if b["kind"] == "directional")
+        for change in ({"retained_side": "forward"}, {"side": "right"}, {"convention": ""}, {"fidelity": "approximate"},
+                       {"r_at_axis": {"source": {"name": "RFZ{n}", "unit": "ohm"}}},
+                       {"angle_deg": {"source": {"name": "ArgDir", "unit": "deg"}, "sign": -1, "range": [45, 5]}},
+                       {"angle_deg": {"source": {"name": "ArgDir", "unit": "ohm"}}}):
+            bad = copy.deepcopy(data)
+            bad["boundaries"][k].update(change)
+            with pytest.raises(CatalogValidationError):
+                catalog(bad)
+        bad = copy.deepcopy(data)
+        del bad["boundaries"][k]["convention"]
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+        bad = copy.deepcopy(data)
+        bad["boundaries"][0]["r_at_axis"]["scale"] = 2
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+
+    def test_no_relion_670_catalog_declares_a_directional_mapping(self):
+        # DEC-199 Phase 2B: Relion 670 ZDRDIR mapping deferred pending verified v1.2 technical-manual evidence
+        paths = sorted((CATALOG_ROOT / "hitachi_energy").glob("re*670*.json"))
+        assert [p.name for p in paths] == ["red670.json", "rel670.json"]
+        for path in paths:
+            assert "boundaries" not in json.loads(path.read_text(encoding="utf-8")), path.name
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Directional half-planes (DEC-199 Phase 2B). Expected sides come from the angle of the point (atan2), worked by hand --
+# never from the half-plane normal under test.
+# ---------------------------------------------------------------------------------------------------------------------
+
+DPROV = BoundaryProvenance((BoundarySource("angle_deg", "phi", None, "15", "deg"),), None, "angle = -phi", "a < arg Z", ("ref-a",),
+                           "test", "phi is a magnitude below +R")
+CCW, CW = RetainedSide.COUNTER_CLOCKWISE, RetainedSide.CLOCKWISE
+
+
+def ray(angle: float, side: RetainedSide, frame: str = "zone", fidelity: str = "documented") -> DirectionalBoundary:
+    return DirectionalBoundary("Z", angle, side, BoundaryFrame(frame), DPROV, fidelity)
+
+
+def polar(angle: float, rho: float) -> tuple[float, float]:
+    return rho * math.cos(math.radians(angle)), rho * math.sin(math.radians(angle))
+
+
+class TestDirectionalLine:
+    @pytest.mark.parametrize("angle", [-135.0, -15.0, 0.0, 37.0, 90.0, 115.0, 180.0])
+    def test_the_line_passes_through_the_origin_along_the_ray(self, angle):
+        for side in (CCW, CW):
+            hp = ray(angle, side).half_plane()
+            assert hp.offset == 0.0 and abs(hp.signed_distance(0.0, 0.0)) <= TOLERANCE_OHM
+            for rho in (0.5, 3.0, 40.0):                          # (rho cos a, rho sin a) and its opposite lie on the line
+                for point in (polar(angle, rho), polar(angle + 180.0, rho)):
+                    assert abs(hp.signed_distance(*point)) <= TOLERANCE_OHM, (angle, side, rho)
+            assert ray(angle, side).point_at(2.0) == pytest.approx(polar(angle, 2.0))
+
+    @pytest.mark.parametrize("angle", [-135.0, -15.0, 0.0, 37.0, 90.0, 115.0, 180.0])
+    def test_the_two_retained_sides_are_complementary(self, angle):
+        ccw, cw = ray(angle, CCW).half_plane(), ray(angle, CW).half_plane()
+        for turn in (5.0, 60.0, 175.0):                           # turned counter-clockwise off the ray: ccw side only
+            assert ccw.contains(*polar(angle + turn, 2.0)) and not cw.contains(*polar(angle + turn, 2.0)), turn
+            assert cw.contains(*polar(angle - turn, 2.0)) and not ccw.contains(*polar(angle - turn, 2.0)), turn
+
+    def test_zero_degrees_keeps_x_non_negative_or_non_positive(self):
+        ccw, cw = ray(0.0, CCW).half_plane(), ray(0.0, CW).half_plane()
+        assert (ccw.nr, ccw.nx) == pytest.approx((0.0, -1.0)) and (cw.nr, cw.nx) == pytest.approx((0.0, 1.0))
+        for r in (-5.0, 0.0, 5.0):
+            assert ccw.contains(r, 0.1) and not ccw.contains(r, -0.1)
+            assert cw.contains(r, -0.1) and not cw.contains(r, 0.1)
+
+    def test_ninety_degrees_keeps_r_non_positive_or_non_negative(self):
+        ccw, cw = ray(90.0, CCW).half_plane(), ray(90.0, CW).half_plane()
+        assert (ccw.nr, ccw.nx) == pytest.approx((1.0, 0.0)) and (cw.nr, cw.nx) == pytest.approx((-1.0, 0.0))
+        for x in (-5.0, 0.0, 5.0):
+            assert ccw.contains(-0.1, x) and not ccw.contains(0.1, x)
+            assert cw.contains(0.1, x) and not cw.contains(-0.1, x)
+
+    def test_a_second_quadrant_line(self):
+        # 115 deg: X = R tan 115 = -2.1445 R. (-1, 1) is at 135 deg (beyond the ray), (-1, 3) at 108.43 deg (short of it).
+        ccw, cw = ray(115.0, CCW).half_plane(), ray(115.0, CW).half_plane()
+        assert ccw.contains(-1.0, 1.0) and not cw.contains(-1.0, 1.0)
+        assert cw.contains(-1.0, 3.0) and not ccw.contains(-1.0, 3.0)
+        assert abs(cw.signed_distance(-1.0, 2.1445069205)) <= TOLERANCE_OHM
+
+    def test_a_fourth_quadrant_line(self):
+        # -15 deg: X = -0.26795 R. (1, 0) is at 0 deg (above the ray), (1, -0.5) at -26.57 deg (below it).
+        ccw, cw = ray(-15.0, CCW).half_plane(), ray(-15.0, CW).half_plane()
+        assert ccw.contains(1.0, 0.0) and not cw.contains(1.0, 0.0)
+        assert cw.contains(1.0, -0.5) and not ccw.contains(1.0, -0.5)
+        assert abs(ccw.signed_distance(1.0, -0.2679491924)) <= TOLERANCE_OHM
+
+    @pytest.mark.parametrize("kw", [{"angle_deg": -180.0}, {"angle_deg": 180.5}, {"angle_deg": float("nan")},
+                                    {"fidelity": "approximate"}, {"frame": "zone"}, {"retained_side": "forward"}])
+    def test_invalid_directional_boundaries_are_refused(self, kw):
+        base = dict(zone_id="Z", angle_deg=-15.0, retained_side=CCW, frame=BoundaryFrame.ZONE, provenance=DPROV)
+        with pytest.raises(ValueError):
+            DirectionalBoundary(**{**base, **kw})
+
+    def test_fidelity_and_the_source_convention_travel_with_the_half_plane(self):
+        b = ray(-15.0, CCW, fidelity="static_equivalent")
+        meta = b.half_plane("reverse").meta
+        assert (meta.fidelity, meta.unit, meta.frame, meta.transform) == ("static_equivalent", "deg", Frame.ZONE_LOCAL, "angle = -phi")
+        assert b.provenance.convention == "phi is a magnitude below +R"
+
+
+def sector_zone(direction: str, lower: float = -15.0, upper: float = 115.0, frame: str = "zone"):
+    edges = (edge(4.0, 80.0, "right"), edge(-4.0, 80.0, "left"))
+    return assemble_zone("Z", x_reach_ohm=5.0, direction=direction, boundaries=edges,
+                         directional=(ray(lower, CCW, frame), ray(upper, CW, frame)))
+
+
+class TestDirectionalSector:
+    # The sector -15 < arg Z < 115 (inside the resistive band and below X = 5): expected by the point's angle.
+    INSIDE = [(1.0, 1.0), (2.0, 0.2), (1.0, -0.2), (0.0, 2.0), (-0.5, 2.0), (-0.3, 1.0)]     # 45, 5.7, -11.3, 90, 104, 106.7 deg
+    OUTSIDE = [(-1.0, -1.0), (-2.0, 0.5), (1.0, -0.5), (-1.0, 1.0), (0.0, -1.0), (-1.0, 0.0)]  # 225, 166, -26.6, 135, -90, 180 deg
+
+    def test_the_forward_sector_is_the_region_between_the_two_lines(self):
+        c = sector_zone("forward").characteristic
+        for p in self.INSIDE:
+            assert c.contains(*p), p
+        for p in self.OUTSIDE:
+            assert not c.contains(*p), p
+        assert sector_zone("forward").represented == ("top", "right", "left", "directional")
+
+    def test_the_reverse_sector_is_one_point_reflection_of_the_forward_one(self):
+        fwd, rev = sector_zone("forward").characteristic, sector_zone("reverse").characteristic
+        for p in self.INSIDE:                                      # reverse: 165 < arg Z < 295, by hand
+            assert rev.contains(-p[0], -p[1]), p
+        for p in self.OUTSIDE:
+            assert not rev.contains(-p[0], -p[1]), p
+        for k in range(72):                                        # everywhere: rev(p) == fwd(-p)
+            p = polar(k * 5.0 + 2.5, 0.37 * (1 + k % 7))
+            assert rev.contains(*p) == fwd.contains(-p[0], -p[1]), p
+
+    def test_a_reverse_zone_cannot_be_reflected_twice(self):
+        rev = sector_zone("reverse").characteristic
+        assert rev.frame is Frame.ABSOLUTE and rev.to_absolute("reverse") is rev
+        assert rev.contains(-1.0, -1.0) and not rev.contains(1.0, 1.0)     # a second reflection would swap these
+
+    def test_absolute_frame_lines_are_not_reflected_with_the_zone(self):
+        # zone-frame top and band are reflected (top becomes X >= -5; the band is symmetric); absolute lines stay forward
+        rev = sector_zone("reverse", frame="absolute").characteristic
+        assert rev.contains(1.0, 1.0) and not rev.contains(-1.0, -1.0)
+        assert rev.contains(1.0, 6.0)          # above the forward top: only the reflected top (X >= -5) applies
+
+    @pytest.mark.parametrize("lower,upper", [(-45.0, 175.0), (-90.0, 90.0), (10.0, 10.0), (20.0, 10.0)])
+    def test_a_sector_of_180_degrees_or_more_is_refused(self, lower, upper):
+        # -45..175 sweeps 220 deg: the region between the rays is then the union of the half-planes, not their intersection
+        with pytest.raises(ValueError, match="sector"):
+            sector_zone("forward", lower, upper)
+
+    def test_one_line_per_retained_side(self):
+        with pytest.raises(ValueError):
+            assemble_zone("Z", x_reach_ohm=5.0, direction="forward", boundaries=(edge(4.0, 80.0, "right"), edge(-4.0, 80.0, "left")),
+                          directional=(ray(-15.0, CCW), ray(-10.0, CCW)))
+
+
 def test_the_boundary_module_is_relay_neutral():
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[1] / "app" / "domain" / "distance_boundaries.py").read_text(encoding="utf-8").lower()
-    for oem in ("siemens", "toshiba", "hitachi", "abb", "7sa", "grz", "rel511", "catalog_id"):
+    for oem in ("siemens", "toshiba", "hitachi", "abb", "7sa", "grz", "rel511", "rel670", "red670", "argdir", "argnegres",
+                "zdrdir", "catalog_id"):
         assert oem not in text, oem

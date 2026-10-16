@@ -361,12 +361,13 @@ def _source_notes(v: _Validator, raw: Any) -> tuple[ZoneNoteRule, ...]:
     return tuple(rules)
 
 
-_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "frame", "r_at_axis", "angle_deg", "requires", "fidelity", "references",
-                  "equation", "canonical"}
+_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "retained_side", "frame", "r_at_axis", "angle_deg", "requires", "fidelity",
+                  "references", "equation", "canonical", "convention"}
+_BOUNDARY_FIDELITY = {"resistive": ("exact", "documented"), "directional": ("exact", "documented", "static_equivalent")}
 
 
 def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tuple[Reference, ...]) -> tuple[BoundarySpec, ...]:
-    """DEC-199 Phase 2A: shadow canonical boundaries (``kind`` "resistive" only)."""
+    """DEC-199 Phase 2A / 2B: shadow canonical boundaries (``kind`` "resistive" or "directional")."""
     if raw is None:
         return ()
     if not isinstance(raw, list):
@@ -388,32 +389,81 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             ok = False
         seen.add(bid)
         targets = _zone_targets(v, item.get("zone"), path, zones)
-        for key, allowed in (("kind", ("resistive",)), ("side", ("right", "left")), ("frame", ("zone", "absolute")),
-                             ("fidelity", ("exact", "documented"))):
+        kind = item.get("kind")
+        if kind not in _BOUNDARY_FIDELITY:
+            v.add(f"{path}.kind", IssueCode.MALFORMED, f"kind must be one of {sorted(_BOUNDARY_FIDELITY)}")
+            continue
+        sided = ("side", ("right", "left")) if kind == "resistive" else ("retained_side", ("counter_clockwise", "clockwise"))
+        other = "retained_side" if kind == "resistive" else "side"
+        for key, allowed in (sided, ("frame", ("zone", "absolute")), ("fidelity", _BOUNDARY_FIDELITY[kind])):
             if item.get(key, "documented" if key == "fidelity" else None) not in allowed:
                 v.add(f"{path}.{key}", IssueCode.MALFORMED, f"{key} must be one of {list(allowed)}")
                 ok = False
-        r = item.get("r_at_axis")
-        if not isinstance(r, dict) or set(r) - {"source", "sign"} or r.get("sign", 1) not in (1, -1):
-            v.add(f"{path}.r_at_axis", IssueCode.MALFORMED, "r_at_axis needs a source and an optional sign of 1 or -1")
+        if other in item:
+            v.add(f"{path}.{other}", IssueCode.MALFORMED, f"a {kind} boundary has no {other}")
             ok = False
-            r = {}
+
+        def number(src: Any, at: str, unit: str) -> Selector | None:
+            sel = _selector(v, {**src, "type": "number"}, at, _ZONE_VARS, zones, True, None) if isinstance(src, dict) else None
+            if sel is None or sel.unit != unit:
+                v.add(at, IssueCode.INVALID_SELECTOR, f"the source must read {unit}")
+                return None
+            return sel
+
+        r_sel, r_sign, r_scale = None, 1.0, 1.0
+        if kind == "resistive":
+            r = item.get("r_at_axis")
+            scale = r.get("scale", 1) if isinstance(r, dict) else 1
+            if (not isinstance(r, dict) or set(r) - {"source", "sign", "scale"} or r.get("sign", 1) not in (1, -1)
+                    or isinstance(scale, bool) or not isinstance(scale, (int, float)) or not 0 < scale <= 1):
+                v.add(f"{path}.r_at_axis", IssueCode.MALFORMED,
+                      "r_at_axis needs a source, an optional sign of 1 or -1 and an optional documented scale in (0, 1]")
+                ok, r, scale = False, {}, 1
+            r_sel = number(r.get("source"), f"{path}.r_at_axis.source", "ohm")
+            r_sign, r_scale = float(r.get("sign", 1)), float(scale)
+            ok = ok and r_sel is not None
+        elif "r_at_axis" in item:
+            v.add(f"{path}.r_at_axis", IssueCode.MALFORMED, "a directional boundary passes through the origin")
+            ok = False
+
         a = item.get("angle_deg")
-        if not isinstance(a, dict) or set(a) != {"source"}:
-            v.add(f"{path}.angle_deg", IssueCode.MALFORMED, "angle_deg needs a source")
+        a_sel = atan2 = a_range = None
+        a_sign = 1.0
+        if (isinstance(a, dict) and kind == "resistive" and set(a) == {"atan2"} and isinstance(a["atan2"], dict)
+                and set(a["atan2"]) == {"x", "r"}):
+            x_sel = number(a["atan2"]["x"], f"{path}.angle_deg.atan2.x", "ohm")
+            rr_sel = number(a["atan2"]["r"], f"{path}.angle_deg.atan2.r", "ohm")
+            atan2 = (x_sel, rr_sel) if x_sel and rr_sel else None
+            ok = ok and atan2 is not None
+        elif isinstance(a, dict) and "source" in a and not set(a) - {"source", "sign", "range"} and a.get("sign", 1) in (1, -1):
+            a_sel = number(a["source"], f"{path}.angle_deg.source", "deg")
+            a_sign = float(a.get("sign", 1))
+            rng = a.get("range")
+            if rng is not None:
+                if (not isinstance(rng, list) or len(rng) != 2
+                        or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in rng) or rng[0] > rng[1]):
+                    v.add(f"{path}.angle_deg.range", IssueCode.MALFORMED, "range is the documented [low, high] of the source value")
+                    ok = False
+                else:
+                    a_range = (float(rng[0]), float(rng[1]))
+            ok = ok and a_sel is not None
+        else:
+            v.add(f"{path}.angle_deg", IssueCode.MALFORMED,
+                  "angle_deg needs a source (with an optional sign of 1 or -1 and range) or, for a resistive edge, atan2 {x, r}")
             ok = False
-            a = {}
-        r_sel = _selector(v, {**r["source"], "type": "number"}, f"{path}.r_at_axis.source", _ZONE_VARS, zones, True, None)             if isinstance(r.get("source"), dict) else None
-        a_sel = _selector(v, {**a["source"], "type": "number"}, f"{path}.angle_deg.source", _ZONE_VARS, zones, True, None)             if isinstance(a.get("source"), dict) else None
-        if r_sel is None or a_sel is None or r_sel.unit != "ohm" or a_sel.unit != "deg":
-            v.add(path, IssueCode.INVALID_SELECTOR, "r_at_axis must read ohms and angle_deg degrees")
+        convention = item.get("convention")
+        if convention is not None and (not isinstance(convention, str) or not convention):
+            v.add(f"{path}.convention", IssueCode.MALFORMED, "convention states how the source writes the angle")
+            ok = False
+        if kind == "directional" and not convention:
+            v.add(f"{path}.convention", IssueCode.MISSING_METADATA, "a directional boundary states the source's angle convention")
             ok = False
         gates = _gates(v, item.get("requires"), path, _ZONE_VARS, zones, True, None)
         cited = item.get("references", [])
         if not isinstance(cited, list) or any(c not in known for c in cited):
             v.add(f"{path}.references", IssueCode.MALFORMED, "references must name references of this catalog")
             ok, cited = False, []
-        if item.get("fidelity", "documented") == "documented" and not any(known[c].verification == "verified" for c in cited):
+        if item.get("fidelity", "documented") != "exact" and not any(known[c].verification == "verified" for c in cited):
             v.add(f"{path}.references", IssueCode.UNVERIFIED_REFERENCE, "a documented boundary must cite a verified reference")
             ok = False
         if not isinstance(item.get("equation", ""), str) or not item.get("equation"):
@@ -421,8 +471,9 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             ok = False
         if ok and targets:
             out.append(BoundarySpec(
-                id=bid, zones=targets, kind=item["kind"], side=item["side"], frame=item["frame"], r_at_axis=r_sel,
-                r_sign=float(r.get("sign", 1)), angle_deg=a_sel, gates=tuple(gates),
+                id=bid, zones=targets, kind=kind, frame=item["frame"], angle_deg=a_sel, angle_sign=a_sign, angle_range=a_range,
+                angle_atan2=atan2, side=item.get("side"), r_at_axis=r_sel, r_sign=r_sign, r_scale=r_scale,
+                retained_side=item.get("retained_side"), convention=convention, gates=tuple(gates),
                 fidelity=item.get("fidelity", "documented"), references=tuple(cited), equation=item["equation"],
                 canonical=item.get("canonical"),
             ))

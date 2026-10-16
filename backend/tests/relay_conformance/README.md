@@ -110,3 +110,33 @@ The suite checks that:
 - the V2 edges pass through every golden edge point;
 - the V2 region classifies every probe as stated;
 - V1 still holds no value for an inclined edge.
+
+## Shadow directional half-planes (DEC-199 Phase 2B)
+
+When a catalog declares `directional` boundaries, each zone record also holds `directional`, keyed by retained side
+(`counter_clockwise` / `clockwise`). Each entry carries:
+- the canonical `angle_deg` and its `frame`;
+- `fidelity` (e.g. `static_equivalent`);
+- the source row with its raw value;
+- the source's `convention`;
+- the `transform` (e.g. "canonical angle = -ArgDir = -15 deg (ArgDir 15 as printed, deg)");
+- references and the equation.
+
+A zone is assembled only when every declared directional boundary is derived; otherwise it is `not_assembled` with the
+reason.
+
+The golden adds the following, computed from the angular condition on atan2(X, R) and never from V2:
+- `directional` -- the canonical angles;
+- `directional_points` -- points on each ray at 0.25 / 0.5 / 1.0 x the reach;
+- `directional_probes` -- each ray +/- 2 deg at 0.1 / 0.25 x the reach, plus first-quadrant, +X, negative-R, -X and
+  third-quadrant points.
+
+A reverse zone's points are reflected once.
+
+The suite checks that:
+- the V2 line passes through every ray point;
+- every probe is classified as the golden says;
+- the assembled zone is placed in the absolute frame exactly once.
+
+The REL511 owner sheet states no ArgDir / ArgNegRes, so its zones are not assembled. The synthetic variant
+`rel511` / `directional` states them; see `expectations/rel511--directional.json`.

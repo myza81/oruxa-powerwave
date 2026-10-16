@@ -149,8 +149,9 @@ def absent_sources(catalog, document) -> list[str]:
 
 
 def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -> dict[str, Any] | None:
-    """DEC-199 Phase 2A, SHADOW ONLY: the catalog's canonical boundaries for this document and, per zone, the V2
-    assembly beside the production (V1) classification. ``None`` when the catalog declares no boundary."""
+    """DEC-199 Phase 2A / 2B, SHADOW ONLY: the catalog's canonical boundaries for this document and, per zone, the V2
+    assembly beside the production (V1) classification. ``None`` when the catalog declares no boundary. A zone whose
+    catalog declares directional boundaries is assembled only when all of them are derived."""
     if not catalog_id:
         return None
     from app.domain.distance_boundaries import BoundarySide, assemble_zone
@@ -165,16 +166,29 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
     registry = default_registry()
     model = summarize_interpretation(registry, document, registry.identify(document)).model
     out: dict[str, Any] = {"unresolved": [list(u) for u in run.unresolved], "zones": {}}
+    directional_specs = [s for s in catalog.boundaries if s.kind == "directional"]
+
+    def sources(b) -> list:
+        return [[x.role, " ".join(v for v in (x.code, x.name) if v), x.raw_value, x.unit] for x in b.provenance.sources]
+
     for zone_id in sorted({b.zone_id for b in run.boundaries}):
         edges = [b for b in run.boundaries if b.zone_id == zone_id]
+        rays = [b for b in run.directional if b.zone_id == zone_id]
+        declared = [s for s in directional_specs if "*" in s.zones or zone_id in s.zones]
         record: dict[str, Any] = {"production_geometry": zones.get(zone_id, {}).get("geometry"), "edges": {}}
         for b in edges:
             record["edges"][b.side.value] = {
                 "r_at_axis": b.r_at_axis, "angle_deg": b.angle_deg, "frame": b.frame.value, "unit": b.unit,
                 "fidelity": b.fidelity, "canonical_path": b.provenance.canonical_path,
-                "sources": [[x.role, " ".join(v for v in (x.code, x.name) if v), x.raw_value, x.unit] for x in b.provenance.sources],
-                "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
+                "sources": sources(b), "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
             }
+        if declared:
+            # DEC-199 Phase 2B: the canonical angle beside the raw OEM value, its convention and the transform
+            record["directional"] = {b.retained_side.value: {
+                "angle_deg": b.angle_deg, "frame": b.frame.value, "fidelity": b.fidelity, "sources": sources(b),
+                "convention": b.provenance.convention, "transform": b.provenance.transform,
+                "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
+            } for b in sorted(rays, key=lambda b: b.retained_side.value)}
         zone = model.zone(zone_id) if model else None
         x, tilt, direction = (zone.x_reach_ohm, zone.tilt_deg, zone.direction) if zone else (None, None, None)
         reason = None
@@ -186,11 +200,20 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
             reason = "the zone direction is not forward / reverse"
         elif {e.side for e in edges} != {BoundarySide.RIGHT, BoundarySide.LEFT}:
             reason = "a right and a left boundary are both needed"
+        elif len(rays) != len(declared):
+            reason = "the directional boundaries are not derived (the catalog declares them for this zone)"
+        assembled = None
+        if not reason:
+            d = str(getattr(direction.value, "value", direction.value))
+            try:
+                assembled = assemble_zone(zone_id, x_reach_ohm=x.value, direction=d, boundaries=tuple(edges), directional=tuple(rays))
+            except ValueError as exc:
+                reason = str(exc)
         if reason:
             record.update({"shadow_geometry": "not_assembled", "reason": reason})
         else:
-            d = str(getattr(direction.value, "value", direction.value))
-            assembled = assemble_zone(zone_id, x_reach_ohm=x.value, direction=d, boundaries=tuple(edges))
+            # "exact": the assembly represents the documented relations exactly (geometry); how each boundary relates to
+            # relay behaviour is its own `fidelity` (e.g. static_equivalent)
             record.update({"shadow_geometry": "exact", "direction": d, "top": {"x_reach_ohm": x.value, "canonical_path": f"zones[{zone_id}].x_reach_ohm"},
                            "represented": list(assembled.represented), "not_represented": list(assembled.not_represented)})
         out["zones"][zone_id] = record

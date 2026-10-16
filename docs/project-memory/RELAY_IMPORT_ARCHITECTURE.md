@@ -1839,3 +1839,41 @@ point-reflected for a reverse zone.
 (C53000-G1176-C156-2 / -7), for zones in service with a Forward / Reverse Op. mode. Production: +R / -R stay Not yet
 supported; 7SA613 stays PARTIALLY SUPPORTED / NOT_READY; A613 / B613 documented only. Shadow: `exact` edges with the top;
 the lower / directional limit is not represented yet.
+
+### Phase 2B: canonical directional half-planes (DEC-199 Amendment 3)
+
+**V2 represents a documented directional characteristic as two half-planes through the origin, in shadow mode only;
+production remains on V1.** REL511 is the first verified OEM case.
+
+| Piece | Location | Role |
+|---|---|---|
+| Directional boundary | `app/domain/distance_boundaries.py` | `DirectionalBoundary` (angle, retained side, frame, provenance incl. source convention, fidelity) -> kernel half-plane |
+| Sector rule | `assemble_zone(..., directional=...)` | At most one ray per retained side; a sweep of 180 deg or more is refused (it is a union) |
+| Catalog section | `boundaries` `kind: directional` (`retained_side`, `convention`, `angle_deg {source, sign, range}`); resistive `r_at_axis.scale`, `angle_deg.atan2` | Shadow only; a source value outside its documented range is not derived |
+| Goldens | `shadow_golden.py` `directional`, `directional_points`, `directional_probes` | Membership from the angular condition on atan2(X, R), never the half-plane normals |
+
+**Directional half-plane.** `directional(angle_deg, retained_side, frame)` is the line through the origin along the ray
+at `angle_deg` (CCW from +R, (-180, 180]).
+- `counter_clockwise` keeps `-sin a * R + cos a * X >= 0`.
+- `clockwise` keeps the other side.
+
+Two rays bound the sector swept counter-clockwise from the counter-clockwise-retained ray to the clockwise-retained ray,
+but only when that sweep is below 180 deg. `fidelity` (exact | documented | static_equivalent) describes how a boundary
+relates to relay behaviour; the geometry is always the exact documented relation.
+
+**REL511 (catalog 1.3.0)** -- *Partial / Not Ready, unchanged*.
+- **Directional lines:**
+  - ArgDir is a magnitude in the fourth quadrant -> canonical `-ArgDir`, `counter_clockwise`;
+  - ArgNegRes is in degrees from +R, in the second quadrant -> canonical `+ArgNegRes`, `clockwise`.
+
+  Both are zone-frame; a reverse zone is the forward characteristic rotated 180 deg. Fidelity is `static_equivalent`:
+  the element is polarised by the positive-sequence voltage with memory.
+- **Resistive lines:** inclined `R1Zn * X / X1Zn +/- RFZn / 2`.
+- **Top:** X1Zn.
+- **Not represented:** the lower X limit, the phase-earth geometry and ZnBlock.
+- **Sheets:** ArgDir / ArgNegRes appear on neither REL511 sheet, so the owner sheet's zones are not assembled. The
+  mapping is proven on the synthetic `directional` variant.
+
+**Relion 670 (RED670 / REL670): ZDRDIR mapping deferred pending verified v1.2 technical-manual evidence.** No directional
+mapping exists for them. *Similar parameter names or behaviour across OEM / product generations are not sufficient
+evidence for canonical geometry mapping.*

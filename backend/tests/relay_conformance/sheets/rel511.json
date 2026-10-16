@@ -47,5 +47,10 @@
   "notes": [
     ["Zone 1 Forward direction timer set to 0s"]
   ],
-  "variants": {}
+  "variants": {
+    "directional": {
+      "insert_after": {"CTPrim Iphases": [["ArgDir", "15", "5-45"], ["ArgNegRes", "115", "90-175"]]},
+      "set": {"Operation_Z2": "On", "DirZ2": "Reverse"}
+    }
+  }
 }

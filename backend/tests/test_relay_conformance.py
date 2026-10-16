@@ -155,7 +155,7 @@ class TestCatalogIntegrity:
 
     @pytest.mark.parametrize("catalog", CATALOGS, ids=lambda c: c.catalog_id)
     def test_every_reference_is_cited_and_says_where_it_applies(self, catalog):
-        cited = {r for m in catalog.mappings for r in m.references}
+        cited = {r for m in catalog.mappings for r in m.references} | {r for b in catalog.boundaries for r in b.references}
         known = set(FINDINGS["uncited_references"].get(catalog.catalog_id, {}).get("ids", []))
         assert {ref.id for ref in catalog.references if ref.id not in cited} == known
         for ref in catalog.references:
@@ -283,7 +283,9 @@ def shadow_zones(expectation: dict, pdf: bytes) -> dict:
     for zone_id, z in expectation["shadow_geometry"]["zones"].items():
         if z.get("shadow_geometry") == "exact":
             edges = tuple(b for b in run.boundaries if b.zone_id == zone_id)
-            out[zone_id] = (edges, assemble_zone(zone_id, x_reach_ohm=z["top"]["x_reach_ohm"], direction=z["direction"], boundaries=edges))
+            rays = tuple(b for b in run.directional if b.zone_id == zone_id)
+            out[zone_id] = (edges + rays, assemble_zone(zone_id, x_reach_ohm=z["top"]["x_reach_ohm"], direction=z["direction"],
+                                                       boundaries=edges, directional=rays))
     return out
 
 
@@ -302,13 +304,18 @@ def test_the_shadow_v2_geometry_reproduces_the_engineering_golden(name):
     assembled = shadow_zones(e, pdf)
     assert set(assembled) == set(e["shadow_golden"])
     for zone_id, golden in e["shadow_golden"].items():
-        edges, zone = assembled[zone_id]
-        planes = {b.side.value: b.half_plane(golden["direction"]) for b in edges}
+        boundaries, zone = assembled[zone_id]
+        planes = {getattr(b, "side", None) or b.retained_side: b.half_plane(golden["direction"]) for b in boundaries}
         for x, r_right, r_left in golden["edge_points"]:               # every golden edge point lies on the V2 edge
             assert abs(planes["right"].signed_distance(r_right, x)) <= TOLERANCE_OHM, (zone_id, x, "right")
             assert abs(planes["left"].signed_distance(r_left, x)) <= TOLERANCE_OHM, (zone_id, x, "left")
-        for r, x, inside in golden["probes"]:
+        for side, r, x in golden.get("directional_points", ()):         # ... and every golden ray point on the V2 line
+            assert abs(planes[side].signed_distance(r, x)) <= TOLERANCE_OHM, (zone_id, side, r, x)
+        assert set(golden.get("directional", {})) == {b.retained_side.value for b in boundaries if hasattr(b, "retained_side")}
+        for r, x, inside in golden["probes"] + golden.get("directional_probes", []):
             assert zone.characteristic.contains(r, x) is bool(inside), (zone_id, r, x)
+        # placed once: the assembled zone is absolute, and placing it again changes nothing (no second reflection)
+        assert zone.characteristic.to_absolute(golden["direction"]) is zone.characteristic
 
 
 @pytest.mark.parametrize("name", SHADOW)

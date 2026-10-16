@@ -4,8 +4,46 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-16** (Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-16** (Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+
+## Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first (2026-10-16, `feature/remaining-relay-imports`, DEC-199 Amendment 3)
+
+**V2 represents REL511's documented directional characteristic (ArgDir / ArgNegRes) as two half-planes through the
+origin, in shadow mode only; production remains on V1.** REL511 stays PARTIALLY SUPPORTED / NOT_READY with unchanged
+readiness and blockers; no Apply, `approximations[]` or plot change.
+
+What changed:
+- **Primitive:** the relay-neutral `DirectionalBoundary(zone_id, angle_deg, retained_side, frame, provenance, fidelity)`.
+  The side is stated mathematically (`counter_clockwise` / `clockwise`); `assemble_zone(..., directional=...)` refuses a
+  sector of 180 deg or more and places a zone once.
+- **Catalog spec:** generic extensions -- `kind: directional` (`retained_side`, mandatory `convention`, `angle_deg {sign,
+  range}`), and the resistive `r_at_axis.scale` and `angle_deg.atan2`.
+- **REL511 catalog 1.3.0:**
+  - right / left inclined lines `R1Zn * X / X1Zn +/- RFZn / 2`;
+  - directional `-ArgDir` (`counter_clockwise`) and `+ArgNegRes` (`clockwise`), zone frame, `static_equivalent`
+    (voltage polarisation with memory);
+  - two new references from the same accepted manuals (App. p. 67 / 91; TRM p. 49).
+- **Sheets:** ArgDir / ArgNegRes are on neither REL511 sheet, so no default is substituted and the owner sheet stays not
+  assembled. The new synthetic variant `rel511` / `directional` (expectation `rel511--directional`) proves the mapping.
+- **Goldens:** directional goldens computed from atan2 angular conditions; the generic tests cover the line, sides,
+  quadrants, sector, reflection and conversion.
+
+**Relion 670 ZDRDIR mapping deferred pending verified v1.2 technical-manual evidence.** RED670 / REL670 are unchanged.
+Rule: *similar parameter names or behaviour across OEM / product generations are not sufficient evidence for canonical
+geometry mapping.*
+
+Open points for the owner:
+1. **Lower reactance limit:** App. Eq. 34 documents the REL511 lower limit Xm >= -X1PP, which is not yet a recorded
+   mapping.
+2. **Wide sectors:** a sector with ArgDir + ArgNegRes >= 180 deg (allowed by the ranges) is the union of the two
+   half-planes, which the kernel does not represent; such a zone is refused, not approximated.
+3. **ArgNegRes default wording:** App. pp. 56 / 91 state the default as 25 deg from the X axis; the TRM and Eq. 38 state
+   115 deg from +R. Both describe the same line.
+
+**Results (2026-10-16):** backend full suite 9,889 passed, 144 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the first run's one failure was the shipped-catalog version pin, updated to REL511 1.3.0, then the full suite re-run clean); boundary unit tests 72 passed; shadow conformance: 10 samples, 17 assembled zones -- every golden resistive edge point and all 12 ray points on their V2 lines within 1e-6 ohm, 238 / 238 resistive and 32 / 32 directional probes as hand-derived, every zone placed once; production / readiness diff none; browser: every relay-import, relay_review_copy and Distance spec 233 / 233 in the isolated :8102 / :8200 run (incl. the new rel511--directional sample). Full browser suite not run.
+
+**Stopped after Phase 2B; production plotting not switched; not pushed.**
 
 ## Relay Scalability Phase 2A -- shadow inclined resistive boundaries (2026-10-16, `feature/remaining-relay-imports`, DEC-199 Amendment 2)
 
@@ -24,8 +62,8 @@ What changed:
 
 **Results (2026-10-16):** backend full suite 9,831 passed, 142 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR); boundary unit tests 27 passed; shadow conformance: 7 samples, 15 zones, every golden edge point on its V2 edge within 1e-6 ohm and 210 / 210 probes as hand-derived; V1 still unresolved for every inclined edge; expectation semantic diff = new shadow keys only (+ the 7SA613 catalog version); browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run. Full browser suite not run.
 
-**Next Phase 2 primitive:** `directional(angle)` -- a half-plane through the origin -- to represent the lower / left
-directional limit, first where the angle is documented (Relion 670 ZDRDIR ArgDir / ArgNegRes). **Stopped after Phase 2A;
+**Next Phase 2 primitive (then):** `directional(angle)` -- delivered in Phase 2B above with REL511 as the first
+verified case; Relion 670 ZDRDIR deferred pending verified evidence. **Stopped after Phase 2A;
 production plotting not switched; not pushed.**
 
 ## Relay Scalability Phase 1 -- shadow geometry kernel (2026-10-16, `feature/remaining-relay-imports`, DEC-199 Amendment 1)

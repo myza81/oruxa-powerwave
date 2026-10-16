@@ -27396,3 +27396,156 @@ point-reflected for a reverse zone. `assemble_zone`
   7SL87, REL511 or GRZ100. Findings F-1 to F-3 unchanged.
 
 **Results (2026-10-16):** backend full suite 9,831 passed, 142 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR); boundary unit tests 27 passed; shadow conformance: 7 samples, 15 zones, every golden edge point on its V2 edge within 1e-6 ohm and 210 / 210 probes as hand-derived; V1 still unresolved for every inclined edge; expectation semantic diff = new shadow keys only (+ the 7SA613 catalog version); browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run. Full browser suite not run.
+
+### DEC-199 Amendment 3 -- Phase 2B: canonical directional half-planes, REL511 as the first verified OEM case (2026-10-16)
+
+Status: Phase 2B implemented on `feature/remaining-relay-imports` (not merged, not deployed). Shadow mode only: V1 remains
+production-authoritative. REL511 stays **PARTIALLY SUPPORTED / NOT_READY** (ZnBlock unverified, production geometry
+limitation). Readiness, blockers, Apply, `approximations[]` and the frontend plot are unchanged.
+
+* **Owner decision -- Relion 670 deferred.** RED670 / REL670 are deferred for this primitive. **Relion 670 ZDRDIR mapping
+  deferred pending verified v1.2 technical-manual evidence.** The project has no verified ZDRDIR documentation for:
+  - the angle convention;
+  - the retained side;
+  - the combined region;
+  - the coordinate frame;
+  - static-equivalent fidelity.
+
+  Their catalogs stay at 1.0.0 with ArgDir / ArgNegRes preserved only. No directional mapping is added; a test proves no
+  Relion 670 catalog declares boundaries.
+* **Rule (standing):** *Similar parameter names or behaviour across OEM / product generations are not sufficient evidence
+  for canonical geometry mapping.* REL511's verified ArgDir / ArgNegRes semantics are never evidence for Relion 670
+  ZDRDIR. The new REL511 references state "REL 511 only".
+* **Canonical primitive** (`app/domain/distance_boundaries.py`, relay-neutral):
+  `DirectionalBoundary(zone_id, angle_deg, retained_side, frame, provenance, fidelity)`.
+  - **Geometry:** the line through the origin along the ray at `angle_deg`, CCW from +R, in (-180, 180].
+  - **Retained side (stated mathematically):**
+    - `counter_clockwise`: `-sin a * R + cos a * X >= 0`, the half-plane `(sin a, -cos a) . p <= 0`;
+    - `clockwise`: `(-sin a, cos a) . p <= 0`.
+
+    At 0 deg, counter-clockwise keeps X >= 0; at 90 deg it keeps R <= 0.
+  - **Frame:** mandatory, a `BoundaryFrame` (a bare string is refused).
+  - **Fidelity:** exact | documented | static_equivalent.
+  - **Provenance:** `BoundaryProvenance` gains `convention`, how the source writes the angle.
+* **Sector.**
+  - The region between a counter-clockwise-retained ray at a1 and a clockwise-retained ray at a2 is the intersection of
+    the two half-planes only when the counter-clockwise sweep a1 -> a2 is narrower than 180 deg.
+  - `assemble_zone` refuses a wider sweep rather than produce a different region. That region is the union of the two
+    half-planes, which the kernel does not represent.
+  - At most one ray per retained side.
+* **Reflection.**
+  - Each boundary is placed in the absolute frame exactly once, from its own frame and the zone direction.
+  - The assembled characteristic is absolute, and `to_absolute` returns it unchanged, so a reverse zone cannot be
+    reflected twice (tested).
+  - Absolute-frame lines are not reflected with a reverse zone (tested).
+* **Fidelity has two distinct meanings.**
+  - The geometry represents the documented static characteristic exactly (`shadow_geometry: exact`).
+  - The directional boundary's `fidelity` is `static_equivalent`. REL511's directional decision is voltage-polarised: it
+    uses arg((0.8 U1 + 0.2 U1M) / I), with U1 the loop's continuously updated positive-sequence voltage and U1M its
+    memorised pre-fault value (TRM p. 49; App. Eq. 38).
+  - The static R-X line is therefore the steady-state equivalent, not every relay decision.
+* **Catalog spec (generic extensions; every other catalog's digest is unchanged).**
+  - New `kind` `directional`, with `retained_side`, a mandatory `convention` and `angle_deg` `{source, sign: +/-1,
+    range: [lo, hi]}`. The range is the documented setting range of the *source* value; a value outside it is not
+    derived.
+  - Resistive edges gain `r_at_axis.scale`, a documented factor in (0, 1].
+  - Resistive edges gain `angle_deg.atan2 {x, r}`: an edge parallel to the impedance R + jX.
+  - Validation refuses a directional boundary that has no convention, has a `side` or `r_at_axis`, is approximate, has a
+    reversed range or a non-deg angle; it also refuses a scale > 1.
+* **REL511 evidence, verified against the exact text.**
+  - **TRM 1MRK 506 101-UEN p. 64, Table 76 "General setting parameters, ZDIR".**
+    - ArgDir: 5-45, step 1, default 15 degrees, "Lower angle of forward direction characteristic".
+    - ArgNegRes: 90-175, step 1, default 115 degrees, "Upper angle of forward direction characteristic".
+  - **Application manual 1MRK 506 109-UEN p. 67.**
+    - Eq. 38: forward `-ArgDir < arg((0.8 U1L1 + 0.2 U1L1M) / IL1) < ArgNegRes`, with the L1-L2 analogue.
+    - "The reverse directional characteristic is equal to the forward characteristic rotated by 180 degrees."
+    - ArgDir "by default set to 15 (= -15 degrees)"; ArgNegRes "by default set to 115 (degrees)".
+    - Directionality is the "and" combination of the impedance and directional measurements.
+  - **Application manual p. 56-57 (Fig. 29-30) and p. 91 (Fig. 45).** The lines lie in the fourth and second quadrants,
+    common to all zones.
+    - *Wording difference:* pp. 56 and 91 give the ArgNegRes default as 25 deg measured **from the X axis**. That is the
+      same line as 115 deg from +R; the setting range 90-175 fixes the setting value as measured from +R.
+  - **Application manual p. 65-67, Eq. 31-37** (the phase-phase polygon; already recorded in DEC-198 Amendment 2).
+    - `R1PP*p - RFPP/2 <= Rm <= R1PP*p + RFPP/2`.
+    - `-X1PP <= Xm <= X1PP`.
+    - Lines at atan(X1PP / R1PP), crossing the R axis at +/-RFPP/2.
+  - **TRM p. 49.** Polarisation by each loop's positive-sequence voltage, with a pre-fault memory for close-up
+    three-phase faults.
+  - **New reference entries (same accepted documents):** `abb-1mrk506109-uen-dir` (Eq. 38, Fig. 45; pp. 67, 91) and
+    `abb-1mrk506101-uen-pol` (p. 49).
+* **OEM -> canonical angle conversion (explicit, never hidden).**
+  - **ArgDir** is a positive magnitude: the lower boundary, in the fourth quadrant. Canonical angle `-ArgDir`, retained
+    `counter_clockwise`.
+  - **ArgNegRes** is in degrees from +R: the upper boundary, in the second quadrant. Canonical angle `+ArgNegRes`, retained
+    `clockwise`.
+  - Example: 15 -> -15 deg and 115 -> +115 deg. The forward region is the sector -ArgDir < arg Z < ArgNegRes.
+  - Provenance keeps:
+    - the raw value and its source row;
+    - the convention text;
+    - the canonical angle;
+    - the transform ("canonical angle = -ArgDir = -15 deg (ArgDir 15 as printed, deg)");
+    - the references.
+  - A sheet value outside the documented range is **not derived**: for example an already-signed "-15", or "25" measured
+    from the X axis.
+* **REL511 composition** (catalog 1.2.0 -> **1.3.0**, new lock entry, 1.2.0 kept). Every component is gated on
+  Operation_Zn On and DirZn Forward / Reverse.
+  - **Resistive lines:** right / left inclined lines `R1Zn * X / X1Zn +/- RFZn / 2`. Zone frame, documented fidelity; the
+    semantics already recorded in DEC-198 Amendment 2.
+  - **Top:** X <= X1Zn, from the canonical model.
+  - **Directional:** the two half-planes, in the zone frame, `static_equivalent`.
+
+  Not represented:
+  - **Lower reactance limit:** App. Eq. 34 documents Xm >= -X1PP, but it is not a recorded mapping yet, so the record
+    keeps `not_represented: ["lower"]`.
+  - The phase-earth (loop-domain RFNZn) characteristic.
+  - **ZnBlock:** unresolved, and outside the geometry proof.
+  - **A sweep of 180 deg or more:** ArgDir + ArgNegRes >= 180 is possible within the setting ranges. It is refused, not
+    approximated.
+* **Sheets: neither REL511 sheet states ArgDir / ArgNegRes.** This applies to the owner sheet and to the synthetic one,
+  and no default (15 / 115) is substituted.
+  - **Owner sheet:** the Z1-Z4 resistive lines are derived (+/-2.31 / 3.385 / 5.935 / 0.575 ohm, about 79.7 deg). Every
+    zone is `not_assembled` ("the directional boundaries are not derived").
+  - **Synthetic variant `rel511` / `directional`** (expectation `rel511--directional`) proves the mapping. It states
+    ArgDir 15 and ArgNegRes 115 and enables Z2 Reverse.
+* **Independent goldens** (`shadow_golden.py`). Directional membership comes from the documented angular condition on
+  atan2(X, R), never from the half-plane normals: the sweep from the counter-clockwise ray to the point must not exceed
+  the sweep to the clockwise ray. The goldens hold:
+  - points on both rays at 0.25 / 0.5 / 1.0 x the reach;
+  - probes at +/-2 deg from each ray, at 0.1 / 0.25 x the reach;
+  - representative first-quadrant, +X, negative-R, -X and third-quadrant points;
+  - for a reverse zone, every point reflected once.
+
+  Resistive probes are re-classified against the full documented region; a resistive probe close to a directional line
+  is dropped.
+* **Generic tests (no bespoke REL511 file).**
+  - `tests/test_distance_boundaries.py` covers:
+    - the line equation and both sides;
+    - 0 / 90 deg, and the second and fourth quadrants;
+    - sector membership;
+    - reverse = one point reflection, with no second reflection;
+    - absolute lines not reflected;
+    - a sweep of 180 deg or more refused;
+    - validation;
+    - the REL511 conversion and the out-of-range refusals;
+    - production interpretation identical with and without the boundaries (7SA613; REL511 with and without directional
+      values);
+    - no Relion 670 catalog declaring boundaries.
+  - **Conformance:**
+    - the V2 lines pass through every golden ray point;
+    - V2 classifies every probe as the golden does;
+    - the assembled zone is placed once.
+  - The reference-citation integrity check now also counts citations from `boundaries`.
+* **Production / readiness diff: none.**
+  - REL511 synthetic and owner expectations: only the catalog version string and the new shadow keys change.
+  - 7SA613 expectations: unchanged.
+* **Performance:** REL511 shadow derivation takes about 0.4 ms (catalog interpretation 2.6 ms); assembly plus 60 probes
+  about 0.14 ms.
+* **Scope kept:**
+  - no RED670 / REL670 mapping;
+  - no lower X limit, no phase-earth geometry, no union region;
+  - no approximation rule;
+  - production plotting not switched.
+
+  Findings F-1 to F-3 are unchanged.
+
+**Results (2026-10-16):** backend full suite 9,889 passed, 144 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the first run's one failure was the shipped-catalog version pin, updated to REL511 1.3.0, then the full suite re-run clean); boundary unit tests 72 passed; shadow conformance: 10 samples, 17 assembled zones -- every golden resistive edge point and all 12 ray points on their V2 lines within 1e-6 ohm, 238 / 238 resistive and 32 / 32 directional probes as hand-derived, every zone placed once; production / readiness diff none; browser: every relay-import, relay_review_copy and Distance spec 233 / 233 in the isolated :8102 / :8200 run (incl. the new rel511--directional sample). Full browser suite not run.
