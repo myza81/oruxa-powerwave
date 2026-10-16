@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from tests.relay_red670_fixtures import default_sections, sheet_pdf, zone_rows
+from tests.relay_review_tokens import review_ref
 
 UPLOAD = "/api/v1/relay-import/upload"
 VALIDATE = "/api/v1/relay-import/review/validate"
@@ -58,7 +59,7 @@ def user_decisions(review, zones=("Z1", "Z2", "Z3")):
     """What an engineer does in the generic review: takes the 0.00 ohm visualization approximation for each
     unsupported Left (-R) reach, then confirms the assumptions."""
     return {
-        "validation_context": review["validation_context"],
+        **review_ref(review),
         "suggested": [f"zones[{z}].{LEFT}" for z in zones],
         "confirmed": assumptions(review),
     }
@@ -179,7 +180,7 @@ class TestUploadAndReview:
 class TestReadinessAndApply:
     def test_apply_is_refused_until_the_backend_says_ready(self, client):
         review = upload(client)["review"]
-        r = client.post(APPLY, json={"validation_context": review["validation_context"]})
+        r = client.post(APPLY, json={**review_ref(review)})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "apply_not_ready"
 
     def test_ready_to_apply_after_the_suggestion_and_confirmations(self, client):

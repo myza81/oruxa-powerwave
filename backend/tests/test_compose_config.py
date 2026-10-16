@@ -101,6 +101,7 @@ PROD_ENV = {
     "POWERWAVE_UID": "1000",
     "POWERWAVE_GID": "1000",
     "API_BASE_URL": "https://api.powerwave.example",
+    "RELAY_REVIEW_SIGNING_KEY": "test-only-relay-review-signing-key-0123456789",
 }
 
 
@@ -268,7 +269,7 @@ class TestStorageIsolation:
 class TestProductionSafeguardsIntact:
     @pytest.mark.parametrize(
         "variable",
-        ["API_BASE_URL", "POWERWAVE_DATA_PATH", "POWERWAVE_UID", "POWERWAVE_GID"],
+        ["API_BASE_URL", "POWERWAVE_DATA_PATH", "POWERWAVE_UID", "POWERWAVE_GID", "RELAY_REVIEW_SIGNING_KEY"],
     )
     def test_missing_required_variable_fails_rendering(self, variable):
         env = {k: v for k, v in PROD_ENV.items() if k != variable}

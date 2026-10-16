@@ -44,6 +44,9 @@ class CatalogProfile:
         self.profile_id = catalog.profile_id
         self.version = extension.version if extension is not None else catalog.profile_version
         self._registry = store.registry
+        #: The semantic digest of this catalog in the store it was loaded from (DEC-198 Amendment 5: a
+        #: review token is bound to it, so a changed catalog never silently re-reads an earlier review).
+        self.catalog_digest = store.digests.get(catalog.key)
         self._interpreter = CatalogInterpreter(catalog, store.registry)
         #: False when the relay is already described by a standalone identification descriptor.
         self.use_catalog_identification = True

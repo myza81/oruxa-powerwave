@@ -39,6 +39,7 @@ from app.services.relay_review_validation import validate_review
 from tests.relay_p441_fixtures import make_doc
 from tests.test_relay_import_upload import _p441_pdf
 from tests.test_relay_review_state import REVERSE, UPLOAD, VALIDATE, ZP_STATUS
+from tests.relay_review_tokens import review_ref, validate_model
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
 Z123 = ("Z1", "Z2", "Z3")
@@ -169,7 +170,7 @@ class TestP441Sample:
         assert not infer_defeated_zones(MicomP441Profile().interpret(doc)).zone("ZP").status.is_resolved
 
     def test_zone_p_no_longer_blocks_and_its_missing_settings_are_not_required(self, model):
-        review = validate_review(encode_model(model), ReviewDecisions(manual={REVERSE.format(z): 2.5 for z in Z123}))
+        review = validate_model(model, ReviewDecisions(manual={REVERSE.format(z): 2.5 for z in Z123}))
         items = _items(review)
         assert not items[ZP_STATUS].blocking and items[ZP_STATUS].category == "assumption"
         assert items[REVERSE.format("ZP")].not_required and not items[REVERSE.format("ZP")].blocking
@@ -178,13 +179,13 @@ class TestP441Sample:
         assert review.blocking_count == 0 and review.engine.status == "ready"
 
     def test_the_0_ohm_suggestion_is_still_offered_to_enabled_zones(self, model):
-        items = _items(validate_review(encode_model(model), ReviewDecisions()))
+        items = _items(validate_model(model, ReviewDecisions()))
         assert items[REVERSE.format("Z1")].suggestion is not None
         assert items[REVERSE.format("ZP")].suggestion is None
 
     def test_overriding_zone_p_to_enabled_restores_validation(self, model):
         manual = {REVERSE.format(z): 2.5 for z in Z123} | {ZP_STATUS: "enabled"}
-        review = validate_review(encode_model(model), ReviewDecisions(manual=manual))
+        review = validate_model(model, ReviewDecisions(manual=manual))
         items = _items(review)
         assert items[ZP_STATUS].review_status == "resolved_manually"
         assert not items["zones[ZP].reach"].not_required
@@ -232,6 +233,6 @@ class TestApi:
         status = next(i for i in zp["items"] if i["item_id"] == ZP_STATUS)
         assert status["category"] == "assumption" and not status["blocking"]
         assert any("10.0 s operating delay" in n for n in status["notes"])
-        ctx = review["validation_context"]
-        out = client.post(VALIDATE, json={"validation_context": ctx, "manual": [{"item_id": ZP_STATUS, "value": "enabled"}]})
+        ctx = review_ref(review)
+        out = client.post(VALIDATE, json={**ctx, "manual": [{"item_id": ZP_STATUS, "value": "enabled"}]})
         assert out.status_code == 200 and out.json()["readiness"]["status"] == "not_ready"

@@ -21,6 +21,7 @@ from app.main import create_app
 from app.schemas import relay_import as relay_schemas
 from tests.test_relay_import_upload import _p441_pdf
 from tests.test_relay_review_state import REVERSE, UPLOAD, VALIDATE
+from tests.relay_review_tokens import review_ref
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend"
@@ -82,11 +83,11 @@ def _upload(client):
 
 def test_relay_review_responses_carry_no_product_name(client):
     upload = _upload(client)
-    ctx = upload["review"]["validation_context"]
-    body = {"validation_context": ctx, "suggested": [REVERSE.format(z) for z in ("Z1", "Z2", "Z3")]}
+    ctx = review_ref(upload["review"])
+    body = {**ctx, "suggested": [REVERSE.format(z) for z in ("Z1", "Z2", "Z3")]}
     state = client.post(VALIDATE, json=body).json()
-    # the opaque validation context is data, not copy
-    visible = {k: v for k, v in upload["review"].items() if k != "validation_context"}
+    # the opaque validation token and import id are data, not copy
+    visible = {k: v for k, v in upload["review"].items() if k not in ("validation_token", "import_id")}
     for payload in (visible, upload["interpretation_warnings"], state):
         assert not BRAND.search(json.dumps(payload, ensure_ascii=False))
 
@@ -101,7 +102,7 @@ def test_zone_p_note_is_neutral_and_the_suggestion_is_still_a_suggestion(client)
     ), notes
     state = client.post(
         VALIDATE,
-        json={"validation_context": upload["review"]["validation_context"], "suggested": [REVERSE.format("Z1")]},
+        json={**review_ref(upload["review"]), "suggested": [REVERSE.format("Z1")]},
     ).json()
     item = {i["item_id"]: i for i in state["items"]}[REVERSE.format("Z1")]
     assert item["resolution_origin"] == "suggestion" and item["category"] == "missing"

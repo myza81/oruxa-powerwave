@@ -259,7 +259,13 @@ class TestUploadResponse:
         files = lambda: {"file": ("a.pdf", io.BytesIO(_p441_pdf()), "application/pdf")}  # noqa: E731
         first = client.post(URL, files=files()).json()
         second = client.post(URL, files=files()).json()
-        assert first["review"] == second["review"]
+        # DEC-198 Amendment 5: each upload is a new import -- its own import id and signed token -- and
+        # everything else in the review is identical
+        identity = ("validation_token", "import_id")
+        assert first["review"]["import_id"] != second["review"]["import_id"]
+        assert first["review"]["validation_token"] != second["review"]["validation_token"]
+        strip = lambda r: {k: v for k, v in r.items() if k not in identity}  # noqa: E731
+        assert strip(first["review"]) == strip(second["review"])
         assert set(vars(client.app.state)) == before
         assert list(tmp_path.iterdir()) == []
 

@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.relay_profiles.identification_catalogue import build_registry
 from tests import relay_family_fixtures as F
+from tests.relay_review_tokens import review_ref
 
 UPLOAD = "/api/v1/relay-import/upload"
 VALIDATE = "/api/v1/relay-import/review/validate"
@@ -74,7 +75,7 @@ def decisions(review, *, confirm=True, suggested=True, manual=()):
     confirmed = [i["item_id"] for g in review["groups"] for i in g["items"]
                  if i["item_id"] and i["primary"] and i["category"] == "assumption" and i["review_status"] == "to_confirm"]
     offered = [i["item_id"] for g in review["groups"] for i in g["items"] if i["item_id"] and i.get("suggestion")]
-    return {"validation_context": review["validation_context"], "confirmed": confirmed if confirm else [],
+    return {**review_ref(review), "confirmed": confirmed if confirm else [],
             "suggested": offered if suggested else [], "manual": list(manual)}
 
 

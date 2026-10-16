@@ -9,6 +9,9 @@ from app.config import (
 )
 
 BASE_ENV = {"STORAGE_PATH": "/data"}
+# A deployed build (production, or APP_VERSION set by the deploy workflows) must configure the relay review
+# signing key (DEC-198 Amendment 5); this test-only value stands in for it.
+SIGNING_KEY = {"RELAY_REVIEW_SIGNING_KEY": "test-only-relay-review-signing-key-0123456789"}
 
 
 def test_defaults_are_development():
@@ -36,13 +39,13 @@ class TestBuildProvenance:
 
     def test_full_sha_is_recorded_verbatim(self):
         full_sha = "331cca07555c09edd24f09589b59c5cae0aa200b"
-        settings = load_settings({**BASE_ENV, "APP_VERSION": full_sha})
+        settings = load_settings({**BASE_ENV, **SIGNING_KEY, "APP_VERSION": full_sha})
 
         assert settings.git_sha == full_sha
 
     def test_version_is_the_short_seven_character_form(self):
         full_sha = "331cca07555c09edd24f09589b59c5cae0aa200b"
-        settings = load_settings({**BASE_ENV, "APP_VERSION": full_sha})
+        settings = load_settings({**BASE_ENV, **SIGNING_KEY, "APP_VERSION": full_sha})
 
         assert settings.version == "331cca0"
 
@@ -54,14 +57,14 @@ class TestBuildProvenance:
 
     def test_unset_app_version_falls_back_to_local_in_production_too(self):
         settings = load_settings(
-            {**BASE_ENV, "ENVIRONMENT": "production", "CORS_ORIGINS": "https://powerwave.oruxa.uk"}
+            {**BASE_ENV, **SIGNING_KEY, "ENVIRONMENT": "production", "CORS_ORIGINS": "https://powerwave.oruxa.uk"}
         )
 
         assert settings.git_sha == "local"
         assert settings.version == "local"
 
     def test_app_version_is_stripped_of_surrounding_whitespace(self):
-        settings = load_settings({**BASE_ENV, "APP_VERSION": "  abc1234  "})
+        settings = load_settings({**BASE_ENV, **SIGNING_KEY, "APP_VERSION": "  abc1234  "})
 
         assert settings.git_sha == "abc1234"
 
@@ -105,6 +108,7 @@ def test_production_with_explicit_origins_is_accepted():
     settings = load_settings(
         {
             **BASE_ENV,
+            **SIGNING_KEY,
             "ENVIRONMENT": "production",
             "CORS_ORIGINS": "https://powerwave.oruxa.uk",
         }
@@ -115,7 +119,7 @@ def test_production_with_explicit_origins_is_accepted():
 
 
 def test_environment_is_normalised():
-    settings = load_settings({**BASE_ENV, "ENVIRONMENT": "  PRODUCTION  ",
+    settings = load_settings({**BASE_ENV, **SIGNING_KEY, "ENVIRONMENT": "  PRODUCTION  ",
                               "CORS_ORIGINS": "https://powerwave.oruxa.uk"})
 
     assert settings.environment == "production"

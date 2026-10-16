@@ -7,7 +7,7 @@
 #
 # Required in .env on the production host:
 #   POWERWAVE_DATA_PATH, POWERWAVE_UID, POWERWAVE_GID,
-#   CORS_ORIGINS, API_BASE_URL
+#   CORS_ORIGINS, API_BASE_URL, RELAY_REVIEW_SIGNING_KEY
 #
 # Ports default to the values production already serves, so an existing host
 # needs no .env change to keep its current behaviour.
@@ -27,6 +27,9 @@ services:
   backend:
     environment:
       ENVIRONMENT: production
+      # DEC-198 Amendment 5: signs relay review validation tokens. A secret (at least 32 characters),
+      # the same for every backend instance of this deployment; rotating it invalidates open reviews.
+      RELAY_REVIEW_SIGNING_KEY: ${RELAY_REVIEW_SIGNING_KEY:?RELAY_REVIEW_SIGNING_KEY must be set}
 
     user: "${POWERWAVE_UID:?POWERWAVE_UID must be set}:${POWERWAVE_GID:?POWERWAVE_GID must be set}"
 

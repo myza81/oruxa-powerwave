@@ -35,6 +35,7 @@ from app.domain.relay_import.raw_document import RawSetting, SourceLocation
 from app.domain.relay_import.review_state import ReviewDecisions
 from app.relay_profiles.identification_catalogue import build_registry
 from app.services.relay_apply_settings import apply_reviewed_settings
+from tests.relay_review_tokens import apply_model
 from app.services.relay_interpretation_summary import summarize_interpretation
 from tests.parameter_catalog_equivalence import review_path, sourced_map
 from tests.relay_p441_fixtures import make_doc as p441_doc
@@ -126,7 +127,7 @@ class TestNothingTheUserSeesChanges:
             confirm = frozenset(i.item_id for g in s.review.groups for i in g.items if i.review_status == "to_confirm" and i.item_id)
             suggested = frozenset(f"zones[{z}].resistive_reach.reverse" for z in ("Z1", "Z2", "Z3"))     # the left reach
             decisions = ReviewDecisions(confirmed=confirm, suggested=suggested)
-            plan = apply_reviewed_settings(json.loads(json.dumps(s.review.validation_context)), decisions)
+            plan = apply_model(s.model, decisions)
             payloads.append(plan)
         assert payloads[0] == payloads[1] and payloads[0].zones
 

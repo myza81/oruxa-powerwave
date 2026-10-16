@@ -47,6 +47,7 @@ from app.main import create_app
 from app.schemas.distance_protection_analysis import MAX_REQUEST_ZONES
 from app.schemas.relay_import import ApplySettingsOut
 from app.services.relay_apply_settings import apply_reviewed_settings
+from tests.relay_review_tokens import apply_model
 from tests.test_distance_protection_analysis_api import (
     _create_full_bay,
     _distance,
@@ -245,9 +246,9 @@ class TestSerialisationKeepsEveryZone:
         assert [z.name for z in decoded.zones] == [z.name for z in model.zones]
         assert decoded == model
 
-    def test_apply_through_the_validation_context_returns_every_zone(self):
+    def test_apply_through_the_validation_token_returns_every_zone(self):
         model = model_of(*zones_for(), import_zone("Z9", status=m(ZoneStatus.DISABLED)))
-        plan = apply_reviewed_settings(json.loads(json.dumps(encode_model(model))), ReviewDecisions())
+        plan = apply_model(model, ReviewDecisions())
         assert [z.zone_id for z in plan.zones] == [z.zone_id for z in model.zones]
         assert [z.enabled for z in plan.zones] == [True] * len(IDS_AND_LABELS) + [False]
 

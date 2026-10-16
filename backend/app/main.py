@@ -36,6 +36,7 @@ from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.compliance_alignment_registry import ComplianceAlignmentRegistry
 from app.services.reference_layer_registry import ReferenceLayerRegistry
 from app.services.reference_profile_registry import ReferenceProfileRegistry
+from app.services.relay_review_token import signer_from_settings
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
@@ -133,6 +134,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
     app.state.settings = settings
+    # DEC-198 Amendment 5: one signer per process, built before the app serves anything -- a deployed
+    # build without RELAY_REVIEW_SIGNING_KEY fails here, at start-up, never on a later request.
+    app.state.relay_review_signer = signer_from_settings(settings)
 
     app.add_middleware(
         CORSMiddleware,

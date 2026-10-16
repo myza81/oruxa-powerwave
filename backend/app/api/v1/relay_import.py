@@ -10,15 +10,17 @@ verdict and an interpretation summary are returned. Nothing is applied to the
 Distance Protection form.
 
 Slice 8 adds ``POST /review/validate``: a *stateless* re-validation of the user's
-review decisions. The request carries the original interpretation (the review's
-validation context) and the decisions; the response is the reviewed state. No
-server session, store or cache exists, and nothing is applied to the form.
+review decisions. DEC-198 Amendment 5: the upload seals the original interpretation in
+a signed, opaque validation token bound to a backend-generated import id; validate and
+Apply carry that token, the import id and the decisions, and each verifies the token
+independently before trusting anything in it. No server session, store or cache exists,
+and nothing is applied to the form.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
@@ -39,6 +41,7 @@ from app.services.relay_extraction_review import ExtractionReview
 from app.services.relay_import_upload_service import inspect_relay_setting_upload
 from app.domain.relay_import.apply_settings import ApplyRejectedError
 from app.services.relay_apply_settings import ApplyNotReadyError, apply_reviewed_settings
+from app.services.relay_review_token import ReviewTokenError, ReviewTokenSigner, new_import_id
 from app.services.relay_review_validation import InvalidReviewError, validate_review
 
 logger = logging.getLogger(__name__)
@@ -61,10 +64,36 @@ def get_settings_dep(request: Request) -> Settings:
     return request.app.state.settings
 
 
+def get_review_signer_dep(request: Request) -> ReviewTokenSigner:
+    return request.app.state.relay_review_signer
+
+
+def _invalid_token(exc: ReviewTokenError) -> HTTPException:
+    """One generic answer for a token that cannot be used; the internal reason is logged, never shown."""
+    logger.info("Relay review token refused (%s)", exc.reason)
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=ErrorOut(code="invalid_review_token", message=str(exc)).model_dump(),
+    )
+
+
+def _sealed_review(interp, signer: ReviewTokenSigner) -> ExtractionReviewOut | None:
+    """The review DTO with its signed validation token and the import id it is bound to (DEC-198 Am. 5)."""
+    if interp is None or interp.review is None:
+        return None
+    review = interp.review
+    if interp.model is not None and interp.knowledge is not None:
+        import_id = new_import_id()
+        token = signer.issue(interp.model, import_id=import_id, knowledge=interp.knowledge)
+        review = replace(review, validation_token=token, import_id=import_id)
+    return ExtractionReviewOut(**asdict(review))
+
+
 @router.post("/upload", response_model=RelayImportUploadOut)
 async def upload_relay_setting_file(
     file: UploadFile = File(..., description="Relay setting file (PDF)"),
     settings: Settings = Depends(get_settings_dep),
+    signer: ReviewTokenSigner = Depends(get_review_signer_dep),
 ) -> RelayImportUploadOut:
     try:
         result = await inspect_relay_setting_upload(
@@ -114,7 +143,7 @@ async def upload_relay_setting_file(
         catalog_id=interp.catalog_id if interp else None,
         catalog_version=interp.catalog_version if interp else None,
         catalog_coverage=interp.catalog_coverage if interp else None,
-        review=ExtractionReviewOut(**asdict(interp.review)) if interp and interp.review else None,
+        review=_sealed_review(interp, signer),
     )
 
 
@@ -164,10 +193,14 @@ def _decisions(body: ReviewValidationIn) -> ReviewDecisions:
 
 
 @router.post("/review/validate", response_model=ReviewStateOut)
-def validate_relay_review(body: ReviewValidationIn) -> ReviewStateOut:
+def validate_relay_review(
+    body: ReviewValidationIn, signer: ReviewTokenSigner = Depends(get_review_signer_dep)
+) -> ReviewStateOut:
     decisions = _decisions(body)
     try:
-        review = validate_review(body.validation_context, decisions)
+        review = validate_review(body.validation_token, body.import_id, decisions, signer=signer)
+    except ReviewTokenError as exc:
+        raise _invalid_token(exc) from exc
     except InvalidReviewError as exc:
         # The message is a fixed domain phrase: never the context or any content.
         raise HTTPException(
@@ -191,15 +224,20 @@ def _apply_zone_out(zone) -> ApplyZoneOut:
 
 
 @router.post("/review/apply", response_model=ApplySettingsOut)
-def apply_relay_review(body: ReviewValidationIn) -> ApplySettingsOut:
+def apply_relay_review(
+    body: ReviewValidationIn, signer: ReviewTokenSigner = Depends(get_review_signer_dep)
+) -> ApplySettingsOut:
     """Slice 9 / 10. Stateless and backend-authoritative: the effective reviewed model is
-    re-derived from the original interpretation and the decisions, readiness and the
-    engine adapter are re-run, and the complete zone collection (any number of zones) is
-    returned. Nothing is stored; the browser populates its own Distance Protection analysis
+    re-derived from the original interpretation -- taken only from a validation token that
+    verifies here, whether or not the client validated first (DEC-198 Amendment 5) -- and the
+    decisions, readiness and the engine adapter are re-run, and the complete zone collection
+    (any number of zones) is returned. Nothing is stored; the browser populates its own Distance Protection analysis
     with the result."""
     decisions = _decisions(body)
     try:
-        plan = apply_reviewed_settings(body.validation_context, decisions)
+        plan = apply_reviewed_settings(body.validation_token, body.import_id, decisions, signer=signer)
+    except ReviewTokenError as exc:
+        raise _invalid_token(exc) from exc
     except InvalidReviewError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

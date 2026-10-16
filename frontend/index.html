@@ -55734,7 +55734,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Resolution. Renders the review payload the upload response carried and
         // collects the user's SESSION decisions (confirm an assumption, supply
         // or leave an unresolved one). The decisions live in tab memory only and
-        // are sent, with the original interpretation (`validation_context`), to the
+        // are sent, with the upload's opaque signed `validation_token` and its `import_id`, to the
         // stateless validate endpoint: the backend, not this page, decides counts,
         // blocking issues and readiness. Built with textContent only (document text
         // is never parsed as HTML). There is no Apply / Populate action here and the
@@ -56513,7 +56513,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const state = wwRelayImportState;
             const d = state.decisions;
             return {
-                validation_context: state.review.validation_context,
+                // DEC-198 Amendment 5: opaque to this page -- held and returned unchanged, never parsed or built.
+                validation_token: state.review.validation_token,
+                import_id: state.review.import_id,
                 confirmed: [...d.confirmed],
                 manual: [...d.manual].map(([item_id, value]) => ({ item_id, value })),
                 left_unresolved: [...d.left],

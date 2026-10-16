@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
 
 #: Mapped / To confirm / Confirmed / Unresolved / Resolved manually. Separate from
 #: the interpretation ``status``, which a confirmation never rewrites.
@@ -245,10 +245,12 @@ class ExtractionReviewOut(ReviewStateFieldsOut):
     groups: list[ReviewGroupOut] = []
     not_interpreted: list[ReviewRawSettingOut] = []
     out_of_scope: list[ReviewRawSettingOut] = []
-    #: The original interpretation, for stateless re-validation of the user's
-    #: decisions (see ``POST /api/v1/relay-import/review/validate``). Opaque to
-    #: the browser: it is held in tab memory and sent back unchanged.
-    validation_context: dict | None = None
+    #: DEC-198 Amendment 5. The signed, opaque validation token sealing the original interpretation,
+    #: for stateless re-validation of the user's decisions (see ``POST /api/v1/relay-import/review/validate``
+    #: and ``/review/apply``), and the backend-generated import identity it is bound to. Opaque to the
+    #: browser: held in tab memory and sent back unchanged; never parsed or built by the page.
+    validation_token: str | None = None
+    import_id: str | None = None
     #: DEC-195. The parameter catalog that interpreted the relay and how much of the sheet it accounts for
     #: (counts only; ``None`` when no catalog describes the relay).
     catalog_id: str | None = None
@@ -264,9 +266,15 @@ class ReviewManualResolutionIn(BaseModel):
 
 
 class ReviewValidationIn(BaseModel):
-    """The original interpretation plus the user's session decisions."""
+    """The upload's signed validation token and import identity, plus the user's session decisions.
 
-    validation_context: dict
+    DEC-198 Amendment 5: unknown fields are refused -- a raw ``validation_context`` (the former,
+    unsigned interpretation JSON) is never accepted as authority, not even ignored silently."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    validation_token: str = Field(min_length=1, max_length=4_000_000)
+    import_id: str = Field(min_length=1, max_length=64)
     confirmed: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
     manual: list[ReviewManualResolutionIn] = Field(default=[], max_length=2000)
     left_unresolved: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)

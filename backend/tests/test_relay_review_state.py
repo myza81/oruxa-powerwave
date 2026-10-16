@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -33,6 +34,10 @@ from app.services.relay_interpretation_summary import engine_adaptation
 from app.services.relay_review_validation import InvalidReviewError, validate_review
 from tests.relay_p441_fixtures import make_doc
 from tests.test_relay_import_upload import _p441_pdf
+from app.services.relay_review_token import TOKEN_SCHEMA, ReviewTokenError
+from tests.relay_review_tokens import (
+    TEST_IMPORT_ID, TEST_KNOWLEDGE, TEST_SIGNER, review_ref, sealed_knowledge_for, sign_payload, validate_model,
+)
 
 BACKEND_APP = Path(__file__).resolve().parents[1] / "app"
 REVERSE = "zones[{}].resistive_reach.reverse"
@@ -53,7 +58,7 @@ def client(settings):
 
 
 def _state(model, **decisions):
-    review = validate_review(encode_model(model), ReviewDecisions(**decisions))
+    review = validate_model(model, ReviewDecisions(**decisions))
     return review, {i.item_id: i for g in review.groups for i in g.items if i.item_id and i.primary}
 
 
@@ -291,9 +296,13 @@ class TestSnapshot:
             {"_t": "Sourced", "value": 1.0, "provenance": {"_t": "Provenance", "status": {"_e": "MappingStatus", "v": "mapped"}}},
         ],
     )
-    def test_a_malformed_snapshot_is_rejected(self, bad):
-        with pytest.raises(InvalidReviewError):
-            validate_review(bad, ReviewDecisions())
+    def test_a_malformed_snapshot_is_rejected_even_inside_a_validly_signed_token(self, bad):
+        # DEC-198 Amendment 5: only the backend signs; the strict decoder still guards what a token carries
+        payload = {"schema": TOKEN_SCHEMA, "import_id": TEST_IMPORT_ID, "issued_at": int(time.time()),
+                   "expires_at": int(time.time()) + 60, "knowledge": TEST_KNOWLEDGE, "model": bad}
+        with pytest.raises(ReviewTokenError):
+            validate_review(sign_payload(payload), TEST_IMPORT_ID, ReviewDecisions(), signer=TEST_SIGNER,
+                            knowledge_for=sealed_knowledge_for)
 
     def test_decoding_enforces_domain_invariants(self):
         # an unresolved value carrying an engineering value is not a valid Sourced
@@ -310,15 +319,17 @@ class TestEndpoint:
 
     def test_upload_carries_the_context_and_the_initial_state(self, client):
         review = self._context(client)
-        assert review["validation_context"]["_t"] == "CanonicalDistanceProtectionModel"
+        # DEC-198 Amendment 5: an opaque signed token and its import id -- never the interpretation as JSON
+        assert isinstance(review["validation_token"], str) and review["validation_token"].startswith("v1.")
+        assert len(review["import_id"]) == 32 and "validation_context" not in review
         assert review["readiness"]["status"] == "not_ready" and review["blocking_count"] == 3
         assert all(i["review_status"] in ("mapped", "to_confirm", "unresolved", "assumed") for g in review["groups"] for i in g["items"])
         assert any(i["resolution"] for g in review["groups"] for i in g["items"])
 
     def test_validate_returns_the_reviewed_state(self, client):
-        ctx = self._context(client)["validation_context"]
+        ctx = review_ref(self._context(client))
         body = {
-            "validation_context": ctx,
+            **ctx,
             "confirmed": ["zones[Z1].reach"],
             "manual": [{"item_id": ZP_STATUS, "value": "disabled"}]
             + [{"item_id": REVERSE.format(z), "value": 2.5} for z in ("Z1", "Z2", "Z3")],
@@ -336,7 +347,7 @@ class TestEndpoint:
 
     def test_validate_without_decisions_matches_the_upload_state(self, client):
         review = self._context(client)
-        state = client.post(VALIDATE, json={"validation_context": review["validation_context"]}).json()
+        state = client.post(VALIDATE, json={**review_ref(review)}).json()
         for key in ("mapped_count", "to_confirm_count", "unresolved_count", "blocking_count", "readiness"):
             assert state[key] == review[key], key
 
@@ -349,7 +360,7 @@ class TestEndpoint:
             assert schema.model_fields["blocking_issues"].default == []
 
     def test_every_successful_validation_returns_a_valid_readiness(self, client):
-        ctx = self._context(client)["validation_context"]
+        ctx = review_ref(self._context(client))
         bodies = [
             {},
             {"confirmed": ["zones[Z1].reach"]},
@@ -358,7 +369,7 @@ class TestEndpoint:
             {"manual": [{"item_id": ZP_STATUS, "value": "enabled"}]},
         ]
         for extra in bodies:
-            r = client.post(VALIDATE, json={"validation_context": ctx, **extra})
+            r = client.post(VALIDATE, json={**ctx, **extra})
             assert r.status_code == 200, extra
             readiness = r.json()["readiness"]
             assert readiness["status"] in ("not_ready", "ready_after_confirmation", "ready")
@@ -372,29 +383,28 @@ class TestEndpoint:
             lambda b: b.update(confirmed=["nope"]),
             lambda b: b.update(manual=[{"item_id": REVERSE.format("Z1"), "value": -1}]),
             lambda b: b.update(manual=[{"item_id": REVERSE.format("Z1"), "value": 1}, {"item_id": REVERSE.format("Z1"), "value": 2}]),
-            lambda b: b.update(validation_context={"_t": "nope"}),
         ],
     )
     def test_invalid_decisions_are_a_400_with_a_safe_message(self, client, mutate):
-        body = {"validation_context": self._context(client)["validation_context"]}
+        body = {**review_ref(self._context(client))}
         mutate(body)
         r = client.post(VALIDATE, json=body)
         assert r.status_code == 400 and r.json()["detail"]["code"] == "invalid_review"
         assert "nope" not in r.json()["detail"]["message"]
 
     def test_a_blank_or_boolean_value_is_rejected_before_it_becomes_a_number(self, client):
-        ctx = self._context(client)["validation_context"]
+        ctx = review_ref(self._context(client))
         for value in ("", "2.5", True, None):
-            r = client.post(VALIDATE, json={"validation_context": ctx, "manual": [{"item_id": REVERSE.format("Z1"), "value": value}]})
+            r = client.post(VALIDATE, json={**ctx, "manual": [{"item_id": REVERSE.format("Z1"), "value": value}]})
             assert r.status_code in (400, 422), value
-        ok = client.post(VALIDATE, json={"validation_context": ctx, "manual": [{"item_id": REVERSE.format("Z1"), "value": 0}]})
+        ok = client.post(VALIDATE, json={**ctx, "manual": [{"item_id": REVERSE.format("Z1"), "value": 0}]})
         assert ok.status_code == 200  # an explicit zero is a value
 
     def test_validation_keeps_no_state(self, client, tmp_path):
-        ctx = self._context(client)["validation_context"]
+        ctx = review_ref(self._context(client))
         before = set(vars(client.app.state))
-        first = client.post(VALIDATE, json={"validation_context": ctx, "confirmed": ["zones[Z1].reach"]}).json()
-        second = client.post(VALIDATE, json={"validation_context": ctx}).json()
+        first = client.post(VALIDATE, json={**ctx, "confirmed": ["zones[Z1].reach"]}).json()
+        second = client.post(VALIDATE, json={**ctx}).json()
         assert first["confirmed_count"] == 1 and second["confirmed_count"] == 0  # nothing carried between requests
         assert set(vars(client.app.state)) == before
         assert list(tmp_path.iterdir()) == []

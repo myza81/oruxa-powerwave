@@ -2,17 +2,17 @@
 
 The platform keeps no state between requests, and relay-import data must stay
 ephemeral, so a review cannot be re-validated by looking an interpretation up on
-the server. Instead the upload response carries a *validation context* -- this
-snapshot -- which the browser holds in tab memory and sends back with the user's
-decisions. The backend decodes it, applies the decisions and re-runs the engine
-adapter: validation stays authoritative in the domain and no server session or
-store exists.
+the server. Instead this snapshot travels with the browser -- since DEC-198
+Amendment 5 only *inside* the signed, opaque validation token
+(`app.services.relay_review_token`), never as editable JSON: the backend verifies
+the token's HMAC before decoding anything, applies the decisions and re-runs the
+engine adapter. Validation stays authoritative in the domain and no server
+session or store exists.
 
 The decoder is strict: it only builds the registered canonical dataclasses and
 enums, rejects unknown types and fields, and goes through each class's own
-constructor, so every domain invariant is re-checked. The snapshot is not
-authenticated -- it is the user's own session data, and the next slice that acts
-on it (Apply) must re-derive or re-verify rather than trust it.
+constructor, so every domain invariant is re-checked -- a second guard behind
+the signature, not a substitute for it.
 
 The document-level ``unmapped_settings`` (hundreds of retained raw lines the
 adapter never reads) are left out to keep the snapshot small.

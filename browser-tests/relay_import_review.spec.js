@@ -407,7 +407,7 @@ test("Remove, a new upload and a refresh each discard every decision", async ({ 
     text: JSON.stringify([localStorage, sessionStorage].map((s) => Object.entries(s))) + document.cookie,
     idb: (await indexedDB.databases()).length,
   }));
-  for (const needle of ["zones[", "validation_context", "confirmed", "resolution", "2.5", "P441", "relay"]) {
+  for (const needle of ["zones[", "validation_token", "import_id", "v1.", "confirmed", "resolution", "2.5", "P441", "relay"]) {
     expect(stored.text).not.toContain(needle);
   }
   expect(stored.idb).toBe(0);
@@ -416,14 +416,18 @@ test("Remove, a new upload and a refresh each discard every decision", async ({ 
   await expect(page.locator("#wwRelayReviewBody")).toBeEmpty();
 });
 
-test("the browser asks the backend; it sends the decisions with the original interpretation and stores nothing", async ({ page }) => {
+test("the browser asks the backend; it sends the decisions with the opaque signed token and stores nothing", async ({ page }) => {
   await reviewP441(page);
   const request = page.waitForRequest((r) => r.url().endsWith("/api/v1/relay-import/review/validate"));
   await button(page, "Confirm Zone 1 Reach").click();
   const body = (await request).postDataJSON();
   expect(body.confirmed).toEqual(["zones[Z1].reach"]);
   expect(body.manual).toEqual([]);
-  expect(body.validation_context._t).toBe("CanonicalDistanceProtectionModel");
+  // DEC-198 Amendment 5: the upload's opaque signed token and import id, returned unchanged -- never the interpretation
+  expect(typeof body.validation_token).toBe("string");
+  expect(body.validation_token.startsWith("v1.")).toBe(true);
+  expect(body.import_id).toMatch(/^[0-9a-f]{32}$/);
+  expect(body).not.toHaveProperty("validation_context");
   await expect(chip(page, "zone.Z1.reach")).toHaveText("Confirmed");
 });
 

@@ -111,6 +111,10 @@ class RelayProfileRegistry:
         self._profiles.append(profile)
         self._identifier = None
 
+    def profile(self, profile_id: str) -> RelayProfile | None:
+        """The registered interpretation profile with exactly this id, or None."""
+        return next((p for p in self._profiles if p.profile_id == profile_id), None)
+
     def register_identification_descriptor(self, descriptor: RelayIdentificationDescriptor) -> None:
         if any(d.profile_id == descriptor.profile_id for d in self.identification_descriptors()):
             raise ValueError(f"identification descriptor {descriptor.profile_id!r} already registered")

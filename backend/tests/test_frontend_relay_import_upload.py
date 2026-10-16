@@ -348,10 +348,13 @@ class TestReviewConfirmation:
         for forbidden in ("localStorage", "sessionStorage", "indexedDB", "document.cookie"):
             assert forbidden not in js, forbidden
 
-    def test_validation_is_asked_of_the_backend_with_the_original_context(self):
+    def test_validation_is_asked_of_the_backend_with_the_signed_token(self):
         js = _review_js(_source())
         assert '"/api/v1/relay-import/review/validate"' in js
-        for needle in ("validation_context: state.review.validation_context", "confirmed:", "manual:", "left_unresolved:"):
+        # DEC-198 Amendment 5: the opaque token and import id are returned unchanged; no interpretation JSON
+        assert "validation_context" not in js
+        for needle in ("validation_token: state.review.validation_token", "import_id: state.review.import_id",
+                       "confirmed:", "manual:", "left_unresolved:"):
             assert needle in js, needle
         # the page never computes readiness or counts itself
         assert not re.search(r"readiness\.status\s*=[^=]", js)

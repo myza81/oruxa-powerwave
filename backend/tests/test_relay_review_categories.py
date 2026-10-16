@@ -25,6 +25,7 @@ from app.relay_profiles.micom_p441 import MicomP441Profile
 from app.services.relay_review_validation import InvalidReviewError, validate_review
 from tests.relay_p441_fixtures import make_doc
 from tests.test_relay_import_upload import _p441_pdf
+from tests.relay_review_tokens import review_ref, validate_model
 
 REVERSE = "zones[{}].resistive_reach.reverse"
 ZP_STATUS = "zones[ZP].status"
@@ -44,7 +45,7 @@ def client(settings):
 
 
 def _review(model, **decisions):
-    return validate_review(encode_model(model), ReviewDecisions(**decisions))
+    return validate_model(model, ReviewDecisions(**decisions))
 
 
 def _items(review):
@@ -328,7 +329,7 @@ class TestApi:
         review = self._upload_review(client)
         state = client.post(
             VALIDATE,
-            json={"validation_context": review["validation_context"], "manual": [{"item_id": ZP_STATUS, "value": "enabled"}]},
+            json={**review_ref(review), "manual": [{"item_id": ZP_STATUS, "value": "enabled"}]},
         ).json()
         zp = next(i for i in state["items"] if i["item_id"] == ZP_STATUS)
         assert zp["category"] != "unsupported" and not zp.get("engine_reason")  # a fifth zone is not an engine limit
@@ -340,13 +341,12 @@ class TestApi:
 
     def test_validation_without_decisions_matches_the_upload_categories(self, client):
         review = self._upload_review(client)
-        state = client.post(VALIDATE, json={"validation_context": review["validation_context"]}).json()
+        state = client.post(VALIDATE, json={**review_ref(review)}).json()
         for key in ("assumption_count", "missing_count", "conflict_count", "unsupported_count", "unreadable_count"):
             assert state[key] == review[key], key
 
     def test_confirming_an_engine_limited_value_is_a_400(self, client, model):
         path = "zones[Z1].characteristic.type"
-        r = client.post(VALIDATE, json={"validation_context": encode_model(_with_lenticular(model)), "confirmed": [path]})
-        assert r.status_code == 400
-        assert r.json()["detail"]["code"] == "invalid_review"
-        assert "Only an assumption can be confirmed" in r.json()["detail"]["message"]
+        # a hand-built model cannot be posted any more (DEC-198 Amendment 5): validated as a sealed token
+        with pytest.raises(InvalidReviewError, match="Only an assumption can be confirmed"):
+            validate_model(_with_lenticular(model), ReviewDecisions(confirmed=frozenset({path})))

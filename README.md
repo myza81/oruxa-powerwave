@@ -141,8 +141,18 @@ all of it from the environment. These must be set in the production `.env`:
 | `POWERWAVE_UID` / `POWERWAVE_GID` | Owner of that directory |
 | `CORS_ORIGINS` | Required when `ENVIRONMENT=production` |
 | `API_BASE_URL` | Base URL the browser uses to reach the API |
+| `RELAY_REVIEW_SIGNING_KEY` | Secret that signs relay review validation tokens (HMAC-SHA256, at least 32 characters) |
 
 Deployment fails fast if any of them is missing.
+
+`RELAY_REVIEW_SIGNING_KEY` is also required by **VPS DEV** (any build the deploy
+workflows start sets `APP_VERSION`, and the backend then refuses to start without
+the key). Use a different random value per environment, the same value for every
+backend instance of one environment, and never commit it. Rotating it invalidates
+every open relay review: users upload the setting file again. Relay reviews also
+expire after `RELAY_REVIEW_TOKEN_TTL_HOURS` (default 24). For local development
+the key may be left unset; the backend then uses a random per-process key. See
+DEC-198 Amendment 5 in [DECISIONS.md](docs/project-memory/DECISIONS.md).
 
 ## Configuration
 

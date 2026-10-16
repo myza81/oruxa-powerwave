@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from tests.relay_7sa511_fixtures import FINITE_TIMERS, sheet_pdf
+from tests.relay_review_tokens import review_ref
 
 UPLOAD = "/api/v1/relay-import/upload"
 VALIDATE = "/api/v1/relay-import/review/validate"
@@ -66,7 +67,7 @@ def user_decisions(review, *, timers=True):
             {"item_id": "zones[Z3].common_timer_s", "value": 3},
         ]
     return {
-        "validation_context": review["validation_context"],
+        **review_ref(review),
         "manual": manual,
         "suggested": [f"zones[{z}].resistive_reach.reverse" for z in ("Z1", "Z2", "Z3")],
         "confirmed": assumptions(review),
@@ -169,7 +170,7 @@ class TestUploadAndReview:
 class TestReadinessAndApply:
     def test_apply_is_refused_until_the_backend_says_ready(self, client):
         review = upload(client)["review"]
-        r = client.post(APPLY, json={"validation_context": review["validation_context"]})
+        r = client.post(APPLY, json={**review_ref(review)})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "apply_not_ready"
 
     def test_the_real_blocker_is_zone_state_and_delay_not_a_siemens_rule(self, client):

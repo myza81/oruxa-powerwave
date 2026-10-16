@@ -7,7 +7,7 @@ place.
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 
 DEFAULT_CORS_ORIGINS = ("http://localhost:8101", "http://127.0.0.1:8101")
@@ -28,6 +28,14 @@ DEFAULT_MAX_RELAY_IMPORT_UPLOAD_SIZE_MB = 20
 # Central default only -- deliberately not read from the environment and
 # not user-facing yet (owner direction); change it here.
 DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S = 3600.0
+
+# Relay review integrity (DEC-198 Amendment 5): the upload returns a signed, opaque validation token
+# (HMAC-SHA256 with RELAY_REVIEW_SIGNING_KEY) that validation and Apply verify before trusting the
+# interpretation it carries. A token expires after this many hours (RELAY_REVIEW_TOKEN_TTL_HOURS);
+# the user then uploads the setting file again.
+DEFAULT_RELAY_REVIEW_TOKEN_TTL_HOURS = 24
+# A shorter key is refused: the key is a shared secret, not a password to remember.
+MIN_RELAY_REVIEW_SIGNING_KEY_LENGTH = 32
 
 
 class ConfigurationError(RuntimeError):
@@ -54,10 +62,23 @@ class Settings:
     version: str
     event_reconstruction_large_gap_warning_s: float = DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
     max_relay_import_upload_size_mb: int = DEFAULT_MAX_RELAY_IMPORT_UPLOAD_SIZE_MB
+    # DEC-198 Amendment 5. The shared secret that signs relay review validation tokens; every
+    # instance serving one deployment must use the same value. Never logged, never in a response.
+    # ``None`` only outside a deployment (local development / tests): the application then signs
+    # with a random per-process key (see app.services.relay_review_token.signer_from_settings).
+    relay_review_signing_key: str | None = field(default=None, repr=False)
+    relay_review_token_ttl_hours: int = DEFAULT_RELAY_REVIEW_TOKEN_TTL_HOURS
 
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def is_deployed(self) -> bool:
+        """A deployed build: production, or any build the deploy workflows started (they set
+        APP_VERSION to the deployed commit; it is "local" otherwise). DEV on the VPS runs with
+        ENVIRONMENT=development, so the environment name alone does not say "deployed"."""
+        return self.is_production or self.git_sha != "local"
 
     @property
     def max_event_upload_size_bytes(self) -> int:
@@ -140,6 +161,34 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     git_sha = env.get("APP_VERSION", "").strip() or "local"
     version = git_sha if git_sha == "local" else git_sha[:7]
 
+    # DEC-198 Amendment 5: required in every deployed build (never generated there, so all instances
+    # of a deployment verify each other's tokens); optional for local development and tests. The
+    # value is never echoed in an error.
+    signing_key = env.get("RELAY_REVIEW_SIGNING_KEY", "").strip() or None
+    deployed = environment == "production" or git_sha != "local"
+    if signing_key is None and deployed:
+        raise ConfigurationError(
+            "RELAY_REVIEW_SIGNING_KEY must be set in a deployed environment "
+            f"(a random secret of at least {MIN_RELAY_REVIEW_SIGNING_KEY_LENGTH} characters, the same for every instance)"
+        )
+    if signing_key is not None and len(signing_key) < MIN_RELAY_REVIEW_SIGNING_KEY_LENGTH:
+        raise ConfigurationError(
+            f"RELAY_REVIEW_SIGNING_KEY must be at least {MIN_RELAY_REVIEW_SIGNING_KEY_LENGTH} characters long"
+        )
+
+    raw_ttl = env.get("RELAY_REVIEW_TOKEN_TTL_HOURS", "").strip()
+    if raw_ttl:
+        try:
+            relay_review_token_ttl_hours = int(raw_ttl)
+        except ValueError as exc:
+            raise ConfigurationError(
+                f"RELAY_REVIEW_TOKEN_TTL_HOURS must be an integer, got {raw_ttl!r}"
+            ) from exc
+        if relay_review_token_ttl_hours <= 0:
+            raise ConfigurationError("RELAY_REVIEW_TOKEN_TTL_HOURS must be a positive integer")
+    else:
+        relay_review_token_ttl_hours = DEFAULT_RELAY_REVIEW_TOKEN_TTL_HOURS
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
@@ -150,4 +199,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_relay_import_upload_size_mb=max_relay_import_upload_size_mb,
         git_sha=git_sha,
         version=version,
+        relay_review_signing_key=signing_key,
+        relay_review_token_ttl_hours=relay_review_token_ttl_hours,
     )

@@ -347,11 +347,12 @@ class ExtractionReview:
     not_interpreted: tuple[ReviewRawSetting, ...] = ()
     #: Settings outside Distance Protection, retained so nothing is discarded.
     out_of_scope: tuple[ReviewRawSetting, ...] = ()
-    #: Slice 8. The original interpretation as JSON-safe data. The browser holds it
-    #: in tab memory and returns it with its decisions so the backend can validate
-    #: them without keeping any state (see `canonical_codec`). ``None`` when the
-    #: review is built only to read its state back.
-    validation_context: dict | None = None
+    #: DEC-198 Amendment 5. The signed, opaque validation token sealing the original interpretation,
+    #: and the backend-generated import identity it is bound to. The browser holds both in tab memory
+    #: and returns them with its decisions; the backend verifies the token before trusting anything in
+    #: it (see `relay_review_token`). ``None`` when the review is built only to read its state back.
+    validation_token: str | None = None
+    import_id: str | None = None
     #: DEC-195. The parameter catalog that interpreted this relay, and how much of the sheet it accounts for
     #: (counts only). ``None`` for a relay no catalog describes.
     catalog_id: str | None = None

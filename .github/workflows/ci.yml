@@ -59,6 +59,8 @@ jobs:
           POWERWAVE_UID: "1000"
           POWERWAVE_GID: "1000"
           API_BASE_URL: https://example.invalid
+          # CI-only rendering placeholder (not a secret, never a deployment key).
+          RELAY_REVIEW_SIGNING_KEY: ci-placeholder-not-a-real-relay-review-signing-key
         run: >-
           docker compose -p powerwave-prod
           -f compose.yaml -f compose.prod.yaml config --quiet
@@ -72,6 +74,8 @@ jobs:
           POWERWAVE_UID: "1000"
           POWERWAVE_GID: "1000"
           API_BASE_URL: https://example.invalid
+          # CI-only rendering placeholder (not a secret, never a deployment key).
+          RELAY_REVIEW_SIGNING_KEY: ci-placeholder-not-a-real-relay-review-signing-key
         run: |
           set -euo pipefail
 

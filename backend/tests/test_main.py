@@ -50,7 +50,9 @@ def test_health_reports_ok(settings):
 
 
 def test_health_reports_the_configured_build_provenance(settings):
-    deployed = replace(settings, git_sha="331cca07555c09edd24f09589b59c5cae0aa200b", version="331cca0")
+    # a deployed build must configure the relay review signing key (DEC-198 Amendment 5); test-only value
+    deployed = replace(settings, git_sha="331cca07555c09edd24f09589b59c5cae0aa200b", version="331cca0",
+                       relay_review_signing_key="test-only-relay-review-signing-key-0123456789")
     with TestClient(create_app(deployed)) as client:
         response = client.get("/health")
 

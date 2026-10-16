@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.domain.relay_import.canonical_codec import decode_model
 from app.domain.relay_import.provenance import UnresolvedCause
 from app.domain.relay_import.review_state import (
     MANUAL_NOT_OFFERED,
@@ -21,6 +20,7 @@ from app.domain.relay_import.review_state import (
     apply_review,
     manual_entry_spec,
 )
+from app.services.relay_review_token import current_relay_knowledge
 from app.services.relay_review_validation import InvalidReviewError, manual_entry_paths, validate_review
 from tests import relay_family_fixtures as F
 from tests.test_relay_import_upload import _p441_pdf
@@ -143,9 +143,14 @@ class TestLegitimateManualWorkflows:
         assert r.status_code == 200
 
 
+def _verified(client, review: dict):
+    """The server's interpretation as the upload's own signed token carries it (verified as the server does)."""
+    return client.app.state.relay_review_signer.verify(
+        review["validation_token"], import_id=review["import_id"], knowledge_for=current_relay_knowledge)
+
+
 def _model(client, pdf: bytes):
-    """The server's interpretation of ``pdf``, as the review's own validation context carries it."""
-    return decode_model(upload(client, pdf)["review"]["validation_context"])
+    return _verified(client, upload(client, pdf)["review"])
 
 
 class TestEveryOfferedEntryAndNothingElse:
@@ -158,20 +163,24 @@ class TestEveryOfferedEntryAndNothingElse:
                "grz100": F.grz100_pdf, "grl200": F.grl200_pdf, "rcs941": F.rcs941_pdf, "lfzp111": F.lfzp_pdf,
                "relz100": F.relz100_pdf}[name]()
         review = upload(client, pdf)["review"]
-        context = review["validation_context"]
-        original = decode_model(context)
+        original = _verified(client, review)
+        signer = client.app.state.relay_review_signer
+
+        def validate(decisions):
+            return validate_review(review["validation_token"], review["import_id"], decisions, signer=signer)
+
         shown = {i["item_id"]: i for g in review["groups"] for i in g["items"] if i["item_id"] and i["primary"]}
         offered = {p for p, i in shown.items() if i["resolution"] is not None}
         assert offered == manual_entry_paths(original)                        # the server review is the authority
         for path in sorted(offered):
             res = shown[path]["resolution"]
             value = res["options"][0][0] if res["kind"] == "choice" else 1.0
-            validate_review(context, ReviewDecisions(manual={path: value}))   # accepted
+            validate(ReviewDecisions(manual={path: value}))                   # accepted
         for path, _ in original.iter_sourced():
             if path in offered:
                 continue
             with pytest.raises(InvalidReviewError, match=MANUAL_NOT_OFFERED):
-                validate_review(context, ReviewDecisions(manual={path: 1.0}))
+                validate(ReviewDecisions(manual={path: 1.0}))
 
 
 class TestDomainRule:

@@ -22,6 +22,7 @@ from app.services.relay_review_validation import reviewed_state
 from tests.relay_p441_fixtures import make_doc
 from tests.test_relay_import_upload import _p441_pdf
 from tests.test_relay_review_state import REVERSE, UPLOAD, VALIDATE
+from tests.relay_review_tokens import review_ref
 
 APPLY = "/api/v1/relay-import/review/apply"
 Z123 = ("Z1", "Z2", "Z3")
@@ -50,7 +51,7 @@ def _assumptions(review):
 
 
 def _ready_body(review, *, left="suggested"):
-    body = {"validation_context": review["validation_context"], "confirmed": _assumptions(review)}
+    body = {**review_ref(review), "confirmed": _assumptions(review)}
     paths = [REVERSE.format(z) for z in Z123]
     if left == "suggested":
         body["suggested"] = paths
@@ -61,7 +62,7 @@ def _ready_body(review, *, left="suggested"):
 
 class TestReadinessGate:
     def test_not_ready_is_rejected_with_no_payload(self, client, review):
-        r = client.post(APPLY, json={"validation_context": review["validation_context"]})
+        r = client.post(APPLY, json={**review_ref(review)})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "apply_not_ready"
         assert set(r.json()) == {"detail"}
 
@@ -83,11 +84,12 @@ class TestReadinessGate:
         assert [z["id"] for z in out["zones"]] == ["Z1", "Z2", "Z3", "Z4", "ZP"]
         assert [z["display_name"] for z in out["zones"]] == ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone P"]
 
-    def test_an_undecodable_context_is_refused(self, client, review):
-        ctx = dict(review["validation_context"])
-        ctx["zones"] = "garbage"
-        r = client.post(APPLY, json={"validation_context": ctx})
-        assert r.status_code == 400 and r.json()["detail"]["code"] == "invalid_review"
+    def test_a_tampered_token_is_refused(self, client, review):
+        ref = review_ref(review)
+        token = ref["validation_token"]
+        ref["validation_token"] = token[:-5] + ("A" if token[-5] != "A" else "B") + token[-4:]
+        r = client.post(APPLY, json=ref)
+        assert r.status_code == 400 and r.json()["detail"]["code"] == "invalid_review_token"
 
 
 class TestPayload:
@@ -128,7 +130,8 @@ class TestPayload:
     def test_payload_equals_the_adapter_engine_input(self, client, review):
         body = _ready_body(review)
         decisions = ReviewDecisions(confirmed=frozenset(body["confirmed"]), suggested=frozenset(body["suggested"]))
-        _, adaptation, _ = reviewed_state(review["validation_context"], decisions)
+        _, adaptation, _ = reviewed_state(review["validation_token"], review["import_id"], decisions,
+                                          signer=client.app.state.relay_review_signer)
         out = client.post(APPLY, json=body).json()
         assert [z["id"] for z in out["zones"]] == list(adaptation.zone_ids)
         for z, engine in zip(out["zones"], adaptation.zones):

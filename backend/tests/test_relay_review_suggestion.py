@@ -25,6 +25,7 @@ from app.relay_profiles.micom_p441 import MicomP441Profile
 from tests.relay_p441_fixtures import make_doc
 from tests.test_relay_import_upload import _p441_pdf
 from tests.test_relay_review_state import REVERSE, UPLOAD, VALIDATE, ZP_STATUS, _pending, _state
+from tests.relay_review_tokens import review_ref
 
 Z123 = ("Z1", "Z2", "Z3")
 
@@ -156,9 +157,9 @@ class TestSummaryCounts:
         assert review.missing_count + review.unsupported_count > 0
 
     def test_the_validate_endpoint_reports_suggested_count(self, client):
-        ctx = TestEndpoint()._context(client)["validation_context"]
+        ctx = review_ref(TestEndpoint()._context(client))
         body = {
-            "validation_context": ctx,
+            **ctx,
             "manual": [{"item_id": ZP_STATUS, "value": "disabled"}],
             "suggested": [REVERSE.format(z) for z in Z123],
         }
@@ -200,9 +201,9 @@ class TestEndpoint:
         assert item["category"] == "missing" and item["resolution_origin"] is None
 
     def test_validate_accepts_a_suggestion_and_reports_its_origin(self, client):
-        ctx = self._context(client)["validation_context"]
+        ctx = review_ref(self._context(client))
         body = {
-            "validation_context": ctx,
+            **ctx,
             "manual": [{"item_id": ZP_STATUS, "value": "disabled"}],
             "suggested": [REVERSE.format(z) for z in Z123],
         }
@@ -215,6 +216,6 @@ class TestEndpoint:
         assert items[ZP_STATUS]["resolution_origin"] == "manual"
 
     def test_validate_refuses_a_suggestion_for_another_item(self, client):
-        ctx = self._context(client)["validation_context"]
-        r = client.post(VALIDATE, json={"validation_context": ctx, "suggested": [ZP_STATUS]})
+        ctx = review_ref(self._context(client))
+        r = client.post(VALIDATE, json={**ctx, "suggested": [ZP_STATUS]})
         assert r.status_code == 400 and r.json()["detail"]["code"] == "invalid_review"

@@ -872,7 +872,9 @@ sample, document-level unmapped settings omitted), returned inside the upload
 `review` and held in tab memory. The decoder builds only registered canonical
 dataclasses/enums through their own constructors, so every domain invariant is
 re-checked. It is **not authenticated** (the user's own session data): Slice 9
-must re-derive or re-verify before acting on it. Item ids are canonical paths
+must re-derive or re-verify before acting on it. *(Superseded by DEC-198 Amendment 5 -- see "Signed validation
+token" below: the snapshot now travels only inside a signed, opaque `validation_token` bound to an `import_id`;
+the request takes those two fields and refuses a raw `validation_context`.)* Item ids are canonical paths
 (`zones[Z1].resistive_reach.reverse`) -- relay-neutral, no P441 logic.
 
 ### UI
@@ -1567,8 +1569,8 @@ that review; clients cannot convert Unsupported or Unverified engineering semant
 
 ```text
 review generation      build_extraction_review -> item.resolution = manual_entry_spec(path, sourced)   (domain rule)
-validate / Apply       reviewed_state(context, decisions)
-                         original = decode_model(context)
+validate / Apply       reviewed_state(token, import_id, decisions, signer)
+                         original = signer.verify(token, import_id, current relay knowledge)   (Amendment 5)
                          offered  = manual_entry_paths(original)      (the server review of the original, no decisions)
                          apply_review(original, decisions, offered_manual=offered)
                            manual path not offered -> 400 invalid_review
@@ -1592,10 +1594,35 @@ refuses the whole request. Decisions are judged against the interpretation they 
 import is refused unless that review offers the same entry; superseded / removed imports are handled by the browser (the
 server keeps no import state).
 
-`[OPEN]` -- the validation context itself is not authenticated (`canonical_codec`): a crafted client can edit it (e.g. turn
-an unsupported cause into missing, or plant a resolved value) and bypass any rule that trusts it. `[PROPOSAL]` sign the
-context server-side (HMAC + issued-at / import id, configured secret) -- needs an owner decision (secrets management,
-multi-instance key, API contract). See DECISIONS.md, DEC-198 Amendment 4.
+~~`[OPEN]` -- the validation context itself is not authenticated~~ -- **closed by DEC-198 Amendment 5** (below).
+
+### Signed validation token (DEC-198 Amendment 5)
+
+**Signed validation tokens provide integrity, expiry and import binding while preserving stateless backend operation. They do
+not provide immediate revocation of an already issued token after browser-side Remove or supersession; that would require
+server-side state.**
+
+```text
+upload     model + relay knowledge --> token = "v1." + b64url(zlib(canonical JSON payload)) + "." + b64url(HMAC-SHA256(key, "v1." + body))
+           payload: schema "oruxa.relay-review-token/1", import_id (uuid4, backend-generated), issued_at, expires_at,
+                    knowledge {profile_id, profile_version, catalog {id, version, semantic digest}}, model (canonical snapshot)
+           response review: validation_token + import_id (no validation_context)
+validate   verify: format -> HMAC (constant time, canonical base64, before decompressing) -> schema -> issued_at / expiry
+Apply        -> import_id matches the request -> knowledge == the service's current knowledge for that profile
+             -> decode snapshot (strict) -> manual-resolution authority (Amendment 4) -> decisions -> readiness / plan
+           any failure -> 400 invalid_review_token "This relay review is no longer valid. Please upload the setting file again."
+```
+
+| Item | Rule |
+|---|---|
+| Key | `RELAY_REVIEW_SIGNING_KEY` (≥ 32 characters), from the environment / host `.env`; required when `ENVIRONMENT=production` or `APP_VERSION` is set (every deployed build, VPS DEV included) -- the backend refuses to start without it; one value per environment, shared by every instance of it; never committed, never logged or returned. Local development / tests without a key: a random per-process key (tokens do not survive a restart). |
+| Lifetime | `RELAY_REVIEW_TOKEN_TTL_HOURS`, default 24; an expired token -> re-upload. 300 s clock skew tolerated for `issued_at`. |
+| Rotation | Changing the key invalidates every open review (users re-upload); there is no key ring. |
+| Import binding | The request's `import_id` must equal the token's: token A cannot be used with import B (and the reverse). |
+| Relay knowledge | A token made with another profile version, catalog version or catalog semantic digest (or a profile that no longer exists) is refused: a changed catalog never silently re-reads an earlier review. |
+| No unsigned fallback | `ReviewValidationIn` forbids unknown fields: a body with `validation_context` is a 422, with or without a token. |
+| Browser | Holds `validation_token` / `import_id` from the upload and returns them unchanged; no crypto, no parsing (`wwRrPayload`). Remove / new-import ownership unchanged (`d032dcd`, `9ceb7a6`). |
+| Not provided | Revocation: after a browser Remove or a newer upload, the earlier token stays valid until it expires (tested as such). The token is signed, not encrypted: its payload is readable, and holds only the interpretation the review already shows. |
 
 ### Recommended next slices (not started)
 
@@ -1605,7 +1632,7 @@ multi-instance key, API contract). See DECISIONS.md, DEC-198 Amendment 4.
    ~~7SL87 characteristic / delay assignment / R convention~~ -- done (Amendment 3). Still open for 7SL87: the real Z1-Z3
    delays (source data), the Siemens polygon / directional evidence (6.6.9.1, Fig. 6-102) for the left boundary, the load-cutout
    shape (Fig. 6-106), then candidate A7 for owner approval. ~~Generic: refuse a manual value where the review offers none~~ -- done
-   (Amendment 4). Still open (generic): authenticate the validation context (owner decision).
+   (Amendment 4). ~~Still open (generic): authenticate the validation context~~ -- done (Amendment 5).
 2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
 3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.

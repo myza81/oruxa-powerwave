@@ -17,10 +17,9 @@ check and does not change the model.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
-from app.domain.relay_import.canonical_codec import encode_model
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel, SettingBasis
 from app.domain.relay_import.engine_adapter import EngineAdaptation, adapt_to_engine
 from app.domain.relay_import.defeated_zone import infer_defeated_zones
@@ -29,6 +28,7 @@ from app.domain.relay_import.profile import RelayProfileRegistry
 from app.domain.relay_import.provenance import MappingStatus
 from app.domain.relay_import.raw_document import RawRelayDocument
 from app.services.relay_extraction_review import ExtractionReview, build_extraction_review
+from app.services.relay_review_token import relay_knowledge
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,10 @@ class RelayInterpretationSummary:
     catalog_id: str | None = None
     catalog_version: str | None = None
     catalog_coverage: dict | None = None
+    #: DEC-198 Amendment 5. The reviewed interpretation and the relay knowledge it was made with, kept
+    #: only so the upload can seal them into the signed validation token; never serialised as such.
+    model: CanonicalDistanceProtectionModel | None = field(default=None, repr=False, compare=False)
+    knowledge: dict | None = field(default=None, repr=False, compare=False)
 
 
 def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int, int]:
@@ -140,10 +144,11 @@ def summarize_interpretation(
     if model.zones:
         try:
             review = build_extraction_review(model, document, adaptation, not_interpreted=not_interpreted)
-            # Slice 8: the original interpretation travels with the review so the
-            # backend can re-validate the user's decisions without keeping state.
+            # Slice 8 / DEC-198 Amendment 5: the original interpretation travels with the review --
+            # sealed in a signed validation token the upload issues -- so the backend can re-validate the
+            # user's decisions without keeping state.
             review = replace(
-                review, validation_context=encode_model(model),
+                review,
                 catalog_id=coverage.catalog_id if coverage else None,
                 catalog_version=coverage.catalog_version if coverage else None,
                 catalog_coverage=coverage.as_dict() if coverage else None,
@@ -164,4 +169,6 @@ def summarize_interpretation(
         catalog_id=coverage.catalog_id if coverage else None,
         catalog_version=coverage.catalog_version if coverage else None,
         catalog_coverage=coverage.as_dict() if coverage else None,
+        model=model if review is not None else None,
+        knowledge=relay_knowledge(profile) if review is not None else None,
     )

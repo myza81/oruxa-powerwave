@@ -20,6 +20,7 @@ from app.domain.parameter_catalog.loader import CATALOG_ROOT, REGISTRY_FILE, loa
 from app.main import create_app
 from app.relay_profiles.identification_catalogue import build_registry
 from tests.relay_pdf_fixtures import build_pdf, rows_page
+from tests.relay_review_tokens import review_ref
 
 UPLOAD = "/api/v1/relay-import/upload"
 VALIDATE = "/api/v1/relay-import/review/validate"
@@ -166,7 +167,7 @@ class TestANewRelayNeedsOnlyAJsonCatalog:
         review = upload(client, acme_pdf())["review"]
         confirm = [i["item_id"] for g in review["groups"] for i in g["items"]
                    if i["item_id"] and i["primary"] and i["review_status"] == "to_confirm" and i["category"] == "assumption"]
-        body = {"validation_context": review["validation_context"], "confirmed": confirm}
+        body = {**review_ref(review), "confirmed": confirm}
         state = client.post(VALIDATE, json=body).json()
         assert state["readiness"]["status"] == "ready", state["blocking_issues"]
         out = client.post(APPLY, json=body).json()

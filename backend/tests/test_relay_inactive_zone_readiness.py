@@ -32,6 +32,7 @@ from app.services.relay_review_validation import validate_review
 from tests.relay_p441_fixtures import make_doc
 from tests.test_relay_import_upload import _p441_pdf
 from tests.test_relay_review_state import REVERSE, UPLOAD, VALIDATE, ZP_STATUS
+from tests.relay_review_tokens import review_ref, validate_model
 
 #: Every Zone P-specific code (the Z2/Zp tilt is shared with Zone 2 and stays).
 ZP_CODES = ("301D", "301E", "301F", "3020", "3021", "3022", "3023")
@@ -58,7 +59,7 @@ def client(settings):
 
 
 def _review(model, **decisions):
-    review = validate_review(encode_model(model), ReviewDecisions(**decisions))
+    review = validate_model(model, ReviewDecisions(**decisions))
     return review, {i.item_id: i for g in review.groups for i in g.items if i.item_id and i.primary}
 
 
@@ -312,17 +313,17 @@ class TestApi:
         assert not items[ZP_STATUS]["blocking"]
 
     def test_validate_reports_the_flag_and_refuses_a_suggestion_for_it(self, client):
-        ctx = self._upload(client)["validation_context"]
-        ok = client.post(VALIDATE, json={"validation_context": ctx}).json()
+        ctx = review_ref(self._upload(client))
+        ok = client.post(VALIDATE, json={**ctx}).json()
         z4 = next(i for i in ok["items"] if i["item_id"] == REVERSE.format("Z4"))
         assert z4["not_required"] and not z4["blocking"]
-        bad = client.post(VALIDATE, json={"validation_context": ctx, "suggested": [REVERSE.format("Z4")]})
+        bad = client.post(VALIDATE, json={**ctx, "suggested": [REVERSE.format("Z4")]})
         assert bad.status_code == 400 and bad.json()["detail"]["code"] == "invalid_review"
 
     def test_a_manually_disabled_zone_p_makes_its_values_not_required(self, client):
-        ctx = self._upload(client)["validation_context"]
+        ctx = review_ref(self._upload(client))
         state = client.post(
-            VALIDATE, json={"validation_context": ctx, "manual": [{"item_id": ZP_STATUS, "value": "disabled"}]}
+            VALIDATE, json={**ctx, "manual": [{"item_id": ZP_STATUS, "value": "disabled"}]}
         ).json()
         zp = {i["item_id"]: i for i in state["items"]}
         assert zp[ZP_STATUS]["review_status"] == "resolved_manually" and not zp[ZP_STATUS]["not_required"]
