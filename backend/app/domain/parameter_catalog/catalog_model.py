@@ -332,6 +332,28 @@ class Applicability:
 
 
 @dataclass(frozen=True)
+class BoundarySpec:
+    """DEC-199 Phase 2A: a canonical zone boundary the catalog derives from settings, evaluated in SHADOW mode only
+    (never part of the canonical model, a review or readiness). Phase 2A: ``kind`` "resistive" -- an inclined
+    resistive edge ``R(X) = r_at_axis + X * cot(angle_deg)`` (`app.domain.distance_boundaries`)."""
+
+    id: str
+    zones: tuple[str, ...]
+    kind: str
+    side: str                                         # right | left
+    frame: str                                        # zone | absolute
+    r_at_axis: Selector
+    r_sign: float                                     # +1 or -1: r_at_axis = sign * the source value
+    angle_deg: Selector
+    gates: tuple[Gate, ...] = ()
+    fidelity: str = "documented"                      # exact | documented
+    references: tuple[str, ...] = ()
+    equation: str = ""
+    #: The canonical value the boundary represents, templated (e.g. ``zones[{zone}].resistive_reach.phase_phase``).
+    canonical: str | None = None
+
+
+@dataclass(frozen=True)
 class Catalog:
     catalog_id: str
     version: str
@@ -352,6 +374,8 @@ class Catalog:
     zone_preserved: tuple[PreservedSettings, ...] = ()
     #: DEC-198: the authoritative references the mappings cite, by id.
     references: tuple[Reference, ...] = ()
+    #: DEC-199 Phase 2A: canonical boundaries evaluated in shadow mode only.
+    boundaries: tuple[BoundarySpec, ...] = ()
     #: The canonical registry version the catalog was validated against.
     registry_version: str = ""
     #: ``catalog_id@version`` -- what an import records as the interpretation's origin.

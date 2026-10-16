@@ -34,6 +34,7 @@ from app.domain.parameter_catalog.catalog_model import (
     VALUE_SOURCE_PRECEDENCE,
     VALUE_SOURCES,
     Applicability,
+    BoundarySpec,
     Catalog,
     ConditionalText,
     DistanceScope,
@@ -67,7 +68,7 @@ _FAMILY_VARS = {"n"}
 
 _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "applicability", "profile_id",
              "identification", "zones", "distance_scope", "mappings", "registry_version", "interpretation_notes",
-             "source_notes", "zone_preserved", "references"}
+             "source_notes", "zone_preserved", "references", "boundaries"}
 _NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
 _NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
 _NOTE_SUBJECTS = ("timer", "status")
@@ -177,6 +178,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
     note_rules = _source_notes(v, data.get("source_notes"))
     preserved = _zone_preserved(v, data.get("zone_preserved"), zones)
     references = _references(v, data.get("references"))
+    boundaries = _boundaries(v, data.get("boundaries"), zones, references)
 
     raw_mappings = data.get("mappings")
     mappings: list[Mapping] = []
@@ -197,7 +199,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
         catalog_id=catalog_id, version=version, lifecycle=lifecycle, applicability=applicability, profile_id=profile_id,
         mappings=tuple(_with_stage(m) for m in mappings), zones=zones, identification=identification,
         distance_scope=scope, description=str(data.get("description") or ""), notes=tuple(notes),
-        source_notes=note_rules, zone_preserved=preserved, references=references,
+        source_notes=note_rules, zone_preserved=preserved, references=references, boundaries=boundaries,
         registry_version=registry_version or registry.version,
         source_path=source_path,
     )
@@ -357,6 +359,74 @@ def _source_notes(v: _Validator, raw: Any) -> tuple[ZoneNoteRule, ...]:
         if ok:
             rules.append(ZoneNoteRule(item["pattern"], zone_id, tuple(overrides.items()), tuple(subjects)))
     return tuple(rules)
+
+
+_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "frame", "r_at_axis", "angle_deg", "requires", "fidelity", "references",
+                  "equation", "canonical"}
+
+
+def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tuple[Reference, ...]) -> tuple[BoundarySpec, ...]:
+    """DEC-199 Phase 2A: shadow canonical boundaries (``kind`` "resistive" only)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        v.add("boundaries", IssueCode.MALFORMED, "boundaries must be a list")
+        return ()
+    known = {r.id: r for r in references}
+    out: list[BoundarySpec] = []
+    seen: set[str] = set()
+    for k, item in enumerate(raw):
+        path = f"boundaries[{k}]"
+        if not isinstance(item, dict):
+            v.add(path, IssueCode.MALFORMED, "a boundary must be an object")
+            continue
+        v.keys(item, _BOUNDARY_KEYS, path)
+        ok = True
+        bid = item.get("id")
+        if not isinstance(bid, str) or not bid or bid in seen:
+            v.add(f"{path}.id", IssueCode.DUPLICATE if bid in seen else IssueCode.MALFORMED, "a boundary needs a unique id")
+            ok = False
+        seen.add(bid)
+        targets = _zone_targets(v, item.get("zone"), path, zones)
+        for key, allowed in (("kind", ("resistive",)), ("side", ("right", "left")), ("frame", ("zone", "absolute")),
+                             ("fidelity", ("exact", "documented"))):
+            if item.get(key, "documented" if key == "fidelity" else None) not in allowed:
+                v.add(f"{path}.{key}", IssueCode.MALFORMED, f"{key} must be one of {list(allowed)}")
+                ok = False
+        r = item.get("r_at_axis")
+        if not isinstance(r, dict) or set(r) - {"source", "sign"} or r.get("sign", 1) not in (1, -1):
+            v.add(f"{path}.r_at_axis", IssueCode.MALFORMED, "r_at_axis needs a source and an optional sign of 1 or -1")
+            ok = False
+            r = {}
+        a = item.get("angle_deg")
+        if not isinstance(a, dict) or set(a) != {"source"}:
+            v.add(f"{path}.angle_deg", IssueCode.MALFORMED, "angle_deg needs a source")
+            ok = False
+            a = {}
+        r_sel = _selector(v, {**r["source"], "type": "number"}, f"{path}.r_at_axis.source", _ZONE_VARS, zones, True, None)             if isinstance(r.get("source"), dict) else None
+        a_sel = _selector(v, {**a["source"], "type": "number"}, f"{path}.angle_deg.source", _ZONE_VARS, zones, True, None)             if isinstance(a.get("source"), dict) else None
+        if r_sel is None or a_sel is None or r_sel.unit != "ohm" or a_sel.unit != "deg":
+            v.add(path, IssueCode.INVALID_SELECTOR, "r_at_axis must read ohms and angle_deg degrees")
+            ok = False
+        gates = _gates(v, item.get("requires"), path, _ZONE_VARS, zones, True, None)
+        cited = item.get("references", [])
+        if not isinstance(cited, list) or any(c not in known for c in cited):
+            v.add(f"{path}.references", IssueCode.MALFORMED, "references must name references of this catalog")
+            ok, cited = False, []
+        if item.get("fidelity", "documented") == "documented" and not any(known[c].verification == "verified" for c in cited):
+            v.add(f"{path}.references", IssueCode.UNVERIFIED_REFERENCE, "a documented boundary must cite a verified reference")
+            ok = False
+        if not isinstance(item.get("equation", ""), str) or not item.get("equation"):
+            v.add(f"{path}.equation", IssueCode.MISSING_METADATA, "a boundary states its equation")
+            ok = False
+        if ok and targets:
+            out.append(BoundarySpec(
+                id=bid, zones=targets, kind=item["kind"], side=item["side"], frame=item["frame"], r_at_axis=r_sel,
+                r_sign=float(r.get("sign", 1)), angle_deg=a_sel, gates=tuple(gates),
+                fidelity=item.get("fidelity", "documented"), references=tuple(cited), equation=item["equation"],
+                canonical=item.get("canonical"),
+            ))
+    return tuple(out)
 
 
 def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[PreservedSettings, ...]:

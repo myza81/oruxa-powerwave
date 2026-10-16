@@ -55,6 +55,7 @@ from app.domain.distance_geometry import TOLERANCE_OHM
 from app.domain.distance_geometry_compat import compile_v1_zone
 from tests.relay_api_helpers import client  # noqa: F401
 from tests.relay_conformance.golden import grid_points, v1_golden, zone_settings
+from tests.relay_conformance.shadow_golden import shadow_golden
 from tests.relay_conformance.sheet_spec import load_spec, note_lines, sheet_ids, sheet_lines, sheet_pdf
 
 #: Deviations the suite reports but Phase 0 does not fix (tests/relay_conformance/known_findings.json).
@@ -263,6 +264,62 @@ def test_the_v2_kernel_reproduces_the_v1_golden(name):
     if not EXPECTATIONS[name]["golden"]["zones"] and not EXPECTATIONS[name]["golden"]["not_drawn"]:
         pytest.skip("V1 draws no zone for this sample (Apply is refused)")
     compare_v2_with_golden(EXPECTATIONS[name])
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Shadow canonical boundaries (DEC-199 Phase 2A): OEM geometry V1 cannot draw, against independent engineering goldens
+# ---------------------------------------------------------------------------------------------------------------------
+
+SHADOW = sorted(n for n, e in EXPECTATIONS.items() if e.get("shadow_geometry"))
+
+
+def shadow_zones(expectation: dict, pdf: bytes) -> dict:
+    """The live shadow boundaries of a sample, assembled with the V2 kernel (absolute frame), by zone."""
+    from app.domain.distance_boundaries import assemble_zone
+
+    catalog = default_store().get(expectation["identity"]["catalog_id"])
+    run = CatalogInterpreter(catalog, canonical_registry()).shadow_boundaries(extract_pdf(pdf).document)
+    out = {}
+    for zone_id, z in expectation["shadow_geometry"]["zones"].items():
+        if z.get("shadow_geometry") == "exact":
+            edges = tuple(b for b in run.boundaries if b.zone_id == zone_id)
+            out[zone_id] = (edges, assemble_zone(zone_id, x_reach_ohm=z["top"]["x_reach_ohm"], direction=z["direction"], boundaries=edges))
+    return out
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTATIONS))
+def test_the_shadow_golden_is_the_documented_equation(name):
+    """The stored engineering golden is R(X) = r_at_axis + X / tan(angle) of the recorded boundary (never V2)."""
+    assert EXPECTATIONS[name].get("shadow_golden") == shadow_golden(EXPECTATIONS[name].get("shadow_geometry"))
+
+
+@pytest.mark.parametrize("name", SHADOW)
+def test_the_shadow_v2_geometry_reproduces_the_engineering_golden(name):
+    e = EXPECTATIONS[name]
+    pdf = sample_pdf(e["sample"])
+    if pdf is None:
+        pytest.skip("owner sample PDFs are not committed; set RELAY_SAMPLE_PDF_DIR to run")
+    assembled = shadow_zones(e, pdf)
+    assert set(assembled) == set(e["shadow_golden"])
+    for zone_id, golden in e["shadow_golden"].items():
+        edges, zone = assembled[zone_id]
+        planes = {b.side.value: b.half_plane(golden["direction"]) for b in edges}
+        for x, r_right, r_left in golden["edge_points"]:               # every golden edge point lies on the V2 edge
+            assert abs(planes["right"].signed_distance(r_right, x)) <= TOLERANCE_OHM, (zone_id, x, "right")
+            assert abs(planes["left"].signed_distance(r_left, x)) <= TOLERANCE_OHM, (zone_id, x, "left")
+        for r, x, inside in golden["probes"]:
+            assert zone.characteristic.contains(r, x) is bool(inside), (zone_id, r, x)
+
+
+@pytest.mark.parametrize("name", SHADOW)
+def test_the_production_engine_still_holds_no_inclined_edge(name):
+    """Shadow geometry never changes production: V1 keeps an inclined edge unresolved (Not yet supported)."""
+    e = EXPECTATIONS[name]
+    for zone_id, z in e["shadow_geometry"]["zones"].items():
+        for side, b in z["edges"].items():
+            if b["angle_deg"] != 90.0:
+                assert e["values"].get(b["canonical_path"], [None, "unsupported"]) == [None, "unsupported"], (zone_id, side)
+        assert z["production_geometry"] != "exact", zone_id
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTATIONS))

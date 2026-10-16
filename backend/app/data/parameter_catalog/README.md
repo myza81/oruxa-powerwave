@@ -175,3 +175,14 @@ Not covered here: 7SA511 (paused pending verified source data), any administrato
 A catalog ships with its synthetic sheet (`backend/tests/relay_conformance/sheets/<id>.json`) and expectation
 (`backend/tests/relay_conformance/expectations/<id>.json`); the generic conformance suite tests it with no relay-specific
 test code. See `backend/tests/relay_conformance/README.md`.
+
+## Shadow canonical boundaries (DEC-199 Phase 2A)
+
+An optional `boundaries` section derives canonical zone boundaries from settings for the V2 geometry kernel, in
+**shadow mode only** (`CatalogInterpreter.shadow_boundaries()`; never part of the canonical model, a review or readiness;
+nothing consumed). Phase 2A supports `kind: "resistive"`:
+`{"id", "zone", "kind": "resistive", "side": "right" | "left", "frame": "zone" | "absolute",
+"r_at_axis": {"source": <selector, ohm>, "sign": 1 | -1}, "angle_deg": {"source": <selector, deg>}, "requires": [gates],
+"fidelity": "exact" | "documented", "references": [verified ids], "equation", "canonical": "zones[{zone}].<path>"}`.
+The edge is `R(X) = r_at_axis + X * cot(angle_deg)`; `right` keeps `R <= R(X)`, `left` keeps `R >= R(X)`
+(`app/domain/distance_boundaries.py`). The section counts in the catalog digest only when present.

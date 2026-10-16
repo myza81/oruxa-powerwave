@@ -92,3 +92,21 @@ The suite then checks, for every relay and without relay code:
   tokens refused;
 - **mutations:** blank and malformed cells never becoming values, note edits changing no configured value, a disabled
   zone dropping its blockers, harmless and geometry-affecting preserved values behaving as the catalog declares.
+
+## Shadow canonical boundaries (DEC-199 Phase 2A)
+
+For a catalog with a `boundaries` section the expectation also records `shadow_geometry`. Per zone it holds:
+- `production_geometry` -- the V1 classification, which shadow evidence never changes;
+- `shadow_geometry` -- `exact` or `not_assembled` with a reason;
+- the edges with provenance;
+- the top;
+- `represented` / `not_represented`.
+
+It also records `shadow_golden`: independent engineering values from `shadow_golden.py` -- `R(X) = r_at_axis +
+X / tan(angle)` at 0 / 0.25 / 0.5 / 1.0 x the X reach, plus inside / outside probes -- never computed by V2.
+
+The suite checks that:
+- each golden equals the documented equation;
+- the V2 edges pass through every golden edge point;
+- the V2 region classifies every probe as stated;
+- V1 still holds no value for an inclined edge.

@@ -35,6 +35,13 @@ from app.domain.parameter_catalog.catalog_model import (
     Selector,
 )
 from app.domain.parameter_catalog.registry import ENUM_TYPES, CanonicalParameter, CanonicalRegistry
+from app.domain.distance_boundaries import (
+    BoundaryFrame,
+    BoundaryProvenance,
+    BoundarySide,
+    BoundarySource,
+    ResistiveBoundary,
+)
 from app.domain.parameter_catalog.transforms import PRIMITIVES, TransformError, expected_unit, fmt, norm_text
 from app.domain.parameter_catalog.units import conversion_factor, printed_matches
 from app.domain.relay_import.canonical_distance import (
@@ -201,6 +208,57 @@ class CatalogInterpreter:
         run.run()
         return dict(run.results)
 
+    def shadow_boundaries(self, document: RawRelayDocument) -> "BoundaryRun":
+        """DEC-199 Phase 2A, SHADOW MODE: the catalog's canonical boundaries for this document. Never part of the
+        canonical model, a review or readiness, and nothing is consumed (coverage is unchanged)."""
+        run = _Run(self.catalog, self.registry, document)
+        run._zones()
+        boundaries: list[ResistiveBoundary] = []
+        unresolved: list[tuple[str, str, str]] = []
+        for spec in self.catalog.boundaries:
+            for z in run.zone_vars:
+                if "*" not in spec.zones and z["zone"] not in spec.zones:
+                    continue
+                closed = None
+                for gate in spec.gates:
+                    g = run.locate(gate.source, z)
+                    if not g.ok or norm_text(g.raw) not in {norm_text(x) for x in gate.equals}:
+                        closed = f"{g.name} is {g.raw!r}" if g.ok else f"{g.name}: {g.problem or 'not present in the document'}"
+                        break
+                if closed:
+                    unresolved.append((spec.id, z["zone"], closed))
+                    continue
+                r, a = run._boundary_number(spec.r_at_axis, z), run._boundary_number(spec.angle_deg, z)
+                problem = next((f"{x.name}: {x.problem}" for x in (r, a) if x.problem), None)
+                if problem:
+                    unresolved.append((spec.id, z["zone"], problem))
+                    continue
+                sign = "-" if spec.r_sign < 0 else "+"
+                sources = tuple(
+                    BoundarySource(role, e.name, e.parameter_id, _clean(e.raw_value) or None, sel.unit, e.location.page, e.location.line)
+                    for role, read, sel in (("r_at_axis", r, spec.r_at_axis), ("angle_deg", a, spec.angle_deg)) for e in read.entries[:1]
+                )
+                try:
+                    boundaries.append(ResistiveBoundary(
+                        z["zone"], spec.r_sign * r.value, a.value, BoundarySide(spec.side), BoundaryFrame(spec.frame),
+                        BoundaryProvenance(
+                            sources, _fill(spec.canonical, z) if spec.canonical else None,
+                            f"r_at_axis = {sign}{r.name} (as printed, ohm); angle = {a.name} (deg)",
+                            spec.equation, spec.references, self.catalog.key),
+                        fidelity=spec.fidelity,
+                    ))
+                except ValueError as exc:
+                    unresolved.append((spec.id, z["zone"], str(exc)))
+        return BoundaryRun(tuple(boundaries), tuple(unresolved))
+
+
+@dataclass(frozen=True)
+class BoundaryRun:
+    """The shadow boundaries of one document (DEC-199 Phase 2A) and the (boundary id, zone, why) of those not derived."""
+
+    boundaries: tuple["ResistiveBoundary", ...]
+    unresolved: tuple[tuple[str, str, str], ...]
+
 
 class _Run:
     """One interpretation run over one document (not reusable)."""
@@ -335,6 +393,26 @@ class _Run:
             r.raw = None
         elif len(found) > 1:
             r.notes = (f"{len(found)} identical duplicate entries in the document",)
+        return r
+
+    def _boundary_number(self, sel: Selector, variables: dict[str, Any]) -> _Read:
+        """A plain number for a shadow boundary (no transformation): located without being consumed; a blank or
+        missing cell, a non-number or a printed unit that disagrees leaves it unread."""
+        r = self.locate(sel, variables)
+        if not r.found:
+            r.fail("not present in the document", UnresolvedCause.MISSING)
+        if r.problem:
+            return r
+        if not _NUMBER.match(r.raw or ""):
+            r.fail("the value is not a plain number", UnresolvedCause.UNREADABLE)
+            return r
+        rng = _range_text(r.entries[0])
+        m = _RANGE.match(rng) if rng else None
+        problem = self._printed_unit_problem(sel, m["unit"].strip().rstrip(".") if m else "")
+        if problem:
+            r.fail(*problem)
+            return r
+        r.value = float(r.raw)
         return r
 
     def _locate_text(self, sel: Selector) -> _Read:

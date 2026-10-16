@@ -138,5 +138,7 @@
   "not_interpreted_distance": [],
   "coverage": {"canonical_values_assumed": 7, "canonical_values_conflicting": 0, "canonical_values_mapped": 19, "canonical_values_missing": 7, "canonical_values_not_exposed": 0, "canonical_values_total": 33, "canonical_values_unreadable": 0, "canonical_values_unsupported": 0, "canonical_values_unverified": 0, "catalog_id": "nr-rcs941-catalog", "catalog_mapped_settings": 27, "catalog_recognised_settings": 31, "catalog_unresolved_settings": 2, "catalog_unsupported_settings": 2, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 36, "not_interpreted_settings": 2, "outside_distance_settings": 3, "unmapped_settings": 5},
   "catalog_sources_absent": ["En_ZPG3", "En_ZPG3_Quad", "En_ZPP3", "R3_Quad", "Z_PP3", "t_PG3", "t_PP3"],
-  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
+  "shadow_geometry": null,
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},
+  "shadow_golden": null
 }

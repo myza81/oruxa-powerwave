@@ -27341,3 +27341,58 @@ Tests: `tests/test_distance_geometry_kernel.py` (primitives, frames, outlines, e
 limits, 180 deg reflection, mho centre / radius / known points, rotated corners), `tests/test_distance_geometry_compat.py`
 (the V1 shape matrix, precondition parity, relay neutrality), and the golden tests in `tests/test_relay_conformance.py`.
 **Results (2026-10-16):** backend full suite 9,744 passed, 142 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the 39 new skips are V2-golden comparisons for samples whose Apply is refused, so V1 draws nothing); kernel + compiler 131 passed; golden tests: V1 == golden for all 46 expectations, V2 == golden for the 7 applied samples (22 zones, 6,610 points, 0 mismatches); browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run (no frontend change). Full browser suite not run.
+
+### DEC-199 Amendment 2 -- Phase 2A: canonical inclined resistive boundaries, 7SA613 as the first exact OEM case (2026-10-16)
+
+Status: Phase 2A implemented on `feature/remaining-relay-imports` (not merged, not deployed). **Phase 2A proves an OEM-derived geometry that V1 cannot represent against independent engineering equations, while production remains on V1.** V1 remains
+production-authoritative; the V2 geometry is shadow evidence only. 7SA613 stays **PARTIALLY SUPPORTED / NOT_READY**
+with exactly the same blockers; Apply, `approximations[]` and the frontend plot are unchanged; A613 / B613 stay
+documented-only candidates (they are what V2 will eventually make unnecessary).
+
+* **Canonical boundary** (`app/domain/distance_boundaries.py`, relay-neutral): `ResistiveBoundary` carries the zone,
+  `r_at_axis`, `angle_deg`, `side`, `frame`, `unit` (ohm), `provenance` and `fidelity` (exact | documented, never
+  approximate). Its `provenance` is `BoundaryProvenance`: source settings with code, name, raw value, unit and
+  page / line; the canonical path; the transform; the equation; reference ids; origin. `resistive(r_at_axis, angle_deg, side)` with an explicit `frame` (`absolute` | `zone`): the line crossing the R axis at
+`r_at_axis` at `angle_deg` CCW from +R (0 < angle < 180), `R(X) = r_at_axis + X * cot(angle)`; side `right` = `R <= R(X)`,
+`left` = `R >= R(X)`. As a kernel half-plane: right `(sin a, -cos a) . (R, X) <= r_at_axis * sin a`, left
+`(-sin a, cos a) . (R, X) <= -r_at_axis * sin a`; 90 deg degenerates to a vertical limit; a `zone`-frame edge is
+point-reflected for a reverse zone. `assemble_zone`
+  builds a shadow zone from the horizontal top (X <= X reach, Zone Reduction 0 deg) and one right and one left edge;
+  Phase 2A represents no lower / directional limit and reports `not_represented: ["lower"]`.
+* **Catalog** (generic, optional `boundaries` section; included in the digest only when used, so every other catalog's
+  lock is unchanged): `kind` resistive, `side`, `frame`, `r_at_axis` (selector, ohm, sign +/-1), `angle_deg` (selector,
+  deg), gates, `fidelity`, verified `references`, `equation`, `canonical` path. Evaluated only by
+  `CatalogInterpreter.shadow_boundaries()`, which never consumes a row. Production interpretation, coverage and the
+  review are byte-identical with or without the section (tested).
+* **7SA613** (`siemens-7sa613-catalog` 1.1.0 -> **1.2.0**, new lock entry, 1.1.0 kept; the only change is the
+  `boundaries` section and a description note):
+  - right edge `Rright(X) = +R(Zn) ph-ph + X * cot(Distance Angle)`;
+  - left edge `Rleft(X) = -R(Zn) ph-ph + X * cot(Distance Angle)`;
+  - zone frame; documented fidelity, citing C53000-G1176-C156-2 / -7;
+  - gated on FCT Distance ON and Op. mode Forward / Reverse -- Non-Directional Z5 and Inactive Z4 are out of scope.
+
+  Owner sheet: Z1 +/-1.5, Z2 +/-1.7, Z3 +/-2.4, Z1B +/-1.6 ohm at 82 deg.
+* **Independent engineering goldens** (`tests/relay_conformance/shadow_golden.py`), computed from `R(X) = r_at_axis +
+  X / tan(angle)` only, never V2:
+  - the right and left edge R at X = 0, 0.25, 0.5 and 1.0 x the X reach;
+  - inside / outside probes 1 % of the reach from each edge (at 0.25 / 0.5 / 0.999 x the reach) and from the top.
+
+  Stored as `shadow_golden` beside the conformance record `shadow_geometry` (per zone: `production_geometry` -- the V1
+  classification, still `unsupported` -- `shadow_geometry` `exact`, the edges with provenance, the top, and
+  `represented` / `not_represented`).
+* **Generic tests** (no relay-specific test file):
+  - every golden equals the documented equation;
+  - V2, compiled live from the catalog's shadow boundaries, puts every golden edge point on its edge within the 1e-6 ohm
+    tolerance and classifies every probe as the hand-worked region does;
+  - V1 still holds no value for an inclined edge.
+
+  `tests/test_distance_boundaries.py` covers right / left, 90 deg, several angles, frames, reflection, the side
+  inequalities, provenance, catalog-section validation and the production-isolation proof.
+* **Readiness / blockers**: unchanged for every sample. The expectations' semantic diff is limited to the new shadow
+  keys and, for the seven 7SA613 samples, the catalog version string.
+* **Performance**: shadow derivation about 1 ms per sample (catalog interpretation is about 28 ms); assembly plus 210
+  probes about 1 ms.
+* Scope kept: no directional boundary, load exclusion, Z5 non-directional geometry, lower X boundary, pickup-only layer,
+  7SL87, REL511 or GRZ100. Findings F-1 to F-3 unchanged.
+
+**Results (2026-10-16):** backend full suite 9,831 passed, 142 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR); boundary unit tests 27 passed; shadow conformance: 7 samples, 15 zones, every golden edge point on its V2 edge within 1e-6 ohm and 210 / 210 probes as hand-derived; V1 still unresolved for every inclined edge; expectation semantic diff = new shadow keys only (+ the 7SA613 catalog version); browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run. Full browser suite not run.

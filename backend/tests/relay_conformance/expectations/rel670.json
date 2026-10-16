@@ -121,5 +121,7 @@
   "not_interpreted_distance": ["IMP_PROT/DirectionalImpedance/ZDRDIR:1", "IMP_PROT/FaultLocator/LMBRFLO:1", "NOTES:"],
   "coverage": {"canonical_values_assumed": 7, "canonical_values_conflicting": 0, "canonical_values_mapped": 31, "canonical_values_missing": 2, "canonical_values_not_exposed": 0, "canonical_values_total": 42, "canonical_values_unreadable": 0, "canonical_values_unsupported": 2, "canonical_values_unverified": 0, "catalog_id": "hitachi-rel670-catalog", "catalog_mapped_settings": 50, "catalog_recognised_settings": 54, "catalog_unresolved_settings": 4, "catalog_unsupported_settings": 0, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 74, "not_interpreted_settings": 5, "outside_distance_settings": 15, "unmapped_settings": 20},
   "catalog_sources_absent": [],
-  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
+  "shadow_geometry": null,
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},
+  "shadow_golden": null
 }

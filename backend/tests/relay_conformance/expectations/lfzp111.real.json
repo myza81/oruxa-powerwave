@@ -42,5 +42,7 @@
   "not_interpreted_distance": ["ALL G TRIPPING", "DIST G CHARACTERISTIC", "In", "KR", "KZ6", "KZ6_PRIME", "KZF", "KZM", "KZN", "KZPh", "LEFT_QUAD/KR", "MUTUAL COMP.", "OVERHEAD/CABLE", "PwrSwg DETECTOR", "PwrSwg DETECTOR TIMING", "PwrSwg DETECTOR TO Z1", "PwrSwg DETECTOR TO Z1X", "PwrSwg DETECTOR TO Z1Y", "PwrSwg DETECTOR TO Z2", "PwrSwg DETECTOR TO Z3", "RIGHT_QUAD/KR", "SCHEME SELECTION", "SWCH ON TO FAULT", "SWCH ON TO FAULT METHOD", "SWITCH ON TO FAULT 110s/0.2s", "THETA G", "THETA M", "THETA N", "THETA Ph", "Z6 Lenticular a/b"],
   "coverage": {"canonical_values_assumed": 5, "canonical_values_conflicting": 0, "canonical_values_mapped": 4, "canonical_values_missing": 0, "canonical_values_not_exposed": 0, "canonical_values_total": 9, "canonical_values_unreadable": 0, "canonical_values_unsupported": 0, "canonical_values_unverified": 0, "catalog_id": "lfzp111-catalog", "catalog_mapped_settings": 10, "catalog_recognised_settings": 18, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 8, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 102, "not_interpreted_settings": 30, "outside_distance_settings": 54, "unmapped_settings": 84},
   "catalog_sources_absent": [],
-  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
+  "shadow_geometry": null,
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},
+  "shadow_golden": null
 }

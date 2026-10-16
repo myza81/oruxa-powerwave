@@ -46,7 +46,8 @@ GEOMETRY_FIELDS = ("characteristic.type", "x_reach_ohm", "reach", "resistive_rea
 GEOMETRY_ORDER = ("unverified", "unsupported", "missing", "conflict", "unreadable", "approximate", "assumption", "documented")
 #: Keys an observation always has; ``golden`` (Phase 1) is never observed.
 OBSERVED_KEYS = ("identity", "counts", "readiness", "zones", "engine", "blocking", "values", "provenance", "preserved", "offers",
-                 "approximations", "apply", "not_interpreted_distance", "coverage", "catalog_sources_absent")
+                 "approximations", "apply", "not_interpreted_distance", "coverage", "catalog_sources_absent",
+                 "shadow_geometry")
 
 
 # --- samples ---------------------------------------------------------------------------------------------------------
@@ -145,6 +146,55 @@ def absent_sources(catalog, document) -> list[str]:
             if not read.found:
                 absent.add(read.name)
     return sorted(absent)
+
+
+def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -> dict[str, Any] | None:
+    """DEC-199 Phase 2A, SHADOW ONLY: the catalog's canonical boundaries for this document and, per zone, the V2
+    assembly beside the production (V1) classification. ``None`` when the catalog declares no boundary."""
+    if not catalog_id:
+        return None
+    from app.domain.distance_boundaries import BoundarySide, assemble_zone
+    from app.domain.parameter_catalog.interpreter import CatalogInterpreter
+    from app.domain.parameter_catalog.loader import canonical_registry, default_store
+
+    catalog = default_store().get(catalog_id)
+    if not catalog.boundaries:
+        return None
+    document = extract_pdf(pdf).document
+    run = CatalogInterpreter(catalog, canonical_registry()).shadow_boundaries(document)
+    registry = default_registry()
+    model = summarize_interpretation(registry, document, registry.identify(document)).model
+    out: dict[str, Any] = {"unresolved": [list(u) for u in run.unresolved], "zones": {}}
+    for zone_id in sorted({b.zone_id for b in run.boundaries}):
+        edges = [b for b in run.boundaries if b.zone_id == zone_id]
+        record: dict[str, Any] = {"production_geometry": zones.get(zone_id, {}).get("geometry"), "edges": {}}
+        for b in edges:
+            record["edges"][b.side.value] = {
+                "r_at_axis": b.r_at_axis, "angle_deg": b.angle_deg, "frame": b.frame.value, "unit": b.unit,
+                "fidelity": b.fidelity, "canonical_path": b.provenance.canonical_path,
+                "sources": [[x.role, " ".join(v for v in (x.code, x.name) if v), x.raw_value, x.unit] for x in b.provenance.sources],
+                "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
+            }
+        zone = model.zone(zone_id) if model else None
+        x, tilt, direction = (zone.x_reach_ohm, zone.tilt_deg, zone.direction) if zone else (None, None, None)
+        reason = None
+        if not (x is not None and x.is_resolved):
+            reason = "the reactance limit (X) is not resolved"
+        elif tilt is not None and (tilt.is_resolved and tilt.value != 0.0 or not tilt.is_resolved and tilt.provenance.sources):
+            reason = "a non-zero or unread top-line tilt is not represented in Phase 2A"
+        elif not (direction and direction.is_resolved and str(getattr(direction.value, "value", direction.value)) in ("forward", "reverse")):
+            reason = "the zone direction is not forward / reverse"
+        elif {e.side for e in edges} != {BoundarySide.RIGHT, BoundarySide.LEFT}:
+            reason = "a right and a left boundary are both needed"
+        if reason:
+            record.update({"shadow_geometry": "not_assembled", "reason": reason})
+        else:
+            d = str(getattr(direction.value, "value", direction.value))
+            assembled = assemble_zone(zone_id, x_reach_ohm=x.value, direction=d, boundaries=tuple(edges))
+            record.update({"shadow_geometry": "exact", "direction": d, "top": {"x_reach_ohm": x.value, "canonical_path": f"zones[{zone_id}].x_reach_ohm"},
+                           "represented": list(assembled.represented), "not_represented": list(assembled.not_represented)})
+        out["zones"][zone_id] = record
+    return out
 
 
 def source_coverage(pdf: bytes, catalog_id: str | None) -> list[str] | None:
@@ -250,6 +300,7 @@ def observe(client, pdf: bytes, manual: list[dict[str, Any]] | None = None) -> d
     coverage = review.get("catalog_coverage") or body.get("catalog_coverage")
     out["coverage"] = dict(sorted(coverage.items())) if coverage else None
     out["catalog_sources_absent"] = source_coverage(pdf, body.get("catalog_id"))
+    out["shadow_geometry"] = shadow_geometry(pdf, body.get("catalog_id"), out["zones"])
     return out
 
 
@@ -260,7 +311,7 @@ def differences(expected: dict[str, Any], observed: dict[str, Any]) -> list[str]
     out: list[str] = []
     subset = expected.get("values_mode") == "subset"
     for key, want in expected.items():
-        if key in ("schema", "sample", "golden", "values_mode", "description", "browser", "mutations"):
+        if key in ("schema", "sample", "golden", "shadow_golden", "values_mode", "description", "browser", "mutations"):
             continue
         got = observed.get(key)
         if key in ("values", "provenance") and subset:

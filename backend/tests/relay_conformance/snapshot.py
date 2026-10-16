@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from tests.relay_conformance.golden import v1_golden
+from tests.relay_conformance.shadow_golden import shadow_golden
 from tests.relay_conformance.harness import EXPECTATIONS_DIR, SCHEMA, observe, sample_pdf
 
 
@@ -39,7 +40,7 @@ def dump(data: dict) -> str:
         value = data[key]
         comma = "," if n < len(keys) - 1 else ""
         if isinstance(value, dict) and value and key not in ("sample", "mutations", "identity", "counts", "readiness", "apply",
-                                                               "golden", "coverage", "offers"):
+                                                               "golden", "coverage", "offers", "shadow_geometry"):
             inner = ",\n".join(f"    {json.dumps(k, ensure_ascii=False)}: {json.dumps(v, ensure_ascii=False)}"
                                for k, v in value.items())
             lines.append(f"  {json.dumps(key)}: {{\n{inner}\n  }}{comma}")
@@ -103,6 +104,8 @@ def main(argv: list[str]) -> int:
         observed.pop("preserved", None)
     record.update(observed)
     record["golden"] = v1_golden(observed.get("apply"))              # V1 geometry, never V2 (DEC-199 Phase 1)
+    # independent engineering goldens for shadow boundaries V1 cannot draw (DEC-199 Phase 2A)
+    record["shadow_golden"] = shadow_golden(observed.get("shadow_geometry"))
     text = dump(record)
     if args.write:
         path.write_text(text, encoding="utf-8", newline="\n")

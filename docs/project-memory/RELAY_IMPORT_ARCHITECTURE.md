@@ -1817,3 +1817,25 @@ readiness, Apply and the frontend plot are unchanged; no production code path im
 **Coverage.** 22 drawn zones in 7 applied samples, 6,610 membership points compared, 0 mismatches. Mho is covered by the
 kernel / compiler shape matrix, since no imported relay currently applies a mho. A new relay whose zones V1 draws gets the
 comparison automatically from its expectation.
+
+### Phase 2A: canonical inclined resistive boundaries (DEC-199 Amendment 2)
+
+**Phase 2A proves an OEM-derived geometry that V1 cannot represent against independent engineering equations, while production remains on V1.** V1 stays production-authoritative.
+
+| Piece | Location | Role |
+|---|---|---|
+| Canonical boundary | `app/domain/distance_boundaries.py` | `ResistiveBoundary` (r_at_axis, angle, side, frame, unit, provenance, fidelity) -> kernel half-plane; `assemble_zone` |
+| Catalog section | optional `boundaries` (`catalog_model.BoundarySpec`, validated; in the digest only when used) | Derives boundaries from settings; shadow only |
+| Shadow evaluation | `CatalogInterpreter.shadow_boundaries()` | Reads without consuming; never part of the model, review or readiness |
+| Conformance | `shadow_geometry` + `shadow_golden` in the expectations; `tests/relay_conformance/shadow_golden.py` | V1 classification beside the V2 shadow; independent engineering goldens |
+
+`resistive(r_at_axis, angle_deg, side)` with an explicit `frame` (`absolute` | `zone`): the line crossing the R axis at
+`r_at_axis` at `angle_deg` CCW from +R (0 < angle < 180), `R(X) = r_at_axis + X * cot(angle)`; side `right` = `R <= R(X)`,
+`left` = `R >= R(X)`. As a kernel half-plane: right `(sin a, -cos a) . (R, X) <= r_at_axis * sin a`, left
+`(-sin a, cos a) . (R, X) <= -r_at_axis * sin a`; 90 deg degenerates to a vertical limit; a `zone`-frame edge is
+point-reflected for a reverse zone.
+
+**7SA613 (catalog 1.2.0).** Right / left edges `+/-R(Zn) ph-ph + X * cot(Distance Angle)`, zone frame, documented
+(C53000-G1176-C156-2 / -7), for zones in service with a Forward / Reverse Op. mode. Production: +R / -R stay Not yet
+supported; 7SA613 stays PARTIALLY SUPPORTED / NOT_READY; A613 / B613 documented only. Shadow: `exact` edges with the top;
+the lower / directional limit is not represented yet.

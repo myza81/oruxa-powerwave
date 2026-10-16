@@ -207,5 +207,7 @@
   "not_interpreted_distance": ["CT STARPNT", "Ie CT", "P/S PROGR.", "PHPHE FLTS", "T5", "TRIP 1P Z2"],
   "coverage": null,
   "catalog_sources_absent": null,
-  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
+  "shadow_geometry": null,
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},
+  "shadow_golden": null
 }
