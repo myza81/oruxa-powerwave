@@ -27285,3 +27285,59 @@ Explicit catalogs stay preferred over family inheritance (lock and regression ri
 **How a future relay is added:** catalog + references, `sheets/<id>.json`, `expectations/<id>.json` (recorded with `python -m tests.relay_conformance.snapshot` and reviewed line by line), `mutations.disable_zone` -- no dedicated Python test file or browser spec (`backend/tests/relay_conformance/README.md`).
 
 **Results (2026-10-16):** backend full suite 9,560 passed, 103 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the 54 new skips are conformance cases with a stated data reason -- no notes on the sheet, no per-zone selector, a hand-written profile; a first run caught the coverage invariant for catalog-first relays, corrected to count extension-interpreted rows); generic conformance suite 249+ cases; browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run, including relay_import_conformance.spec.js (33 sheets / variants). Byte-identity: every synthetic sheet and parameter variant the tests use regenerates identically to HEAD a09c107; the rebuilt REL670 four-zone sheet is semantically identical to the former JS fixture. Full browser suite not run.
+
+### DEC-199 Amendment 1 -- Phase 1: generic geometry kernel in shadow mode (2026-10-16)
+
+Status: Phase 1 implemented on `feature/remaining-relay-imports` (not merged, not deployed). **V1 remains
+production-authoritative; V2 is shadow-only.** No change to readiness, blocker classification, Apply payload semantics,
+catalogs, approximation logic or the frontend plot; no production code path imports the new modules.
+
+* **V1 geometry goldens first.** Every conformance expectation's `golden` section is now V1's geometry, built only from
+  V1:
+  - the key outline from V1's own parameterisation (a quadrilateral's corners from `x'` / `r'`; a mho's centre and radius);
+  - a membership grid of 17 x 17 points over the zone's extent with the origin plus a 25 % margin, scored with V1's
+    `evaluate_zone_state`;
+  - probes just inside and just outside each boundary (1 % of the extent), plus the 180 deg reflection of each inside probe;
+  - the characteristic, geometry mode, direction and numeric basis, and the zones V1 does not draw (`not_drawn`).
+
+  Coverage: 22 drawn zones in 7 applied samples (P441, RED670 and REL670 four-zone, the REL670 Zone 2 delay-entered
+  scenario, and the P441 / RED670 / REL670 owner sheets) -- polar rotated rectangles and explicit R/X rectangles,
+  forward and reverse.
+* **Kernel** (`app/domain/distance_geometry.py`, relay-neutral): `HalfPlane`, `Disk`, `Intersection` and point reflection;
+  membership, a bounded outline (exact circle, or a convex polygon by half-plane clipping; unbounded regions need plot
+  bounds; arcs approximated only when a disk meets other boundaries, and flagged), explicit frames, and an optional
+  `BoundaryMeta` (source path, unit, transform, frame, reference, fidelity) for Phase 2. Phase 1 has no union,
+  exclusion, inclined OEM boundaries, blinders, offsets or new PE plotting.
+* **Coordinates.** One canonical plane: horizontal **R**, vertical **X**, ohms, in the caller's impedance basis (never
+  converted). Angles in **degrees, counter-clockwise from +R** (+X = 90 deg); radians only inside the arithmetic.
+  **Absolute frame** = the R-X plane of the measured loop impedance (looking forward into the line); **zone-local frame**
+  = the frame a characteristic is stated in before its direction is applied (forward: the absolute frame; reverse: the
+  absolute frame rotated 180 deg, i.e. a point reflection -- exactly V1's reverse zone). Every V2 `Characteristic`
+  names its frame; only an absolute characteristic is evaluated or outlined.
+* **Tolerance.** One policy: `TOLERANCE_OHM` = 1e-6 ohm (= V1's `ZONE_BOUNDARY_TOLERANCE_OHM`) for boundary-inclusive
+  membership (half-plane signed distance <= tol; disk distance <= radius + tol) and for outline vertex merging /
+  comparison (golden vertices are stored to 6 decimals, compared within 5e-7 + tol). Engine-equivalence test points
+  stay `guard_distance(extent)` = max(1e-3 x zone extent, 1000 x tol) from every boundary, so floating-point noise
+  never decides a comparison. No per-relay epsilon.
+* **V1 -> V2 compatibility compiler** (`app/domain/distance_geometry_compat.py`, temporary migration infrastructure):
+  - input is the V1 engine input only (characteristic + `ZoneSettings`), never a catalog;
+  - it uses V1's preconditions, so a disabled zone, a missing delay or angle, invalid geometry or an unknown direction
+    compiles to nothing;
+  - mho becomes a disk; polar and explicit quadrilaterals become four half-planes; a reverse zone is point-reflected
+    into the absolute frame.
+* **Shadow comparison** (generic, in the conformance suite; no relay-specific test file):
+  - V1 recomputed equals every golden exactly;
+  - V2 reproduces every golden: membership on 6,610 points with 0 mismatches (12 grid points within the boundary guard
+    skipped), outlines within the tolerance, and non-drawn zones compiling to nothing;
+  - corrupting a golden bit or vertex fails;
+  - mho, polar and explicit shapes in both directions are also compared against V1 on dense grids (kernel / compiler
+    unit tests: 131 passed).
+* **Performance.** Compiling, comparing every golden point and outlining all 22 zones takes about 31 ms (V1 golden
+  regeneration about 58 ms). Kernel membership is a few multiplications per boundary; a guard test runs 20,000 points
+  and 200 outlines well under 2 s. Suitable for interactive plotting.
+* **Phase 0 findings F-1 to F-3 unchanged** (not fixed in this slice).
+
+Tests: `tests/test_distance_geometry_kernel.py` (primitives, frames, outlines, engineering checkpoints: explicit R/X
+limits, 180 deg reflection, mho centre / radius / known points, rotated corners), `tests/test_distance_geometry_compat.py`
+(the V1 shape matrix, precondition parity, relay neutrality), and the golden tests in `tests/test_relay_conformance.py`.
+**Results (2026-10-16):** backend full suite 9,744 passed, 142 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the 39 new skips are V2-golden comparisons for samples whose Apply is refused, so V1 draws nothing); kernel + compiler 131 passed; golden tests: V1 == golden for all 46 expectations, V2 == golden for the 7 applied samples (22 zones, 6,610 points, 0 mismatches); browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run (no frontend change). Full browser suite not run.

@@ -118,5 +118,5 @@
   "not_interpreted_distance": ["DIST G CHARACTERISTIC", "In", "KZPh"],
   "coverage": {"canonical_values_assumed": 3, "canonical_values_conflicting": 0, "canonical_values_mapped": 4, "canonical_values_missing": 2, "canonical_values_not_exposed": 0, "canonical_values_total": 9, "canonical_values_unreadable": 0, "canonical_values_unsupported": 0, "canonical_values_unverified": 0, "catalog_id": "lfzp111-catalog", "catalog_mapped_settings": 8, "catalog_recognised_settings": 11, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 3, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 17, "not_interpreted_settings": 3, "outside_distance_settings": 3, "unmapped_settings": 6},
   "catalog_sources_absent": ["Z1X(T) TRIPPING", "Z1Y(T) TRIPPING"],
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }

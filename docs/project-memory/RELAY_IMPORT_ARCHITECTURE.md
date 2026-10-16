@@ -1789,3 +1789,31 @@ proves the V2 kernel reproduces them before any boundary changes.
   Unreadable rather than Missing. It is never a value.
 - **F-2:** disabling the only zone in service leaves that zone's characteristic blocking.
 - **F-3:** the 7SL87 catalog has an uncited reference.
+
+### Phase 1: generic geometry kernel in shadow mode (DEC-199 Amendment 1)
+
+**V1 remains production-authoritative; V2 is shadow-only.** The Distance engine (`app/domain/distance_protection.py`),
+readiness, Apply and the frontend plot are unchanged; no production code path imports the kernel.
+
+| Piece | Location | Role |
+|---|---|---|
+| Kernel | `app/domain/distance_geometry.py` | `HalfPlane`, `Disk`, `Intersection`, point reflection; membership; bounded outline; frames; `BoundaryMeta` |
+| Compatibility compiler | `app/domain/distance_geometry_compat.py` | V1 engine input -> V2 characteristic (temporary; tests only) |
+| V1 goldens | `golden` in each `backend/tests/relay_conformance/expectations/*.json`; built by `tests/relay_conformance/golden.py` | V1 outline, membership grid and probes per drawn zone |
+| Shadow comparison | `tests/test_relay_conformance.py` (golden tests), `tests/test_distance_geometry_*.py` | V1 == golden; V2 == golden; shape matrix; checkpoints |
+
+* **Coordinates.** One canonical plane: horizontal **R**, vertical **X**, ohms, in the caller's impedance basis (never
+  converted). Angles in **degrees, counter-clockwise from +R** (+X = 90 deg); radians only inside the arithmetic.
+  **Absolute frame** = the R-X plane of the measured loop impedance (looking forward into the line); **zone-local frame**
+  = the frame a characteristic is stated in before its direction is applied (forward: the absolute frame; reverse: the
+  absolute frame rotated 180 deg, i.e. a point reflection -- exactly V1's reverse zone). Every V2 `Characteristic`
+  names its frame; only an absolute characteristic is evaluated or outlined.
+* **Tolerance.** One policy: `TOLERANCE_OHM` = 1e-6 ohm (= V1's `ZONE_BOUNDARY_TOLERANCE_OHM`) for boundary-inclusive
+  membership (half-plane signed distance <= tol; disk distance <= radius + tol) and for outline vertex merging /
+  comparison (golden vertices are stored to 6 decimals, compared within 5e-7 + tol). Engine-equivalence test points
+  stay `guard_distance(extent)` = max(1e-3 x zone extent, 1000 x tol) from every boundary, so floating-point noise
+  never decides a comparison. No per-relay epsilon.
+
+**Coverage.** 22 drawn zones in 7 applied samples, 6,610 membership points compared, 0 mismatches. Mho is covered by the
+kernel / compiler shape matrix, since no imported relay currently applies a mho. A new relay whose zones V1 draws gets the
+comparison automatically from its expectation.

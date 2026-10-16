@@ -4,8 +4,28 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-16** (Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-16** (Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+
+## Relay Scalability Phase 1 -- shadow geometry kernel (2026-10-16, `feature/remaining-relay-imports`, DEC-199 Amendment 1)
+
+**V1 remains production-authoritative; V2 is shadow-only.** No production path, readiness, Apply, catalog, approximation
+or frontend change.
+
+What changed:
+- **Kernel:** `app/domain/distance_geometry.py` (HalfPlane / Disk / Intersection / point reflection; explicit
+  absolute / zone-local frames; one 1e-6 ohm tolerance).
+- **Compiler:** the V1 -> V2 compiler `app/domain/distance_geometry_compat.py` (tests only).
+- **Goldens:** V1 goldens in every expectation's `golden` section (22 drawn zones, 7 applied samples).
+- **Comparison:** the generic shadow comparison in the conformance suite -- 6,610 points, 0 mismatches; outlines within
+  the tolerance; about 31 ms.
+
+**Results (2026-10-16):** backend full suite 9,744 passed, 142 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the 39 new skips are V2-golden comparisons for samples whose Apply is refused, so V1 draws nothing); kernel + compiler 131 passed; golden tests: V1 == golden for all 46 expectations, V2 == golden for the 7 applied samples (22 zones, 6,610 points, 0 mismatches); browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run (no frontend change). Full browser suite not run.
+
+**Next (Phase 2 entry point):** the canonical boundary vocabulary on the kernel, starting with `resistive(r, angle)` and
+`directional(angle)` as half-planes (inclined right edge, directional left edge). It stays shadow / unsupported-preserving
+until a separately approved switch. **Stopped after Phase 1; no inclined OEM boundary added; production plotting not
+switched; not pushed.**
 
 ## Relay Scalability Phase 0 -- generic conformance harness (2026-10-16, `feature/remaining-relay-imports`, DEC-199)
 

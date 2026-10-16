@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 from pathlib import Path
 
@@ -50,7 +51,10 @@ from tests.relay_conformance.harness import (
     sample_pdf,
     upload,
 )
+from app.domain.distance_geometry import TOLERANCE_OHM
+from app.domain.distance_geometry_compat import compile_v1_zone
 from tests.relay_api_helpers import client  # noqa: F401
+from tests.relay_conformance.golden import grid_points, v1_golden, zone_settings
 from tests.relay_conformance.sheet_spec import load_spec, note_lines, sheet_ids, sheet_lines, sheet_pdf
 
 #: Deviations the suite reports but Phase 0 does not fix (tests/relay_conformance/known_findings.json).
@@ -209,6 +213,56 @@ def test_every_raw_setting_is_accounted_for(name):
     assert c["catalog_recognised_settings"] + c["extension_interpreted_settings"] + c["unmapped_settings"] == c["extracted_settings"]
     if EXPECTATIONS[name]["identity"]["profile_id"] in CATALOG_ONLY:
         assert c["extension_interpreted_settings"] == 0                        # catalog-only: nothing else read
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Geometry (DEC-199 Phase 1): V1 stays authoritative; the V2 kernel runs in shadow mode against V1's goldens
+# ---------------------------------------------------------------------------------------------------------------------
+
+def compare_v2_with_golden(expectation: dict) -> dict:
+    """Compile every zone V1 draws into the V2 kernel and compare membership (grid + probes) and outline with the V1
+    golden. Returns counts; any mismatch fails."""
+    golden = expectation["golden"]
+    apply_zones = {z["id"]: z for z in (expectation["apply"].get("zones") or [])}
+    counts = {"zones": 0, "points": 0, "skipped_near_boundary": 0}
+    for zg in golden["zones"]:
+        v2 = compile_v1_zone(zg["characteristic"], zone_settings(apply_zones[zg["id"]]))
+        assert v2 is not None, zg["id"]
+        for r, x, flag in grid_points(zg["grid"]):
+            if flag == ".":
+                counts["skipped_near_boundary"] += 1
+                continue
+            assert v2.contains(r, x) is (flag == "1"), (zg["id"], r, x)
+            counts["points"] += 1
+        for r, x, flag in zg["probes"]:
+            assert v2.contains(r, x) is bool(flag), (zg["id"], "probe", r, x)
+            counts["points"] += 1
+        outline, key = v2.outline(), zg["outline"]
+        assert outline.kind == key["kind"], zg["id"]
+        if key["kind"] == "circle":
+            assert math.hypot(outline.center[0] - key["center"][0], outline.center[1] - key["center"][1]) <= TOLERANCE_OHM
+            assert abs(outline.radius - key["radius"]) <= TOLERANCE_OHM
+        else:
+            assert len(outline.vertices) == len(key["vertices"]) and not outline.clipped, zg["id"]
+            for v in key["vertices"]:                      # golden vertices are rounded to 6 decimals: half a unit + tol
+                assert min(math.hypot(v[0] - w[0], v[1] - w[1]) for w in outline.vertices) <= 5e-7 + TOLERANCE_OHM, (zg["id"], v)
+        counts["zones"] += 1
+    for zone_id in golden["not_drawn"]:
+        assert compile_v1_zone(expectation["apply"]["characteristic"], zone_settings(apply_zones[zone_id])) is None, zone_id
+    return counts
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTATIONS))
+def test_the_v1_geometry_matches_its_golden(name):
+    """V1 (the production engine) recomputed from the expectation's Apply zones gives exactly the stored golden."""
+    assert EXPECTATIONS[name]["golden"] == v1_golden(EXPECTATIONS[name]["apply"])
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTATIONS))
+def test_the_v2_kernel_reproduces_the_v1_golden(name):
+    if not EXPECTATIONS[name]["golden"]["zones"] and not EXPECTATIONS[name]["golden"]["not_drawn"]:
+        pytest.skip("V1 draws no zone for this sample (Apply is refused)")
+    compare_v2_with_golden(EXPECTATIONS[name])
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTATIONS))

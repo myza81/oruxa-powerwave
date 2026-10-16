@@ -55,7 +55,20 @@ semantics, compared exactly:
 - `not_interpreted_distance`, `coverage`, `catalog_sources_absent`.
 
 `mutations` declares the sheet-specific mutation data (`disable_zone` with its cells, or the reason none exists; known
-findings as data). `golden` (`points`, `outlines`) is reserved for Phase 1 (V1 vs V2 geometry) and is not compared yet.
+findings as data).
+
+`golden` (DEC-199 Phase 1) is the **V1** geometry of every zone V1 draws, built by `golden.py` from the expectation's own
+`apply.zones` with V1 only (never V2):
+- the key outline (V1's corner / circle formula);
+- a 17 x 17 membership grid over the zone's extent (`"1"` inside, `"0"` outside, `"."` too close to a boundary to compare);
+- inside / outside probes per boundary and the 180 deg reflection of each inside probe;
+- the characteristic, geometry mode, direction and numeric basis;
+- `not_drawn` zones.
+
+The suite checks that V1 still produces the golden exactly and that the V2 shadow kernel
+(`app/domain/distance_geometry.py`, via `distance_geometry_compat.py`) reproduces it. The snapshot tool writes the golden
+from the observed Apply. **V1 remains production-authoritative; V2 is shadow-only.** Coordinates: R horizontal, X
+vertical, ohms, angles in degrees CCW from +R; one tolerance, 1e-6 ohm (see `distance_geometry.py`).
 
 ## Adding a relay
 

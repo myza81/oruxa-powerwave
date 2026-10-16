@@ -130,5 +130,5 @@
   "not_interpreted_distance": [],
   "coverage": {"canonical_values_assumed": 2, "canonical_values_conflicting": 0, "canonical_values_mapped": 26, "canonical_values_missing": 6, "canonical_values_not_exposed": 1, "canonical_values_total": 37, "canonical_values_unreadable": 0, "canonical_values_unsupported": 2, "canonical_values_unverified": 0, "catalog_id": "siemens-siprotec5-7sl87-catalog", "catalog_mapped_settings": 27, "catalog_recognised_settings": 46, "catalog_unresolved_settings": 7, "catalog_unsupported_settings": 12, "catalog_version": "1.1.0", "extension_interpreted_settings": 0, "extracted_settings": 55, "not_interpreted_settings": 2, "outside_distance_settings": 7, "unmapped_settings": 9},
   "catalog_sources_absent": [],
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }

@@ -106,5 +106,5 @@
   "not_interpreted_distance": [],
   "coverage": {"canonical_values_assumed": 5, "canonical_values_conflicting": 0, "canonical_values_mapped": 13, "canonical_values_missing": 5, "canonical_values_not_exposed": 0, "canonical_values_total": 26, "canonical_values_unreadable": 0, "canonical_values_unsupported": 3, "canonical_values_unverified": 0, "catalog_id": "relz100-catalog", "catalog_mapped_settings": 20, "catalog_recognised_settings": 25, "catalog_unresolved_settings": 2, "catalog_unsupported_settings": 3, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 29, "not_interpreted_settings": 0, "outside_distance_settings": 4, "unmapped_settings": 4},
   "catalog_sources_absent": ["Z<Prot_Zone1:Dir", "Z<Prot_Zone4:RN4", "Z<Prot_Zone5:Dir", "Z<Prot_Zone5:R5", "Z<Prot_Zone5:RN5"],
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }

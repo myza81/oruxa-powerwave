@@ -43,5 +43,5 @@
   "not_interpreted_distance": ["CfgBO_PSBR_Z1/2", "CfgBO_PSBR_Z3", "CfgBO_Z1", "CfgBO_Z2", "CfgBO_Z3", "CfgBO_Z_Rev", "CfgBO_Z_SOTF", "CfgBO_Z_TeleP", "En_BI_Z1_Vld", "En_Blinder", "En_Inst_Blk_AR", "En_POTT", "En_PSBR_Z1/2", "En_PSBR_Z3", "En_PUTT", "En_WE_POTT", "En_Z2_Blk_AR", "En_Z2_SOTF_AR", "En_Z3_Blk_AR", "En_Z3_SOTF_AR", "En_Z_SOTF", "I_OC_PSBR", "PSBR", "R_Blinder", "SOTF", "VEBI_DistP", "phi0_Reach", "phi_Shift_ZPG", "phi_Shift_ZPP", "t_Dly_CurRev", "t_Ext_CurRev"],
   "coverage": {"canonical_values_assumed": 7, "canonical_values_conflicting": 0, "canonical_values_mapped": 26, "canonical_values_missing": 0, "canonical_values_not_exposed": 0, "canonical_values_total": 33, "canonical_values_unreadable": 0, "canonical_values_unsupported": 0, "canonical_values_unverified": 0, "catalog_id": "nr-rcs941-catalog", "catalog_mapped_settings": 36, "catalog_recognised_settings": 39, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 3, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 164, "not_interpreted_settings": 35, "outside_distance_settings": 90, "unmapped_settings": 125},
   "catalog_sources_absent": [],
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }

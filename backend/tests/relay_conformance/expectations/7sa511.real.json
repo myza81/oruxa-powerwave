@@ -43,5 +43,5 @@
   "not_interpreted_distance": ["3-P. COUPL", "ANGLE PHIAE", "BLK.AR Z1B", "BLK.AR Z1L", "CT STARPNT", "DAR -> Z1L", "DAR BLOCK", "Delta R", "ECHO", "FILTER", "Ie CT", "Ie/Iph", "Ie>", "Iph>", "Iph>>", "MAN. CLOSE", "P/S PROGR.", "P/S T-ACT.", "PHASE PREF", "PHPHE FLTS", "POTT", "POTT DirFD", "POTT MODE", "PROG. U/I", "PROG. ZA", "PUTT", "PUTT MODE", "RAR -> Z1B", "SYSTEMSTAR", "T-CB CLOSE", "T-CLOSE", "T-DROP 1", "T-DROP 2", "T-ECHO-BLO", "T-ECHO-DEL", "T-ECHO-IMP", "T-EXT.STAB", "T-M/C-PROL", "T-PICKUP 1", "T-PICKUP 2", "T-REC-PROL", "T-SEND-DEL", "T-SEND-PRL", "T-TRANSBLO", "T-TRIP I<", "T-TRIP I>", "T-WAIT", "T5", "TIe 1PHASE", "TRIP 1P Z2", "TRIP2phFLT", "U1-U2 ANGL", "U2 CONNECT", "Ue>", "Uph/Udelta", "Uphe(I>)", "Uphe(I>>)", "Uphph(I>)", "Uphph(I>>)", "Ux CONNECT", "dR/dT"],
   "coverage": null,
   "catalog_sources_absent": null,
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }

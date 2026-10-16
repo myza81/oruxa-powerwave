@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.relay_conformance.golden import v1_golden
 from tests.relay_conformance.harness import EXPECTATIONS_DIR, SCHEMA, observe, sample_pdf
 
 
@@ -42,6 +43,10 @@ def dump(data: dict) -> str:
             inner = ",\n".join(f"    {json.dumps(k, ensure_ascii=False)}: {json.dumps(v, ensure_ascii=False)}"
                                for k, v in value.items())
             lines.append(f"  {json.dumps(key)}: {{\n{inner}\n  }}{comma}")
+        elif key == "golden":
+            head = ", ".join(f"{json.dumps(k)}: {json.dumps(v)}" for k, v in value.items() if k != "zones")
+            zones = ",\n".join(f"    {json.dumps(z, ensure_ascii=False)}" for z in value["zones"])
+            lines.append(f'  "golden": {{{head}, "zones": [' + (f"\n{zones}\n  " if zones else "") + f']}}{comma}')
         elif key == "apply" and isinstance(value, dict) and value.get("zones"):
             zones = ",\n".join(f"      {json.dumps(z, ensure_ascii=False)}" for z in value["zones"])
             head = ", ".join(f"{json.dumps(k)}: {json.dumps(v, ensure_ascii=False)}" for k, v in value.items() if k != "zones")
@@ -97,7 +102,7 @@ def main(argv: list[str]) -> int:
         record["values_mode"] = "subset"
         observed.pop("preserved", None)
     record.update(observed)
-    record["golden"] = existing.get("golden", {"points": [], "outlines": []})
+    record["golden"] = v1_golden(observed.get("apply"))              # V1 geometry, never V2 (DEC-199 Phase 1)
     text = dump(record)
     if args.write:
         path.write_text(text, encoding="utf-8", newline="\n")

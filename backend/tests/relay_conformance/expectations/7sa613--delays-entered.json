@@ -239,5 +239,5 @@
   "not_interpreted_distance": [],
   "coverage": {"canonical_values_assumed": 0, "canonical_values_conflicting": 0, "canonical_values_mapped": 55, "canonical_values_missing": 13, "canonical_values_not_exposed": 10, "canonical_values_total": 90, "canonical_values_unreadable": 0, "canonical_values_unsupported": 12, "canonical_values_unverified": 0, "catalog_id": "siemens-7sa613-catalog", "catalog_mapped_settings": 34, "catalog_recognised_settings": 42, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 8, "catalog_version": "1.1.0", "extension_interpreted_settings": 0, "extracted_settings": 46, "not_interpreted_settings": 1, "outside_distance_settings": 3, "unmapped_settings": 4},
   "catalog_sources_absent": ["Op. mode Z2", "Op. mode Z3", "R(Z2) ph-ph", "R(Z3) ph-ph", "RE(Z2) ph-E", "RE(Z3) ph-E", "RE(Z4) ph-E", "RE(Z5) ph-E", "T2-1phase", "T2-multi-phase", "T3 DELAY", "X(Z1)+", "X(Z1B)+", "X(Z2)", "X(Z2)+", "X(Z3)", "X(Z3)+", "X(Z4)+", "X(Z5)"],
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }

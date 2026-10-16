@@ -106,5 +106,5 @@
   "not_interpreted_distance": ["Operation_PSB"],
   "coverage": {"canonical_values_assumed": 5, "canonical_values_conflicting": 0, "canonical_values_mapped": 21, "canonical_values_missing": 1, "canonical_values_not_exposed": 3, "canonical_values_total": 35, "canonical_values_unreadable": 0, "canonical_values_unsupported": 5, "canonical_values_unverified": 0, "catalog_id": "hitachi-rel511-catalog", "catalog_mapped_settings": 26, "catalog_recognised_settings": 33, "catalog_unresolved_settings": 2, "catalog_unsupported_settings": 5, "catalog_version": "1.2.0", "extension_interpreted_settings": 0, "extracted_settings": 38, "not_interpreted_settings": 2, "outside_distance_settings": 3, "unmapped_settings": 5},
   "catalog_sources_absent": [],
-  "golden": {"points": [], "outlines": []}
+  "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []}
 }
