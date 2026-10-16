@@ -248,16 +248,19 @@ test("7SL87: blank timer cells are Missing (not the Infinity range), basis from 
 });
 
 test("GRZ100: CT / VT ratios, a phase / earth characteristic mismatch and blinders are shown honestly", async ({ page }) => {
-  await openReview(page, grz100Pdf(), 8);
+  await openReview(page, grz100Pdf(), 9);
   await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Toshiba · GRZ100");
   await expect(row(page, "ct.ratio")).toContainText("CT Ratio");
   await expect(row(page, "ct.ratio")).toContainText("1200");
   await expect(row(page, "vt.ratio")).toContainText("1200");
   await expect(row(page, "ct.primary")).toContainText("Source value missing"); // a ratio is never split into primary / secondary
   await expect(row(page, "zone.Z1.characteristic")).toContainText("Not yet supported"); // Quad phase vs Mho earth
-  await expect(zoneGroup(page, "Z1")).toContainText("BFRS");
-  await expect(zoneGroup(page, "Z1")).toContainText("BFLS-angle");
-  await expect(row(page, "zone.Z1.status")).toContainText("Source value missing"); // no zone switch: not invented
+  // DEC-198 Amendment 7: the 75° blinder and the polarised left boundary are documented engine limits, not silent rows
+  await expect(row(page, "zone.Z1.rr.pp")).toContainText("Not yet supported");
+  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Not yet supported");
+  await expect(zoneGroup(page, "Z1")).toContainText("Z1G");                     // the earth X reach is kept
+  await expect(row(page, "zone.Z1.status")).toContainText("Not yet supported");   // site PLC: no state invented
+  await expect(row(page, "zone.Z1.status")).not.toContainText("Source value missing");
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("0.3 s");
   await expect(applyBtn(page)).toHaveCount(0);
 });

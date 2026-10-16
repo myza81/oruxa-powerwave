@@ -75,6 +75,13 @@ class UnsupportedCode(StrEnum):
     CHARACTERISTIC_UNSUPPORTED = "characteristic_unsupported"
     CHARACTERISTIC_MIXED = "characteristic_mixed"
     ZONE_STATUS_UNRESOLVED = "zone_status_unresolved"
+    #: DEC-198: the zone's settings are configured, but whether it trips in service depends on relay logic
+    #: that is not verified (e.g. a site-specific programmable scheme). Its geometry is still reviewed; the
+    #: adaptation fails. Nothing in the review can clear it.
+    ZONE_STATUS_UNVERIFIED = "zone_status_unverified"
+    #: DEC-198: the zone's documented function is not one the engine models (e.g. an element that only feeds
+    #: a signalling scheme and never trips on its own). Preserved, never drawn.
+    ZONE_STATUS_UNSUPPORTED = "zone_status_unsupported"
     DIRECTION_UNSUPPORTED = "direction_unsupported"
     LOOP_TYPE_UNSUPPORTED = "loop_type_unsupported"
     REACH_UNRESOLVED = "reach_unresolved"
@@ -237,6 +244,28 @@ def zone_active(zone: DistanceZone) -> bool | None:
     return _status(zone)
 
 
+def status_unverified(zone: DistanceZone) -> bool:
+    """DEC-198: the zone's operational (trip) state is not verified -- e.g. the relay runs site-specific
+    scheme logic the source does not define -- while its own settings are configured. The zone's geometry
+    is reviewed as for a zone in service, and the adaptation fails; no Enabled / Disabled is invented."""
+    s = zone.status
+    return not s.is_resolved and s.provenance.cause is UnresolvedCause.UNVERIFIED
+
+
+def zone_geometry_reviewed(zone: DistanceZone) -> bool:
+    """Whether the zone's settings are checked as for a zone in service: it is enabled, or its operational
+    state is not verified (`status_unverified`)."""
+    return _status(zone) is True or status_unverified(zone)
+
+
+def _status_documented_unsupported(zone: DistanceZone) -> bool:
+    """The zone's status is a documented function the engine does not model (an Unsupported status that
+    cites a verified reference), not a selector value the interpretation does not recognise."""
+    p = zone.status.provenance
+    return (not zone.status.is_resolved and p.cause is UnresolvedCause.UNSUPPORTED
+            and any(ref.verified for ref in p.references))
+
+
 def zone_direction(zone: DistanceZone) -> str | None:
     """The zone's direction when the model states a forward or reverse one, else None."""
     d = zone.direction
@@ -263,7 +292,27 @@ def _explicit_zero_tilt(zone: DistanceZone) -> bool:
 
 def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     status = _status(zone)
-    if status is None:
+    if status is None and status_unverified(zone):
+        # DEC-198: geometry available, operational enablement uncertain -- the configured settings are
+        # reviewed as for a zone in service (one review gives the complete picture); nothing is returned.
+        fail(
+            UnsupportedCode.ZONE_STATUS_UNVERIFIED,
+            "The zone's settings are configured, but whether it trips in service depends on relay logic that "
+            "is not verified (site-specific logic); no Enabled / Disabled state is assumed.",
+            zone,
+            (zone_path(zone, "status"),),
+        )
+        status = True
+    elif status is None and _status_documented_unsupported(zone):
+        fail(
+            UnsupportedCode.ZONE_STATUS_UNSUPPORTED,
+            "The zone's documented function is not a tripping zone the current engine models; its settings "
+            "are preserved and it is not drawn.",
+            zone,
+            (zone_path(zone, "status"),),
+        )
+        return ZoneSettings()
+    elif status is None:
         fail(
             UnsupportedCode.ZONE_STATUS_UNRESOLVED, "Zone enabled/disabled status is unresolved.", zone,
             (zone_path(zone, "status"), zone_path(zone, "direction")),

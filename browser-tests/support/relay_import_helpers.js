@@ -252,15 +252,31 @@ function rel511Pdf() {
   return rowsPdf(rows);
 }
 
-// A synthetic Toshiba GRZ100-shaped sheet: CT / VT stated as ratios, Quad phase and Mho earth selections, blinders. Invented.
-function grz100Pdf() {
+// A synthetic Toshiba GRZ100-shaped sheet (the owner sheet's shape, invented numbers): every distance zone with its phase
+// (S) and earth (G) element, the backup-trip switches and the site PLC program name. `zgC` defaults to Mho (a phase /
+// earth characteristic mismatch); the owner's selection is Quad for both.
+function grz100Pdf({ zgC = "Mho" } = {}) {
   const rows = [
     ["LZOP: 132kV AAAA - BBBB 1", "Scheme: GRZ100_201A_Ver2.1"], ["Utility ID: 1", "Active Group: Rev0"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["PLC data", "TNBGRZ100-01\\(FFF"], // PDF-escaped "(": an unbalanced paren would end the string literal
     ["[Parameter]"], ["VT", "1200", "1-20000"], ["CT", "1200", "1-20000"], ["X1", "6.7", "0.0-999.9 ohms"], ["R1", "1.2", "0.0-999.9 ohms"],
     ["X0", "21", "0.0-999.9 ohms"], ["R0", "7", "0.0-999.9 ohms"], ["Line", "24.9", "0.0-399.9 km"],
-    ["ZS-C", "Quad", "Mho/Quad"], ["ZG-C", "Mho", "Mho/Quad"],
-    ["Z1S", "5.72", "0.10-250.00 ohms"], ["BFRS", "20", "0.5-100.0 ohms"], ["BFLS-angle", "120", "90-135 degree"],
-    ["TZ1S", "0", "0.00-10.00 s"], ["TZ2S", "0.3", "0.00-10.00 s"], ["TZ1G", "0", "0.00-10.00 s"],
+    ["[Trip/Com(Sw)]"], ["Protection Scheme", "PUP", "Protection Scheme"], ["ZS-C", "Quad", "Mho/Quad"], ["ZG-C", zgC, "Mho/Quad"],
+    ["Z1CNT", "4", "1/2/3/4/5"], ["ZFBT", "Off", "Off/On"], ["ZR1BT", "Off", "Off/On"], ["ZR2BT", "On", "Off/On"], ["ZNDBT", "Off", "Off/On"],
+    ["[Trip/Com(Ele)]"], ["Z1S", "5.72", "0.10-250.00 ohms"], ["Z1XS", "9.6", "0.10-250.00 ohms"], ["Z1S-angle1", "0", "0-45 degree"],
+    ["Z1S-angle2", "90", "45-90 degree"], ["Z2S", "7.4", "0.10-250.00 ohms"], ["ZFS", "7.4", "0.1-250.0 ohms"], ["Z3S", "13", "0.1-250.0 ohms"],
+    ["ZBS-angle (quad)", "15", "0-45 degree"], ["BFRS", "20", "0.5-100.0 ohms"], ["BFLS-angle", "120", "90-135 degree"],
+    ["ZR1S", "1.2", "0.1-250.0 ohms"], ["ZR2S", "1.6", "0.1-250.0 ohms"], ["Z4S", "1.2", "0.1-250.0 ohms"], ["BRRS", "18", "0.5-100.0 ohms"],
+    ["ZNDS", "40", "0.1-250.0 ohms"], ["BNDS", "50", "0.5-100.0 ohms"],
+    ["TZ1S", "0", "0.00-10.00 s"], ["TZ2S", "0.3", "0.00-10.00 s"], ["TZFS", "0.35", "0.00-10.00 s"], ["TZ3S", "3", "0.00-10.00 s"],
+    ["TZR1S", "0.5", "0.00-10.00 s"], ["TZR2S", "3", "0.00-10.00 s"], ["TZNDS", "0.7", "0.00-10.00 s"],
+    ["Z1G", "5.72", "0.10-250.00 ohms"], ["Z1XG", "9.6", "0.10-250.00 ohms"], ["Z2G", "7.4", "0.10-250.00 ohms"], ["ZFG", "7.4", "0.1-250.0 ohms"],
+    ["Z3G", "22", "0.1-250.0 ohms"], ["ZBG-angle (quad)", "15", "0-45 degree"], ["BFRG", "20", "0.5-100.0 ohms"],
+    ["BFLG-angle", "120", "90-135 degree"], ["ZR1G", "2.2", "0.1-250.0 ohms"], ["ZR2G", "2.2", "0.1-500.0 ohms"], ["Z4G", "2.2", "0.1-500.0 ohms"],
+    ["BRRG", "18", "0.5-100.0 ohms"], ["Krs", "560", "0-1000 %"], ["Kxs", "313", "0-1000 %"], ["KrsR", "560", "0-1000 %"], ["KxsR", "313", "0-1000 %"],
+    ["ZNDG", "40", "0.1-250.0 ohms"], ["BNDG", "50", "0.5-100.0 ohms"],
+    ["TZ1G", "0", "0.00-10.00 s"], ["TZ2G", "0.3", "0.00-10.00 s"], ["TZFG", "0.35", "0.00-10.00 s"], ["TZ3G", "3", "0.00-10.00 s"],
+    ["TZR1G", "0.5", "0.00-10.00 s"], ["TZR2G", "3", "0.00-10.00 s"], ["TZNDG", "0.7", "0.00-10.00 s"], ["Vn", "110", "100-120 V"],
     ["Zone 1", "Forward direction timer set to 0.0s"],
   ];
   return rowsPdf(rows);

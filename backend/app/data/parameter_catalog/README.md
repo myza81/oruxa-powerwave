@@ -105,6 +105,17 @@ DEC-198 Amendment 6: instead, `material_unless: [raw values]` declares a *geomet
 harmless only with those values (e.g. a load-cutout resistance of "infinity"): a **blank** configured cell blocks an
 enabled zone as a missing source value ("Source value missing" -- its effect is unknown), any other stated value blocks it
 as a boundary the engine cannot represent ("Not yet supported"). The two options are exclusive.
+DEC-198 Amendment 7: `"always_material": true` declares a geometry-affecting preserved setting with **no** harmless value
+(e.g. the GRZ100 reverse-zone backup-trip switch, which only chooses between two forward-offset reaches): a stated value
+blocks an enabled (or geometry-reviewed) zone as a boundary the engine cannot represent, a blank cell as a missing source
+value. The three options are exclusive.
+
+**Zone status not verified** (DEC-198 Amendment 7). A status `gap` of kind `unverified` (e.g. a relay whose trip logic is
+a site-specific programmable scheme the source does not define) never invents Enabled / Disabled and is never offered for
+entry; the engine adapter still reviews the zone's configured geometry as for a zone in service and fails with
+`ZONE_STATUS_UNVERIFIED`. A status `gap` of kind `unsupported` that cites a verified reference states a documented zone
+function the engine does not model (e.g. a command-protection-only element): `ZONE_STATUS_UNSUPPORTED`, preserved, not
+drawn.
 
 **Not exposed** (DEC-198). `"not_exposed": {"note": ...}` on a mapping (no source, transform, gate, evidence, authority or
 gap) states that the relay has **no configurable setting** for this canonical parameter -- inherent / fixed behaviour.
@@ -149,7 +160,7 @@ to the extracted settings), plus canonical values by outcome. Review rows are no
 | `hitachi_energy/rel511.json` | REL511 | catalog-only, 1.2.0: documented characteristic / loops (ABB 1MDB06309-YN), documented Secondary basis and RFZn / RFNZn meanings (ABB 1MRK 506 101 / 109 / 167-UEN, REL 511 2.3 / 2.5 -- verified for the family, version-dependent for the 1.x-style sheet); RFZn inclined boundary and left / directional boundary unsupported; ZnBlock unverified |
 | `siemens/siprotec5_7sl87.json` | 7SL87 | catalog-only, 1.1.0: documented quadrilateral characteristic (selector not exposed), per-phase R (ph-ph) / R (ph-g) and the operate-delay loop assignment (Siemens C53000-G5040-C011-9, V07.50 -- version-dependent for the 7SL87_8.81 sheet); +R inclined at the distance characteristic angle and the left / directional boundary unsupported (+R = R (ph-ph) only at 90 deg); phase-phase load cutout in use unverified; blank delays Missing |
 | `siemens/siprotec4_7sa613.json` | 7SA613 | catalog-only, 1.1.0: documented polygonal characteristic and PP / PE loops (selectors not exposed), documented Secondary basis, per-phase R(Zn) ph-ph and the delay loop assignment (Siemens 7SA6 manuals C53000-G1176-C156-2 / -7, version-dependent for the V4.2-style sheet); explicit Infinity delays configured (engine-unsupported on a zone in service); inclined +R / -R and non-directional Z5 unsupported; blank delays and a blank R load (ph-ph) Missing |
-| `toshiba/grz100.json` | GRZ100 | catalog-only (verified subset) |
+| `toshiba/grz100.json` | GRZ100 | catalog-only, 1.1.0: documented Secondary basis, fixed zone directions, inherent PP / PE (selectors not exposed), ZnS as the Quad X reach and Z1X instantaneous (Toshiba 6F2S0834-0 / 6641-1, version-dependent, not the exact 201A manual); ZS-C / ZG-C exact selectors; zone trip state Unverified (site-specific PLC) with geometry still reviewed; Z4 preserved, not drawn; BFRS +R, BFLS / ZBS-angle −R, the ZR1 / ZR2 forward offset (`always_material`) and the ZND impedance element unsupported; no source gap |
 | `toshiba/grl200.json` | GRL200 | catalog-only (verified subset) |
 | `nr_electric/rcs941.json` | RCS-941 | catalog-only (verified subset) |
 | `relz/relz100.json` | RELZ100 | catalog-only (verified subset) |

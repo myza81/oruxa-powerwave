@@ -104,8 +104,9 @@ FAMILIES = {
 
 
 #: The active catalog version per family (documented relay behaviour, DEC-198: REL511 1.2.0, Amendments 1-2;
-#: 7SL87 1.1.0, Amendment 3; 7SA613 1.1.0, Amendment 6).
-CATALOG_VERSIONS = {name: {"rel511": "1.2.0", "7sl87": "1.1.0", "7sa613": "1.1.0"}.get(name, "1.0.0") for name in FAMILIES}
+#: 7SL87 1.1.0, Amendment 3; 7SA613 1.1.0, Amendment 6; GRZ100 1.1.0, Amendment 7).
+CATALOG_VERSIONS = {name: {"rel511": "1.2.0", "7sl87": "1.1.0", "7sa613": "1.1.0", "grz100": "1.1.0"}.get(name, "1.0.0")
+                    for name in FAMILIES}
 
 
 class TestEveryFamilyIsCatalogOnly:
@@ -319,15 +320,17 @@ class TestGrz100:
     def test_differing_phase_and_earth_characteristics_are_not_forced_into_one(self, client):
         i = items(upload(client, F.grz100_pdf())["review"])
         char = i["zones[Z1].characteristic.type"]
-        assert char["value_text"] == "Unknown" and char["category"] == "unsupported"
+        # ZS-C = Quad states the phase element as explicit R/X limits (DEC-198 Amendment 7); the mismatch stays unknown
+        assert char["value_text"] == "Unknown · Explicit R/X" and char["category"] == "unsupported"
 
-    def test_blinders_and_reach_settings_are_preserved_and_no_state_or_direction_invented(self, client):
+    def test_blinders_are_unsupported_geometry_direction_documented_and_no_trip_state_invented(self, client):
+        # DEC-198 Amendment 7 (details: test_relay_grz100_documented_behaviour.py)
         review = upload(client, F.grz100_pdf())["review"]
-        rows = raw_rows(review, "Z1")
-        assert {"Z1S", "BFRS", "BFLS-angle", "Z1S-angle1"} <= set(rows)
-        assert all(r["category"] == "unsupported" for r in rows.values())
         i = items(review)
-        assert unresolved(i["zones[Z1].status"], "missing") and unresolved(i["zones[Z1].direction"], "missing")
+        assert unresolved(i["zones[Z1].resistive_reach.phase_phase"], "unsupported")          # BFRS, inclined at 75 deg
+        assert unresolved(i["zones[Z1].resistive_reach.reverse"], "unsupported")              # BFLS-angle / ZBS-angle
+        assert unresolved(i["zones[Z1].status"], "unverified")                                # site PLC: never Enabled / Disabled
+        assert (i["zones[Z1].direction"]["value_text"], i["zones[Z1].direction"]["category"]) == ("Forward", "documented")
         assert [n["title"] for n in group(review, "ZR2")["source_notes"]] == ["Zone R2 timer requirement: 3 s"]
 
 
@@ -418,7 +421,7 @@ needs_samples = pytest.mark.skipif(not SAMPLE_DIR, reason="owner sample PDFs are
 REAL = {
     "rel670": ("rel670.pdf", "hitachi-rel670", 4), "rel511": ("rel511.pdf", "hitachi-rel511", 5),
     "7sl87": ("7sl87.pdf", "siemens-siprotec5-7sl87", 6), "7sa613": ("7sa613.pdf", "siemens-7sa613", 6),
-    "grz100": ("grz100.pdf", "toshiba-grz100", 8), "grl200": ("grl200.pdf", "toshiba-grl200", 6),
+    "grz100": ("grz100.pdf", "toshiba-grz100", 9), "grl200": ("grl200.pdf", "toshiba-grl200", 6),
     "rcs941": ("rcs.pdf", "nr-rcs941", 4), "lfzp111": ("lfzp.pdf", "lfzp111", 5), "relz100": ("relz100.pdf", "relz100", 5),
 }
 

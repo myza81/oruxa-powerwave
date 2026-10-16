@@ -211,20 +211,49 @@ def sa613_pdf(*, angle: str = "82", zone_reduction: str = "0", r_load_pp: str = 
 # --- Toshiba GRZ100 ---------------------------------------------------------------------------------------------
 
 GRZ100_ROWS: list[Row] = [
+    ("PLC data", "TNBGRZ100-01(FFF"),
     ("[Parameter]",), ("VT", "1200", "1-20000"), ("CT", "1200", "1-20000"),
     ("X1", "6.7", "0.0-999.9 ohms"), ("X0", "21", "0.0-999.9 ohms"), ("R1", "1.2", "0.0-999.9 ohms"),
     ("R0", "7", "0.0-999.9 ohms"), ("Line", "24.9", "0.0-399.9 km"),
-    ("[Trip/Com(Sw)]",), ("ZS-C", "Quad", "Mho/Quad"), ("ZG-C", "Mho", "Mho/Quad"),
-    ("[Trip/Com(Ele)]",), ("Z1S", "5.72", "0.10-250.00 ohms"), ("Z1S-angle1", "0", "0-45 degree"),
-    ("BFRS", "20", "0.5-100.0 ohms"), ("BFLS-angle", "120", "90-135 degree"),
-    ("TZ1S", "0", "0.00-10.00 s"), ("TZ2S", "0.3", "0.00-10.00 s"),
-    ("Z1G", "5.72", "0.10-250.00 ohms"), ("TZ1G", "0", "0.00-10.00 s"), ("Krs", "560", "0-1000 %"),
+    ("[Trip/Com(Sw)]",), ("Protection Scheme", "PUP", "Protection Scheme"), ("ZS-C", "Quad", "Mho/Quad"),
+    ("ZG-C", "Mho", "Mho/Quad"), ("Z1CNT", "4", "1/2/3/4/5"), ("PSB-Z1", "On", "Off/On"),
+    ("ZFBT", "Off", "Off/On"), ("ZR1BT", "Off", "Off/On"), ("ZR2BT", "On", "Off/On"), ("ZNDBT", "Off", "Off/On"),
+    ("[Trip/Com(Ele)]",), ("Z1S", "5.72", "0.10-250.00 ohms"), ("Z1XS", "9.6", "0.10-250.00 ohms"),
+    ("Z1S-angle1", "0", "0-45 degree"), ("Z1S-angle2", "90", "45-90 degree"), ("Z2S", "7.4", "0.10-250.00 ohms"),
+    ("ZFS", "7.4", "0.1-250.0 ohms"), ("Z3S", "13", "0.1-250.0 ohms"), ("Z3S-angle (mho)", "85", "45-90 degree"),
+    ("ZBS-angle (quad)", "15", "0-45 degree"), ("BFRS", "20", "0.5-100.0 ohms"), ("BFLS-angle", "120", "90-135 degree"),
+    ("ZR1S", "1.2", "0.1-250.0 ohms"), ("ZR2S", "1.6", "0.1-250.0 ohms"), ("Z4S", "1.2", "0.1-250.0 ohms"),
+    ("BRRS", "18", "0.5-100.0 ohms"), ("ZNDS", "40", "0.1-250.0 ohms"), ("BNDS", "50", "0.5-100.0 ohms"),
+    ("TZ1S", "0", "0.00-10.00 s"), ("TZ2S", "0.3", "0.00-10.00 s"), ("TZFS", "0.35", "0.00-10.00 s"),
+    ("TZ3S", "3", "0.00-10.00 s"), ("TZR1S", "0.5", "0.00-10.00 s"), ("TZR2S", "3", "0.00-10.00 s"),
+    ("TZNDS", "0.7", "0.00-10.00 s"),
+    ("Z1G", "5.72", "0.10-250.00 ohms"), ("Z1XG", "9.6", "0.10-250.00 ohms"), ("Z1G-angle1", "0", "0-45 degree"),
+    ("Z1G-angle2", "90", "45-90 degree"), ("Z2G", "7.4", "0.10-250.00 ohms"), ("ZFG", "7.4", "0.1-250.0 ohms"),
+    ("Z3G", "22", "0.1-250.0 ohms"), ("Z3G-angle (mho)", "85", "45-90 degree"), ("ZBG-angle (quad)", "15", "0-45 degree"),
+    ("BFRG", "20", "0.5-100.0 ohms"), ("BFLG-angle", "120", "90-135 degree"), ("ZR1G", "2.2", "0.1-250.0 ohms"),
+    ("ZR2G", "2.2", "0.1-500.0 ohms"), ("Z4G", "2.2", "0.1-500.0 ohms"), ("BRRG", "18", "0.5-100.0 ohms"),
+    ("Krs", "560", "0-1000 %"), ("Kxs", "313", "0-1000 %"), ("Krm", "0", "0-1000 %"), ("Kxm", "0", "0-1000 %"),
+    ("KrsR", "560", "0-1000 %"), ("KxsR", "313", "0-1000 %"), ("ZNDG", "40", "0.1-250.0 ohms"),
+    ("BNDG", "50", "0.5-100.0 ohms"), ("TZ1G", "0", "0.00-10.00 s"), ("TZ2G", "0.3", "0.00-10.00 s"),
+    ("TZFG", "0.35", "0.00-10.00 s"), ("TZ3G", "3", "0.00-10.00 s"), ("TZR1G", "0.5", "0.00-10.00 s"),
+    ("TZR2G", "3", "0.00-10.00 s"), ("TZNDG", "0.7", "0.00-10.00 s"), ("Vn", "110", "100-120 V"),
 ]
 GRZ100_NOTES: list[Row] = [("Zone 1", "Forward direction timer set to 0.0s"), ("Zone R2", "Reverse direction timer set to 3s")]
 
 
-def grz100_pdf() -> bytes:
-    return sheet_pdf("GRZ100_201A_Ver2.1", GRZ100_ROWS, GRZ100_NOTES)
+def grz100_pdf(*, zs_c: str = "Quad", zg_c: str = "Mho", z1_angle1: str = "0", plc: str | None = "TNBGRZ100-01(FFF",
+               bt: dict[str, str] | None = None) -> bytes:
+    """The owner sheet's shape (invented numbers): every distance zone with its phase (S) and earth (G) element, the
+    backup-trip switches and the site PLC program name. ``zg_c`` defaults to Mho (a phase / earth characteristic
+    mismatch); ``z1_angle1`` sets Z1S-angle1, ``plc`` the 'PLC data' row (None drops it) and ``bt`` overrides
+    backup-trip switches by name (e.g. ``{"ZR2BT": "Off"}``)."""
+    cells = {"ZS-C": zs_c, "ZG-C": zg_c, "Z1S-angle1": z1_angle1, **(bt or {})}
+    rows = [(r[0], cells[r[0]], *r[2:]) if r[0] in cells else r for r in GRZ100_ROWS]
+    if plc is None:
+        rows = [r for r in rows if r[0] != "PLC data"]
+    else:
+        rows = [(r[0], plc) if r[0] == "PLC data" else r for r in rows]
+    return sheet_pdf("GRZ100_201A_Ver2.1", rows, GRZ100_NOTES)
 
 
 # --- Toshiba GRL200 ---------------------------------------------------------------------------------------------

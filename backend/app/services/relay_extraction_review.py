@@ -57,7 +57,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
     item_label,
 )
-from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_active
+from app.domain.relay_import.engine_adapter import EngineAdaptation, status_unverified, zone_active, zone_geometry_reviewed
 from app.domain.relay_import.provenance import (
     MappingAuthority,
     MappingStatus,
@@ -816,6 +816,9 @@ def _line_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewG
 def _zone_state(zone: DistanceZone) -> tuple[str, str, str]:
     """(label, interpretation status, review status) of the zone's own status."""
     status = zone.status
+    if status_unverified(zone):
+        # DEC-198: the zone's geometry is available, its operational state is not verified
+        return "Operational status not verified", _interpretation_status(status), _review_status(status)
     if not status.is_resolved:
         return "Status unresolved", _interpretation_status(status), _review_status(status)
     label = _STATUS_LABELS.get(str(_enum_str(status.value)), "Unknown")
@@ -906,7 +909,7 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     if _touched(zone.tilt_deg):
         items.append(b.item(f"{pre}.tilt", "Tilt Angle", name, zone.tilt_deg, unit="deg", path=f"{zp}.tilt_deg"))
     items += b.extras(f"{pre}.char", name, zone.characteristic.parameters, f"{zp}.characteristic.parameters")
-    active = zone_active(zone) is True
+    active = zone_geometry_reviewed(zone)    # in service, or its geometry reviewed while its trip state is not verified
     for u in zone.unresolved_settings:
         if not u.out_of_scope:
             items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u, active=active))

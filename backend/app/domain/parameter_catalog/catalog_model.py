@@ -305,6 +305,11 @@ class PreservedSettings:
     #: zone: a blank configured cell as a missing source value, a stated value as a boundary the
     #: engine cannot represent. The value is never interpreted.
     material_unless: tuple[str, ...] = ()
+    #: DEC-198: a geometry-affecting setting with no harmless value -- whatever it is set to, it gives the
+    #: zone a documented boundary part the engine cannot represent (e.g. a switch that only chooses between
+    #: two offset reaches). A stated value blocks an enabled zone as an engine limitation, a blank configured
+    #: cell as a missing source value. The value is never interpreted.
+    always_material: bool = False
 
 
 @dataclass(frozen=True)

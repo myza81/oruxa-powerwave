@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "toshiba-grz100-catalog",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "lifecycle": "active",
   "profile_id": "toshiba-grz100",
   "registry_version": "1.1.0",
-  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only, verified subset: the phase (ZS) and earth (ZG) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Not interpreted (semantics not verified): each zone's reach setting (reactance limit or impedance reach), the blinders (BFRS, BFLS-angle, BRRS, BNDS), the reactance-line and bottom angles, the Krs / Kxs compensation factors, the impedance basis, and any zone in-service state or direction (none is stated per zone). The raw zone settings are preserved with their zones.",
+  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only. Configured settings: the phase (ZS-C) and earth (ZG-C) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Documented relay behaviour (DEC-198, Toshiba instruction manual 6F2S0834-0 and brochure 6641-1, version-dependent for this GRZ100-201A sheet): the fixed zone directions, the phase-fault and earth-fault elements of every zone, the secondary-ohm setting basis, ZnS as the quadrilateral's X reach, Zone 1's horizontal reactance line (Z1S-angle1 = 0), Zone 1X's instantaneous trip. Not verified: whether each zone trips in service -- the relay runs a site-specific PLC program the source does not define (geometry reviewed, operational state not verified). Not representable (blocking): the 75-degree right blinders, the polarised left blinder / directional boundary, the reverse zones' forward offset, the non-directional impedance element and Zone 4 (command protection only). No source value is missing.",
   "applicability": {
     "manufacturer": "Toshiba",
     "family": "GRZ100",
@@ -21,7 +21,7 @@
     "static": [
       {"id": "Z1", "name": "Zone 1"}, {"id": "Z1X", "name": "Zone 1X"}, {"id": "Z2", "name": "Zone 2"},
       {"id": "ZF", "name": "Zone F"}, {"id": "Z3", "name": "Zone 3"}, {"id": "ZR1", "name": "Zone R1"},
-      {"id": "ZR2", "name": "Zone R2"}, {"id": "ZND", "name": "Zone ND"}
+      {"id": "ZR2", "name": "Zone R2"}, {"id": "ZND", "name": "Zone ND"}, {"id": "Z4", "name": "Zone 4"}
     ]
   },
   "distance_scope": {
@@ -29,10 +29,39 @@
     "names": ["Protection Scheme", "PSBFR", "UVPWIEN", "ECHO", "WKIT", "CHSEL", "Vn", "PSB", "SOTF"]
   },
   "interpretation_notes": [
-    "The zones are the sheet's distance element groups: Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2 and ZND, each with a phase-fault element (suffix S) and an earth-fault element (suffix G). The sheet states no per-zone in-service switch and no per-zone direction: neither is assumed from the zone's name.",
-    "The characteristic is the sheet's phase (ZS-C) and earth (ZG-C) selection. One canonical characteristic per zone represents both only when they agree; otherwise the zone's characteristic is recorded as not representable.",
-    "Each zone's reach setting (ZnS / ZnG), the blinders (BFRS, BFLS-angle, BRRS, BNDS and their earth counterparts), the reactance-line angles and the bottom angle are preserved with their zones uninterpreted: whether the reach is the reactance limit or an impedance reach, and the blinder geometry, are not established, and the current model cannot draw angle-defined blinders. Krs / Kxs (and Krm / Kxm, KrsR / KxsR) are percent compensation factors in the relay's own definition, not the canonical Kr / Kx; they are preserved, not converted.",
-    "The CT and VT are stated as ratios (CT, VT); no primary / secondary split is made. The impedance basis is not stated and is not assumed."
+    "The zones are the GRZ100 distance measuring zones, each with a phase-fault element (suffix S) and an earth-fault element (suffix G): forward Z1, Z1X, Z2, ZF and Z3, reverse ZR1 and ZR2, the non-directional ZND and Z4 (reverse-fault detection for command protection only, 'not for backup protection'). Their directions are fixed by these documented zone functions (Toshiba 6F2S0834-0, 2.4.1.1), never inferred from a zone's name or number.",
+    "Documented relay behaviour (Toshiba GRZ100 instruction manual 6F2S0834-0, Ver. 0.3, models 211B-323B, and brochure 6641-1, which lists Model 201): the characteristic is selected by [ZS-C] (phase faults) and [ZG-C] (earth faults), Mho or Quad; a quadrilateral zone combines the reactance element (X <= Xs, its reach ZnS set on the X-axis), the directional element and the blinder element. Applicability: the owner sheet is a GRZ100-201A (scheme GRZ100_201A_Ver2.1); the manual is used where its setting set matches the sheet (same names, the 1 A ranges printed beside every ohmic setting). It is not claimed to be the exact 201A manual.",
+    "Documented setting basis: secondary ohms. The ohmic setting ranges are stated per CT rating (the values for the 1 A rating in parentheses) and this sheet prints exactly the 1 A ranges; the line data of the same [Parameter] section is entered 'on the secondary side of CT and VT'; the voltages (Vn 110 V) and currents are secondary values. Never inferred from the CT / VT ratios.",
+    "Operational state: the default scheme logic (6F2S0834-0, Fig. 2.4.1.5) trips Zone 1 (instantaneously; Z1CNT = 4 irrespective of command protection), Zone 2 and Zone 3 on their timers; ZF, ZR1, ZR2 and ZND trip only when their backup-trip switch [ZnBT] is On; Zone 1X trips only in the Z1EXT scheme or when the PLC signal Z1X_F.ENABLE is set; Z4 has no trip of its own. The trip logic is PLC-programmable (Zn_BLOCK, Zn_INST_TP, Z1X_F.ENABLE) and this relay runs a site-specific PLC program ('PLC data') that the source does not define, so no zone's in-service state is asserted: each zone's geometry is reviewed and its operational state is recorded as not verified (site-specific logic not verified).",
+    "Documented phase-fault geometry (per-phase R-X plane; 6F2S0834-0, 2.6.1): top X = ZnS (Zone 1 / 1X: a horizontal line while Z1S-angle1 = 0, else a broken line); right blinder BFR, X >= (R - BFRS) * tan 75 deg, i.e. Rright(X) = BFRS + X * cot 75 deg (fixed 75 deg, common to the forward zones on this sheet); left blinder BFL, Vp * I * cos(phi + theta - 90 deg) > 0 with theta = BFLS-angle, and the directional element I * Vp * cos(theta - phi) >= 0 with theta = ZBS-angle (quad), both voltage-polarised boundaries through the origin whose combined R-X orientation is not fully verified. Reverse zones: BRR, X <= (R + BRRS) * tan 75 deg, BRL, X <= (R - BRRS) * tan(180 deg - theta), and a forward offset fixed at 7.5 ohm (1 A rating), limited to the Zone 1 reach when [ZRnBT] = On (Fig. 2.6.1.3). ZND: an impedance element (circle) with 75 deg blinders BNDS. The current engine draws vertical resistive limits and none of these shapes, so they block; no approximation is applied. Candidates AGRZ-A (+R = BFRS, conservative, envelope X * cot 75 deg) and AGRZ-B (-R = 0 in the first quadrant, conservative candidate pending confirmation of the combined BFLS / directional orientation) are documented only and not approved.",
+    "Zone 1, 1X, 2 and F trip only while zone 3 has operated (6F2S0834-0, 2.6.1); with the common blinder and a larger Zone 3 reach this restricts nothing here. For a close-up three-phase fault Zone 1's phase element changes to a reverse offset element (dynamic behaviour, not a static boundary). Krs / Kxs (protected line), Krm / Kxm (parallel line) and KrsR / KxsR (ZR1) are the relay's own percent earth-fault compensation factors (Krs = R0/R1 x 100, Kxs = X0/X1 x 100) for the earth-fault elements of Z1, Z1X, Z2 (and ZR1): preserved, not converted to the canonical Kr / Kx and not used by the phase-phase engine.",
+    "The CT and VT are stated as ratios (CT, VT); no primary / secondary split is made."
+  ],
+  "references": [
+    {"id": "toshiba-6f2s0834-0-distance", "title": "Toshiba GRZ100 Distance Relay Instruction Manual", "verification": "verified",
+     "document": "Toshiba 6F2S0834-0 (Ver. 0.3)",
+     "section": "2.4.1 Time-stepped distance protection: zone functions, Mho / Quad selection, Fig. 2.4.1.2, scheme logic Fig. 2.4.1.5, earth-fault compensation", "page": "24-39",
+     "scope": "GRZ100 family, documented model set GRZ100-211B to -323B. Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet: not claimed as the exact 201A manual."},
+    {"id": "toshiba-6f2s0834-0-settings", "title": "Toshiba GRZ100 Distance Relay Instruction Manual", "verification": "verified",
+     "document": "Toshiba 6F2S0834-0 (Ver. 0.3)",
+     "section": "2.4.1 settings: ranges (ohmic values in parentheses for the 1 A rating); fixed elements (BFRS / BRRS angle 75 deg, Z4BS offset 7.5 ohm)", "page": "31-34",
+     "scope": "GRZ100 family, documented model set GRZ100-211B to -323B. Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet: not claimed as the exact 201A manual."},
+    {"id": "toshiba-6f2s0834-0-zone1x", "title": "Toshiba GRZ100 Distance Relay Instruction Manual", "verification": "verified",
+     "document": "Toshiba 6F2S0834-0 (Ver. 0.3)",
+     "section": "2.4.2 Zone 1 extension protection: instantaneous tripping, scheme logic Fig. 2.4.2.2 (Z1X_F.ENABLE, Z1X blocking)", "page": "40-42",
+     "scope": "GRZ100 family, documented model set GRZ100-211B to -323B. Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet: not claimed as the exact 201A manual."},
+    {"id": "toshiba-6f2s0834-0-elements", "title": "Toshiba GRZ100 Distance Relay Instruction Manual", "verification": "verified",
+     "document": "Toshiba 6F2S0834-0 (Ver. 0.3)",
+     "section": "2.6.1 Distance measuring elements: reactance, blinder, directional and offset directional equations; reverse-zone offset (Fig. 2.6.1.3); ZND", "page": "113-121",
+     "scope": "GRZ100 family, documented model set GRZ100-211B to -323B. Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet: not claimed as the exact 201A manual."},
+    {"id": "toshiba-6f2s0834-0-fault-locator", "title": "Toshiba GRZ100 Distance Relay Instruction Manual", "verification": "verified",
+     "document": "Toshiba 6F2S0834-0 (Ver. 0.3)",
+     "section": "2.8.5 Fault locator setting: line reactance and resistance entered on the secondary side of CT and VT", "page": "150",
+     "scope": "GRZ100 family, documented model set GRZ100-211B to -323B. Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet: not claimed as the exact 201A manual."},
+    {"id": "toshiba-6641-1-brochure", "title": "Toshiba Numerical Relay GRZ100 Distance Protection (brochure)", "verification": "verified",
+     "document": "Toshiba 6641-1",
+     "section": "Relay functions: zones, quadrilateral characteristics (Fig. 3), reverse zones' offset directional element, Z4 for command protection; ordering (Model 201)", "page": "3-4, 21",
+     "scope": "GRZ100 family including Model 201 (product overview, not a setting manual). Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet."}
   ],
   "source_notes": [
     {
@@ -45,18 +74,24 @@
     }
   ],
   "zone_preserved": [
-    {"zone": "*", "names": ["{zone}S", "{zone}G"],
-     "reason": "The zone's reach setting (phase element S, earth element G). Whether it is the quadrilateral's reactance limit or an impedance reach is not established, so it is not used as the Reactive Reach (X); preserved as stated."},
-    {"zone": "Z1", "names": ["Z1S-angle1", "Z1S-angle2", "Z1G-angle1", "Z1G-angle2"],
-     "reason": "Reactance-line angles of Zone 1. The current model cannot draw an angle-shaped reactance line; preserved as stated."},
+    {"zone": "*", "names": ["{zone}G"],
+     "reason": "The earth-fault element's reach (ZnG): for the Quad characteristic the earth-fault reactance element's X reach, secondary ohms per phase in the residual-compensated loop domain (6F2S0834-0, 2.6.1). The phase-phase engine does not draw earth-fault elements; preserved, not drawn."},
+    {"zone": "Z1", "names": ["Z1S-angle2"],
+     "reason": "Zone 1's reactance-line angle theta2 (6F2S0834-0, 2.6.1, Fig. 2.6.1.8). It shapes the line only together with a non-zero Z1S-angle1 (theta1), which is itself not representable; with theta1 = 0 the line is horizontal. Preserved, not drawn."},
+    {"zone": "Z1", "names": ["Z1G-angle1", "Z1G-angle2"],
+     "reason": "The reactance-line angles of Zone 1's earth-fault element. The phase-phase engine does not draw earth-fault elements; preserved, not drawn."},
     {"zone": "Z3", "names": ["Z3S-angle (mho)", "Z3G-angle (mho)"],
      "reason": "The mho characteristic angle of Zone 3 (used only with the Mho selection). Preserved as stated."},
-    {"zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"], "names": ["BFRS", "BFLS-angle", "ZBS-angle (quad)", "BFRG", "BFLG-angle", "ZBG-angle (quad)"],
-     "reason": "Forward-zone blinder / boundary settings (right blinder, left blinder angle, bottom angle). Angle-defined blinders are a capability gap of the current model: preserved, not drawn and not approximated."},
-    {"zone": ["ZR1", "ZR2"], "names": ["BRRS", "BRRG"],
-     "reason": "Reverse-zone right blinder. Its geometry is not established and the current model cannot draw it: preserved, not approximated."},
-    {"zone": "ZND", "names": ["BNDS", "BNDG"],
-     "reason": "Non-directional-zone blinder. Its geometry is not established and the current model cannot draw it: preserved, not approximated."}
+    {"zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"], "names": ["BFLG-angle", "ZBG-angle (quad)"],
+     "reason": "The earth-fault element's left blinder angle and directional angle (BFLG-angle, ZBG-angle). The phase-phase engine does not draw earth-fault elements; preserved, not drawn."},
+    {"zone": ["ZF", "ZND"], "names": ["{zone}BT"],
+     "reason": "Backup-trip switch: under Toshiba's default scheme logic this zone trips on its timer only when it is On (6F2S0834-0, Fig. 2.4.1.5). The site-specific PLC program can change the trip logic, so the switch does not establish the zone's operational state. Preserved."},
+    {"zone": ["ZR1", "ZR2"], "names": ["{zone}BT"], "always_material": true,
+     "reason": "Backup-trip switch of a reverse zone. Under Toshiba's default scheme logic the zone trips on its timer only when it is On (Fig. 2.4.1.5). It also shapes the zone: a reverse zone has a forward offset, fixed at 7.5 ohm (1 A rating) when Off and limited to the Zone 1 reach (Z1S) when On (6F2S0834-0, 2.6.1, Fig. 2.6.1.3). The current engine cannot draw a reverse zone with a forward offset: preserved, not approximated."},
+    {"zone": ["Z1", "Z1X", "Z2"], "names": ["Krs", "Kxs", "Krm", "Kxm"],
+     "reason": "Earth-fault compensation in the relay's own percent definition (Krs = R0/R1 x 100, Kxs = X0/X1 x 100; Krm / Kxm for the parallel line), applied to this zone's earth-fault element (6F2S0834-0, Fig. 2.4.1.14). Not the canonical Kr / Kx; not used by the phase-phase engine. Preserved."},
+    {"zone": "ZR1", "names": ["KrsR", "KxsR"],
+     "reason": "Earth-fault compensation of Zone R1's earth-fault element, in the relay's own percent definition (6F2S0834-0, Fig. 2.4.1.14). Not the canonical Kr / Kx; not used by the phase-phase engine. Preserved."}
   ],
   "mappings": [
     {
@@ -101,11 +136,117 @@
       "confidence": "inferred",
       "note": "R0 / X0 of the [Parameter] line data read as the line's zero-sequence impedance (the sheet's own '1' / '0' naming, not a stated label)."
     },
+    {
+      "id": "grz100.basis",
+      "canonical": "ct_vt.impedance_basis",
+      "transform": {"type": "constant", "value": "secondary"},
+      "evidence": [{"name": "Z1S"}, {"name": "Vn"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-settings", "toshiba-6f2s0834-0-fault-locator"],
+      "note": "The impedance settings are secondary ohms: the GRZ100 ohmic setting ranges are stated per CT rating (the 1 A values in parentheses) and this sheet prints exactly the 1 A ranges beside its reach settings (e.g. Z1S 0.10-250.00 ohms); the line data of the same [Parameter] section is entered on the secondary side of CT and VT; the voltages (Vn 110 V) and currents are secondary values. Version-dependent; not inferred from the CT / VT ratios or from any magnitude.",
+      "unresolved_note": "the reach setting and the rated voltage the documented secondary basis refers to were not found"
+    },
+
+    {
+      "id": "grz100.status.z1",
+      "canonical": "distance.zone.status",
+      "zone": "Z1",
+      "gap": {
+        "kind": "unverified",
+        "note": "Toshiba's default scheme logic trips Zone 1 instantaneously; with Z1CNT = 4 irrespective of the command protection (6F2S0834-0, Fig. 2.4.1.5). The GRZ100 trip logic is PLC-programmable -- PLC signals can block a zone (Z1_BLOCK), make it trip instantaneously or change Zone 1 tripping -- and this relay runs a site-specific PLC program the source does not define ({evidence}). Whether Zone 1 trips in service is therefore not verified (site-specific logic not verified); its configured geometry is still reviewed.",
+        "evidence": [{"name": "Z1CNT"}, {"name": "PLC data"}]
+      },
+      "references": ["toshiba-6f2s0834-0-distance"]
+    },
+    {
+      "id": "grz100.status.z2_z3",
+      "canonical": "distance.zone.status",
+      "zone": ["Z2", "Z3"],
+      "gap": {
+        "kind": "unverified",
+        "note": "Toshiba's default scheme logic trips {zone} on its timer (6F2S0834-0, Fig. 2.4.1.5). The GRZ100 trip logic is PLC-programmable -- PLC signals can block a zone ({zone}_BLOCK) or make it trip instantaneously ({zone}_INST_TP) -- and this relay runs a site-specific PLC program the source does not define ({evidence}). Whether {zone} trips in service is therefore not verified (site-specific logic not verified); its configured geometry is still reviewed.",
+        "evidence": [{"name": "PLC data"}]
+      },
+      "references": ["toshiba-6f2s0834-0-distance"]
+    },
+    {
+      "id": "grz100.status.backup",
+      "canonical": "distance.zone.status",
+      "zone": ["ZF", "ZR1", "ZR2", "ZND"],
+      "gap": {
+        "kind": "unverified",
+        "note": "Toshiba's default scheme logic trips {zone} on its timer only when its backup-trip switch [{zone}BT] is On (6F2S0834-0, Fig. 2.4.1.5; the switch is shown with the zone). The GRZ100 trip logic is PLC-programmable -- PLC signals can block a zone ({zone}_BLOCK) or make it trip instantaneously -- and this relay runs a site-specific PLC program the source does not define ({evidence}). Whether {zone} trips in service is therefore not verified (site-specific logic not verified); its configured geometry is still reviewed.",
+        "evidence": [{"name": "PLC data"}]
+      },
+      "references": ["toshiba-6f2s0834-0-distance"]
+    },
+    {
+      "id": "grz100.status.z1x",
+      "canonical": "distance.zone.status",
+      "zone": "Z1X",
+      "gap": {
+        "kind": "unverified",
+        "note": "Zone 1X trips only in the zone 1 extension scheme (Protection Scheme = Z1EXT) or when the PLC signal Z1X_F.ENABLE is set, and PLC signals can block it (6F2S0834-0, 2.4.2, Fig. 2.4.2.2). This relay runs a site-specific PLC program the source does not define ({evidence}). Whether Zone 1X trips in service is therefore not verified (site-specific logic not verified); its configured geometry is still reviewed.",
+        "evidence": [{"name": "Protection Scheme"}, {"name": "PLC data"}]
+      },
+      "references": ["toshiba-6f2s0834-0-zone1x", "toshiba-6f2s0834-0-distance"]
+    },
+    {
+      "id": "grz100.status.z4",
+      "canonical": "distance.zone.status",
+      "zone": "Z4",
+      "gap": {
+        "note": "Zone 4 detects reverse faults for the command protection (signalling) scheme and is 'not for backup protection' (6F2S0834-0, 2.4.1.1): it has no timer and no trip of its own under the default scheme logic; its phase-fault element has an offset directional characteristic ({evidence}). The current engine models tripping zones only, so Zone 4 is preserved with its settings and not drawn; how the site-specific PLC program uses it is not verified.",
+        "evidence": [{"name": "Z4S"}, {"name": "PLC data"}]
+      },
+      "references": ["toshiba-6f2s0834-0-distance", "toshiba-6f2s0834-0-elements", "toshiba-6641-1-brochure"]
+    },
+
+    {
+      "id": "grz100.direction.forward",
+      "canonical": "distance.zone.direction",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"],
+      "transform": {"type": "constant", "value": "forward"},
+      "evidence": [{"name": "{zone}S"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-distance", "toshiba-6641-1-brochure"],
+      "note": "{zone} is one of the GRZ100's forward zones (Z1, Z1X, Z2, ZF, Z3; 6F2S0834-0, 2.4.1.1: 'maximum four zones for forward faults'). The direction is fixed by the zone's documented function; there is no direction setting."
+    },
+    {
+      "id": "grz100.direction.reverse",
+      "canonical": "distance.zone.direction",
+      "zone": ["ZR1", "ZR2", "Z4"],
+      "transform": {"type": "constant", "value": "reverse"},
+      "evidence": [{"name": "{zone}S"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-distance", "toshiba-6641-1-brochure"],
+      "note": "{zone} is one of the GRZ100's reverse-looking zones (ZR1 / ZR2 for reverse backup protection, Z4 for reverse-fault detection in command protection; 6F2S0834-0, 2.4.1.1). The direction is fixed by the zone's documented function; there is no direction setting."
+    },
+    {
+      "id": "grz100.direction.non_directional",
+      "canonical": "distance.zone.direction",
+      "zone": "ZND",
+      "transform": {"type": "constant", "value": "non_directional"},
+      "evidence": [{"name": "ZNDS"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-distance", "toshiba-6641-1-brochure"],
+      "note": "ZND is the GRZ100's non-directional zone (6F2S0834-0, 2.4.1.1: 'one non-directional zone'), used for time-delayed backup protection for both forward and reverse faults. There is no direction setting."
+    },
+    {
+      "id": "grz100.direction.not_exposed",
+      "canonical": "distance.zone.direction",
+      "zone": "*",
+      "not_exposed": {"note": "The GRZ100 has no per-zone direction setting: each zone's direction is fixed by its function (forward Z1, Z1X, Z2, ZF, Z3; reverse ZR1, ZR2, Z4; non-directional ZND)."}
+    },
 
     {
       "id": "grz100.characteristic",
       "canonical": "distance.zone.characteristic",
-      "zone": "*",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3", "ZR1", "ZR2", "Z4"],
       "sources": {
         "s": {"name": "ZS-C", "allowed_text": ["mho", "quad"]},
         "g": {"name": "ZG-C", "allowed_text": ["mho", "quad"]}
@@ -118,21 +259,226 @@
           {"when": {"s": ["mho", "quad"], "g": ["mho", "quad"]}, "value": "unknown"}
         ]
       },
-      "note": "ZS-C (phase-fault elements) and ZG-C (earth-fault elements). When they differ, one zone characteristic cannot represent both and the zone's characteristic is recorded as not representable (unknown), never as one of the two."
+      "note": "ZS-C (phase-fault elements) and ZG-C (earth-fault elements): Mho or Quad. These are characteristic selectors, not reaches. When they differ, one zone characteristic cannot represent both and the zone's characteristic is recorded as not representable (unknown), never as one of the two."
     },
+    {
+      "id": "grz100.characteristic.znd",
+      "canonical": "distance.zone.characteristic",
+      "zone": "ZND",
+      "gap": {
+        "note": "ZND is an impedance element -- a circle about the origin of radius ZNDS -- cut by the blinders BNDS at a fixed 75 deg ({evidence}), whichever of Mho / Quad is selected (6F2S0834-0, 2.6.1, Fig. 2.6.1.1 / 2.6.1.2). It is neither the quadrilateral nor the mho characteristic; the current engine cannot draw it, so it is not plotted and not approximated.",
+        "evidence": [{"name": "ZNDS"}, {"name": "BNDS"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements"]
+    },
+    {
+      "id": "grz100.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "transform": {"type": "constant", "value": true},
+      "evidence": [{"name": "{zone}S"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-distance", "toshiba-6641-1-brochure"],
+      "note": "Every GRZ100 zone has its own phase-fault measuring element (suffix S, here {zone}S), with its own reach, characteristic (ZS-C) and timer (6F2S0834-0, 2.4.1.1: 'distance measuring zones for both phase and earth faults'). There is no per-zone loop switch."
+    },
+    {
+      "id": "grz100.pp_enabled.not_exposed",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "not_exposed": {"note": "The GRZ100 has no per-zone phase-fault loop switch: each zone has its own phase-fault element (suffix S)."}
+    },
+    {
+      "id": "grz100.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "transform": {"type": "constant", "value": true},
+      "evidence": [{"name": "ZG-C"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-distance", "toshiba-6641-1-brochure"],
+      "note": "Every GRZ100 zone has its own earth-fault measuring element (suffix G), with its own reach, characteristic (selected by ZG-C) and timer (6F2S0834-0, 2.4.1.1). There is no per-zone loop switch; the earth-fault reach ZnG is preserved with the zone."
+    },
+    {
+      "id": "grz100.pe_enabled.not_exposed",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "not_exposed": {"note": "The GRZ100 has no per-zone earth-fault loop switch: each zone has its own earth-fault element (suffix G)."}
+    },
+    {
+      "id": "grz100.geometry_mode",
+      "canonical": "distance.zone.geometry_mode",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3", "ZR1", "ZR2"],
+      "transform": {"type": "constant", "value": "explicit_rx"},
+      "requires": [{
+        "source": {"name": "ZS-C", "allowed_text": ["mho", "quad"]}, "equals": ["quad"],
+        "off_note": "ZS-C is Mho: the zone is not a quadrilateral stated as X and R limits.",
+        "missing_note": "the phase-fault characteristic selection (ZS-C) was not found"
+      }],
+      "authority": "documented_derivation",
+      "note": "A Quad zone is stated as limits on the R-X plane: the reach ZnS on the X-axis and the blinders on the R-axis, not as a polar reach. Its blinders are inclined, which this representation cannot carry (see the Right / Left Resistive Reach)."
+    },
+    {
+      "id": "grz100.x_reach",
+      "canonical": "distance.zone.x_reach",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3", "ZR1", "ZR2"],
+      "source": {"name": "{zone}S", "type": "number", "unit": "ohm"},
+      "requires": [{
+        "source": {"name": "ZS-C", "allowed_text": ["mho", "quad"]}, "equals": ["quad"],
+        "off_note": "ZS-C is Mho: {zone}S is a mho reach, not the quadrilateral's X limit.",
+        "missing_note": "the phase-fault characteristic selection (ZS-C) was not found, so whether {zone}S is an X limit is not established"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-settings", "toshiba-6f2s0834-0-elements"],
+      "note": "{zone}S is the phase-fault element's reach; for the Quad characteristic it is set on the X-axis -- the reactance element X <= Xs (6F2S0834-0, 2.6.1) -- in secondary ohms per phase, used directly with no conversion. A reverse zone's reach is measured in the reverse direction."
+    },
+    {
+      "id": "grz100.reach",
+      "canonical": "distance.zone.reach",
+      "zone": "*",
+      "gap": {
+        "note": "{zone}S ({evidence}) is the zone's phase-fault reach setting. It is a polar (magnitude and angle) reach only for a mho-based zone or the non-directional impedance element, neither of which this catalog interprets; it is not plotted and not approximated. (For a Quad zone the reach is the X limit, shown as the Reactive Reach (X).)",
+        "evidence": [{"name": "{zone}S"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements"]
+    },
+    {
+      "id": "grz100.tilt_z1",
+      "canonical": "distance.zone.tilt",
+      "zone": ["Z1", "Z1X"],
+      "source": {"name": "Z1S-angle1", "type": "number", "unit": "deg", "printed_unit": {"accept": ["degree"]}},
+      "references": ["toshiba-6f2s0834-0-elements"],
+      "note": "Z1S-angle1 (theta1): with 0 deg Zone 1's reactance line is horizontal (exact); any other value makes it a broken line (Zone 1X follows Zone 1's line; 6F2S0834-0, 2.6.1, Fig. 2.6.1.8), which the engine cannot draw. Zones 2, F and R1 always have a horizontal line."
+    },
+    {
+      "id": "grz100.r_right.forward",
+      "canonical": "distance.zone.r_right",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"],
+      "gap": {
+        "note": "The right boundary is the forward blinder BFR at a fixed 75 deg: X >= (R - Rs) * tan 75 deg, i.e. Rright(X) = BFRS + X * cot 75 deg, with Rs = BFRS set on the R-axis ({evidence}; 6F2S0834-0, 2.6.1, Fig. 2.6.1.9; settings p. 34). This sheet has one forward right blinder common to the forward zones. The current engine draws only a vertical resistive limit (Rright = R), so this inclined boundary cannot be represented exactly; no Right Resistive Reach (+R) is plotted and no approximation is applied.",
+        "evidence": [{"name": "BFRS"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"]
+    },
+    {
+      "id": "grz100.r_right.reverse",
+      "canonical": "distance.zone.r_right",
+      "zone": ["ZR1", "ZR2", "Z4"],
+      "gap": {
+        "note": "The reverse zone is bounded by the reverse blinders at fixed and interlinked angles: BRR, X <= (R + Rs) * tan 75 deg, and BRL, X <= (R - Rs) * tan(180 deg - theta), with Rs = BRRS and theta = BFLS-angle ({evidence}; 6F2S0834-0, 2.6.1, Fig. 2.6.1.9). Both are inclined, not vertical, so the current engine cannot represent them; no resistive reach is plotted and no approximation is applied.",
+        "evidence": [{"name": "BRRS"}, {"name": "BFLS-angle"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"]
+    },
+    {
+      "id": "grz100.r_left.forward",
+      "canonical": "distance.zone.r_left",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"],
+      "gap": {
+        "note": "The left side is bounded by the forward left blinder BFL, Vp * I * cos(phi + theta - 90 deg) > 0 with theta = BFLS-angle, and by the directional element, I * Vp * cos(theta - phi) >= 0 with theta = ZBS-angle (quad) ({evidence}; 6F2S0834-0, 2.6.1). Both are voltage-polarised boundaries through the origin whose combined orientation on the R-X plane is not fully verified. The current engine cannot represent them; no left boundary is drawn, offered or approximated.",
+        "evidence": [{"name": "BFLS-angle"}, {"name": "ZBS-angle (quad)"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements"]
+    },
+    {
+      "id": "grz100.r_left.reverse",
+      "canonical": "distance.zone.r_left",
+      "zone": ["ZR1", "ZR2", "Z4"],
+      "gap": {
+        "note": "The reverse zone's other resistive boundary is the reverse blinder pair BRR / BRL (Rs = BRRS, BRL angle interlinked with BFLS-angle: {evidence}) together with the reverse directional element (6F2S0834-0, 2.6.1). It is inclined and partly polarised; the current engine cannot represent it, so no boundary is drawn, offered or approximated.",
+        "evidence": [{"name": "BRRS"}, {"name": "BFLS-angle"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements"]
+    },
+    {
+      "id": "grz100.r_right.znd",
+      "canonical": "distance.zone.r_right",
+      "zone": "ZND",
+      "gap": {
+        "note": "The ND element's resistive limits are the blinders BNDS at a fixed 75 deg ({evidence}; 6F2S0834-0, 2.6.1, settings p. 34), cutting the non-directional impedance circle. Inclined and non-directional: the current engine cannot represent them; nothing is plotted or approximated.",
+        "evidence": [{"name": "BNDS"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"]
+    },
+    {
+      "id": "grz100.r_phase_earth.forward",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"],
+      "gap": {
+        "note": "The earth-fault element's right blinder BFRG at a fixed 75 deg ({evidence}): Rright(X) = BFRG + X * cot 75 deg in the residual-compensated earth-loop domain (6F2S0834-0, 2.6.1; settings p. 34). Inclined, and the phase-phase engine does not draw earth-fault elements; not plotted, not approximated.",
+        "evidence": [{"name": "BFRG"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"]
+    },
+    {
+      "id": "grz100.r_phase_earth.reverse",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": ["ZR1", "ZR2", "Z4"],
+      "gap": {
+        "note": "The earth-fault element's reverse blinder BRRG at a fixed 75 deg, with BRLG interlinked ({evidence}; 6F2S0834-0, 2.6.1; settings p. 34). Inclined, and the phase-phase engine does not draw earth-fault elements; not plotted, not approximated.",
+        "evidence": [{"name": "BRRG"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"]
+    },
+    {
+      "id": "grz100.r_phase_earth.znd",
+      "canonical": "distance.zone.r_phase_earth",
+      "zone": "ZND",
+      "gap": {
+        "note": "The earth-fault ND element's blinders BNDG at a fixed 75 deg ({evidence}; 6F2S0834-0, 2.6.1; settings p. 34). Inclined and non-directional, and the phase-phase engine does not draw earth-fault elements; not plotted, not approximated.",
+        "evidence": [{"name": "BNDG"}]
+      },
+      "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"]
+    },
+
     {
       "id": "grz100.phase_delay",
       "canonical": "distance.zone.phase_delay",
-      "zone": "*",
+      "zone": ["Z1", "Z2", "ZF", "Z3", "ZR1", "ZR2", "ZND"],
       "source": {"name": "T{zone}S", "type": "number", "unit": "s"},
       "note": "The phase-fault element's timer (TZnS)."
     },
     {
       "id": "grz100.earth_delay",
       "canonical": "distance.zone.earth_delay",
-      "zone": "*",
+      "zone": ["Z1", "Z2", "ZF", "Z3", "ZR1", "ZR2", "ZND"],
       "source": {"name": "T{zone}G", "type": "number", "unit": "s"},
       "note": "The earth-fault element's timer (TZnG)."
+    },
+    {
+      "id": "grz100.phase_delay.z1x",
+      "canonical": "distance.zone.phase_delay",
+      "zone": "Z1X",
+      "transform": {"type": "constant", "value": 0.0},
+      "evidence": [{"name": "Z1XS"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-zone1x"],
+      "note": "Zone 1X has no timer: it 'performs instantaneous tripping' (6F2S0834-0, 2.4.2), so its delay is 0 s. Whether it trips in service is a separate question (its status)."
+    },
+    {
+      "id": "grz100.earth_delay.z1x",
+      "canonical": "distance.zone.earth_delay",
+      "zone": "Z1X",
+      "transform": {"type": "constant", "value": 0.0},
+      "evidence": [{"name": "Z1XS"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-zone1x"],
+      "note": "Zone 1X has no timer: it 'performs instantaneous tripping' (6F2S0834-0, 2.4.2), so its delay is 0 s."
+    },
+    {
+      "id": "grz100.phase_delay.z4",
+      "canonical": "distance.zone.phase_delay",
+      "zone": "Z4",
+      "not_exposed": {"note": "Zone 4 has no timer: it detects reverse faults for command protection and does not trip on its own (6F2S0834-0, 2.4.1.1)."}
+    },
+    {
+      "id": "grz100.earth_delay.z4",
+      "canonical": "distance.zone.earth_delay",
+      "zone": "Z4",
+      "not_exposed": {"note": "Zone 4 has no timer: it detects reverse faults for command protection and does not trip on its own (6F2S0834-0, 2.4.1.1)."}
     }
   ]
 }

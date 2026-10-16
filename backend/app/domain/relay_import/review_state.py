@@ -466,7 +466,7 @@ class BlockingIssue:
 
 
 #: Adapter reasons that are a semantic unknown rather than an engine limit (DEC-198).
-_UNVERIFIED_CODES = frozenset({UnsupportedCode.UNVERIFIED_SETTING})
+_UNVERIFIED_CODES = frozenset({UnsupportedCode.UNVERIFIED_SETTING, UnsupportedCode.ZONE_STATUS_UNVERIFIED})
 
 
 def blocking_issues(adaptation: EngineAdaptation) -> tuple[BlockingIssue, ...]:
@@ -489,6 +489,7 @@ def blocking_paths(adaptation: EngineAdaptation) -> frozenset[str]:
 #: Adapter reasons that say the engine cannot represent / use a value it understands.
 _CAPABILITY_CODES = frozenset({
     UnsupportedCode.DELAY_INFINITE,
+    UnsupportedCode.ZONE_STATUS_UNSUPPORTED,
     UnsupportedCode.SETTING_UNSUPPORTED,
     UnsupportedCode.BASIS_MISMATCH,
     UnsupportedCode.CHARACTERISTIC_UNSUPPORTED,

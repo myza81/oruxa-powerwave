@@ -717,9 +717,10 @@ class _Run:
                     cause = "unverified"
                     if rule.unverified_when:
                         is_material = bool(raw) and norm_text(raw) in material
-                    elif rule.material_unless:
-                        # a geometry-affecting setting: harmless only with a value that has no effect; a blank
-                        # cell leaves its effect unknown (missing), any other value is not representable
+                    elif rule.material_unless or rule.always_material:
+                        # a geometry-affecting setting: harmless only with a value that has no effect (none, when
+                        # always material); a blank cell leaves its effect unknown (missing), any other value is
+                        # not representable
                         is_material = not raw or norm_text(raw) not in harmless
                         cause = "missing" if not raw else "unsupported"
                     else:

@@ -1210,7 +1210,7 @@ PDF -> generic extractor -> identifier (unchanged descriptors) -> active OEM cat
 | Hitachi Energy REL511 | `hitachi_energy/rel511.json` (1.2.0, DEC-198 Am. 1-2) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` (1.1.0, DEC-198 Am. 3) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` (1.1.0, DEC-198 Am. 6) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
-| Toshiba GRZ100 | `toshiba/grz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Toshiba GRZ100 | `toshiba/grz100.json` (1.1.0, DEC-198 Am. 7) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRL200 | `toshiba/grl200.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | NR Electric RCS-941 | `nr_electric/rcs941.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | RELZ100 | `relz/relz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
@@ -1282,7 +1282,9 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
   which the engine reports Unsupported -- never forced into one), TZnS / TZnG -> phase / earth delays. **Not interpreted:**
   zone status and direction (no per-zone switch), each zone's reach setting (reactance limit or impedance reach not established),
   BFRS / BFLS-angle / BRRS / BNDS, reactance-line and bottom angles (all preserved with their zones), Krs / Kxs (percent factors in
-  Toshiba's own definition -- not the canonical Kr / Kx; preserved), basis.
+  Toshiba's own definition -- not the canonical Kr / Kx; preserved), basis. *(Superseded by DEC-198 Amendment 7 -- see "GRZ100 --
+  documented relay behaviour": basis, directions, loops, ZnS as the X reach are documented; zone trip state Unverified (site
+  PLC) with geometry reviewed; BFRS / BFLS / ZBS-angle, the reverse offset and ZND block as engine limitations; Z4 added.)*
 * **GRL200** (setting group 1) -- ZnS-EN / ZnG-EN -> PP / PE loops, agreed ZnS-Dir / ZnG-Dir -> direction, ZnS-Mho.Reach at
   ZnS-Mho.Angle -> polar reach, ZnG-R.Reach -> earth resistive reach, TZnS / TZnG -> delays, ZS-Chara MHO + ZG-Chara QUAD ->
   "unknown" (Unsupported: one canonical characteristic cannot represent both), fault-locator line data. **Not interpreted:**
@@ -1328,7 +1330,7 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
 | REL511 | rel511.pdf | PARTIAL | Hitachi Energy · REL511, V1.2, high | CT 1200 A, Ir 1 A (assumption); VT 132 kV (assumption) / Ur 110 V (assumption) | Missing | Z1-Z5 | Z1-Z4 Enabled, Z5 Disabled (Operation_Zn) | Z1-Z3 Fwd, Z4 Rev; Z5 'None' not interpreted | Missing | X1Zn 3.08 / 4.7 / 10.28 / 0.77 Ω | Unsupported: RFZn preserved (4.62 / 6.77 / 11.87 / 1.15) | RFNZn as printed 15.39 / 17.5 / 23.26 / 3.85 (assumption) | t1-t4 0 / 0.3 / 3 / 3 s (Timer on); Z5 Missing | none (R0/X0 kept) | Not ready (basis, characteristic, PP loops) | No | No | RF loop / per-phase, characteristic, basis, ZnBlock unknown | Is REL511 primary or secondary ohms? Characteristic? RF per loop or per phase? ZnBlock meaning? |
 | 7SL87 | 7sl87.pdf | PARTIAL | Siemens · 7SL87, high | CT 1500/1 A; VT 275 kV / 110 V (unit assumption) | Primary (Edit mode) | Z1-Z6 | Z1-Z3 Enabled, Z4-Z6 Disabled (Mode) | Z1-Z3 Fwd, Z4 Rev | Quadrilateral, documented (Siemens C53000-G5040-C011-9; DEC-198 Am. 3) | X 4.7 / 8.5 / 30.5 Ω | Not yet supported: R (ph-ph) 3.1 / 3.6 / 6.6 Ω inclined at 82.7° (per-phase, not halved) | R (ph-g) 11.2 / 14.4 / 34 Ω | **all Missing** (blank cells; Infinity is the range); loop assignment documented | Kr 1.72 / Kx 0.58 (Z1-Z3) | Not ready (delays, inclined +R, left boundary, ph-ph load cutout) | No | No | Inclined R boundary (82.7°) and left / directional boundary not representable (candidate A7 documented only); load cutout effect not verified; explicit tilt = 0° Mapped | Notes' 0.15 / 0.45 / 3 s are not settings -- confirm the real delays; Z4 off matches "Zone 4 Inactive" note |
 | 7SA613 | 7sa613.pdf | PARTIAL | Siemens · 7SA613, high | CT 1200/1 A; VT 275 kV / 110 V (units printed) | Secondary, documented (DEC-198 Am. 6) | Z1, Z2, Z3, Z4, Z5, Z1B | Z1-Z3, Z5, Z1B Enabled; Z4 Disabled (Op. mode Inactive) | Z1-Z3, Z1B Fwd; Z5 Non-directional (engine-unsupported) | Polygon (quadrilateral), documented | X 2.4 / 3.6 / 8.8 / 250 / 10.6 (X+) / 3.2 Ω; Z5 X- 6.9 preserved | Not yet supported: R ph-ph 1.5 / 1.7 / 2.4 / 250 / 2.9 / 1.6 Ω inclined at 82° (per phase, not halved); left edge unsupported, no 0 Ω offer | 7.8 / 8.6 / 13.6 / 250 / 16.3 / 8.4 Ω | T1-T3 Missing (blank); T4, T5, T1B ∞ (no timed trip) -- configured, engine-unsupported on Z5 / Z1B | RE/RL 1.51, XE/XL 0.48 | Not ready (delays, R load, inclined +R / −R, ∞ delays, non-directional Z5) | No | No | Inclined polygon, ∞-delay zones, non-directional Z5 and the load trapezoid not representable (A613 / B613 documented only); Zone Reduction 0° exact | Real delays (blank on sheet); R load (ph-ph) / (ph-E) values (blank on sheet) |
-| GRZ100 | grz100.pdf | PARTIAL | Toshiba · GRZ100, Ver 2.1, high | CT ratio 1200, VT ratio 1200 | Missing | Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2, ZND | Missing (no zone switch) | Missing (not stated) | Quadrilateral (ZS-C = ZG-C = Quad) | not interpreted (ZnS/ZnG preserved) | not interpreted (BFRS preserved) | not interpreted | TZ1S 0, TZ2S 0.3, TZFS 0.35, TZ3S 3, TZR1S 0.5, TZR2S 3, TZNDS 0.7 s (+G) | Krs 560 / Kxs 313 % preserved | Not ready (basis, status) | No | No | Blinder geometry (BFRS / BFLS-angle) a capability gap | Reach setting = reactance limit or impedance? Which zones are in service? Basis |
+| GRZ100 | grz100.pdf | PARTIAL | Toshiba · GRZ100, Ver 2.1, high | CT ratio 1200, VT ratio 1200 | Secondary, documented (DEC-198 Am. 7) | Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2, ZND, Z4 | Not verified (site PLC `TNBGRZ100-01`; default logic in provenance); Z4 not a tripping zone | Fwd Z1 / Z1X / Z2 / ZF / Z3; Rev ZR1 / ZR2 / Z4; ZND Non-directional (engine-unsupported) -- documented | Quadrilateral (ZS-C = ZG-C = Quad, configured); ZND impedance element (unsupported) | X 5.72 / 12 / 8.2 / 8.2 / 14.8 / 1.4 / 1.4 Ω (ZnS, documented) | Not yet supported: BFRS 20 Ω at a fixed 75° (`Rright(X) = BFRS + X·cot 75°`) | Not yet supported: BFLS-angle 120° / ZBS-angle 15°, no 0 Ω offer | TZ1S 0, TZ2S 0.3, TZFS 0.35, TZ3S 3, TZR1S 0.5, TZR2S 3, TZNDS 0.7 s (+G); Z1X 0 s documented; Z4 none (not exposed) | Krs 560 / Kxs 313 % preserved (earth elements) | Not ready (PLC trip state, inclined +R / −R, ZR1 / ZR2 offset, ZND, Z4) | No | No | 75° blinders, polarised left boundary, offset reverse zones, ND impedance element not representable (AGRZ-A / AGRZ-B documented only); Z1S-angle1 0° exact | TNB PLC definition (or owner decision on default logic); exact 201A manual |
 | GRL200 | grl200.pdf | PARTIAL | Toshiba · GRL200, high | Missing (only in the notes) | Missing | Z1-Z5, Z1X | Missing; PP/PE enables Z1-Z3 on, Z4, Z5, Z1X off | Z1-Z3 Fwd, Z4 Rev (agreed) | Unknown -> Unsupported (MHO phase / QUAD earth) | mho 3.59 / 7.18 / 10.53 Ω ∠85° | not interpreted (blinder 4.2 / 5 / 5.32 preserved) | ZnG-R.Reach 15.42 / 18.34 / 21.06 Ω | TZnS = TZnG 0.15 / 0.45 / 3 s | Krs/Kxs preserved | Not ready (basis, characteristic, status) | No | No | Mho-with-blinders + quad earth needs a per-loop / blinder geometry model | Basis; CT/VT; is the review useful as it stands? |
 | RCS-941 | rcs.pdf | PARTIAL | NR Electric · RCS-941, high | CT 1200/1 A; VT 76.2 kV / 63.5 V (as printed, phase-neutral) | Missing | Z1, Z2, Z3, Reverse Zone | Missing; PP/PE enables on | Z1-Z3 Missing; Reverse Zone Reverse (assumption) | Missing | Z_PP 0.53 / 1.23 / 3.57 / 0.15 Ω ∠80° | not stated | Rn_Quad 2.44 / 4.92 / 14.28 Ω (quad enabled) | t_Z1 0.15; Z2 0.45 / 0.45; Z3 3 / 3; Rev 3 s | K0 0.83 (assumption) | Not ready (basis, characteristic, status) | No | No | PG mho reach (Z_PGn) and blinder not interpreted | Characteristic (mho?); basis; K0 definition |
 | RELZ100 | relz100.pdf | PARTIAL | RELZ 100 (manufacturer not asserted), 3.0, high | CT 1200/1 A; VT 132 kV / 0.11 kV = 110 V (units assumed) | Missing | Z1-Z5 | Missing | Z4, Z5 Non-directional; Z1-Z3 Missing | Missing | X 3.91 / 4.59 / 8.98 / 11.81 / 150 Ω | Unsupported: Rn preserved (5.69 / 5.81 / 6.58 / 8.21 / 150) | RNn as printed 16.69 / 16.99 / 18.89 / 23.5 / 150 (assumption) | T1-T4 0 / 0.3 / 3 / 0 s; T5 Missing (TimerT5 OFF) | KNn preserved | Not ready (basis, characteristic, status) | No | No | Line R1 4.381 > X1 0.74 kept as printed | Is the line data correct on the sheet? Zones 1-3 direction; basis |
@@ -1346,7 +1348,8 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
 1. Whether the RFPP / 2 convention approved for RED670 applies to REL670 unchanged (same ZMQPDIS parameters; implemented so).
 2. The impedance basis of REL511, 7SA613, GRZ100, GRL200, RCS-941 and RELZ100 sheets (not stated; never inferred from magnitudes).
    **REL511 resolved (DEC-198 Amendment 2):** Secondary, documented relay behaviour (ABB 1MRK 506 109-UEN Eq. 39).
-   **7SA613 resolved (DEC-198 Amendment 6):** Secondary, documented (Siemens C53000-G1176-C156-2 secondary ranges). The others stay open.
+   **7SA613 resolved (DEC-198 Amendment 6):** Secondary, documented (Siemens C53000-G1176-C156-2 secondary ranges).
+   **GRZ100 resolved (DEC-198 Amendment 7):** Secondary, documented (Toshiba 6F2S0834-0 1 A ranges, secondary-side line data). The others stay open.
 3. The characteristic of REL511, 7SL87, 7SA613, RCS-941, RELZ100 (not named on the sheets; the parameter sets suggest
    quadrilateral / mho, but nothing is assumed). **REL511 resolved (DEC-198 Amendment 1):** quadrilateral, documented.
    **7SL87 resolved (DEC-198 Amendment 3):** quadrilateral, documented (Siemens C53000-G5040-C011-9).
@@ -1359,6 +1362,9 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
    NaN / infinite tilt and a zero tilt on a polar reach (reference angle not established) stay Unsupported; a blank tilt stays
    Missing, a non-numeric one Unreadable. 7SL87 stays Not ready (characteristic not named; Z1-Z3 delays Missing -- blank cells).
 6. A first-class angle-defined / inclined boundary geometry (ZDRDIR, SIPROTEC polygon, Toshiba blinders) -- a future engine slice.
+7. GRZ100 operational zone state (DEC-198 Amendment 7): the site-specific PLC program (`TNBGRZ100-01`) is not on the sheet, so
+   no zone's in-service state is asserted. Needs TNB's PLC definition, or an owner decision to accept Toshiba's default
+   scheme logic for this template `[OPEN]`.
 
 ## Relay Import Assistance for Non-Expert Users -- foundation (DEC-198)
 
@@ -1673,6 +1679,55 @@ Z5, Z1B); plus the engine refusals on resolved values -- infinite delay (Z5, Z1B
 behaviour 0 -> 17; not exposed 3 (Z4); Unreadable 3 -> 0; 0.00 Ω offers 5 -> 0; `approximations[]` empty.
 **PARTIALLY SUPPORTED / NOT_READY.**
 
+### GRZ100 -- documented relay behaviour (DEC-198 Amendment 7, catalog 1.1.0)
+
+**GRZ100 has no genuine source-data gaps. GRZ100 remains partial because of custom PLC status uncertainty and engine geometry
+limitations.** Investigation first (owner-accepted), then this slice; no approximation rule.
+
+**References (verified; version-dependent).** Toshiba GRZ100 instruction manual **6F2S0834-0** (Ver. 0.3, documented model set
+GRZ100-211B to -323B) and brochure **6641-1** (lists Model 201). The owner sheet is a GRZ100-201A (`GRZ100_201A_Ver2.1`); the
+manual is used where its setting set matches the sheet (same names, the 1 A ranges printed beside every ohmic setting) -- not
+claimed as the exact 201A manual.
+
+| Catalog reference id | Section (pages) | Used for |
+|---|---|---|
+| `toshiba-6f2s0834-0-distance` | 2.4.1 time-stepped distance protection (24-39): zone functions, Mho / Quad, Fig. 2.4.1.2, scheme logic Fig. 2.4.1.5, Fig. 2.4.1.14 | directions, loops, default trip logic, Z4, compensation |
+| `toshiba-6f2s0834-0-settings` | 2.4.1 settings (31-34): ranges per CT rating (1 A in parentheses), fixed BFRS / BRRS 75°, Z4BS 7.5 Ω | basis, X reach, blinder angles |
+| `toshiba-6f2s0834-0-zone1x` | 2.4.2 zone 1 extension (40-42): instantaneous trip, Z1X_F.ENABLE | Z1X delay and state |
+| `toshiba-6f2s0834-0-elements` | 2.6.1 distance measuring elements (113-121): reactance, blinder, directional, offset directional, reverse offset Fig. 2.6.1.3, ZND | geometry |
+| `toshiba-6f2s0834-0-fault-locator` | 2.8.5 fault locator (150): line data on the secondary side of CT and VT | basis |
+| `toshiba-6641-1-brochure` | brochure (3-4, 21): zones, Fig. 3, reverse offset directional, Z4, Model 201 | directions, Z4 |
+
+| Item | Now (1.1.0) | Classification |
+|---|---|---|
+| ZS-C / ZG-C | exact configured selectors (Quad + Quad -> quadrilateral; mismatch -> unknown) | Mapped |
+| Basis | **Secondary**, `documented_derivation` (owner-approved): 1 A ranges printed on the sheet, secondary-side line data, Vn 110 V; never ratios | Documented -- **no longer a blocker** |
+| Direction | forward Z1 / Z1X / Z2 / ZF / Z3, reverse ZR1 / ZR2 / Z4, non-directional ZND (zone function); selector `not_exposed` | Documented -- **no longer a blocker** (ZND engine-unsupported) |
+| PP / PE | enabled for every zone (separate S / G elements); selectors `not_exposed` | Documented |
+| ZnS / ZnG | ZnS -> X reach (Quad, secondary Ω/phase, direct); ZnG -> earth X reach preserved | Documented / preserved |
+| Zone trip state | default scheme logic in provenance (Z1 / Z2 / Z3 trip; ZF / ZR1 / ZR2 / ZND via [ZnBT]; Z1X via Z1EXT or Z1X_F.ENABLE); site PLC `TNBGRZ100-01` can override and is not on the sheet -> **Unverified**, never Enabled / Disabled, never entered; geometry still reviewed (generic `ZONE_STATUS_UNVERIFIED`) | **Site-specific logic not verified** -- blocking |
+| Z4 | reverse, command protection only, no timer (`not_exposed`), status Unsupported (generic `ZONE_STATUS_UNSUPPORTED`); Z4S cited, Z4G preserved | Preserved, not drawn -- blocking |
+| +R (BFRS) | `gap`: `Rright(X) = BFRS + X·cot 75°` (BFR fixed 75°); reverse zones BRR / BRL | Engine geometry limitation -- blocking |
+| −R (BFLS-angle, ZBS-angle) | `gap`: BFL Vp·I·cos(φ + θ − 90°) > 0, directional I·Vp·cos(θ − φ) >= 0; combined orientation not fully verified; **no 0.00 Ω offer** | Engine geometry limitation -- blocking |
+| Reverse offset | ZR1BT / ZR2BT `always_material`: forward offset 7.5 Ω (1 A), limited to Z1S when On (Fig. 2.6.1.3) | Engine geometry limitation -- blocking |
+| ZND | impedance element (circle) + BNDS 75° blinders, non-directional | Engine limitation -- blocking |
+| Z1S-angle1 | Z1 / Z1X tilt: 0° horizontal = exact; non-zero broken line = Unsupported | Exact on the owner sheet |
+| Earth blinders BFRG / BRRG / BNDG | Earth Resistive Reach `gap` (inclined, not drawn) -- was a false "Missing" | Not blocking |
+| Krs / Kxs / Krm / Kxm / KrsR / KxsR | preserved with Z1 / Z1X / Z2 (ZR1); not the canonical Kr / Kx | Not blocking |
+| Timers | TZnS / TZnG exact; Z1X 0 s documented; no note-derived value | Mapped / Documented |
+
+**Approximation candidates -- documented only, NOT approved, NOT in `APPROVED_RULES`, no record emitted.**
+
+| Candidate | Rule | Class | Condition / envelope | Owner sheet |
+|---|---|---|---|---|
+| AGRZ-A | +R = BFRS (vertical) | conservative | shortfall X·cot 75° at the X reach, 0 at X = 0 | Z1 1.53, Z2 2.20, Z3 3.97 Ω (cot 75° = 0.2679) |
+| AGRZ-B | −R = 0 with X >= 0 | conservative candidate | pending confirmation of the combined BFLS / directional orientation | BFLS 120°, ZBS 15° |
+
+**Result (owner GRZ100 sheet).** Blocking settings **17 -> 26**: removed basis 1, status "Missing" 8, direction 8 (artificial);
+now trip state Unverified 8, Z4 1, +R 7, −R 7, reverse offset 2, ZND characteristic 1 (all genuine), plus the engine refusal of
+the non-directional ZND. Missing 75 -> 8 (zone level 0; the 8 left are document-level fields the sheet does not carry);
+documented relay behaviour 0 -> 36; `approximations[]` empty. **PARTIALLY SUPPORTED / NOT_READY.**
+
 ### Recommended next slices (not started)
 
 1. ~~REL511 references + verified derivations~~ -- done (Amendment 1). Still open: Relion 670 references; RELZ100 Rn as `unverified`.
@@ -1685,6 +1740,10 @@ behaviour 0 -> 17; not exposed 3 (Z4); Unreadable 3 -> 0; 0.00 Ω offers 5 -> 0;
    ~~7SA613 characteristic / loops / basis / delay assignment / Infinity~~ -- done (Amendment 6). Still open for 7SA613: the
    real Z1-Z3 delays and R load (ph-ph) (source data), then owner decisions on A613 / B613; generic engine support for a
    zone that only picks up (infinite delay) and for non-directional zones.
+   ~~GRZ100 basis / direction / loops / X reach / Z1X delay~~ -- done (Amendment 7). Still open for GRZ100: the site PLC
+   program (operational state), the exact 201A manual, owner decisions on AGRZ-A / AGRZ-B (AGRZ-B also needs the combined
+   BFLS / directional orientation confirmed); generic engine support for inclined / polarised boundaries, offset reverse zones
+   and non-directional impedance elements.
 2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
 3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.

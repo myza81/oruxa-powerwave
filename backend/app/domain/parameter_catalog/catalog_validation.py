@@ -71,7 +71,7 @@ _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "app
 _NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
 _NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
 _NOTE_SUBJECTS = ("timer", "status")
-_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason", "unverified_when", "material_unless"}
+_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason", "unverified_when", "material_unless", "always_material"}
 _APPLICABILITY_KEYS = {"manufacturer", "family", "model", "versions"}
 _IDENT_KEYS = {"model_patterns", "family_markers", "parameter_signatures", "scheme_pattern", "scheme_model_pattern", "version_pattern"}
 _ZONES_KEYS = {"discover", "static"}
@@ -388,8 +388,12 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
         if not isinstance(unless, list) or not all(isinstance(x, str) and x.strip() for x in unless):
             v.add(f"{path}.material_unless", IssueCode.MALFORMED, "material_unless must be a list of raw setting values")
             ok, unless = False, []
-        if material and unless:
-            v.add(path, IssueCode.MALFORMED, "give at most one of unverified_when or material_unless")
+        always = item.get("always_material", False)
+        if not isinstance(always, bool):
+            v.add(f"{path}.always_material", IssueCode.MALFORMED, "always_material must be true or false")
+            ok, always = False, False
+        if sum((bool(material), bool(unless), always)) > 1:
+            v.add(path, IssueCode.MALFORMED, "give at most one of unverified_when, material_unless or always_material")
             ok = False
         if (names is None) == (pattern is None):
             v.add(path, IssueCode.INVALID_SELECTOR, "give exactly one of names or name_pattern")
@@ -407,7 +411,8 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
             _check_template(v, f"{path}.name_pattern", pattern, _ZONE_VARS, zones)
             ok = v.regex(_TEMPLATE.sub("x", pattern), f"{path}.name_pattern") and ok
         if ok and targets:
-            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern, tuple(material), tuple(unless)))
+            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern, tuple(material), tuple(unless),
+                                         always))
     return tuple(out)
 
 
