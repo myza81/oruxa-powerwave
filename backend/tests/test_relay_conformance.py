@@ -284,8 +284,10 @@ def shadow_zones(expectation: dict, pdf: bytes) -> dict:
         if z.get("shadow_geometry") == "exact":
             edges = tuple(b for b in run.boundaries if b.zone_id == zone_id)
             rays = tuple(b for b in run.directional if b.zone_id == zone_id)
-            out[zone_id] = (edges + rays, assemble_zone(zone_id, x_reach_ohm=z["top"]["x_reach_ohm"], direction=z["direction"],
-                                                       boundaries=edges, directional=rays))
+            lower = next((b for b in run.lower if b.zone_id == zone_id), None)
+            out[zone_id] = (edges + rays + ((lower,) if lower else ()),
+                            assemble_zone(zone_id, x_reach_ohm=z["top"]["x_reach_ohm"], direction=z["direction"],
+                                          boundaries=edges, directional=rays, lower=lower))
     return out
 
 
@@ -305,7 +307,8 @@ def test_the_shadow_v2_geometry_reproduces_the_engineering_golden(name):
     assert set(assembled) == set(e["shadow_golden"])
     for zone_id, golden in e["shadow_golden"].items():
         boundaries, zone = assembled[zone_id]
-        planes = {getattr(b, "side", None) or b.retained_side: b.half_plane(golden["direction"]) for b in boundaries}
+        planes = {getattr(b, "side", None) or getattr(b, "retained_side", None) or "lower": b.half_plane(golden["direction"])
+                  for b in boundaries}
         for x, r_right, r_left in golden["edge_points"]:               # every golden edge point lies on the V2 edge
             assert abs(planes["right"].signed_distance(r_right, x)) <= TOLERANCE_OHM, (zone_id, x, "right")
             assert abs(planes["left"].signed_distance(r_left, x)) <= TOLERANCE_OHM, (zone_id, x, "left")
@@ -314,8 +317,52 @@ def test_the_shadow_v2_geometry_reproduces_the_engineering_golden(name):
         assert set(golden.get("directional", {})) == {b.retained_side.value for b in boundaries if hasattr(b, "retained_side")}
         for r, x, inside in golden["probes"] + golden.get("directional_probes", []):
             assert zone.characteristic.contains(r, x) is bool(inside), (zone_id, r, x)
+        # DEC-199 Phase 2C: the lower limit on its own, then the closed region boundary by boundary
+        assert ("lower" in planes) is ("lower" in golden)
+        for r, x in golden.get("lower_points", ()):
+            assert abs(planes["lower"].signed_distance(r, x)) <= TOLERANCE_OHM, (zone_id, r, x)
+        for r, x, above in golden.get("lower_probes", ()):
+            assert planes["lower"].contains(r, x) is bool(above), (zone_id, r, x)
+        for label, r, x, inside in golden.get("boundary_probes", ()):
+            assert zone.characteristic.contains(r, x) is bool(inside), (zone_id, label, r, x)
+        if golden.get("closed"):
+            outline = zone.characteristic.outline()                     # bounded: no plotting bounds needed
+            assert outline.kind == "polygon" and len(outline.vertices) >= 3 and not outline.clipped, zone_id
+            labels = {label for label, *_ in golden["boundary_probes"]}
+            assert labels == {f"{k}_{b}" for b in golden["active"] for k in ("inside", "beyond")}, zone_id
         # placed once: the assembled zone is absolute, and placing it again changes nothing (no second reflection)
         assert zone.characteristic.to_absolute(golden["direction"]) is zone.characteristic
+
+
+@pytest.mark.parametrize("name", SHADOW)
+def test_a_shadow_zone_is_closed_exactly_when_every_declared_boundary_is_derived(name):
+    """DEC-199 Phase 2C: a declared lower limit closes the region; a declared boundary that is not derived (e.g. no
+    ArgDir / ArgNegRes on the sheet) or a sector of 180 deg or more leaves the zone unassembled -- never defaulted --
+    with its derived boundaries and their provenance kept."""
+    for zone_id, z in EXPECTATIONS[name]["shadow_geometry"]["zones"].items():
+        rays, lower = z.get("directional"), z.get("lower", "undeclared")
+        if z["shadow_geometry"] == "exact":
+            assert ("lower" in z["represented"]) is (lower not in (None, "undeclared")), zone_id
+            assert z["not_represented"] == ([] if "lower" in z["represented"] else ["lower"]), zone_id
+            assert EXPECTATIONS[name]["shadow_golden"][zone_id].get("closed", False) is ("lower" in z["represented"])
+            continue
+        if rays is not None and len(rays) < 2:
+            assert z["reason"].startswith("the directional boundaries are not derived"), zone_id
+        elif "sweeps" in z["reason"]:                                   # a union the kernel refuses to stand in for
+            assert set(rays) == {"counter_clockwise", "clockwise"} and all(r["sources"] for r in rays.values()), zone_id
+            assert zone_id not in (EXPECTATIONS[name]["shadow_golden"] or {})
+
+
+@pytest.mark.parametrize("name", SHADOW)
+def test_geometry_exactness_and_relay_behaviour_fidelity_stay_distinct(name):
+    """An assembled zone is the exact documented relation (`exact`); its relay-behaviour fidelity is the weakest of its
+    boundaries' (static_equivalent once a voltage-polarised directional line is in it)."""
+    order = ("exact", "documented", "static_equivalent")
+    for zone_id, z in EXPECTATIONS[name]["shadow_geometry"]["zones"].items():
+        if z["shadow_geometry"] != "exact":
+            continue
+        parts = [*z["edges"].values(), *(z.get("directional") or {}).values(), *([z["lower"]] if z.get("lower") else [])]
+        assert z["relay_behaviour_fidelity"] == max((p["fidelity"] for p in parts), key=order.index), zone_id
 
 
 @pytest.mark.parametrize("name", SHADOW)

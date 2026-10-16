@@ -140,3 +140,32 @@ The suite checks that:
 
 The REL511 owner sheet states no ArgDir / ArgNegRes, so its zones are not assembled. The synthetic variant
 `rel511` / `directional` states them; see `expectations/rel511--directional.json`.
+
+## Shadow lower reactance limits and closed zones (DEC-199 Phase 2C)
+
+When a catalog declares a `reactance_lower` boundary, each zone record holds `lower`:
+- `x_minus`, the frame, the unit and the fidelity;
+- the source row with its raw value, the transform, references and the equation;
+- `null` if it is not derived.
+
+A zone is assembled only when it is derived. Every assembled zone also states `relay_behaviour_fidelity`: the weakest of
+its boundaries' fidelities. This is separate from `shadow_geometry: exact`, which only says the documented relations
+are represented exactly.
+
+The golden adds:
+- `lower_points` -- on X = -x_minus;
+- `lower_probes` -- just above / below, checked against the V2 lower half-plane alone.
+
+For a zone with a lower limit it also adds:
+- `closed`;
+- `active` -- each documented line sampled for a stretch of the outline;
+- `boundary_probes` -- labelled `inside_<b>` / `beyond_<b>` probes.
+
+The suite checks that:
+- the V2 zone classifies every probe as the golden says;
+- a closed zone outlines without plotting bounds;
+- the labels cover every active boundary.
+
+Samples:
+- `rel511--closed-region` -- forward Z1 bounded by the lower limit, reverse Z2 by the left line;
+- `rel511--wide-sector` -- the refused 220 deg sector.

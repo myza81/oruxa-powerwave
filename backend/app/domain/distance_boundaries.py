@@ -1,8 +1,8 @@
-"""Canonical distance-zone boundaries (DEC-199 Phase 2A / 2B) -- SHADOW MODE.
+"""Canonical distance-zone boundaries (DEC-199 Phase 2A / 2B / 2C) -- SHADOW MODE.
 
 A relay-neutral description of a zone boundary, compiled into the V2 geometry kernel (`app.domain.distance_geometry`).
-Two boundary kinds -- an **inclined resistive edge** (Phase 2A) and a **directional half-plane** through the origin
-(Phase 2B) -- and the shadow assembly of a zone from them. It is not used by any production path: V1 (`app.domain.distance_protection`) stays authoritative for membership, readiness,
+Three boundary kinds -- an **inclined resistive edge** (Phase 2A), a **directional half-plane** through the origin
+(Phase 2B) and a **lower reactance limit** ``X >= -x_minus`` (Phase 2C) -- and the shadow assembly of a zone from them. It is not used by any production path: V1 (`app.domain.distance_protection`) stays authoritative for membership, readiness,
 Apply and the plot, and nothing here changes a review, a blocker or a readiness state.
 
 ## The inclined resistive edge
@@ -43,6 +43,12 @@ documentation keeps, made by the mapping, not by this module.
 at ``a2`` is the sector swept counter-clockwise from ``a1`` to ``a2`` (``a1 < arg(Z) < a2``) only when that sweep is
 narrower than 180 deg: a wider sector is the *union* of the two half-planes, not their intersection, and the kernel
 has no union. `assemble_zone` therefore refuses a sweep of 180 deg or more rather than produce a different region.
+
+## The lower reactance limit (DEC-199 Phase 2C)
+
+``reactance_lower(x_minus, frame)``: ``X >= -x_minus`` (ohms, ``x_minus >= 0``), the horizontal line ``x_minus`` below
+the R axis -- as a half-plane ``(0, -1) . (R, X) <= x_minus``. A ``zone`` limit is point-reflected for a reverse zone
+(``X <= x_minus`` in the absolute frame); an ``absolute`` one is not.
 
 ``fidelity`` says how the boundary relates to **relay behaviour** (exact | documented | static_equivalent). It is
 distinct from the geometry, which represents the documented relation exactly in every case: a ``static_equivalent``
@@ -150,6 +156,41 @@ class ResistiveBoundary:
         return hp
 
 
+@dataclass(frozen=True, slots=True)
+class ReactanceLowerBoundary:
+    """A lower reactance limit ``X >= -x_minus`` (ohms): the horizontal line ``x_minus`` below the R axis (``x_minus = 0``
+    is ``X >= 0``). As a kernel half-plane ``(0, -1) . (R, X) <= x_minus``. ``frame`` is explicit: a ``zone`` limit is
+    point-reflected for a reverse zone (it becomes ``X <= x_minus``); an ``absolute`` one is used as stated."""
+
+    zone_id: str
+    x_minus: float
+    frame: BoundaryFrame
+    provenance: BoundaryProvenance
+    unit: str = "ohm"
+    #: exact | documented (an approximation is never a canonical boundary)
+    fidelity: str = "documented"
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.x_minus) or self.x_minus < 0.0:
+            raise ValueError("a lower reactance limit lies at or below the R axis: x_minus must be finite and >= 0")
+        if not isinstance(self.frame, BoundaryFrame):
+            raise ValueError("a lower reactance limit states its frame")
+        if self.unit != "ohm":
+            raise ValueError("a lower reactance limit is stated in ohms")
+        if self.fidelity not in ("exact", "documented"):
+            raise ValueError("a canonical boundary is exact or documented, never approximate")
+
+    def half_plane(self, direction: Direction | str = Direction.FORWARD) -> HalfPlane:
+        """The limit as a kernel half-plane in the absolute frame (reflected once for a reverse zone-frame limit)."""
+        meta = BoundaryMeta(source_path=self.provenance.canonical_path, unit=self.unit, transform=self.provenance.transform,
+                            frame=Frame.ZONE_LOCAL if self.frame is BoundaryFrame.ZONE else Frame.ABSOLUTE,
+                            reference=",".join(self.provenance.reference_ids) or None, fidelity=self.fidelity)
+        hp = HalfPlane(0.0, -1.0, self.x_minus, meta)
+        if self.frame is BoundaryFrame.ZONE and Direction(direction) is Direction.REVERSE:
+            hp = hp.reflected()
+        return hp
+
+
 class RetainedSide(StrEnum):
     COUNTER_CLOCKWISE = "counter_clockwise"
     CLOCKWISE = "clockwise"
@@ -216,10 +257,11 @@ class ShadowZoneGeometry:
 
 def assemble_zone(zone_id: str, *, x_reach_ohm: float, direction: Direction | str,
                   boundaries: tuple[ResistiveBoundary, ...],
-                  directional: tuple[DirectionalBoundary, ...] = ()) -> ShadowZoneGeometry:
+                  directional: tuple[DirectionalBoundary, ...] = (),
+                  lower: ReactanceLowerBoundary | None = None) -> ShadowZoneGeometry:
     """A zone from its horizontal reactance limit (X <= x_reach_ohm, stated in the zone frame), one right and one left
-    resistive boundary and, optionally, its directional half-planes (at most one per retained side). No lower limit is
-    represented: the region is open below and is reported so.
+    resistive boundary and, optionally, its directional half-planes (at most one per retained side) and its lower
+    reactance limit. Without a lower limit the region is open below and is reported so (``not_represented``).
 
     Every boundary is placed in the absolute frame exactly once, by its own frame and the zone direction; the result is
     an absolute characteristic, which `Characteristic.to_absolute` leaves unchanged -- a reverse zone cannot be
@@ -243,7 +285,10 @@ def assemble_zone(zone_id: str, *, x_reach_ohm: float, direction: Direction | st
     top = HalfPlane(0.0, 1.0, x_reach_ohm)
     if d is Direction.REVERSE:
         top = top.reflected()
+    if lower is not None and lower.zone_id != zone_id:
+        raise ValueError(f"the lower reactance limit of zone {lower.zone_id} is not zone {zone_id}'s")
     parts = (top, sides[BoundarySide.RIGHT].half_plane(d), sides[BoundarySide.LEFT].half_plane(d),
-             *(b.half_plane(d) for b in rays))
-    represented = ("top", "right", "left") + (("directional",) if rays else ())
-    return ShadowZoneGeometry(zone_id, Characteristic(Intersection(parts), Frame.ABSOLUTE), represented, ("lower",))
+             *(b.half_plane(d) for b in rays), *((lower.half_plane(d),) if lower else ()))
+    represented = ("top", "right", "left") + (("directional",) if rays else ()) + (("lower",) if lower else ())
+    not_represented = () if lower else ("lower",)
+    return ShadowZoneGeometry(zone_id, Characteristic(Intersection(parts), Frame.ABSOLUTE), represented, not_represented)

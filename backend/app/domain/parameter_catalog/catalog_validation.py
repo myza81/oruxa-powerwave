@@ -361,13 +361,16 @@ def _source_notes(v: _Validator, raw: Any) -> tuple[ZoneNoteRule, ...]:
     return tuple(rules)
 
 
-_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "retained_side", "frame", "r_at_axis", "angle_deg", "requires", "fidelity",
-                  "references", "equation", "canonical", "convention"}
-_BOUNDARY_FIDELITY = {"resistive": ("exact", "documented"), "directional": ("exact", "documented", "static_equivalent")}
+_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "retained_side", "frame", "r_at_axis", "angle_deg", "x_minus", "requires",
+                  "fidelity", "references", "equation", "canonical", "convention"}
+_BOUNDARY_FIDELITY = {"resistive": ("exact", "documented"), "directional": ("exact", "documented", "static_equivalent"),
+                      "reactance_lower": ("exact", "documented")}
+#: The keys only one kind of boundary has (any other kind refuses them).
+_KIND_ONLY = {"side": "resistive", "r_at_axis": "resistive", "retained_side": "directional", "x_minus": "reactance_lower"}
 
 
 def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tuple[Reference, ...]) -> tuple[BoundarySpec, ...]:
-    """DEC-199 Phase 2A / 2B: shadow canonical boundaries (``kind`` "resistive" or "directional")."""
+    """DEC-199 Phase 2A / 2B / 2C: shadow canonical boundaries (``kind`` "resistive", "directional" or "reactance_lower")."""
     if raw is None:
         return ()
     if not isinstance(raw, list):
@@ -393,15 +396,19 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
         if kind not in _BOUNDARY_FIDELITY:
             v.add(f"{path}.kind", IssueCode.MALFORMED, f"kind must be one of {sorted(_BOUNDARY_FIDELITY)}")
             continue
-        sided = ("side", ("right", "left")) if kind == "resistive" else ("retained_side", ("counter_clockwise", "clockwise"))
-        other = "retained_side" if kind == "resistive" else "side"
-        for key, allowed in (sided, ("frame", ("zone", "absolute")), ("fidelity", _BOUNDARY_FIDELITY[kind])):
+        checks = [("frame", ("zone", "absolute")), ("fidelity", _BOUNDARY_FIDELITY[kind])]
+        if kind == "resistive":
+            checks.insert(0, ("side", ("right", "left")))
+        elif kind == "directional":
+            checks.insert(0, ("retained_side", ("counter_clockwise", "clockwise")))
+        for key, allowed in checks:
             if item.get(key, "documented" if key == "fidelity" else None) not in allowed:
                 v.add(f"{path}.{key}", IssueCode.MALFORMED, f"{key} must be one of {list(allowed)}")
                 ok = False
-        if other in item:
-            v.add(f"{path}.{other}", IssueCode.MALFORMED, f"a {kind} boundary has no {other}")
-            ok = False
+        for key, owner in _KIND_ONLY.items():
+            if key in item and owner != kind:
+                v.add(f"{path}.{key}", IssueCode.MALFORMED, f"a {kind} boundary has no {key}")
+                ok = False
 
         def number(src: Any, at: str, unit: str) -> Selector | None:
             sel = _selector(v, {**src, "type": "number"}, at, _ZONE_VARS, zones, True, None) if isinstance(src, dict) else None
@@ -422,14 +429,24 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             r_sel = number(r.get("source"), f"{path}.r_at_axis.source", "ohm")
             r_sign, r_scale = float(r.get("sign", 1)), float(scale)
             ok = ok and r_sel is not None
-        elif "r_at_axis" in item:
-            v.add(f"{path}.r_at_axis", IssueCode.MALFORMED, "a directional boundary passes through the origin")
-            ok = False
+
+        x_sel = None
+        if kind == "reactance_lower":
+            xm = item.get("x_minus")
+            if not isinstance(xm, dict) or set(xm) != {"source"}:
+                v.add(f"{path}.x_minus", IssueCode.MALFORMED, "x_minus needs a source (X >= -x_minus, as printed)")
+                ok, xm = False, {}
+            x_sel = number(xm.get("source"), f"{path}.x_minus.source", "ohm")
+            ok = ok and x_sel is not None
 
         a = item.get("angle_deg")
         a_sel = atan2 = a_range = None
         a_sign = 1.0
-        if (isinstance(a, dict) and kind == "resistive" and set(a) == {"atan2"} and isinstance(a["atan2"], dict)
+        if kind == "reactance_lower":
+            if a is not None:
+                v.add(f"{path}.angle_deg", IssueCode.MALFORMED, "a lower reactance limit is horizontal: it has no angle")
+                ok = False
+        elif (isinstance(a, dict) and kind == "resistive" and set(a) == {"atan2"} and isinstance(a["atan2"], dict)
                 and set(a["atan2"]) == {"x", "r"}):
             x_sel = number(a["atan2"]["x"], f"{path}.angle_deg.atan2.x", "ohm")
             rr_sel = number(a["atan2"]["r"], f"{path}.angle_deg.atan2.r", "ohm")
@@ -472,7 +489,7 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
         if ok and targets:
             out.append(BoundarySpec(
                 id=bid, zones=targets, kind=kind, frame=item["frame"], angle_deg=a_sel, angle_sign=a_sign, angle_range=a_range,
-                angle_atan2=atan2, side=item.get("side"), r_at_axis=r_sel, r_sign=r_sign, r_scale=r_scale,
+                angle_atan2=atan2, side=item.get("side"), r_at_axis=r_sel, r_sign=r_sign, r_scale=r_scale, x_minus=x_sel,
                 retained_side=item.get("retained_side"), convention=convention, gates=tuple(gates),
                 fidelity=item.get("fidelity", "documented"), references=tuple(cited), equation=item["equation"],
                 canonical=item.get("canonical"),

@@ -1,4 +1,5 @@
-"""Canonical shadow boundaries (DEC-199 Phase 2A / 2B, shadow mode): inclined resistive edges and directional half-planes --
+"""Canonical shadow boundaries (DEC-199 Phase 2A / 2B / 2C, shadow mode): inclined resistive edges, directional half-planes
+and lower reactance limits --
 equations, sides, frames, reflection, provenance, the catalog ``boundaries`` section, and proof that production
 interpretation never sees them."""
 
@@ -16,6 +17,7 @@ from app.domain.distance_boundaries import (
     BoundarySide,
     BoundarySource,
     DirectionalBoundary,
+    ReactanceLowerBoundary,
     ResistiveBoundary,
     RetainedSide,
     assemble_zone,
@@ -356,6 +358,108 @@ class TestDirectionalSector:
         with pytest.raises(ValueError):
             assemble_zone("Z", x_reach_ohm=5.0, direction="forward", boundaries=(edge(4.0, 80.0, "right"), edge(-4.0, 80.0, "left")),
                           directional=(ray(-15.0, CCW), ray(-10.0, CCW)))
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Lower reactance limit X >= -x_minus (DEC-199 Phase 2C). Expected sides are the plain inequality on X.
+# ---------------------------------------------------------------------------------------------------------------------
+
+LPROV = BoundaryProvenance((BoundarySource("x_minus", "X", "9", "3", "ohm"),), "zones[Z].x_reach_ohm", "x_minus = +X", "X >= -X",
+                           ("ref-a",), "test")
+
+
+def low(x_minus: float, frame: str = "zone", fidelity: str = "documented") -> ReactanceLowerBoundary:
+    return ReactanceLowerBoundary("Z", x_minus, BoundaryFrame(frame), LPROV, fidelity=fidelity)
+
+
+class TestReactanceLower:
+    @pytest.mark.parametrize("x_minus", [0.25, 1.0, 3.0, 47.5])
+    def test_a_positive_x_minus_is_a_limit_below_the_origin(self, x_minus):
+        hp = low(x_minus).half_plane()
+        assert (hp.nr, hp.nx, hp.offset) == (0.0, -1.0, x_minus)
+        for r in (-10.0, 0.0, 4.0):
+            assert abs(hp.signed_distance(r, -x_minus)) <= TOLERANCE_OHM        # on X = -x_minus
+            assert hp.contains(r, -x_minus + 0.01) and not hp.contains(r, -x_minus - 0.01)
+        assert hp.contains(0.0, 0.0) and hp.signed_distance(0.0, 0.0) == -x_minus   # the origin is x_minus inside
+
+    def test_zero_is_x_non_negative(self):
+        hp = low(0.0).half_plane()
+        assert hp.contains(5.0, 0.0) and hp.contains(-5.0, 0.001) and not hp.contains(0.0, -0.001)
+
+    @pytest.mark.parametrize("x_minus", [0.0, 2.0])
+    def test_a_zone_frame_limit_is_reflected_for_a_reverse_zone(self, x_minus):
+        rev = low(x_minus, "zone").half_plane("reverse")                       # X >= -x  ->  X <= x
+        assert (rev.nr, rev.nx, rev.offset) == (0.0, 1.0, x_minus)
+        assert rev.contains(1.0, x_minus - 0.01) and not rev.contains(1.0, x_minus + 0.01)
+        for r, x in ((1.0, -1.5), (-3.0, 2.5), (0.0, -2.01)):
+            assert rev.contains(-r, -x) == low(x_minus, "zone").half_plane().contains(r, x)
+
+    def test_an_absolute_limit_is_not_reflected(self):
+        assert low(2.0, "absolute").half_plane("reverse") == low(2.0, "absolute").half_plane("forward")
+
+    def test_the_provenance_travels_into_the_kernel_half_plane(self):
+        meta = low(3.0).half_plane("reverse").meta
+        assert (meta.source_path, meta.unit, meta.frame, meta.reference, meta.fidelity, meta.transform) == (
+            "zones[Z].x_reach_ohm", "ohm", Frame.ZONE_LOCAL, "ref-a", "documented", "x_minus = +X")
+
+    @pytest.mark.parametrize("kw", [{"x_minus": -0.5}, {"x_minus": float("nan")}, {"x_minus": float("inf")}, {"frame": "zone"},
+                                    {"unit": "kohm"}, {"fidelity": "approximate"}, {"fidelity": "static_equivalent"}])
+    def test_invalid_lower_limits_are_refused(self, kw):
+        base = dict(zone_id="Z", x_minus=1.0, frame=BoundaryFrame.ZONE, provenance=LPROV)
+        with pytest.raises(ValueError):
+            ReactanceLowerBoundary(**{**base, **kw})
+
+    def test_a_closed_parallelogram_and_its_reverse(self):
+        edges = (edge(1.5, 80.0, "right"), edge(-1.5, 80.0, "left"))
+        fwd = assemble_zone("Z", x_reach_ohm=2.0, direction="forward", boundaries=edges, lower=low(2.0))
+        rev = assemble_zone("Z", x_reach_ohm=2.0, direction="reverse", boundaries=edges, lower=low(2.0))
+        assert (fwd.represented, fwd.not_represented) == (("top", "right", "left", "lower"), ())
+        outline = fwd.characteristic.outline()                                  # bounded: no plotting bounds needed
+        assert not outline.clipped and len(outline.vertices) == 4
+        # hand-worked: cot 80 = 0.17633; at X = -1.99 the band is R in [-1.85090, 1.14910]
+        assert fwd.characteristic.contains(0.0, -1.99) and not fwd.characteristic.contains(0.0, -2.01)
+        assert fwd.characteristic.contains(1.14, -1.99) and not fwd.characteristic.contains(1.16, -1.99)
+        for r, x in ((0.0, -1.99), (0.0, -2.01), (1.14, -1.99), (0.5, 1.0), (0.0, 2.01)):
+            assert rev.characteristic.contains(-r, -x) == fwd.characteristic.contains(r, x)
+        assert rev.characteristic.to_absolute("reverse") is rev.characteristic
+
+    def test_a_lower_limit_of_another_zone_is_refused(self):
+        with pytest.raises(ValueError):
+            assemble_zone("Y", x_reach_ohm=2.0, direction="forward",
+                          boundaries=(ResistiveBoundary("Y", 1.0, 80.0, BoundarySide.RIGHT, BoundaryFrame.ZONE, PROV),
+                                      ResistiveBoundary("Y", -1.0, 80.0, BoundarySide.LEFT, BoundaryFrame.ZONE, PROV)),
+                          lower=low(2.0))
+
+
+class TestLowerCatalogSection:
+    def test_the_documented_lower_limit_is_the_zone_reach_as_printed(self):
+        run = rel511_run({"variant": "directional"})
+        z1 = next(b for b in run.lower if b.zone_id == "Z1")
+        assert (z1.x_minus, z1.frame, z1.unit, z1.fidelity) == (3.0, BoundaryFrame.ZONE, "ohm", "documented")
+        assert [(s.role, s.name, s.raw_value, s.unit) for s in z1.provenance.sources] == [("x_minus", "X1Z1", "3", "ohm")]
+        assert z1.provenance.transform == "x_minus = +X1Z1 (as printed, ohm): X >= -3 ohm"
+        assert z1.provenance.canonical_path == "zones[Z1].x_reach_ohm"
+        assert "Eq. 33" in z1.provenance.equation and "abb-1mrk506109-uen-pp" in z1.provenance.reference_ids
+        assert {b.zone_id for b in run.lower} == {"Z1", "Z2"}
+
+    def test_the_lower_limit_does_not_need_the_directional_settings(self):
+        run = rel511_run({})                                                    # the synthetic sheet: no ArgDir / ArgNegRes
+        assert [b.x_minus for b in run.lower] == [3.0] and run.directional == ()
+
+    def test_the_lower_section_is_validated(self):
+        data = json.loads(REL511.read_text(encoding="utf-8"))
+        k = next(i for i, b in enumerate(data["boundaries"]) if b["kind"] == "reactance_lower")
+        for change in ({"x_minus": {"source": {"name": "X1Z{n}", "unit": "ohm"}, "sign": -1}}, {"x_minus": {"source": {"name": "X1Z{n}", "unit": "deg"}}},
+                       {"angle_deg": {"source": {"name": "ArgDir", "unit": "deg"}}}, {"side": "right"}, {"retained_side": "clockwise"},
+                       {"r_at_axis": {"source": {"name": "RFZ{n}", "unit": "ohm"}}}, {"fidelity": "static_equivalent"}, {"frame": "implicit"}):
+            bad = copy.deepcopy(data)
+            bad["boundaries"][k].update(change)
+            with pytest.raises(CatalogValidationError):
+                catalog(bad)
+        bad = copy.deepcopy(data)
+        del bad["boundaries"][k]["x_minus"]
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
 
 
 def test_the_boundary_module_is_relay_neutral():

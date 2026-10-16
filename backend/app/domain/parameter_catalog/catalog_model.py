@@ -340,14 +340,16 @@ class BoundarySpec:
       ``r_at_axis = r_sign * r_scale * source`` and the angle either ``angle_sign * source`` or
       ``atan2(x source, r source)`` (a line parallel to the impedance R + jX);
     * ``kind`` "directional" -- a half-plane through the origin along the ray at ``angle_sign * source`` degrees,
-      keeping ``retained_side``. ``convention`` states how the source writes the angle when it is not the canonical one.
+      keeping ``retained_side``. ``convention`` states how the source writes the angle when it is not the canonical one;
+    * ``kind`` "reactance_lower" (Phase 2C) -- a lower reactance limit ``X >= -x_minus`` with ``x_minus`` the source
+      value as printed.
 
     ``angle_range`` is the documented setting range of the *source* value: a value outside it is not derived (it would
     mean the documented convention does not hold for that value)."""
 
     id: str
     zones: tuple[str, ...]
-    kind: str                                         # resistive | directional
+    kind: str                                         # resistive | directional | reactance_lower
     frame: str                                        # zone | absolute
     angle_deg: Selector | None = None
     angle_sign: float = 1.0                           # +1 or -1: angle = sign * the source value
@@ -357,6 +359,7 @@ class BoundarySpec:
     r_at_axis: Selector | None = None
     r_sign: float = 1.0                               # +1 or -1
     r_scale: float = 1.0                              # a documented factor (e.g. 0.5 for half a loop reach)
+    x_minus: Selector | None = None                   # reactance_lower: X >= -x_minus
     retained_side: str | None = None                  # directional: counter_clockwise | clockwise
     convention: str | None = None
     gates: tuple[Gate, ...] = ()

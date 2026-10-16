@@ -148,10 +148,18 @@ def absent_sources(catalog, document) -> list[str]:
     return sorted(absent)
 
 
+#: Strongest first: how closely a boundary stands for the relay's behaviour (DEC-199 Phase 2B / 2C).
+_FIDELITY_ORDER = ("exact", "documented", "static_equivalent")
+
+
 def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -> dict[str, Any] | None:
-    """DEC-199 Phase 2A / 2B, SHADOW ONLY: the catalog's canonical boundaries for this document and, per zone, the V2
+    """DEC-199 Phase 2A / 2B / 2C, SHADOW ONLY: the catalog's canonical boundaries for this document and, per zone, the V2
     assembly beside the production (V1) classification. ``None`` when the catalog declares no boundary. A zone whose
-    catalog declares directional boundaries is assembled only when all of them are derived."""
+    catalog declares directional boundaries or a lower reactance limit is assembled only when all of them are derived.
+
+    An assembled zone states two separate things: ``shadow_geometry`` ``exact`` -- the region is the documented relations
+    represented exactly -- and ``relay_behaviour_fidelity``, the weakest fidelity of its boundaries (exact > documented >
+    static_equivalent): how closely that static region stands for the relay's decision."""
     if not catalog_id:
         return None
     from app.domain.distance_boundaries import BoundarySide, assemble_zone
@@ -167,6 +175,7 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
     model = summarize_interpretation(registry, document, registry.identify(document)).model
     out: dict[str, Any] = {"unresolved": [list(u) for u in run.unresolved], "zones": {}}
     directional_specs = [s for s in catalog.boundaries if s.kind == "directional"]
+    lower_specs = [s for s in catalog.boundaries if s.kind == "reactance_lower"]
 
     def sources(b) -> list:
         return [[x.role, " ".join(v for v in (x.code, x.name) if v), x.raw_value, x.unit] for x in b.provenance.sources]
@@ -175,6 +184,8 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
         edges = [b for b in run.boundaries if b.zone_id == zone_id]
         rays = [b for b in run.directional if b.zone_id == zone_id]
         declared = [s for s in directional_specs if "*" in s.zones or zone_id in s.zones]
+        lowers = [b for b in run.lower if b.zone_id == zone_id]
+        declared_lower = [s for s in lower_specs if "*" in s.zones or zone_id in s.zones]
         record: dict[str, Any] = {"production_geometry": zones.get(zone_id, {}).get("geometry"), "edges": {}}
         for b in edges:
             record["edges"][b.side.value] = {
@@ -189,6 +200,15 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
                 "convention": b.provenance.convention, "transform": b.provenance.transform,
                 "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
             } for b in sorted(rays, key=lambda b: b.retained_side.value)}
+        if declared_lower:
+            # DEC-199 Phase 2C: X >= -x_minus with the raw source value, the transform and the reference
+            record["lower"] = None
+            for b in lowers[:1]:
+                record["lower"] = {
+                    "x_minus": b.x_minus, "frame": b.frame.value, "unit": b.unit, "fidelity": b.fidelity,
+                    "canonical_path": b.provenance.canonical_path, "sources": sources(b), "transform": b.provenance.transform,
+                    "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
+                }
         zone = model.zone(zone_id) if model else None
         x, tilt, direction = (zone.x_reach_ohm, zone.tilt_deg, zone.direction) if zone else (None, None, None)
         reason = None
@@ -202,11 +222,14 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
             reason = "a right and a left boundary are both needed"
         elif len(rays) != len(declared):
             reason = "the directional boundaries are not derived (the catalog declares them for this zone)"
+        elif len(lowers) != len(declared_lower):
+            reason = "the lower reactance limit is not derived (the catalog declares it for this zone)"
         assembled = None
         if not reason:
             d = str(getattr(direction.value, "value", direction.value))
             try:
-                assembled = assemble_zone(zone_id, x_reach_ohm=x.value, direction=d, boundaries=tuple(edges), directional=tuple(rays))
+                assembled = assemble_zone(zone_id, x_reach_ohm=x.value, direction=d, boundaries=tuple(edges), directional=tuple(rays),
+                                          lower=lowers[0] if lowers else None)
             except ValueError as exc:
                 reason = str(exc)
         if reason:
@@ -215,7 +238,8 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
             # "exact": the assembly represents the documented relations exactly (geometry); how each boundary relates to
             # relay behaviour is its own `fidelity` (e.g. static_equivalent)
             record.update({"shadow_geometry": "exact", "direction": d, "top": {"x_reach_ohm": x.value, "canonical_path": f"zones[{zone_id}].x_reach_ohm"},
-                           "represented": list(assembled.represented), "not_represented": list(assembled.not_represented)})
+                           "represented": list(assembled.represented), "not_represented": list(assembled.not_represented),
+                           "relay_behaviour_fidelity": max((b.fidelity for b in (*edges, *rays, *lowers)), key=_FIDELITY_ORDER.index)})
         out["zones"][zone_id] = record
     return out
 

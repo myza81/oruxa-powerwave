@@ -1870,10 +1870,32 @@ relates to relay behaviour; the geometry is always the exact documented relation
   the element is polarised by the positive-sequence voltage with memory.
 - **Resistive lines:** inclined `R1Zn * X / X1Zn +/- RFZn / 2`.
 - **Top:** X1Zn.
-- **Not represented:** the lower X limit, the phase-earth geometry and ZnBlock.
+- **Not represented:** the lower X limit (added in Phase 2C), the phase-earth geometry and ZnBlock.
 - **Sheets:** ArgDir / ArgNegRes appear on neither REL511 sheet, so the owner sheet's zones are not assembled. The
   mapping is proven on the synthetic `directional` variant.
 
 **Relion 670 (RED670 / REL670): ZDRDIR mapping deferred pending verified v1.2 technical-manual evidence.** No directional
 mapping exists for them. *Similar parameter names or behaviour across OEM / product generations are not sufficient
 evidence for canonical geometry mapping.*
+
+### Phase 2C: canonical lower reactance boundary (DEC-199 Amendment 4)
+
+**Lower reactance boundaries are now a first-class canonical V2 primitive and REL511's documented phase-phase lower
+limit is represented exactly in shadow geometry.** Production remains on V1.
+
+| Piece | Location | Role |
+|---|---|---|
+| Lower limit | `app/domain/distance_boundaries.py` `ReactanceLowerBoundary` | `X >= -x_minus` (x_minus >= 0, mandatory frame) -> one half-plane `(0, -1) . p <= x_minus`; a zone limit is reflected once for a reverse zone |
+| Assembly | `assemble_zone(..., lower=...)` | Top + lower + both edges = a bounded region (`not_represented: []`) |
+| Catalog section | `boundaries` `kind: reactance_lower`, `x_minus {source}` | Shadow only |
+| Goldens | `shadow_golden.py` `lower_points`, `lower_probes`, `closed`, `active`, `boundary_probes` | From the plain inequalities; boundary-by-boundary inside / beyond probes of a closed zone |
+
+**REL511 (catalog 1.4.0).** `X >= -X1Zn` (App. 1MRK 506 109-UEN **Eq. 33**, p. 66; Eq. 34 is the top `X <= X1Zn`), zone
+frame, documented. With the resistive lines, the top and -- where the sheet states them -- the directional lines, the
+static phase-phase region is closed.
+- Every assembled zone records `shadow_geometry: exact` beside `relay_behaviour_fidelity`, the weakest of its
+  boundaries: `static_equivalent` once the directional lines are in.
+- The owner sheet (no ArgDir / ArgNegRes) stays unassembled.
+
+**Union support remains intentionally deferred** until a real documented relay configuration requires it. A directional
+sweep of 180 deg or more stays a refused assembly with its provenance kept (`rel511--wide-sector`).

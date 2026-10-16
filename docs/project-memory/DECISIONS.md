@@ -27495,7 +27495,7 @@ limitation). Readiness, blockers, Apply, `approximations[]` and the frontend plo
   - **Directional:** the two half-planes, in the zone frame, `static_equivalent`.
 
   Not represented:
-  - **Lower reactance limit:** App. Eq. 34 documents Xm >= -X1PP, but it is not a recorded mapping yet, so the record
+  - **Lower reactance limit:** App. Eq. 34 (*corrected in Amendment 4: Eq. 33*) documents Xm >= -X1PP, but it is not a recorded mapping yet, so the record
     keeps `not_represented: ["lower"]`.
   - The phase-earth (loop-domain RFNZn) characteristic.
   - **ZnBlock:** unresolved, and outside the geometry proof.
@@ -27549,3 +27549,114 @@ limitation). Readiness, blockers, Apply, `approximations[]` and the frontend plo
   Findings F-1 to F-3 are unchanged.
 
 **Results (2026-10-16):** backend full suite 9,889 passed, 144 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the first run's one failure was the shipped-catalog version pin, updated to REL511 1.3.0, then the full suite re-run clean); boundary unit tests 72 passed; shadow conformance: 10 samples, 17 assembled zones -- every golden resistive edge point and all 12 ray points on their V2 lines within 1e-6 ohm, 238 / 238 resistive and 32 / 32 directional probes as hand-derived, every zone placed once; production / readiness diff none; browser: every relay-import, relay_review_copy and Distance spec 233 / 233 in the isolated :8102 / :8200 run (incl. the new rel511--directional sample). Full browser suite not run.
+
+### DEC-199 Amendment 4 -- Phase 2C: canonical lower reactance boundary, REL511 as the first verified OEM case (2026-10-17)
+
+Status: Phase 2C implemented on `feature/remaining-relay-imports` (not merged, not deployed). Shadow mode only: V1 remains
+production-authoritative. REL511 stays **PARTIALLY SUPPORTED / NOT_READY**. Readiness, blockers, Apply,
+`approximations[]`, manual resolution and the frontend plot are unchanged.
+
+**Lower reactance boundaries are now a first-class canonical V2 primitive and REL511's documented phase-phase lower
+limit is represented exactly in shadow geometry.** **General union support remains intentionally deferred until a real
+documented relay configuration requires it.**
+
+* **Evidence, re-checked against the exact source.** ABB 1MRK 506 109-UEN (Application manual REL 511*2.3) p. 66,
+  phase-to-phase measurement. The page's positioned layout binds each equation number to its inequality:
+  - Eq. 31: `Rm >= R1PP * p - RFPP / 2` (left);
+  - Eq. 32: `Rm <= R1PP * p + RFPP / 2` (right);
+  - **Eq. 33: `Xm >= -X1PP`** (the lower limit);
+  - Eq. 34: `Xm <= X1PP` (the top).
+
+  "Here p represents the relative fault position (-1 < p < 1) within the reactive zone reach." Page 67 calls Eq. 33 and
+  34 "the reactive operating boundaries in forward and reverse direction" crossing the X axis at A = X1PP and
+  C = -X1PP. The impedance measurement is "and"-combined with the directional measurement. The reaches are the same for
+  the forward, reverse and non-directional elements (p. 57).
+  - **Correction:** Amendment 3 and the Phase 2C brief named this limit "Eq. 34". The lower limit is **Eq. 33**; Eq. 34
+    is the top. The prose order on p. 67 ("third and fourth ... forward and reverse ... A and C respectively") does not
+    match the equation order exactly, but the inequality itself is explicit.
+  - The figure was not used as evidence.
+* **Canonical primitive** (`app/domain/distance_boundaries.py`, relay-neutral):
+  `ReactanceLowerBoundary(zone_id, x_minus, frame, provenance, unit="ohm", fidelity)`.
+  - **Relation:** `X >= -x_minus`, with `x_minus` finite and >= 0 (a limit at or below the R axis).
+  - **Frame:** mandatory, with no default; a bare string is refused.
+  - **Fidelity:** exact | documented.
+  - **One half-plane:** `(0, -1) . (R, X) <= x_minus`. `x_minus = 0` is `X >= 0`.
+  - **Reflection:** a `zone` limit is reflected once for a reverse zone, becoming `(0, 1) . p <= x_minus`, i.e.
+    `X <= x_minus`. An `absolute` limit is not reflected.
+  - `assemble_zone(..., lower=...)` adds it as `represented: lower`. A zone with top, lower and both resistive edges is
+    bounded, with `not_represented: []`.
+* **Catalog spec (generic):** `kind` `reactance_lower`, with `x_minus {source}` in ohm. Validation refuses:
+  - a missing or signed `x_minus`, or a non-ohm unit;
+  - `angle_deg`, `side`, `retained_side` or `r_at_axis` on this kind;
+  - `static_equivalent` fidelity, or an unknown frame.
+* **REL511** (catalog 1.3.0 -> **1.4.0**, new lock entry, 1.3.0 kept). New boundary `rel511.boundary.lower`:
+  - `x_minus` = X1Zn as printed (X1PP is X1Zn on this sheet, as already recorded for the top);
+  - zone frame, documented fidelity, gated like the other REL511 boundaries;
+  - references `abb-1mrk506109-uen-pp` (Eq. 31-37, pp. 65-67) and `abb-1mrk506101-uen-zm`;
+  - canonical path `zones[Zn].x_reach_ohm`.
+
+  The record keeps the raw value (e.g. "X1Z1 3 ohm") and the transform "x_minus = +X1Z1 (as printed, ohm): X >= -3 ohm".
+  Phase-earth geometry is not inferred.
+* **Composition.** For REL511 zones whose sources are all present, the shadow zone is:
+  - the top;
+  - the lower limit;
+  - the right and left inclined lines;
+  - the two directional lines.
+
+  This is the closed static phase-phase region.
+  - **Owner sheet:** no ArgDir / ArgNegRes, so the zones stay `not_assembled` (no defaults). The lower limits and
+    resistive lines are still derived and recorded.
+  - **Sector rule unchanged:** a sweep of 180 deg or more is refused, with the reason and the directional provenance
+    kept. No union support was added.
+* **Independent goldens** (`shadow_golden.py`), from the plain inequalities, never V2:
+  - `lower_points` on X = -x_minus at 0.25 / 0.5 / 0.75 across the band;
+  - `lower_probes` 1 % of the reach above (1) and below (0);
+  - `closed`;
+  - `active`: each documented line sampled for a stretch where every other relation holds with a clearance of 3 probe
+    offsets;
+  - `boundary_probes`: `inside_<b>` / `beyond_<b>` beside each active boundary, flagged by the documented relations
+    (atan2 for the rays).
+
+  A reverse zone's points are reflected once.
+* **Closed-zone samples.**
+  - `rel511--closed-region`: ArgDir 45, ArgNegRes 125, X1Z1 = 1.
+    - Forward Z1 is bounded by top, lower, right and both rays: the -45 deg ray meets the right line below
+      X = -1 ohm.
+    - Reverse Z2 is bounded by top, right, left and both rays, mirrored.
+
+    So every category is checked: inside, above the top, below the lower limit, beyond right, beyond left and outside
+    either ray.
+  - **Why no single sample shows both:** in one convex-sector zone the left line and the lower limit cannot both bound
+    the region. The parallelogram is point-symmetric, so that would need ArgDir + ArgNegRes > 180.
+  - `rel511--directional`: closed, with the lower limit inactive.
+  - `rel511--wide-sector` (ArgDir 45 + ArgNegRes 175 = 220 deg): the refusal regression.
+* **Fidelity -- two separate fields per assembled zone.**
+  - `shadow_geometry: exact`: the region is the documented relations, exactly.
+  - `relay_behaviour_fidelity`: the weakest boundary fidelity, ordered exact > documented > static_equivalent. REL511
+    with directional lines is `static_equivalent`; 7SA613 is `documented`.
+
+  This field is the only change to the 7SA613 expectations.
+* **Generic tests (no bespoke REL511 file).**
+  - `tests/test_distance_boundaries.py` covers:
+    - positive, zero and several magnitudes;
+    - zone and absolute frames, and reverse reflection;
+    - provenance;
+    - validation;
+    - a closed parallelogram and its reverse;
+    - the REL511 lower mapping, independent of the directional settings;
+    - catalog validation.
+  - **Conformance:**
+    - lower points on the V2 line;
+    - lower probes classified by the V2 lower half-plane alone;
+    - boundary probes classified by the V2 zone;
+    - a closed zone outlines without plotting bounds;
+    - labels cover every active boundary;
+    - "closed exactly when every declared boundary is derived";
+    - a refused wide sector keeps its provenance;
+    - fidelity is the weakest of the zone's boundaries.
+* **Production / readiness diff: none.** REL511 expectations: only the catalog version string and the shadow keys
+  change. 7SA613: only `relay_behaviour_fidelity` is added to the shadow record.
+* **Performance:** REL511 shadow derivation about 0.26 ms (catalog interpretation 1.8 ms); assembly plus 91 probes about
+  0.12 ms.
+
+**Results (2026-10-17):** backend full suite 9,952 passed, 148 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR); boundary unit tests 93 passed; shadow conformance: 12 samples, 19 assembled zones (4 closed) -- every golden edge, ray and lower-limit point on its V2 line within 1e-6 ohm (24 ray points, 12 lower points) and 265 resistive, 64 directional, 24 lower and 36 boundary-by-boundary probes as hand-derived; every closed zone outlines without plotting bounds; production / readiness diff none; browser: every relay-import, relay_review_copy and Distance spec 235 / 235 in the isolated :8102 / :8200 run (incl. rel511--closed-region and rel511--wide-sector). Full browser suite not run.

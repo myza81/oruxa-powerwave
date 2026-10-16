@@ -42,6 +42,7 @@ from app.domain.distance_boundaries import (
     BoundarySide,
     BoundarySource,
     DirectionalBoundary,
+    ReactanceLowerBoundary,
     ResistiveBoundary,
     RetainedSide,
 )
@@ -212,12 +213,13 @@ class CatalogInterpreter:
         return dict(run.results)
 
     def shadow_boundaries(self, document: RawRelayDocument) -> "BoundaryRun":
-        """DEC-199 Phase 2A / 2B, SHADOW MODE: the catalog's canonical boundaries for this document. Never part of the
+        """DEC-199 Phase 2A / 2B / 2C, SHADOW MODE: the catalog's canonical boundaries for this document. Never part of the
         canonical model, a review or readiness, and nothing is consumed (coverage is unchanged)."""
         run = _Run(self.catalog, self.registry, document)
         run._zones()
         boundaries: list[ResistiveBoundary] = []
         directional: list[DirectionalBoundary] = []
+        lower: list[ReactanceLowerBoundary] = []
         unresolved: list[tuple[str, str, str]] = []
         for spec in self.catalog.boundaries:
             for z in run.zone_vars:
@@ -237,11 +239,24 @@ class CatalogInterpreter:
                 except ValueError as exc:
                     unresolved.append((spec.id, z["zone"], str(exc)))
                     continue
-                (directional if isinstance(derived, DirectionalBoundary) else boundaries).append(derived)
-        return BoundaryRun(tuple(boundaries), tuple(unresolved), tuple(directional))
+                (directional if isinstance(derived, DirectionalBoundary)
+                 else lower if isinstance(derived, ReactanceLowerBoundary) else boundaries).append(derived)
+        return BoundaryRun(tuple(boundaries), tuple(unresolved), tuple(directional), tuple(lower))
 
-    def _shadow_boundary(self, run: "_Run", spec: BoundarySpec, z: dict[str, Any]) -> "ResistiveBoundary | DirectionalBoundary":
+    def _shadow_boundary(self, run: "_Run", spec: BoundarySpec, z: dict[str, Any]) -> "ResistiveBoundary | DirectionalBoundary | ReactanceLowerBoundary":
         """One boundary of one zone; a ValueError says why it is not derived."""
+        canonical = _fill(spec.canonical, z) if spec.canonical else None
+        if spec.kind == "reactance_lower":
+            xm = run._boundary_number(spec.x_minus, z)
+            if xm.problem:
+                raise ValueError(f"{xm.name}: {xm.problem}")
+            sources = tuple(BoundarySource("x_minus", e.name, e.parameter_id, _clean(e.raw_value) or None, spec.x_minus.unit,
+                                           e.location.page, e.location.line) for e in xm.entries[:1])
+            return ReactanceLowerBoundary(
+                z["zone"], xm.value, BoundaryFrame(spec.frame),
+                BoundaryProvenance(sources, canonical, f"x_minus = +{xm.name} (as printed, ohm): X >= -{fmt(xm.value)} ohm",
+                                   spec.equation, spec.references, self.catalog.key, spec.convention),
+                fidelity=spec.fidelity)
         reads: list[tuple[str, _Read, Selector]] = []
         if spec.r_at_axis is not None:
             reads.append(("r_at_axis", run._boundary_number(spec.r_at_axis, z), spec.r_at_axis))
@@ -273,7 +288,6 @@ class CatalogInterpreter:
             angle = spec.angle_sign * a.value
             angle_text = (f"angle = {'-' if spec.angle_sign < 0 else ''}{a.name} = {fmt(angle)} deg "
                           f"({a.name} {fmt(a.value)} as printed, deg)")
-        canonical = _fill(spec.canonical, z) if spec.canonical else None
         if spec.kind == "directional":
             provenance = BoundaryProvenance(sources, canonical, f"canonical {angle_text}", spec.equation, spec.references,
                                             self.catalog.key, spec.convention)
@@ -294,11 +308,13 @@ class CatalogInterpreter:
 @dataclass(frozen=True)
 class BoundaryRun:
     """The shadow boundaries of one document (DEC-199 Phase 2A / 2B) and the (boundary id, zone, why) of those not
-    derived: resistive edges in ``boundaries``, directional half-planes in ``directional``."""
+    derived: resistive edges in ``boundaries``, directional half-planes in ``directional``, lower reactance limits in
+    ``lower``."""
 
     boundaries: tuple["ResistiveBoundary", ...]
     unresolved: tuple[tuple[str, str, str], ...]
     directional: tuple["DirectionalBoundary", ...] = ()
+    lower: tuple["ReactanceLowerBoundary", ...] = ()
 
 
 class _Run:
