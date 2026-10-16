@@ -4,28 +4,34 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-16** (Overcurrent: Recording current basis shown only for the Recording input source, `main`; earlier **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-16** (Overcurrent: Recording current basis and CT field visibility follow the active input source, `main`; earlier **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))))
 
-## Overcurrent Recording current basis visibility (2026-10-16, `main`)
+## Overcurrent Recording current basis and CT field visibility (2026-10-16, `main`)
 
-**What was built.** An owner-requested UI refinement, made in the dedicated `main` worktree (`../oruxa-powerwave-main`). The Distance Protection work in the main checkout (`feature/remaining-relay-imports`) was not touched.
+**What was built.** Two owner-requested UI refinements, made in the dedicated `main` worktree (`../oruxa-powerwave-main`). The Distance Protection work in the main checkout (`feature/remaining-relay-imports`) was not touched.
 
-- The "Recording current basis" field (`#wwOvercurrentBasisField`, label + select) is now visible only while Recording is the Input Source. It is hidden in Manual → Direct Current and Manual → Equipment Loading.
-- The field is hidden by the existing `wwOvercurrentUpdateRecordingSectionVisibility()`. No new CSS was added.
-- `settings.recordingBasis` and the select's value are kept, so the selection survives a Manual round trip.
-- CT visibility, pickup, TMS, the curves, CT conversion, the operating time and the chart are unchanged.
+1. **Commit `c66e6c7`.** The "Recording current basis" field (`#wwOvercurrentBasisField`, label + select) is visible only while Recording is the Input Source, via the existing `wwOvercurrentUpdateRecordingSectionVisibility()`. `settings.recordingBasis` and the select's value are kept, so the selection survives a Manual round trip.
+2. **CT field visibility correction.** `wwOvercurrentCtFieldsNeeded()` now follows only the active source:
+   - Recording: Recording basis Primary → shown, Secondary → hidden.
+   - Manual → Direct Current: its basis Primary → shown, Secondary → hidden.
+   - Manual → Equipment Loading: always shown.
 
-**Tests.**
+   The hidden Recording basis no longer shows the CT fields in Manual. CT values are kept while hidden.
 
-- Frontend static suites: 2,048 passed. This includes one new test and one updated markup assertion.
-- `overcurrent_analysis.spec.js`: 72 passed, including 2 new scenarios. It ran on isolated ports (backend :8200, frontend copy :8102), because :8000/:8101 were held by another session.
+No new CSS. Pickup, TMS, the curves, CT conversion, the operating time, the chart and the input conversions are unchanged.
+
+**Tests (after the CT correction).**
+
+- Backend: the OC domain/service/API tests, Equipment Loading domain tests and all frontend static suites. 2,327 passed.
+- `overcurrent_analysis.spec.js`: 72 passed. The five-case CT scenario includes CT-value preservation and the 141 MVA / 150 % / 132 kV → 925.1 A / 1.156 A (CT 800/1) reference case.
+- Browser runs use isolated ports (backend :8200, frontend copy :8102) while another session holds :8000/:8101.
 
 **Open.**
 
-- Owner UAT.
-- One `[OPEN]` item in OVERCURRENT_ANALYSIS.md: `wwOvercurrentCtFieldsNeeded()` still ORs in the (now hidden) Recording basis while Manual is active. A Recording basis of Primary therefore keeps the CT fields visible in Manual → Direct Current with a Secondary basis. Left unchanged by instruction.
-- Not deployed.
+- Owner UAT of both refinements.
+- The three pre-existing Direct Current `[OPEN]` items under "Equipment Loading input method" in OVERCURRENT_ANALYSIS.md.
+- No manual deploy. Pushing to `main` triggers the automatic DEV deploy after CI (DEC-036).
 
 ## Overcurrent Equipment Loading input method (2026-10-15, `feat/oc-equipment-loading`)
 
@@ -44,14 +50,13 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))))
 - "Minor X and Minor Y are OFF by default" failed once in a full-spec run and 1 of 3 in a group repeat. It passed 6/6 in isolation on both this branch and the `main` baseline. It is a Recording-mode test that reads the gridline count once with no retry, so it is classified as pre-existing timing sensitivity and left unchanged.
 - Ports 8000/8101 were held by another session, so the browser runs used isolated ports: backend :8200 and a frontend copy on :8102.
 
-**Open.**
+**Status.** Merged into `main` through PR #3 (merge commit `8febbbd`). Initial owner UAT passed (owner-confirmed 2026-10-16).
 
-- Owner UAT.
-- The three `[OPEN]` items in OVERCURRENT_ANALYSIS.md, all pre-existing Direct Current behaviour that was left unchanged per governance:
-  1. live-values precision;
-  2. the Manual status row is hidden;
-  3. a stale-response race on an invalid Direct Current value.
-- Not merged, not deployed.
+**Open.** The three `[OPEN]` items in OVERCURRENT_ANALYSIS.md, all pre-existing Direct Current behaviour that was left unchanged per governance:
+
+1. live-values precision;
+2. the Manual status row is hidden, so an invalid Direct Current value shows no validation message;
+3. a stale-response race on an invalid Direct Current value.
 
 ## Workspace-wide channel presentation (2026-10-13, `feature/workspace-channel-presentation`, DEC-070 Amendment 1)
 

@@ -124,18 +124,28 @@ class TestOvercurrentPanelStructure:
         assert "wwOvercurrentCtSecondaryField" in fn
         assert "wwOvercurrentCtFieldsNeeded()" in fn
 
-    def test_ct_fields_needed_considers_both_recording_and_manual_basis(self):
-        """Manual Input / Calculator mode (2026-09-16): CT Primary/
-        Secondary are shared, never duplicated between modes (task §5) --
-        their FIELDS become visible whenever EITHER the shared Recording
-        basis OR Manual's own basis needs them, so switching Manual's own
-        Basis selector to Primary never hides the CT inputs regardless of
-        what the shared "Recording current basis" dropdown reads."""
+    def test_ct_fields_needed_follows_only_the_active_input_source(self):
+        """CT Primary/Secondary are shared, never duplicated between
+        modes (task §5). Since 2026-10-16 their FIELDS follow only the
+        ACTIVE source: Recording's basis in Recording; in Manual, Direct
+        Current's own basis, or always for Equipment Loading. The hidden
+        Recording basis never shows them in Manual."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentCtFieldsNeeded()", "function wwOvercurrentUpdateCtFieldsVisibility")
-        assert 'recordingBasis === "primary"' in fn
-        assert "manual.inputBasis === \"primary\"" in fn
-        assert "WW_ANALYSIS_INPUT_SOURCE_MANUAL" in fn
+        recording_branch, manual_branch = fn.split("return wwOvercurrentState.settings.recordingBasis === \"primary\";", 1)
+        assert "if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) {" in recording_branch
+        assert "recordingBasis" not in manual_branch
+        assert "manual.inputMethod === WW_OC_INPUT_METHOD_LOADING" in manual_branch
+        assert "manual.inputBasis === \"primary\"" in manual_branch
+
+    def test_ct_field_visibility_only_toggles_hidden_never_clears_values(self):
+        """Hidden CT fields keep their values: visibility touches only
+        the fields' `hidden` attribute, never `settings.ctPrimary/
+        ctSecondary` or the inputs' values."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentUpdateCtFieldsVisibility()", "function wwOvercurrentHandleSettingsChanged")
+        assert "ctPrimary =" not in fn and "ctSecondary =" not in fn
+        assert ".value" not in fn
 
     def test_recording_basis_field_follows_the_recording_input_source_gate(self):
         """The Recording current basis label + select are hidden together

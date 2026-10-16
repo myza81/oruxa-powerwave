@@ -1822,8 +1822,9 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
   // The field only describes recorded data: Manual -> Direct Current has
   // its own Primary/Secondary basis and Manual -> Equipment Loading is
   // always primary. Hidden as a whole (label + select), never removed;
-  // the selection survives a Manual round trip. CT visibility rules are
-  // unchanged (wwOvercurrentCtFieldsNeeded()).
+  // the selection survives a Manual round trip. The CT fields follow only
+  // the ACTIVE source (wwOvercurrentCtFieldsNeeded()), so the hidden
+  // Recording basis never shows them in Manual.
 
   async function setField(page, selector, value) {
     const input = page.locator(selector);
@@ -1871,35 +1872,79 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
     }).toPass({ timeout: 5000 });
   });
 
-  test("CT fields keep their existing rules in both Manual methods while the basis field is hidden", async ({ page }) => {
-    await page.goto("/index.html");
+  test("CT fields follow only the active source in all five cases, and keep their values while hidden", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
-    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+    await selectContextAndWaitForValues(page, contextId);
 
-    const field = page.locator("#wwOvercurrentBasisField");
     const ctPrimary = page.locator("#wwOvercurrentCtPrimaryField");
     const ctSecondary = page.locator("#wwOvercurrentCtSecondaryField");
+    async function expectCt(visible) {
+      for (const field of [ctPrimary, ctSecondary]) {
+        if (visible) await expect(field).toBeVisible();
+        else await expect(field).toBeHidden();
+      }
+    }
+    async function expectCtValues() {
+      await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toHaveValue("800");
+      await expect(page.locator("#wwOvercurrentCtSecondaryInput")).toHaveValue("1");
+      expect(await page.evaluate(() => [wwOvercurrentState.settings.ctPrimary, wwOvercurrentState.settings.ctSecondary])).toEqual([800, 1]);
+    }
 
-    // Direct Current, Primary (default) -> CT needed.
-    await expect(field).toBeHidden();
-    await expect(page.locator("#wwOvercurrentManualBasisSelect")).toHaveValue("primary");
-    await expect(ctPrimary).toBeVisible();
-    await expect(ctSecondary).toBeVisible();
-
-    // Direct Current, Secondary (Recording basis still its default
-    // Secondary) -> no CT needed.
-    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
-    await expect(ctPrimary).toBeHidden();
-    await expect(ctSecondary).toBeHidden();
-    await expect(field).toBeHidden();
-
-    // Equipment Loading is always primary -> CT needed.
-    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
-    await expect(field).toBeHidden();
-    await expect(ctPrimary).toBeVisible();
-    await expect(ctSecondary).toBeVisible();
-
-    // The hidden select keeps its value untouched throughout.
+    // 1. Recording + Secondary (default): hidden.
     await expect(page.locator("#wwOvercurrentBasisSelect")).toHaveValue("secondary");
+    await expectCt(false);
+
+    // 2. Recording + Primary: shown.
+    await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
+    await expectCt(true);
+    await setField(page, "#wwOvercurrentCtPrimaryInput", "800");
+    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
+
+    // 3. Manual + Direct Current + Primary (default): shown.
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentManualBasisSelect")).toHaveValue("primary");
+    await expectCt(true);
+    await expectCtValues();
+
+    // 4. Manual + Direct Current + Secondary: hidden, even though the
+    //    (hidden) Recording basis is still Primary.
+    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
+    await expectCt(false);
+    await expectCtValues();
+
+    // 5. Manual + Equipment Loading: always shown; the preserved CT 800/1
+    //    still gives the reference case.
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expectCt(true);
+    await expectCtValues();
+    await setField(page, "#wwOvercurrentLoadingRatingInput", 141);
+    await setField(page, "#wwOvercurrentLoadingPercentInput", 150);
+    await setField(page, "#wwOvercurrentLoadingVoltageInput", 132);
+    const results = page.locator("#wwOvercurrentLoadingResults");
+    await expect(results).toContainText("211.5 MVA");
+    await expect(results).toContainText("925.1 A");
+    await expect(results).toContainText("1.156 A");
+    await expect(results).toContainText("CT 800/1 A");
+
+    // Back to Direct Current (Secondary): hidden again.
+    await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
+    await expectCt(false);
+
+    // Back to Recording (Primary): shown, values intact, result unchanged
+    // (40 A primary through 800/1 -> 0.05 A secondary).
+    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
+    await expectCt(true);
+    await expectCtValues();
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A primary/);
+      expect(text).toMatch(/0\.050?\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+
+    // Recording + Secondary: hidden; values still kept.
+    await page.locator("#wwOvercurrentBasisSelect").selectOption("secondary");
+    await expectCt(false);
+    await expectCtValues();
   });
 });

@@ -1465,13 +1465,12 @@ control reuses the EXACT SAME `.ww-oc-axis-toggle-group`/`-btn`/
 `--active` CSS classes the existing Pickup Multiple/Relay Current
 toggle already established (visual consistency, never a second toggle
 style). The Manual Input section (current value, unit A/kA, basis
-Primary/Secondary) never duplicates the Relay Settings controls; CT
-Primary/Secondary FIELD VISIBILITY becomes an OR of both modes' own
-current basis need (`wwOvercurrentCtFieldsNeeded()`) so switching
-Manual's own Basis to Primary never hides the CT inputs regardless of
-what the shared "Recording current basis" dropdown currently reads —
-the underlying CT VALUES themselves stay the one shared, authoritative
-pair either way. Every manual field recomputes on the native `change`
+Primary/Secondary) never duplicates the Relay Settings controls. CT
+Primary/Secondary FIELD VISIBILITY (`wwOvercurrentCtFieldsNeeded()`)
+was originally an OR of both modes' basis needs. Since 2026-10-16 it
+follows only the ACTIVE input source (see "Recording current basis and
+CT field visibility follow the active input source" below). The
+underlying CT VALUES stay the one shared, authoritative pair either way. Every manual field recomputes on the native `change`
 event (blur/Enter) — the SAME convention every other OC settings field
 already uses — a deliberate choice over a live per-keystroke listener
 or a new debounce timer.
@@ -1512,7 +1511,8 @@ preference already uses).
 
 ## Equipment Loading input method (2026-10-15, `feat/oc-equipment-loading`)
 
-Status: implemented on its branch, not merged, **awaiting owner UAT**. This was an
+Status: **merged into `main` through PR #3** (merge commit `8febbbd`);
+**initial owner UAT passed** (owner-confirmed 2026-10-16). This was an
 owner-requested feature. The implementation choices below are not
 recorded as a DEC because none of them has been separately approved.
 
@@ -1627,9 +1627,13 @@ unchanged, per change governance):
    therefore repaint the previous result after the field was made invalid.
    Equipment Loading does not have this race.
 
-## Recording current basis shown only for the Recording input source (2026-10-16)
+## Recording current basis and CT field visibility follow the active input source (2026-10-16)
 
-Owner requirement (UI refinement). The **Recording current basis**
+Two owner-requested UI refinements on `main`. First, the Recording current
+basis visibility (commit `c66e6c7`). Then a correction to CT field
+visibility, below.
+
+**Recording current basis.** The **Recording current basis**
 field in the shared Settings grid describes recorded data only, so it is
 shown only while Recording is the Input Source:
 
@@ -1651,21 +1655,40 @@ always yields a primary current, so neither needs it.
 - The control is hidden, never removed. `settings.recordingBasis` and
   the select's value are untouched, so the selection survives a Manual
   round trip and Recording mode behaves exactly as before.
-- CT field visibility (`wwOvercurrentCtFieldsNeeded()`), pickup, TMS,
-  the IEC curves, CT conversion, the operating time and the chart are
-  unchanged.
+- Pickup, TMS, the IEC curves, CT conversion, the operating time and
+  the chart are unchanged.
 
-Tests: `test_recording_basis_field_follows_the_recording_input_source_gate`
-(static), and the "Recording current basis is shown only for the
-Recording input source" block in `browser-tests/overcurrent_analysis.spec.js`.
+**CT field visibility (owner-approved correction).** `wwOvercurrentCtFieldsNeeded()`
+used to OR in `settings.recordingBasis` in every mode. With Recording's
+basis set to Primary, the CT fields therefore stayed visible in Manual →
+Direct Current with a Secondary basis, with no visible reason once the
+Recording basis was hidden. They now depend only on the active input
+source and method:
 
-**`[OPEN]` (pre-existing, left unchanged by instruction):**
-`wwOvercurrentCtFieldsNeeded()` still ORs in `settings.recordingBasis`
-in every mode. If Recording's basis was set to Primary, the CT fields
-therefore stay visible in Manual → Direct Current with a Secondary
-basis. Now that the Recording basis is hidden there, the engineer
-cannot see why the CT fields are shown. Should the Recording term apply
-only while Recording is active?
+| Input Source | Input Method / Basis         | CT Primary / Secondary |
+|--------------|------------------------------|------------------------|
+| Recording    | Recording basis Primary      | Visible                |
+| Recording    | Recording basis Secondary    | Hidden                 |
+| Manual       | Direct Current, Primary      | Visible                |
+| Manual       | Direct Current, Secondary    | Hidden                 |
+| Manual       | Equipment Loading            | Always visible         |
+
+Only the fields' `hidden` attribute changes. `settings.ctPrimary/ctSecondary`
+and the input values are kept while hidden. Each request path already reads
+the CT pair from `settings`, never from the fields, and already sends it only
+when its own basis is primary. The CT conversion and every calculation are
+therefore unchanged.
+
+Tests:
+
+- Static: `test_recording_basis_field_follows_the_recording_input_source_gate`,
+  `test_ct_fields_needed_follows_only_the_active_input_source` and
+  `test_ct_field_visibility_only_toggles_hidden_never_clears_values`.
+- Browser: the "Recording current basis is shown only for the Recording
+  input source" block in `browser-tests/overcurrent_analysis.spec.js`. It
+  walks all five CT cases on one recording, checks that the CT 800/1 values
+  survive every hide, and checks the 141 MVA / 150 % / 132 kV reference case
+  (925.1 A primary, 1.156 A secondary).
 
 ## Not yet implemented (future slices)
 

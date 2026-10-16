@@ -49414,21 +49414,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ---- Settings wiring helpers ----
 
         // CT Primary/Secondary are shared, never duplicated between
-        // Recording and Manual mode (task §5) -- their FIELDS become
-        // visible whenever EITHER mode's own current basis needs them
-        // (Recording's `settings.recordingBasis`, or Manual's own
-        // `manual.inputBasis` while Manual is active), so switching
-        // Manual's own Basis selector to "Primary" never hides the CT
-        // inputs a user would need to fill in, regardless of what the
-        // shared "Recording current basis" dropdown currently reads.
-        // Equipment Loading always yields a PRIMARY current, so it always
-        // needs the CT ratio.
+        // Recording and Manual mode (task §5). Their FIELDS follow only
+        // the ACTIVE input source's own basis: Recording's
+        // `settings.recordingBasis`, or (Manual) `manual.inputBasis` for
+        // Direct Current -- Equipment Loading always yields a PRIMARY
+        // current, so it always needs the CT ratio. The hidden Recording
+        // basis never shows the CT fields in Manual (2026-10-16). Only
+        // visibility depends on this; the CT values stay in
+        // `settings` either way.
         function wwOvercurrentCtFieldsNeeded() {
-            const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
-            const manualNeedsCt = wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING ||
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                return wwOvercurrentState.settings.recordingBasis === "primary";
+            }
+            return wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING ||
                 wwOvercurrentState.manual.inputBasis === "primary";
-            return wwOvercurrentState.settings.recordingBasis === "primary" ||
-                (isManual && manualNeedsCt);
         }
 
         function wwOvercurrentUpdateCtFieldsVisibility() {
