@@ -4,13 +4,13 @@
 // REL670 (catalog-only, READY FOR OWNER UAT): upload -> identify -> generic review -> accept the 0.00 ohm Left (-R)
 // visualization approximation (the real boundary is the ZDRDIR directional element) -> confirm assumptions -> Apply ->
 // Distance Protection cards -> R-X plot, Zone 4 enabled in reverse.
-// 7SL87 / GRZ100 (PARTIALLY SUPPORTED): the review is useful but stays Not ready -- blank timer cells are Missing (never the
-// Infinity printed in the range column), tilt / inclined boundaries / blinders are preserved as capability gaps, CT / VT
-// ratios are shown as ratios. Synthetic sheets with invented numbers; the owner's real sheets are never committed.
+// What every relay's review shows is checked by the data-driven relay_import_conformance.spec.js (DEC-199); this spec
+// keeps the REL670 UI interactions (Apply, approximation acceptance, reverse-zone legend, note disclosure).
+// Synthetic sheets with invented numbers; the owner's real sheets are never committed.
 // Runs against LOCAL code.
 
 const { test, expect } = require("@playwright/test");
-const { rel670Pdf, sl87Pdf, grz100Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;
 test.beforeEach(async ({ page }) => {
@@ -44,7 +44,7 @@ async function openReview(page, pdf, zones) {
 }
 
 test("REL670: identified and reviewed through its catalog, with Zone 4 enabled in reverse from its own settings", async ({ page }) => {
-  await openReview(page, rel670Pdf(), 4);
+  await openReview(page, relaySheet("rel670-four-zones"), 4);
   await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Hitachi Energy · REL670");
   await expect(row(page, "zone.Z4.status")).toContainText("Enabled");
   await expect(row(page, "zone.Z4.status")).toContainText("Mapped");
@@ -72,7 +72,7 @@ test("REL670: identified and reviewed through its catalog, with Zone 4 enabled i
 });
 
 test("REL670: Ready to apply after the approximation and confirmations; Apply plots all four zones", async ({ page }) => {
-  await openReview(page, rel670Pdf(), 4);
+  await openReview(page, relaySheet("rel670-four-zones"), 4);
   for (const n of ["1", "2", "3", "4"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(readiness(page)).toHaveAttribute("data-readiness", "ready");
@@ -90,7 +90,7 @@ test("REL670: Ready to apply after the approximation and confirmations; Apply pl
 });
 
 test("REL670: the concise Left (-R) explanation -- 0.00 Ω stays optional and never becomes Mapped", async ({ page }) => {
-  await openReview(page, rel670Pdf(), 4);
+  await openReview(page, relaySheet("rel670-four-zones"), 4);
   const left = row(page, "zone.Z1.rr.reverse");
   await expect(left.locator(".ww-rr-offer")).toBeVisible();
   await expect(left.locator(".ww-rr-offer")).toHaveText(LEFT_OFFER);
@@ -114,7 +114,7 @@ test("REL670: the concise Left (-R) explanation -- 0.00 Ω stays optional and ne
 });
 
 test("REL670: reverse Zone 4 is dashed and labelled 'Zone 4 · Reverse'; forward zones stay solid", async ({ page }) => {
-  await openReview(page, rel670Pdf(), 4);
+  await openReview(page, relaySheet("rel670-four-zones"), 4);
   for (const n of ["1", "2", "3", "4"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(readiness(page)).toHaveAttribute("data-readiness", "ready");
@@ -148,7 +148,7 @@ test("REL670: reverse Zone 4 is dashed and labelled 'Zone 4 · Reverse'; forward
 const notes = (page, id) => zoneGroup(page, id).locator("details[data-source-notes]");
 
 test("REL670: a zone's document note is a collapsed, secondary disclosure -- never the configured setting", async ({ page }) => {
-  await openReview(page, rel670Pdf(), 4);
+  await openReview(page, relaySheet("rel670-four-zones"), 4);
   const note = notes(page, "Z1");
   const summary = note.locator(":scope > summary");
   const text = note.locator(".ww-rr-source-note-text");
@@ -188,7 +188,7 @@ test("REL670: a zone's document note is a collapsed, secondary disclosure -- nev
 });
 
 test("REL670: several notes on one zone are one compact disclosure that expands to all of them", async ({ page }) => {
-  await openReview(page, rel670Pdf({ notes: [["Zone 1 Forward direction timer set to 0.15s"], ["Zone 1 Forward direction delayed for backup scheme"]] }), 4);
+  await openReview(page, relaySheet("rel670-four-zones", { notes: [["Zone 1 Forward direction timer set to 0.15s"], ["Zone 1 Forward direction delayed for backup scheme"]] }), 4);
   const note = notes(page, "Z1");
   await expect(note).toHaveCount(1);
   await expect(note.locator(".ww-rr-source-notes-label")).toHaveText("2 document notes");
@@ -215,58 +215,14 @@ test("REL670: document notes never change readiness or what Apply fills in", asy
     await expect(page.locator("#wwRelayReviewApplyStatus")).toHaveText("Relay settings applied to Distance Protection analysis.");
     return { before, after, z1: await input(page, 1, "Delay").inputValue(), z4: await input(page, 4, "Delay").inputValue() };
   };
-  const withNotes = await run(rel670Pdf(), true);
-  const withoutNotes = await run(rel670Pdf({ notes: [] }), false);
+  const withNotes = await run(relaySheet("rel670-four-zones"), true);
+  const withoutNotes = await run(relaySheet("rel670-four-zones", { notes: [] }), false);
   expect(withNotes).toEqual(withoutNotes);
   expect(withNotes.z1).toBe("0.15"); // the configured tPP, not the note
 });
 
-test("7SL87: blank timer cells are Missing (not the Infinity range), basis from Edit mode, tilt and inclined boundary preserved", async ({ page }) => {
-  await openReview(page, sl87Pdf(), 2);
-  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SL87");
-  await expect(row(page, "basis")).toContainText("Primary");
-  await expect(row(page, "basis")).toContainText("Mapped");
-  const timer = row(page, "zone.Z1.timer.pp");
-  await expect(timer).toContainText("Source value missing");
-  await expect(timer).not.toContainText("Infinity s");
-  await timer.getByRole("button", { name: /Source/ }).first().click();
-  await expect(timer).toContainText("blank");
-  await expect(zoneGroup(page, "Z1").locator("[data-source-notes]")).toContainText("Zone 1 Forward direction timer set to 0.15s");
-  await expect(row(page, "zone.Z1.x_reach")).toContainText("4.7 Ω");
-  // R (ph-ph) is kept with the 82.7° angle it is inclined at: not a vertical +R (DEC-198 Amendment 3)
-  await expect(row(page, "zone.Z1.rr.pp")).toContainText("Not yet supported");
-  // an explicit 0° tilt on an explicit R/X zone is a valid configured value (DEC-197 Amendment 1), not a blocker
-  await expect(row(page, "zone.Z1.tilt")).toContainText("0°");
-  await expect(row(page, "zone.Z1.tilt")).toContainText("Mapped");
-  await expect(row(page, "zone.Z1.tilt")).not.toContainText("Not yet supported");
-  await expect(row(page, "zone.Z1.tilt")).toHaveAttribute("data-blocking", "false");
-  // documented relay behaviour (Siemens C53000-G5040-C011-9), never Missing (DEC-198 Amendment 3)
-  await expect(row(page, "zone.Z1.characteristic")).toContainText("Documented relay behaviour");
-  await page.locator("#wwRelayReviewConfirmAll").click().catch(() => {});
-  await expect(readiness(page)).toContainText("Not ready");
-  await expect(applyBtn(page)).toHaveCount(0);
-});
-
-test("GRZ100: CT / VT ratios, a phase / earth characteristic mismatch and blinders are shown honestly", async ({ page }) => {
-  await openReview(page, grz100Pdf(), 9);
-  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Toshiba · GRZ100");
-  await expect(row(page, "ct.ratio")).toContainText("CT Ratio");
-  await expect(row(page, "ct.ratio")).toContainText("1200");
-  await expect(row(page, "vt.ratio")).toContainText("1200");
-  await expect(row(page, "ct.primary")).toContainText("Source value missing"); // a ratio is never split into primary / secondary
-  await expect(row(page, "zone.Z1.characteristic")).toContainText("Not yet supported"); // Quad phase vs Mho earth
-  // DEC-198 Amendment 7: the 75° blinder and the polarised left boundary are documented engine limits, not silent rows
-  await expect(row(page, "zone.Z1.rr.pp")).toContainText("Not yet supported");
-  await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Not yet supported");
-  await expect(zoneGroup(page, "Z1")).toContainText("Z1G");                     // the earth X reach is kept
-  await expect(row(page, "zone.Z1.status")).toContainText("Not yet supported");   // site PLC: no state invented
-  await expect(row(page, "zone.Z1.status")).not.toContainText("Source value missing");
-  await expect(row(page, "zone.Z2.timer.pp")).toContainText("0.3 s");
-  await expect(applyBtn(page)).toHaveCount(0);
-});
-
 test("no relay-family-specific control or script exists in the page", async ({ page }) => {
-  await openReview(page, rel670Pdf(), 4);
+  await openReview(page, relaySheet("rel670-four-zones"), 4);
   const ids = await page.evaluate(() => [...document.querySelectorAll("[id]")].map((e) => e.id));
   expect(ids.filter((i) => /rel670|rel511|7sl87|7sa613|grz100|grl200|rcs941|lfzp|relz/i.test(i))).toEqual([]);
   expect(await page.locator("script").evaluateAll((s) => s.map((x) => x.textContent).join("\n"))).not.toMatch(/REL670|REL511|7SL87|7SA613|GRZ100|GRL200|RCS-?941|LFZP|RELZ/);

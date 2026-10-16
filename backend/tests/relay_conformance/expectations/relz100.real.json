@@ -1,0 +1,50 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real relz100 sheet (relz100.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "relz100.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": null, "relay_family": "RELZ 100", "model": "RELZ100", "profile_id": "relz100", "profile_version": "relz100-catalog-v1.0.0", "catalog_id": "relz100-catalog", "catalog_version": "1.0.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 5},
+  "counts": {"mapped": 18, "documented": 0, "assumption": 9, "to_confirm": 9, "missing": 35, "conflict": 0, "unsupported": 12, "unverified": 0, "not_exposed": 0, "unreadable": 0, "approximate": 0, "blocking": 14, "not_required": 0},
+  "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": [null, "missing"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "unsupported"},
+    "Z2": {"name": "Zone 2", "status": [null, "missing"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "unsupported"},
+    "Z3": {"name": "Zone 3", "status": [null, "missing"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "unsupported"},
+    "Z4": {"name": "Zone 4", "status": [null, "missing"], "direction": ["Non directional", "mapped"], "characteristic": [null, "missing"], "geometry": "unsupported"},
+    "Z5": {"name": "Zone 5", "status": [null, "missing"], "direction": ["Non directional", "mapped"], "characteristic": [null, "missing"], "geometry": "unsupported"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"basis_unresolved": ["-"], "characteristic_unresolved": ["Z1", "Z2", "Z3", "Z4", "Z5"], "zone_status_unresolved": ["Z1", "Z2", "Z3", "Z4", "Z5"]}
+  },
+  "blocking": {
+    "transformers.setting_basis": "missing",
+    "zones[Z1].characteristic.type": "missing",
+    "zones[Z1].direction": "missing",
+    "zones[Z1].status": "missing",
+    "zones[Z2].characteristic.type": "missing",
+    "zones[Z2].direction": "missing",
+    "zones[Z2].status": "missing",
+    "zones[Z3].characteristic.type": "missing",
+    "zones[Z3].direction": "missing",
+    "zones[Z3].status": "missing",
+    "zones[Z4].characteristic.type": "missing",
+    "zones[Z4].status": "missing",
+    "zones[Z5].characteristic.type": "missing",
+    "zones[Z5].status": "missing"
+  },
+  "values": {
+    "transformers.setting_basis": [null, "missing"],
+    "zones[Z1].x_reach_ohm": ["3.91 Ω", "mapped"]
+  },
+  "provenance": {
+    "zones[Z1].x_reach_ohm": {"raw": "3.91", "sources": ["Z<Prot_Zone1:X1"]}
+  },
+  "offers": {"suggestions": ["zones[Z1].resistive_reach.reverse", "zones[Z2].resistive_reach.reverse", "zones[Z3].resistive_reach.reverse", "zones[Z4].resistive_reach.reverse", "zones[Z5].resistive_reach.reverse"], "manual_entries": ["zones[Z1].direction", "zones[Z1].resistive_reach.reverse", "zones[Z1].status", "zones[Z2].direction", "zones[Z2].resistive_reach.reverse", "zones[Z2].status", "zones[Z3].direction", "zones[Z3].resistive_reach.reverse", "zones[Z3].status", "zones[Z4].resistive_reach.reverse", "zones[Z4].status", "zones[Z5].common_timer_s", "zones[Z5].resistive_reach.reverse", "zones[Z5].status"]},
+  "approximations": [],
+  "apply": {"status": 409},
+  "not_interpreted_distance": ["AddFu_FL:Dist_Unit", "AddFu_FL:FilterTime", "AddFu_Fuse:Operation", "AddFu_High:3I0>", "AddFu_High:3U0>", "AddFu_High:TripMode", "AddFu_PSB:BlockZ1", "AddFu_PSB:BlockZ2", "AddFu_PSB:BlockZ3", "AddFu_PSB:BlockZ4", "AddFu_PSB:BlockZ5", "AddFu_PSB:Operation", "AddFu_PSB:RPSB", "AddFu_PSB:XPSB", "AddFu_PhS:1PhTrip", "AddFu_PhS:RNPh", "AddFu_PhS:RPh", "AddFu_PhS:TripMode", "AddFu_PhS:XNPh", "AddFu_PhS:XPh", "AddFu_Rev:CurrentRev", "AddFu_SOTF:Operation", "AddFu_Stub:I>", "AddFu_WEI:Operation", "AddFu_WEI:U<", "Ref_Line:Earthing", "Ref_Line:Frequency", "Ref_Line:RA", "Ref_Line:RB", "Ref_Line:RM", "Ref_Line:XA", "Ref_Line:XB", "Ref_Line:XM", "Z<Prot_Com:Acc_T0", "Z<Prot_Com:Scheme", "Z<Prot_Com:UnBlokCRG"],
+  "coverage": {"canonical_values_assumed": 9, "canonical_values_conflicting": 0, "canonical_values_mapped": 20, "canonical_values_missing": 4, "canonical_values_not_exposed": 0, "canonical_values_total": 38, "canonical_values_unreadable": 0, "canonical_values_unsupported": 5, "canonical_values_unverified": 0, "catalog_id": "relz100-catalog", "catalog_mapped_settings": 31, "catalog_recognised_settings": 45, "catalog_unresolved_settings": 2, "catalog_unsupported_settings": 12, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 154, "not_interpreted_settings": 36, "outside_distance_settings": 73, "unmapped_settings": 109},
+  "catalog_sources_absent": ["Z<Prot_Zone1:Dir", "Z<Prot_Zone2:Dir", "Z<Prot_Zone3:Dir"],
+  "golden": {"points": [], "outlines": []}
+}

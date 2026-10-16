@@ -1,0 +1,46 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real red670 sheet (red670.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "red670.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": "Hitachi Energy", "relay_family": "Relion 670", "model": "RED670", "profile_id": "hitachi-red670", "profile_version": "hitachi-red670-v1", "catalog_id": "hitachi-red670-catalog", "catalog_version": "1.0.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 4},
+  "counts": {"mapped": 56, "documented": 5, "assumption": 9, "to_confirm": 9, "missing": 1, "conflict": 0, "unsupported": 4, "unverified": 0, "not_exposed": 0, "unreadable": 0, "approximate": 0, "blocking": 3, "not_required": 3},
+  "readiness": {"initial": "not_ready", "reviewed": "ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z2": {"name": "Zone 2", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z3": {"name": "Zone 3", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z4": {"name": "Zone 4", "status": ["Disabled / Defeated", "mapped"], "direction": ["Inactive", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "not_in_service"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"resistive_reach_unresolved": ["Z1", "Z2", "Z3"]}
+  },
+  "blocking": {
+    "zones[Z1].resistive_reach.reverse": "unsupported",
+    "zones[Z2].resistive_reach.reverse": "unsupported",
+    "zones[Z3].resistive_reach.reverse": "unsupported"
+  },
+  "values": {
+    "transformers.setting_basis": ["Primary", "documented"],
+    "zones[Z1].x_reach_ohm": ["7.87 Ω", "mapped"],
+    "zones[Z1].resistive_reach.phase_phase": ["3.895 Ω", "assumption"]
+  },
+  "provenance": {
+    "transformers.setting_basis": {"sources": ["ZM01-:IBase", "ZM02-:IBase", "ZM03-:IBase", "ZM01-:UBase", "ZM02-:UBase", "ZM03-:UBase"]},
+    "zones[Z1].x_reach_ohm": {"raw": "7.87", "sources": ["ZM01-:X1"]},
+    "zones[Z1].resistive_reach.phase_phase": {"raw": "7.79", "sources": ["ZM01-:RFPP"]}
+  },
+  "offers": {"suggestions": ["zones[Z1].resistive_reach.reverse", "zones[Z2].resistive_reach.reverse", "zones[Z3].resistive_reach.reverse"], "manual_entries": ["zones[Z4].earth_timer_s", "zones[Z4].phase_timer_s"]},
+  "approximations": [],
+  "apply": {"status": 200, "characteristic": "quadrilateral", "impedance_basis": "primary", "zones": [
+      {"id": "Z1", "enabled": true, "direction": "forward", "delay_s": 0.15, "geometry_mode": "explicit_rx", "characteristic_angle_deg": null, "reach_ohm": null, "reactive_reach_ohm": 7.87, "resistive_reach_forward_ohm": 3.895, "resistive_reach_reverse_ohm": 0.0},
+      {"id": "Z2", "enabled": true, "direction": "forward", "delay_s": 0.45, "geometry_mode": "explicit_rx", "characteristic_angle_deg": null, "reach_ohm": null, "reactive_reach_ohm": 13.63, "resistive_reach_forward_ohm": 5.835, "resistive_reach_reverse_ohm": 0.0},
+      {"id": "Z3", "enabled": true, "direction": "forward", "delay_s": 3.0, "geometry_mode": "explicit_rx", "characteristic_angle_deg": null, "reach_ohm": null, "reactive_reach_ohm": 24.97, "resistive_reach_forward_ohm": 10.955, "resistive_reach_reverse_ohm": 0.0},
+      {"id": "Z4", "enabled": false, "direction": null, "delay_s": null, "geometry_mode": "polar", "characteristic_angle_deg": null, "reach_ohm": null, "reactive_reach_ohm": null, "resistive_reach_forward_ohm": null, "resistive_reach_reverse_ohm": null}
+  ]},
+  "not_interpreted_distance": ["FLO1-:DrepChNoIL1", "FLO1-:DrepChNoIL2", "FLO1-:DrepChNoIL3", "FLO1-:DrepChNoIN", "FLO1-:DrepChNoIP", "FLO1-:DrepChNoUL1", "FLO1-:DrepChNoUL2", "FLO1-:DrepChNoUL3", "FLO1-:R0M", "FLO1-:R1A", "FLO1-:R1B", "FLO1-:X0M", "FLO1-:X1A", "FLO1-:X1B", "FSD1-:3I0<", "FSD1-:3I2<", "FSD1-:3U0>", "FSD1-:3U2>", "FSD1-:DI<", "FSD1-:DU>", "FSD1-:IBase", "FSD1-:IDLD<", "FSD1-:IPh>", "FSD1-:OpDUDI", "FSD1-:OpMode", "FSD1-:Operation", "FSD1-:SealIn", "FSD1-:UBase", "FSD1-:UDLD<", "FSD1-:UPh>", "FSD1-:USealln<", "IMP_PROT/AutomaticSOTF/ZCVPSOF:1", "IMP_PROT/DirectionalImpedance/ZDRDIR:1", "IMP_PROT/FaultLocator/LMBRFLO:1", "IMP_PROT/FuseFailure/SDDRFUF:1", "IMP_PROT/Phase Selection/FDPSPDIS:1", "IMP_PROT/PowerSwingDetection/ZMRPSB:1", "PHS--:ArgLd", "PHS--:IBase", "PHS--:IMinOpPE", "PHS--:IMinOpPP", "PHS--:IN>", "PHS--:INBlockPP", "PHS--:INReleasePE", "PHS--:IPh>", "PHS--:OperationI>", "PHS--:OperationZ<", "PHS--:RFFwPE", "PHS--:RFFwPP", "PHS--:RFRvPE", "PHS--:RFRvPP", "PHS--:RLdFw", "PHS--:RLdRv", "PHS--:TimerPE", "PHS--:TimerPP", "PHS--:UBase", "PHS--:X0", "PHS--:X1", "PHS--:tPE", "PHS--:tPP", "PSB", "PSD1-:ArgLd", "PSD1-:IBase", "PSD1-:IMinOpPE", "PSD1-:Operation", "PSD1-:OperationLdCh", "PSD1-:R1FInFw", "PSD1-:R1FInRv", "PSD1-:R1LIn", "PSD1-:RLdOutFw", "PSD1-:RLdOutRv", "PSD1-:X1InFw", "PSD1-:X1InRv", "PSD1-:kLdRFw", "PSD1-:kLdRRv", "PSD1-:tEF", "PSD1-:tH", "PSD1-:tP1", "PSD1-:tP2", "PSD1-:tR1", "PSD1-:tR2", "PSD1-:tW", "SFV1-:AutoInit", "SFV1-:IBase", "SFV1-:IPh<", "SFV1-:Mode", "SFV1-:Operation", "SFV1-:UBase", "SFV1-:UPh<", "SFV1-:tDLD", "SFV1-:tDuration", "SFV1-:tSOTF", "SOTF", "ZD01-:IBase", "ZD01-:IMinOpPE", "ZD01-:IMinOpPP", "ZD01-:UBase", "ZM01-:IMinOpIN", "ZM01-:IMinOpPE", "ZM01-:IMinOpPP", "ZM02-:IMinOpPE", "ZM02-:IMinOpPP", "ZM03-:IMinOpPE", "ZM03-:IMinOpPP", "ZM04-:IBase", "ZM04-:IMinOpPE", "ZM04-:IMinOpPP", "ZM04-:UBase"],
+  "coverage": {"canonical_values_assumed": 9, "canonical_values_conflicting": 0, "canonical_values_mapped": 59, "canonical_values_missing": 2, "canonical_values_not_exposed": 0, "canonical_values_total": 74, "canonical_values_unreadable": 0, "canonical_values_unsupported": 4, "canonical_values_unverified": 0, "catalog_id": "hitachi-red670-catalog", "catalog_mapped_settings": 82, "catalog_recognised_settings": 86, "catalog_unresolved_settings": 4, "catalog_unsupported_settings": 0, "catalog_version": "1.0.0", "extension_interpreted_settings": 5, "extracted_settings": 1356, "not_interpreted_settings": 108, "outside_distance_settings": 1157, "unmapped_settings": 1265},
+  "catalog_sources_absent": [],
+  "golden": {"points": [], "outlines": []}
+}

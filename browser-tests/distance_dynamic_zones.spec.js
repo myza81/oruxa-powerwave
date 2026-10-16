@@ -10,7 +10,7 @@
 // drives the whole path against the real backend with the P441 sample.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {
   await routeConfig(page);
@@ -368,7 +368,7 @@ test("end to end: enabling Zone P in the review makes the real Apply return it a
   const LEFT = "Left Resistive Reach (−R)";
   const panel = page.locator("#wwRelayReviewPanel");
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel).toBeVisible();

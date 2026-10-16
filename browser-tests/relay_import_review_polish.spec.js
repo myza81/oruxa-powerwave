@@ -3,7 +3,7 @@
 // colour is derived from the backend's review summary, never from the file or relay.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {
   await routeConfig(page);
@@ -16,7 +16,7 @@ const LEFT = "Left Resistive Reach (−R)";
 
 async function reviewP441(page) {
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
@@ -119,7 +119,7 @@ test(".ww-rr-dim is 0.65rem and the overcurrent-style zoom button 0.6rem", async
 test("narrow layout keeps the stack usable with no horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openDistance(page);
-  await pick(page, "a-very-long-relay-settings-file-name-that-must-truncate-safely-2026-10-12-final-v3.pdf", p441Pdf());
+  await pick(page, "a-very-long-relay-settings-file-name-that-must-truncate-safely-2026-10-12-final-v3.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();

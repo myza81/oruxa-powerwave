@@ -9,7 +9,7 @@
 // nothing is applied to the manual form.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 const VALIDATE = "**/api/v1/relay-import/review/validate";
 const UPLOAD = "**/api/v1/relay-import/upload";
@@ -44,7 +44,7 @@ async function reviewP441(page, { mutateUpload, failValidate = false } = {}) {
     });
   }
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel(page)).toBeVisible();
@@ -228,7 +228,7 @@ test("no Apply control exists in any state, and the manual Distance Protection f
   const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
   const before = [];
   for (const sel of inputs) before.push(await page.locator(sel).inputValue());
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await page.locator("#wwRelayReviewBtn").click();
   await page.route(VALIDATE, (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
   await button(page, "Confirm Zone 1 Reach").click(); // failure state
@@ -251,7 +251,7 @@ test("a healthy first open shows the backend's initial result, never 'Not evalua
   const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
   const before = [];
   for (const sel of inputs) before.push(await page.locator(sel).inputValue());
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.evaluate(() => {
     window.__readinessTexts = [];
@@ -282,7 +282,7 @@ test("while the initial validation is pending the readiness says Re-evaluating�
   const gate = new Promise((r) => { release = r; });
   await page.route(VALIDATE, async (route) => { await gate; await route.continue(); });
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(readiness(page)).toContainText("Re-evaluating…");
@@ -325,7 +325,7 @@ test("a decision made while the initial validation is pending is honoured", asyn
     await route.continue().catch(() => {});
   });
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await page.locator("#wwRelayReviewBtn").click();
   await expect(readiness(page)).toContainText("Re-evaluating…");
   await button(page, "Confirm Zone 1 Reach").click(); // queued under the request-version mechanism

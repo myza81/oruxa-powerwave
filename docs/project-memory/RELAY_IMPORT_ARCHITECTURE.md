@@ -1749,3 +1749,43 @@ documented relay behaviour 0 -> 36; `approximations[]` empty. **PARTIALLY SUPPOR
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.
 4. Non-expert UI pass (Advanced section for manual overrides) -- `[DECISION MODE: UAT]`.
 5. Polygon / half-plane engine geometry (turns most approximations into exact plots).
+
+## Relay scalability programme -- Phase 0: generic conformance harness (DEC-199)
+
+Status: **Phase 0 implemented on `feature/remaining-relay-imports` (not merged).** Governing decision:
+[DECISIONS.md -- DEC-199](DECISIONS.md). Tests only: no production code, catalog, readiness, Apply, geometry or frontend
+behaviour changed.
+
+**Target.** A relay whose engineering concepts are already supported generically needs only **catalog + references +
+fixture / expectation data**. Production code changes only for a new reusable protection concept, transformation or
+source / extraction structure. Later phases (each separately approved):
+1. geometry kernel in shadow mode;
+2. canonical boundary vocabulary;
+3. operational layer separate from geometry;
+4. disks and exclusion;
+5. catalog operators and CLI;
+6. retire extension profiles.
+
+| Piece | Location | Role |
+|---|---|---|
+| Sheet specs | `backend/tests/relay_conformance/sheets/*.json` | Single source of every synthetic relay sheet (backend + browser); PDF built only by `sheet_spec.sheet_pdf` |
+| Sheet CLI | `python -m tests.relay_conformance.sheet_cli <id> [overrides]` | How the browser tests obtain a sheet (`relaySheet()` in `browser-tests/support/relay_import_helpers.js`) |
+| Harness | `backend/tests/relay_conformance/harness.py` | Observes a sample through the real API + the engine adapter's reason codes; compares with an expectation |
+| Expectations | `backend/tests/relay_conformance/expectations/*.json` | 46 engineering-semantic records (14 base, 20 scenario variants, 12 owner sheets gated on `RELAY_SAMPLE_PDF_DIR`) |
+| Snapshot tool | `python -m tests.relay_conformance.snapshot` | Records / prints an observation (review every line before writing) |
+| Generic suites | `backend/tests/test_relay_conformance.py`, `browser-tests/relay_import_conformance.spec.js` | Catalog integrity, expectations, invariants, authority, mutations; the real review UI against the same data |
+| Known findings | `backend/tests/relay_conformance/known_findings.json` + `mutations` in expectations | Current deviations reported, not fixed |
+
+**Adding a relay** (no dedicated Python test file, no browser spec): catalog + references (validated, locked) ->
+`sheets/<id>.json` -> `expectations/<id>.json` (snapshot, then review) -> `mutations.disable_zone` -> run the generic
+suites. Details: `backend/tests/relay_conformance/README.md`.
+
+**Phase 1 preparation.** Each expectation's `apply.zones` is the V1 engine geometry, and `zones[*].geometry` classifies
+it. `golden` (`points`, `outlines`) is reserved: Phase 1 records the V1 outline / point-membership goldens there and
+proves the V2 kernel reproduces them before any boundary changes.
+
+**Findings (current behaviour, frozen as data, not fixed):**
+- **F-1:** a blank configured numeric cell on the P441 / 7SA511 sheets (hand-written profiles) and one 7SA613 row is
+  Unreadable rather than Missing. It is never a value.
+- **F-2:** disabling the only zone in service leaves that zone's characteristic blocking.
+- **F-3:** the 7SL87 catalog has an uncited reference.

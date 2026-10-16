@@ -1,0 +1,60 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real 7sl87 sheet (7sl87.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "7sl87.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": "Siemens", "relay_family": "SIPROTEC 5", "model": "7SL87", "profile_id": "siemens-siprotec5-7sl87", "profile_version": "siemens-siprotec5-7sl87-catalog-v1.1.0", "catalog_id": "siemens-siprotec5-7sl87-catalog", "catalog_version": "1.1.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 6},
+  "counts": {"mapped": 57, "documented": 3, "assumption": 2, "to_confirm": 2, "missing": 11, "conflict": 0, "unsupported": 72, "unverified": 6, "not_exposed": 3, "unreadable": 0, "approximate": 0, "blocking": 12, "not_required": 21},
+  "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z2": {"name": "Zone 2", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z3": {"name": "Zone 3", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z4": {"name": "Zone 4", "status": ["Disabled / Defeated", "mapped"], "direction": ["Reverse", "mapped"], "characteristic": [null, "not_exposed"], "geometry": "not_in_service"},
+    "Z5": {"name": "Zone 5", "status": ["Disabled / Defeated", "mapped"], "direction": ["Forward", "mapped"], "characteristic": [null, "not_exposed"], "geometry": "not_in_service"},
+    "Z6": {"name": "Zone 6", "status": ["Disabled / Defeated", "mapped"], "direction": ["Forward", "mapped"], "characteristic": [null, "not_exposed"], "geometry": "not_in_service"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"resistive_reach_unresolved": ["Z1", "Z2", "Z3"], "timer_unresolved": ["Z1", "Z2", "Z3"], "unverified_setting": ["Z1", "Z2", "Z3"]}
+  },
+  "blocking": {
+    "raw:Z1/21.901.3661.105 Use ph-ph load cutout": "unverified",
+    "raw:Z2/21.901.3661.105 Use ph-ph load cutout": "unverified",
+    "raw:Z3/21.901.3661.105 Use ph-ph load cutout": "unverified",
+    "zones[Z1].phase_timer_s": "missing",
+    "zones[Z1].resistive_reach.phase_phase": "unsupported",
+    "zones[Z1].resistive_reach.reverse": "unsupported",
+    "zones[Z2].phase_timer_s": "missing",
+    "zones[Z2].resistive_reach.phase_phase": "unsupported",
+    "zones[Z2].resistive_reach.reverse": "unsupported",
+    "zones[Z3].phase_timer_s": "missing",
+    "zones[Z3].resistive_reach.phase_phase": "unsupported",
+    "zones[Z3].resistive_reach.reverse": "unsupported"
+  },
+  "values": {
+    "transformers.setting_basis": ["Primary", "mapped"],
+    "zones[Z1].phase_timer_s": [null, "missing"],
+    "zones[Z1].earth_timer_s": [null, "missing"],
+    "zones[Z2].phase_timer_s": [null, "missing"],
+    "zones[Z2].earth_timer_s": [null, "missing"],
+    "zones[Z3].phase_timer_s": [null, "missing"],
+    "zones[Z3].earth_timer_s": [null, "missing"]
+  },
+  "provenance": {
+    "transformers.setting_basis": {"raw": "Primary", "sources": ["Edit mode"]},
+    "zones[Z1].phase_timer_s": {"sources": ["21.901.3571.112 Operate delay (multi-ph.)"], "references": ["siemens-c53000-g5040-c011-9-quad"]},
+    "zones[Z1].earth_timer_s": {"sources": ["21.901.3571.110 Operate delay (1-phase)"], "references": ["siemens-c53000-g5040-c011-9-quad"]},
+    "zones[Z2].phase_timer_s": {"sources": ["21.901.3572.112 Operate delay (multi-ph.)"], "references": ["siemens-c53000-g5040-c011-9-quad"]},
+    "zones[Z2].earth_timer_s": {"sources": ["21.901.3572.110 Operate delay (1-phase)"], "references": ["siemens-c53000-g5040-c011-9-quad"]},
+    "zones[Z3].phase_timer_s": {"sources": ["21.901.3573.112 Operate delay (multi-ph.)"], "references": ["siemens-c53000-g5040-c011-9-quad"]},
+    "zones[Z3].earth_timer_s": {"sources": ["21.901.3573.110 Operate delay (1-phase)"], "references": ["siemens-c53000-g5040-c011-9-quad"]}
+  },
+  "offers": {"suggestions": [], "manual_entries": ["zones[Z1].earth_timer_s", "zones[Z1].phase_timer_s", "zones[Z2].earth_timer_s", "zones[Z2].phase_timer_s", "zones[Z3].earth_timer_s", "zones[Z3].phase_timer_s", "zones[Z4].earth_timer_s", "zones[Z4].phase_timer_s", "zones[Z5].earth_timer_s", "zones[Z5].phase_timer_s", "zones[Z6].earth_timer_s", "zones[Z6].phase_timer_s"]},
+  "approximations": [],
+  "apply": {"status": 409},
+  "not_interpreted_distance": ["21.1341.5941.1 Mode", "21.1341.5941.102 Configuration", "21.1341.5941.2 Operate & flt.rec. blocked", "21.1341.5941.6 Operate delay", "21.2671.1 Mode", "21.2671.101 3ph.fail. - VA,VB,VC <", "21.2671.102 3ph.fail. - phs.curr.release", "21.2671.103 3ph.fail. - phs.curr. jump", "21.2671.106 SO 3ph.fail. - time delay", "21.2671.107 Switch-on 3ph. failure", "21.2671.113 Asym.fail. - time delay", "21.2671.115 Asym.fail.-DO on netw.flt.", "21.5311.1 Mode", "21.5311.102 Zones to be blocked", "21.5311.103 Max. blocking time", "21.9001.101 Rated current", "21.9001.102 Rated voltage", "21.9001.103 Rated apparent power", "21.9001.104 Kr", "21.9001.105 Kx", "21.9001.106 KmR", "21.9001.107 KmX", "21.9001.109 Gnd.curr.ratio(MutComp)", "21.9001.110 Series capacit. reactance", "21.9001.111 Series compensation", "21.9001.112 C1 per length unit", "21.9001.113 X per length unit", "21.9001.118 K0", "21.9001.119 CT saturation detection", "21.9001.120 CT saturation threshold", "21.9001.121 Angle (K0)", "21.9001.122 K0", "21.9001.123 K0", "21.9001.124 Km0", "21.9001.125 Angle (Km0)", "21.9001.126 Km0", "21.9001.127 Angle (Km0)", "21.9001.128 Km0", "21.9001.129 Km0", "21.9001.132 Dropout ratio req. voltage", "21.9001.134 Minimum valid frequency", "21.9001.135 Maximum valid frequency", "21.9001.136 Dropout differ. valid freq.", "21.9001.137 Calculation window", "21.9001.142 Dropout ratio req. voltage", "21.9001.144 Minimum valid frequency", "21.9001.145 Maximum valid frequency", "21.9001.146 Dropout diff. valid freq", "21.9001.148 C0 per length unit", "21.9001.149 Neutral point", "21.9001.150 Angle (K0)", "21.9001.152 Dropout ratio req. current", "21.9001.156 Power direction", "21.9001.158 P, Q sign", "21.9001.159 Stabilization factor", "21.9001.160 Stabilization time const.", "21.9001.175 Delay for adapt. thresh.", "21.9001.176 Fact. adapt. cur. thresh.", "21.9001.177 Fact. adapt. volt. thresh.", "21.9001.178 Fact. const. cur. thresh.", "21.9001.179 Fact. const. volt. thresh.", "21.9001.180 Measuring window", "21.901.2311.102 V0> threshold value", "21.901.2311.103 3I0> threshold value", "21.901.2311.104 3I0 pickup stabilization", "21.901.2311.105 Ground-fault detection", "21.901.2311.106 Parallel-line compensat.", "21.901.2311.108 Loop select. with ph-ph-g", "21.901.2311.110 Zone timer start", "21.901.2311.115 Max. unbalance Vph-ph", "21.901.2311.116 Phase prefern. (ph-ph-g)", "21.901.3661.101 Min. phase-current thresh", "PSB", "SOTF"],
+  "coverage": {"canonical_values_assumed": 2, "canonical_values_conflicting": 0, "canonical_values_mapped": 62, "canonical_values_missing": 18, "canonical_values_not_exposed": 3, "canonical_values_total": 97, "canonical_values_unreadable": 0, "canonical_values_unsupported": 12, "canonical_values_unverified": 0, "catalog_id": "siemens-siprotec5-7sl87-catalog", "catalog_mapped_settings": 57, "catalog_recognised_settings": 118, "catalog_unresolved_settings": 21, "catalog_unsupported_settings": 40, "catalog_version": "1.1.0", "extension_interpreted_settings": 0, "extracted_settings": 794, "not_interpreted_settings": 78, "outside_distance_settings": 598, "unmapped_settings": 676},
+  "catalog_sources_absent": [],
+  "golden": {"points": [], "outlines": []}
+}

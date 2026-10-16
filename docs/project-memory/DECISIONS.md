@@ -27236,3 +27236,52 @@ Status: Implemented on `feature/remaining-relay-imports` (not merged, not deploy
 **Result (owner GRZ100 sheet).** **GRZ100 has no genuine source-data gaps. GRZ100 remains partial because of custom PLC status uncertainty and engine geometry limitations.** Blocking settings **17 -> 26**: removed 17 artificial (basis 1, status "Missing" 8, direction 8); the hidden layer behind them is now visible and genuine -- trip state Unverified 8 (PLC), Zone 4 not a tripping zone 1, inclined +R 7 and left boundary 7 (Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2), reverse offset 2 (ZR1BT, ZR2BT), ZND characteristic 1; plus the engine refusal of the non-directional ZND. Zone-level Missing 0 (the 8 document-level fields the sheet does not carry -- CT / VT primary / secondary, bases, line angle, setting group -- are unchanged and non-blocking). Documented relay behaviour 0 -> 36; Unverified 0 -> 8; not exposed 2; 0.00 Ω offers 0; `approximations[]` empty. **PARTIALLY SUPPORTED / NOT_READY.** REL511, 7SL87, 7SA613, P441, RED670, REL670, GRL200, RCS-941, RELZ100 and LFZP111 unchanged.
 
 Tests: `test_relay_grz100_documented_behaviour.py` (new), updated GRZ100 pins in `test_relay_remaining_families.py`, version pins, the DEC-198 guard; fixture `grz100_pdf(zs_c, zg_c, z1_angle1, plc, bt)` (owner sheet shape); `browser-tests/relay_import_grz100.spec.js` (4) and the updated GRZ100 test in `relay_import_remaining_families.spec.js`. **Results (2026-10-16):** backend full suite 9,473 passed, 49 skipped (unrelated gates), 0 failed (real-sample tests ran with RELAY_SAMPLE_PDF_DIR, including the new GRZ100 real-sheet test; a first run caught the adapter docstring naming a catalog -- reworded); browser: every relay-import, relay_review_copy and Distance spec 218 / 218 in the isolated :8102 / :8200 run (the 5 GRZ100 specs first failed on an unescaped parenthesis in the synthetic PDF and on a header assertion -- fixed, rerun 14 / 14). Full browser suite not run.
+
+## DEC-199 -- Relay scalability programme: a relay whose concepts are already generic needs data only; Phase 0 generic conformance harness (2026-10-16)
+
+Status: Phase 0 implemented on `feature/remaining-relay-imports` (not merged, not deployed). Owner-directed ("Relay Scalability Phase 0 -- Generic Conformance Harness") after the Relay Scalability / Distance Engine V2 assessment (relay-by-relay delivery is too slow for the number of relay families to support).
+
+**Target.** A relay whose engineering concepts are already supported generically should normally require only **catalog + references + fixture / expectation data**, with no production Python / JavaScript changes. A production-code change is justified only by a genuinely new reusable (1) protection concept, (2) transformation or (3) source / extraction structure.
+
+**Phased plan** (only Phase 0 is implemented; each later phase needs its own approval):
+- **Phase 0:** generic conformance harness and single-source synthetic sheets; a regression freeze of current behaviour.
+- **Phase 1:** a geometry kernel (half-plane, disk, intersection, point reflection) in shadow mode. V1 shapes are compiled to V2 and must reproduce V1 exactly against the Phase 0 expectations and golden points / outlines. The backend generates the plotted outline, so the frontend stops duplicating geometry.
+- **Phase 2:** a canonical boundary vocabulary (reactance with tilt, resistive line at an angle, directional line, lower reactance, offset reach) replacing the fixed X / +R / -R fields.
+- **Phase 3:** an operational layer separate from geometry (enabled / disabled / unverified / not-tripping / pickup-only).
+- **Phase 4:** disks and exclusion (mho + blinders, impedance element, lens, load encroachment, non-directional zones, a characteristic per loop).
+- **Phase 5:** small catalog operators (`select`, `min` / `max`, whitelisted `expr`, a unified `effect`, `inherent`); a shared reference library; the `relay-catalog` CLI.
+- **Phase 6:** retire the P441 / RED670 extension profiles after UAT.
+
+Explicit catalogs stay preferred over family inheritance (lock and regression risk; only one real family pair exists).
+
+**Phase 0 decision (tests only -- no production code, catalog, geometry, readiness, Apply or frontend change).**
+* **Single-source sheets.** `backend/tests/relay_conformance/sheets/<id>.json` describes each synthetic relay sheet (layout, lines, notes, named variants). Only `sheet_spec.sheet_pdf` builds the PDF (one escaping / layout implementation, deterministic). The Python fixture modules (`relay_family_fixtures`, `relay_p441_fixtures`, `relay_red670_fixtures`, `relay_7sa511_fixtures`) keep their APIs but read the specs: every sheet and every parameter variant the tests use regenerates **byte-identically** to HEAD `a09c107`. The browser tests hold no relay rows: `relaySheet(id, overrides)` calls `python -m tests.relay_conformance.sheet_cli` (the backend interpreter the browser suite already runs). 13 sheets: P441 (plus `minimal` / `minimal_with_tilt` variants for the UI suites), RED670 (`fifth_zone`), REL670, REL670 four-zone (rebuilt from the former JS fixture, semantically identical), REL511, 7SL87, 7SA613, GRZ100, GRL200, RCS-941, RELZ100, LFZP111, 7SA511.
+* **Expectations.** `expectations/<name>.json` holds a compact engineering-semantic record per sample, captured from HEAD `a09c107` as a regression freeze:
+  - identity, counts, readiness;
+  - zones (status, direction, characteristic, geometry classification);
+  - engine reason codes by zone;
+  - blocking items;
+  - every canonical value's text and category, with its raw text, source rows and cited references;
+  - preserved zone rows, offers, approximations;
+  - Apply (status, characteristic, basis, applied zones -- the V1 engine geometry);
+  - not-interpreted distance rows, coverage, and catalog selectors absent from the sheet.
+
+  There are 46 expectations: 14 base sheets, 20 scenario variants that replace bespoke per-relay tests, and 12 owner sheets, which are gated on `RELAY_SAMPLE_PDF_DIR`, compare named values only and never commit an owner PDF. `golden` (points / outlines) is reserved for Phase 1.
+* **Generic suite** (`tests/test_relay_conformance.py`, no relay names):
+  - catalog integrity: valid, locked, documented derivations cite verified references and are refused without them, references cited and scoped, no mapping logic for a catalog-only relay in production Python;
+  - every expectation matched; readiness and Apply agree; every raw setting accounted for; OEM-neutral Apply payload; catalog provenance on every value; deterministic interpretation; a non-exposed setting never Missing;
+  - authority: forged suggestion, forged manual value and tampered token refused (the full security suites are reused, the manual-authority suite now runs over every conformance sheet);
+  - mutations from the sheet itself: a blank cell never becomes a value or the range; a malformed cell never becomes a value; note edits change no configured / documented value; disabling a zone removes its blockers; harmless and geometry-affecting preserved values behave as the catalog declares.
+
+  `browser-tests/relay_import_conformance.spec.js` checks the real review UI against the same expectations: zone count, readiness, no Apply, every value's category / blocking / text, preserved rows, a documented value's Source citing its catalog reference, and no 0.00 ohm offer where none is expected.
+* **Findings reported, not fixed** (current behaviour, frozen as data; each needs a later, approved slice):
+  - **F-1:** blanking a configured numeric cell on the P441 / 7SA511 sheets (hand-written profiles) and one 7SA613 row yields **Unreadable**, not Missing. It is never a value; some rows show the printed range as the raw text.
+  - **F-2:** disabling the only zone in service leaves that zone's characteristic blocking (the adapter then checks every zone's characteristic).
+  - **F-3:** the 7SL87 catalog declares a reference (`siemens-c53000-g5040-c011-9-load`) that no mapping cites.
+* **Bespoke tests:**
+  - migrated and removed: `test_relay_remaining_families.py` and the REL511 / 7SL87 / 7SA613 / GRZ100 `*_documented_behaviour.py` files (their scenarios are expectation variants), and the 7SA613 / 7SL87 / GRZ100 / REL511 browser specs;
+  - retained: primitive-specific capability tests (`test_relay_catalog_capabilities.py`), the hand-written P441 / RED670 / 7SA511 profile tests, the security suites, and the UI-interaction browser specs.
+
+**How a future relay is added:** catalog + references, `sheets/<id>.json`, `expectations/<id>.json` (recorded with `python -m tests.relay_conformance.snapshot` and reviewed line by line), `mutations.disable_zone` -- no dedicated Python test file or browser spec (`backend/tests/relay_conformance/README.md`).
+
+**Results (2026-10-16):** backend full suite 9,560 passed, 103 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the 54 new skips are conformance cases with a stated data reason -- no notes on the sheet, no per-zone selector, a hand-written profile; a first run caught the coverage invariant for catalog-first relays, corrected to count extension-interpreted rows); generic conformance suite 249+ cases; browser: every relay-import, relay_review_copy and Distance spec 232 / 232 in the isolated :8102 / :8200 run, including relay_import_conformance.spec.js (33 sheets / variants). Byte-identity: every synthetic sheet and parameter variant the tests use regenerates identically to HEAD a09c107; the rebuilt REL670 four-zone sheet is semantically identical to the former JS fixture. Full browser suite not run.

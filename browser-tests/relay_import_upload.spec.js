@@ -9,6 +9,7 @@
 // re-pointed per page via request interception -- nothing is committed.
 
 const { test, expect } = require("@playwright/test");
+const { relaySheet } = require("./support/relay_import_helpers");
 
 const BACKEND_PORT = process.env.PW_BACKEND_PORT || "8000";
 // A real, tiny one-page text PDF (the backend now parses uploads).
@@ -361,56 +362,9 @@ test("a relay without a recorded manufacturer shows just its model", async ({ pa
 // Slice 6 -- P441 interpretation summary (interpreted, never applied)
 // ---------------------------------------------------------------------------
 
-// A P441-shaped setting sheet: code | name | value | printed range in four columns.
-const P441_ROWS = [
-  ["0903", "Active Settings", "Group 1", "Grp 1/2/3/4"],
-  ["090D", "Dist. Protection", "Enabled", "Enabled/Disabled"],
-  ["092E", "Setting Values", "Secondary", "Sec'y/Primary"],
-  ["0A01", "Main VT Primary", "132000", "100-1000000V"],
-  ["0A02", "Main VT Sec'y", "110", "80-140V"],
-  ["0A07", "Phase CT Primary", "1200", "1-30000A"],
-  ["0A08", "Phase CT Sec'y", "1", "1A/5A"],
-  ["0D07", "Distance Unit", "Kilometres", "Miles/km"],
-  ["3002", "Line Length", "7.03", "0.3-1000"],
-  ["3004", "Line Impedance", "2", "0.001-500 /I1"],
-  ["3005", "Line Angle", "80", "-90 to +90 deg."],
-  ["3007", "Zone Status", "01010", "P441 Zone Status"],
-  ["3008", "kZ1 Res Comp", "0.718", "0-7"],
-  ["3009", "kZ1 Angle", "-11.5", "-180 to +180 deg."],
-  ["300A", "Z1", "1.43", "0.001-500 /I1"],
-  ["300C", "R1G", "7.02", "0-400 /I1"],
-  ["300D", "R1Ph", "2.11", "0-400 /I1"],
-  ["300E", "tZ1", "0", "0-10.0 s"],
-  ["3011", "Z2", "2.13", "0.001-500 /I1"],
-  ["3012", "R2G", "10.47", "0-400 /I1"],
-  ["3013", "R2Ph", "3.14", "0-400 /I1"],
-  ["3014", "tZ2", "0.3", "0-10.0 s"],
-  ["3017", "Z3", "4.48", "0.001-500 /I1"],
-  ["3018", "R3G-R4G", "17.19", "0-400 /I1"],
-  ["3019", "R3Ph-R4Ph", "6.34", "0-400 /I1"],
-  ["301A", "tZ3", "3", "0-10.0 s"],
-  ["301B", "Z4", "0.36", "0.001-500 /I1"],
-  ["301C", "tZ4", "3", "0-10.0 s"],
-  ["3103", "Fault Type", "Both Enabled", "44x Fault Type"],
-];
-const P441_X = [40, 230, 340, 450];
-function p441Pdf(notes = ["Zone 4 Defeated"], extraRows = []) {
-  let y = 800;
-  const lines = [[40, y, "LZOP: 132kV AAAA - BBBB"], [230, y, "Scheme: SE_P441?A1???038?JE"]];
-  for (const row of P441_ROWS) {
-    y -= 12;
-    row.forEach((cell, i) => lines.push([P441_X[i], y, cell]));
-  }
-  for (const note of notes) {
-    y -= 12;
-    lines.push([40, y, note]);
-  }
-  for (const row of extraRows) {
-    y -= 10;
-    row.forEach((cell, i) => lines.push([P441_X[i], y, cell]));
-  }
-  return buildPdf(lines);
-}
+// A P441-shaped setting sheet (backend/tests/relay_conformance/sheets/p441.json, DEC-199): the minimal variant
+// without Zone P (an absent optional zone).
+const p441Pdf = () => relaySheet("p441", { variant: "minimal", drop: ["301D", "3020", "3023"] });
 // Slice 8/8A: the line is the live review count by category, so confirmed / resolved / blocking
 // parts appear as they become non-zero and zero parts are dropped.
 const P441_SUMMARY =
@@ -521,18 +475,12 @@ test("the interpretation summary never causes horizontal scrolling on a narrow s
 // Slice 7 -- Extraction Review (read-only). Reviewed, never applied.
 // ---------------------------------------------------------------------------
 
-const ZP_AND_TILT_ROWS = [
-  ["301D", "ZoneP - Direct", "Directional Fwd", "Directional FWD/REV"],
-  ["3020", "Zp", "0.001", "0.001-500 /I1"],
-  ["3023", "tZp", "10", "0-10.0 s"],
-  ["3026", "Z1m Tilt Angle", "0", "-45 to 45 deg."],
-];
 // Enough non-distance settings to need pagination in "Other extracted settings".
 const OTHER_ROWS = Array.from({ length: 40 }, (_, i) => [`5${String(i).padStart(3, "0")}`, `Recorder Channel ${i + 1}`, "Enabled", "Enabled/Disabled"]);
 
-async function reviewP441(page, { extra = [...ZP_AND_TILT_ROWS, ...OTHER_ROWS] } = {}) {
+async function reviewP441(page) {
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf(["Zone 4 Defeated"], extra));
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal_with_tilt", append: OTHER_ROWS }));
   await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
   await page.locator("#wwRelayReviewBtn").click();
   await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
@@ -707,7 +655,7 @@ test("the review is read-only: no Apply, Accept or Populate, and the manual form
   const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
   const before = [];
   for (const sel of inputs) before.push(await page.locator(sel).inputValue());
-  await pick(page, "document.pdf", p441Pdf(["Zone 4 Defeated"], ZP_AND_TILT_ROWS));
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal_with_tilt" }));
   await page.locator("#wwRelayReviewBtn").click();
   await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
   await page.locator("#wwRelayReviewPanel").getByRole("button", { name: "Source of Zone 1 Reach", exact: true }).click();

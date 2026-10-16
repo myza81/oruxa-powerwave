@@ -1,0 +1,42 @@
+{
+  "schema": "oruxa.relay-sheet/1",
+  "id": "relz100",
+  "relay": "RELZ100",
+  "description": "A synthetic RELZ100-shaped sheet mirroring the shape the extractor produces for the owner's real sheet (TAP NAME | TAP SETTING | TAP RANGE, scheme notes). Invented numbers; the owner's real sheet is never committed.",
+  "layout": {"columns": [40, 230, 340, 450], "rows_per_page": 40, "line_height": 16, "top": 780},
+  "value_index": 1,
+  "lines": [
+    ["LZOP: 132kV AAAA - BBBB No. 1", "Scheme: RELZ100_3.0_OPS_A1"],
+    ["Utility ID: 1", "Active Group: Rev0-Endorsed"],
+    ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["Ref_Transf:CT_Prim", "1200", "1-9999"],
+    ["Ref_Transf:CT_Sec", "1", "1"],
+    ["Ref_Transf:VT_Prim", "132", "1-999"],
+    ["Ref_Transf:VT_Sec", "0.11", "0.10, 0.11"],
+    ["Ref_Line:Length", "16.23", "0-10000"],
+    ["Ref_Line:X1", "0.74", "0.001-1500"],
+    ["Ref_Line:R1", "4.381", "0.001-1500"],
+    ["Ref_Line:X0", "4.178", "0.001-1500"],
+    ["Ref_Line:R0", "13.676", "0.001-1500"],
+    ["Z<Prot_Zone1:X1", "3.91", "0.1-150.0"],
+    ["Z<Prot_Zone1:R1", "5.69", "0.1-150.0"],
+    ["Z<Prot_Zone1:KN1", "0.7", "-3.0-3.0"],
+    ["Z<Prot_Zone1:RN1", "16.69", "0.1-150.0"],
+    ["Z<Prot_Zone1:T1", "0", "0-10.0"],
+    ["Z<Prot_Zone4:X4", "11.81", "0.1-150.0"],
+    ["Z<Prot_Zone4:R4", "8.21", "0.1-150.0"],
+    ["Z<Prot_Zone4:T4", "0", "0-10.0"],
+    ["Z<Prot_Zone5:X5", "150", "0.1-150.0"],
+    ["Z<Prot_Zone5:T5", "10", "0-10.0"],
+    ["Ref_Line:Length_Unit", "km", "km/mi"],
+    ["Z<Prot_Zone1:TimerT1", "ON", "ON/OFF"],
+    ["Z<Prot_Zone4:TimerT4", "ON", "ON/OFF"],
+    ["Z<Prot_Zone4:Dir", "NonDirectional", "NonDir/Rev/Fwd"],
+    ["Z<Prot_Zone5:TimerT5", "OFF", "ON/OFF"],
+    ["NOTES:"]
+  ],
+  "notes": [
+    ["Setting based on line length 16.23km"]
+  ],
+  "variants": {}
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "oruxa.relay-sheet/1",
+  "id": "lfzp111",
+  "relay": "LFZP111",
+  "description": "A synthetic LFZP111-shaped sheet mirroring the shape the extractor produces for the owner's real sheet (TAP NAME | TAP SETTING | TAP RANGE, scheme notes). Invented numbers; the owner's real sheet is never committed.",
+  "layout": {"columns": [40, 230, 340, 450], "rows_per_page": 40, "line_height": 16, "top": 780},
+  "value_index": 1,
+  "lines": [
+    ["LZOP: 132kV AAAA - BBBB No. 1", "Scheme: LFZP111_1A"],
+    ["Utility ID: 1", "Active Group: Rev0-Endorsed"],
+    ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["In", "1", "1 or 5"],
+    ["KZPh", "0.39", "0.040-1.000"],
+    ["KZ1", "1", "1.00-49.98"],
+    ["KZ2", "1.64", "1.00-49.98"],
+    ["KZ3", "4.46", "1.00-49.98"],
+    ["CT Ratio (N:1)", "600", "10:1 - 2000:1"],
+    ["VT Ratio (N:1)", "1200", "10:1 - 5000:1"],
+    ["Line Length", "10.9", "0-1000"],
+    ["ZONE 1 TRIPPING", "ENABLED", "ENABLED/BLOCKED"],
+    ["Z2(T) TRIPPING", "BLOCKED", "ENABLED/BLOCKED"],
+    ["Z3(T) TRIPPING", "ENABLED", "ENABLED/BLOCKED"],
+    ["DIST G CHARACTERISTIC", "QUADRILATERAL", "MHO/QUAD"],
+    ["LINE UNITS", "Km", "Km/Miles/100%"],
+    ["NOTES:"]
+  ],
+  "notes": [],
+  "variants": {}
+}

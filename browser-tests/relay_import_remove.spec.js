@@ -12,7 +12,7 @@
 //   edited configuration is kept, and a failed upload changes nothing.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {
   await routeConfig(page);
@@ -44,7 +44,7 @@ const plotSnapshot = (page) =>
 
 // Upload `pdf`, open the review and make it Ready to apply (the P441 sample's three Left reaches
 // take the explicit 0.00 Ω suggestion, then every assumption is confirmed).
-async function reviewReady(page, pdf = p441Pdf()) {
+async function reviewReady(page, pdf = relaySheet("p441", { variant: "minimal" })) {
   await pick(page, "document.pdf", pdf);
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
@@ -205,7 +205,7 @@ test("A Apply -> B accepted clears A's unedited state and shows B's review", asy
   await expect(extraCards(page)).toHaveCount(1);
   await expect(boundaries(page)).toHaveCount(4);
 
-  await pick(page, "b.pdf", p441Pdf());
+  await pick(page, "b.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportFilename")).toHaveText("b.pdf");
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await expect(extraCards(page)).toHaveCount(0);
@@ -230,7 +230,7 @@ test("A Apply -> hand edit -> B accepted keeps the edited configuration", async 
   const form = await formSnapshot(page);
   const plot = await plotSnapshot(page);
 
-  await pick(page, "b.pdf", p441Pdf());
+  await pick(page, "b.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   expect(await formSnapshot(page)).toEqual(form);
   expect(await plotSnapshot(page)).toEqual(plot);
@@ -248,7 +248,7 @@ test("A Apply -> B upload fails keeps A's state; a later accepted upload still r
   await page.route("**/api/v1/relay-import/upload", (route) =>
     route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ detail: { code: "unreadable_pdf", message: "The PDF could not be read." } }) }),
   );
-  await pick(page, "broken.pdf", p441Pdf());
+  await pick(page, "broken.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportError")).toHaveText("The PDF could not be read.");
   expect(await formSnapshot(page)).toEqual(form);
   expect(await plotSnapshot(page)).toEqual(plot);
@@ -260,7 +260,7 @@ test("A Apply -> B upload fails keeps A's state; a later accepted upload still r
 
   // A's applied state is still A's: the next ACCEPTED upload releases it.
   await page.unroute("**/api/v1/relay-import/upload");
-  await pick(page, "c.pdf", p441Pdf());
+  await pick(page, "c.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   expect(await formSnapshot(page)).toEqual(clean.form);
   await expect(boundaries(page)).toHaveCount(0);

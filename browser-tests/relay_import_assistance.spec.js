@@ -8,7 +8,7 @@
 // Runs against LOCAL code.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, red670Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;
 test.beforeEach(async ({ page }) => {
@@ -41,7 +41,7 @@ async function openReview(page, pdf) {
 // The P441 sample made Ready to apply: the three Left reaches take the explicit 0.00 Ω suggestion,
 // then every assumption is confirmed (the unchanged confirmation workflow).
 async function p441Ready(page) {
-  await openReview(page, p441Pdf());
+  await openReview(page, relaySheet("p441", { variant: "minimal" }));
   for (const n of ["1", "2", "3"]) {
     await panel(page).locator(`button[aria-label="Use 0.00 Ω for Zone ${n} ${LEFT}"]`).click();
   }
@@ -71,7 +71,7 @@ async function applyRouted(page, payload) {
 }
 
 test("documented relay behaviour has its own chip, and the normal review shows no internal terms", async ({ page }) => {
-  await openReview(page, red670Pdf());
+  await openReview(page, relaySheet("red670"));
   // ZMQPDIS -> quadrilateral is documented relay behaviour, not a setting the sheet states
   await expect(chip(page, "zone.Z1.characteristic")).toHaveText("Documented relay behaviour");
   await expect(chip(page, "zone.Z1.characteristic")).toHaveAttribute("data-category", "documented");
@@ -93,7 +93,7 @@ test("documented relay behaviour has its own chip, and the normal review shows n
 });
 
 test("a missing source value reads 'Source value missing'", async ({ page }) => {
-  await openReview(page, p441Pdf());
+  await openReview(page, relaySheet("p441", { variant: "minimal" }));
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText(/\d+ not yet supported/);
 });
@@ -127,7 +127,7 @@ test("a newly accepted import releases the earlier approximate configuration", a
   await p441Ready(page);
   await applyRouted(page, approximatePayload());
   await expect(approxNote(page)).toHaveCount(1);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await expect(boundaries(page)).toHaveCount(0);
   expect(await appliedApproximations(page)).toEqual([]);

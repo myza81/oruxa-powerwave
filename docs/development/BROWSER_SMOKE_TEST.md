@@ -70,3 +70,11 @@ untouched.
 - Broader UAT coverage (multi-source, Grouped/Separate/Custom, Change
   colour, digital channels, annotations, etc.) — this stays a small
   foundation, not a replacement for manual/live UAT on larger features.
+
+## Relay setting sheets (DEC-199)
+
+Relay-import specs never build relay sheets in JavaScript. `relaySheet(id, overrides)`
+(`support/relay_import_helpers.js`) runs `python -m tests.relay_conformance.sheet_cli` from `backend/` with `PW_PYTHON`
+(the same interpreter that starts the backend), so the sheets are the backend's single-source specs
+(`backend/tests/relay_conformance/sheets`). `relay_import_conformance.spec.js` checks every relay's review against
+`backend/tests/relay_conformance/expectations`.

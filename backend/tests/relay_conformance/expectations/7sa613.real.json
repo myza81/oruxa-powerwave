@@ -1,0 +1,66 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real 7sa613 sheet (7sa613.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "7sa613.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": "Siemens", "relay_family": "SIPROTEC 4 7SA6", "model": "7SA613", "profile_id": "siemens-7sa613", "profile_version": "siemens-7sa613-catalog-v1.1.0", "catalog_id": "siemens-7sa613-catalog", "catalog_version": "1.1.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 6},
+  "counts": {"mapped": 47, "documented": 17, "assumption": 0, "to_confirm": 0, "missing": 16, "conflict": 0, "unsupported": 40, "unverified": 0, "not_exposed": 3, "unreadable": 0, "approximate": 0, "blocking": 18, "not_required": 5},
+  "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z2": {"name": "Zone 2", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z3": {"name": "Zone 3", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z4": {"name": "Zone 4", "status": ["Disabled / Defeated", "mapped"], "direction": ["Inactive", "mapped"], "characteristic": [null, "not_exposed"], "geometry": "not_in_service"},
+    "Z5": {"name": "Zone 5", "status": ["Enabled", "mapped"], "direction": ["Non directional", "unsupported"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"},
+    "Z1B": {"name": "Zone 1B", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unsupported"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"delay_infinite": ["Z1B", "Z5"], "direction_unsupported": ["Z5"], "resistive_reach_unresolved": ["Z1", "Z1B", "Z2", "Z3", "Z5"], "setting_missing": ["Z1", "Z1B", "Z2", "Z3", "Z5"], "timer_unresolved": ["Z1", "Z2", "Z3"]}
+  },
+  "blocking": {
+    "raw:Z1/R load (ph-ph)": "missing",
+    "raw:Z1B/R load (ph-ph)": "missing",
+    "raw:Z2/R load (ph-ph)": "missing",
+    "raw:Z3/R load (ph-ph)": "missing",
+    "raw:Z5/R load (ph-ph)": "missing",
+    "zones[Z1B].resistive_reach.phase_phase": "unsupported",
+    "zones[Z1B].resistive_reach.reverse": "unsupported",
+    "zones[Z1].phase_timer_s": "missing",
+    "zones[Z1].resistive_reach.phase_phase": "unsupported",
+    "zones[Z1].resistive_reach.reverse": "unsupported",
+    "zones[Z2].phase_timer_s": "missing",
+    "zones[Z2].resistive_reach.phase_phase": "unsupported",
+    "zones[Z2].resistive_reach.reverse": "unsupported",
+    "zones[Z3].common_timer_s": "missing",
+    "zones[Z3].resistive_reach.phase_phase": "unsupported",
+    "zones[Z3].resistive_reach.reverse": "unsupported",
+    "zones[Z5].resistive_reach.phase_phase": "unsupported",
+    "zones[Z5].resistive_reach.reverse": "unsupported"
+  },
+  "values": {
+    "transformers.setting_basis": ["Secondary", "documented"],
+    "zones[Z1B].phase_timer_s": ["∞ (no timed trip)", "unsupported"],
+    "zones[Z1].tilt_deg": ["0°", "mapped"],
+    "zones[Z1].phase_timer_s": [null, "missing"],
+    "zones[Z1].resistive_reach.phase_phase": [null, "unsupported"],
+    "zones[Z2].resistive_reach.phase_phase": [null, "unsupported"],
+    "zones[Z3].resistive_reach.phase_phase": [null, "unsupported"]
+  },
+  "provenance": {
+    "transformers.setting_basis": {"sources": ["0206 CT SECONDARY", "1302 R(Z1) ph-ph"], "references": ["siemens-c53000-g1176-c156-2-settings", "siemens-c53000-g1176-c156-7-ordering"]},
+    "zones[Z1B].phase_timer_s": {"raw": "Infinity", "sources": ["1356 T1B-multi-phase"], "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"]},
+    "zones[Z1].tilt_deg": {"raw": "0", "sources": ["1307 Zone Reduction"]},
+    "zones[Z1].phase_timer_s": {"sources": ["1306 T1-multi-phase"], "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"]},
+    "zones[Z1].resistive_reach.phase_phase": {"raw": "1.5 | 82", "sources": ["1302 R(Z1) ph-ph", "1211 Distance Angle"], "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"]},
+    "zones[Z2].resistive_reach.phase_phase": {"raw": "1.7 | 82", "sources": ["1312 R(Z2) ph-ph", "1211 Distance Angle"], "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"]},
+    "zones[Z3].resistive_reach.phase_phase": {"raw": "2.4 | 82", "sources": ["1322 R(Z3) ph-ph", "1211 Distance Angle"], "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"]}
+  },
+  "offers": {"suggestions": [], "manual_entries": ["zones[Z1].earth_timer_s", "zones[Z1].phase_timer_s", "zones[Z2].earth_timer_s", "zones[Z2].phase_timer_s", "zones[Z3].common_timer_s"]},
+  "approximations": [],
+  "apply": {"status": 409},
+  "not_interpreted_distance": ["1st AR->Z1B", "3I0> Threshold", "3I0>/Iphmax", "3U0> Threshold", "Condition zone timer", "EF Recognition", "Echo Block Time", "Echo: 1 Channel", "FCT SOTF O/C", "FCT Telep. Dis.", "FCT Weak Infeed", "I>>>", "Minimum Iph>", "P/S Op. mode", "PSB", "PowerSwing trip", "SOTF", "SOTF zone", "Send Prolong.", "SeriesComp", "TMax CLOSE CMD", "TMin TRIP CMD", "Trip 1 pole Z2", "Trip EXTENSION", "Trip delay after PSB", "Trip/Echo DELAY", "Type of Line", "UNDERVOLTAGE", "x'"],
+  "coverage": {"canonical_values_assumed": 0, "canonical_values_conflicting": 0, "canonical_values_mapped": 70, "canonical_values_missing": 5, "canonical_values_not_exposed": 3, "canonical_values_total": 90, "canonical_values_unreadable": 0, "canonical_values_unsupported": 12, "canonical_values_unverified": 0, "catalog_id": "siemens-7sa613-catalog", "catalog_mapped_settings": 42, "catalog_recognised_settings": 55, "catalog_unresolved_settings": 5, "catalog_unsupported_settings": 8, "catalog_version": "1.1.0", "extension_interpreted_settings": 0, "extracted_settings": 343, "not_interpreted_settings": 33, "outside_distance_settings": 255, "unmapped_settings": 288},
+  "catalog_sources_absent": ["X(Z1)+", "X(Z1B)+", "X(Z2)+", "X(Z3)+", "X(Z4)+", "X(Z5)"],
+  "golden": {"points": [], "outlines": []}
+}

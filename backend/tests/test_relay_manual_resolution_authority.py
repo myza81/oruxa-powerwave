@@ -23,8 +23,9 @@ from app.domain.relay_import.review_state import (
 from app.services.relay_review_token import current_relay_knowledge
 from app.services.relay_review_validation import InvalidReviewError, manual_entry_paths, validate_review
 from tests import relay_family_fixtures as F
+from tests.relay_conformance.harness import EXPECTATIONS_DIR, expectation_paths, load_expectation, sample_pdf
 from tests.test_relay_import_upload import _p441_pdf
-from tests.test_relay_remaining_families import APPLY, VALIDATE, client, decisions, items, upload  # noqa: F401
+from tests.relay_api_helpers import APPLY, VALIDATE, client, decisions, items, upload  # noqa: F401
 
 PP, COMMON, LEFT = "zones[Z1].resistive_reach.phase_phase", "zones[Z1].resistive_reach.common", "zones[Z1].resistive_reach.reverse"
 
@@ -154,15 +155,16 @@ def _model(client, pdf: bytes):
     return _verified(client, upload(client, pdf)["review"])
 
 
+SYNTHETIC_SAMPLES = sorted(p.stem for p in expectation_paths() if load_expectation(p)["sample"]["kind"] == "synthetic")
+
 class TestEveryOfferedEntryAndNothingElse:
     """For every relay sheet: each item the server review offers an entry for is accepted, and every other
     canonical value in the interpretation is refused with the same generic message."""
 
-    @pytest.mark.parametrize("name", ["p441", "rel670", "rel511", "7sl87", "7sa613", "grz100", "grl200", "rcs941", "lfzp111", "relz100"])
+    # every relay of the generic conformance set (DEC-199): its synthetic sheets, by expectation
+    @pytest.mark.parametrize("name", SYNTHETIC_SAMPLES)
     def test_presentation_and_enforcement_agree(self, client, name):
-        pdf = {"p441": _p441_pdf, "rel670": F.rel670_pdf, "rel511": F.rel511_pdf, "7sl87": F.sl87_pdf, "7sa613": F.sa613_pdf,
-               "grz100": F.grz100_pdf, "grl200": F.grl200_pdf, "rcs941": F.rcs941_pdf, "lfzp111": F.lfzp_pdf,
-               "relz100": F.relz100_pdf}[name]()
+        pdf = sample_pdf(load_expectation(EXPECTATIONS_DIR / f"{name}.json")["sample"])
         review = upload(client, pdf)["review"]
         original = _verified(client, review)
         signer = client.app.state.relay_review_signer

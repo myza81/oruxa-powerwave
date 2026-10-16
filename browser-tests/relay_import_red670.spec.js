@@ -9,7 +9,7 @@
 // Runs against LOCAL code.
 
 const { test, expect } = require("@playwright/test");
-const { red670Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;
 test.beforeEach(async ({ page }) => {
@@ -33,7 +33,7 @@ const legendItems = (page) => page.locator("#wwDistanceZoneLegend .ww-dist-zone-
 
 async function openReview(page, pdfOptions) {
   await openDistance(page);
-  await pick(page, "document.pdf", red670Pdf(pdfOptions));
+  await pick(page, "document.pdf", relaySheet("red670", pdfOptions));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel(page)).toBeVisible();
@@ -49,7 +49,7 @@ async function makeReady(page, zones = ["1", "2", "3"]) {
 
 test("a RED670 sheet is identified and opens the generic review with every zone", async ({ page }) => {
   await openDistance(page);
-  await pick(page, "document.pdf", red670Pdf());
+  await pick(page, "document.pdf", relaySheet("red670"));
   const card = page.locator("#wwRelayImportFile");
   await expect(card).toContainText("Hitachi Energy");
   await expect(card).toContainText("RED670");
@@ -201,7 +201,7 @@ test("Fit Zones brings every drawn zone inside the plot", async ({ page }) => {
 });
 
 test("an enabled fifth ZMQPDIS instance becomes a dynamic card, is plotted and fitted (no fixed zone count)", async ({ page }) => {
-  await openReview(page, { fifthZone: true });
+  await openReview(page, { variant: "fifth_zone" });
   await expect(page.locator("#wwRelayImportSummary")).toContainText("5 zones found");
   await makeReady(page, ["1", "2", "3", "5"]);
   await applyBtn(page).click();
@@ -223,7 +223,7 @@ test("an enabled fifth ZMQPDIS instance becomes a dynamic card, is plotted and f
 });
 
 test("a zone switched off by its own Operation parameter is preserved but not applied or drawn", async ({ page }) => {
-  await openReview(page, { zones: { 1: { operation: "OFF" } } });
+  await openReview(page, { set: { "ZM01-:Operation": "OFF" } });
   await expect(panel(page).locator('details[data-group="zone-Z1"]')).toContainText("Disabled");
   await makeReady(page, ["2", "3"]);
   await applyBtn(page).click();
@@ -234,7 +234,7 @@ test("a zone switched off by its own Operation parameter is preserved but not ap
 });
 
 test("an enabled non-directional zone the engine cannot draw keeps the review Not ready (nothing is approximated)", async ({ page }) => {
-  await openReview(page, { zones: { 3: { direction: "Non-dir" } } });
+  await openReview(page, { set: { "ZM03-:OperationDir": "Non-dir" } });
   await button(page, `Use 0.00 Ω for Zone 1 ${LEFT}`).click();
   await expect(readiness(page)).toContainText("Not ready");
   await expect(panel(page)).toContainText("is not supported");

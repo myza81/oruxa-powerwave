@@ -1,0 +1,47 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real 7sa511 sheet (7sa511.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "7sa511.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": "Siemens", "relay_family": "SIPROTEC 7SA5", "model": "7SA511", "profile_id": "siemens-7sa511", "profile_version": "siemens-7sa511-v2", "catalog_id": null, "catalog_version": null, "confidence": "high", "interpretation_status": "interpreted", "zone_count": 6},
+  "counts": {"mapped": 34, "documented": 0, "assumption": 28, "to_confirm": 28, "missing": 29, "conflict": 0, "unsupported": 0, "unverified": 0, "not_exposed": 0, "unreadable": 0, "approximate": 0, "blocking": 7, "not_required": 0},
+  "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": [null, "missing"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "assumption"], "geometry": "missing"},
+    "Z2": {"name": "Zone 2", "status": [null, "missing"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "assumption"], "geometry": "missing"},
+    "Z3": {"name": "Zone 3", "status": [null, "missing"], "direction": ["Reverse", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "assumption"], "geometry": "missing"},
+    "Z4": {"name": "Zone 4", "status": [null, "missing"], "direction": ["Forward", "mapped"], "characteristic": [null, "missing"], "geometry": "missing"},
+    "Z1B": {"name": "Zone 1B", "status": [null, "missing"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "assumption"], "geometry": "missing"},
+    "Z1L": {"name": "Zone 1L", "status": [null, "missing"], "direction": ["Non directional", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "assumption"], "geometry": "missing"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"characteristic_unresolved": ["Z4"], "zone_status_unresolved": ["Z1", "Z1B", "Z1L", "Z2", "Z3", "Z4"]}
+  },
+  "blocking": {
+    "zones[Z1B].status": "missing",
+    "zones[Z1L].status": "missing",
+    "zones[Z1].status": "missing",
+    "zones[Z2].status": "missing",
+    "zones[Z3].status": "missing",
+    "zones[Z4].characteristic.type": "missing",
+    "zones[Z4].status": "missing"
+  },
+  "values": {
+    "transformers.setting_basis": ["Secondary", "assumption"],
+    "zones[Z1].x_reach_ohm": ["2.74 Ω", "mapped"],
+    "zones[Z1].phase_timer_s": [null, "missing"]
+  },
+  "provenance": {
+    "transformers.setting_basis": {"sources": ["1302 X1", "IN"]},
+    "zones[Z1].x_reach_ohm": {"raw": "2.74", "sources": ["1302 X1"]},
+    "zones[Z1].phase_timer_s": {"sources": ["1306 T1 >1PHASE"]}
+  },
+  "offers": {"suggestions": ["zones[Z1B].resistive_reach.reverse", "zones[Z1L].resistive_reach.reverse", "zones[Z1].resistive_reach.reverse", "zones[Z2].resistive_reach.reverse", "zones[Z3].resistive_reach.reverse"], "manual_entries": ["zones[Z1B].earth_timer_s", "zones[Z1B].phase_timer_s", "zones[Z1B].resistive_reach.reverse", "zones[Z1B].status", "zones[Z1L].common_timer_s", "zones[Z1L].resistive_reach.reverse", "zones[Z1L].status", "zones[Z1].earth_timer_s", "zones[Z1].phase_timer_s", "zones[Z1].resistive_reach.reverse", "zones[Z1].status", "zones[Z2].earth_timer_s", "zones[Z2].phase_timer_s", "zones[Z2].resistive_reach.reverse", "zones[Z2].status", "zones[Z3].common_timer_s", "zones[Z3].resistive_reach.reverse", "zones[Z3].status", "zones[Z4].common_timer_s", "zones[Z4].resistive_reach.phase_earth", "zones[Z4].resistive_reach.phase_phase", "zones[Z4].status"]},
+  "approximations": [],
+  "apply": {"status": 409},
+  "not_interpreted_distance": ["3-P. COUPL", "ANGLE PHIAE", "BLK.AR Z1B", "BLK.AR Z1L", "CT STARPNT", "DAR -> Z1L", "DAR BLOCK", "Delta R", "ECHO", "FILTER", "Ie CT", "Ie/Iph", "Ie>", "Iph>", "Iph>>", "MAN. CLOSE", "P/S PROGR.", "P/S T-ACT.", "PHASE PREF", "PHPHE FLTS", "POTT", "POTT DirFD", "POTT MODE", "PROG. U/I", "PROG. ZA", "PUTT", "PUTT MODE", "RAR -> Z1B", "SYSTEMSTAR", "T-CB CLOSE", "T-CLOSE", "T-DROP 1", "T-DROP 2", "T-ECHO-BLO", "T-ECHO-DEL", "T-ECHO-IMP", "T-EXT.STAB", "T-M/C-PROL", "T-PICKUP 1", "T-PICKUP 2", "T-REC-PROL", "T-SEND-DEL", "T-SEND-PRL", "T-TRANSBLO", "T-TRIP I<", "T-TRIP I>", "T-WAIT", "T5", "TIe 1PHASE", "TRIP 1P Z2", "TRIP2phFLT", "U1-U2 ANGL", "U2 CONNECT", "Ue>", "Uph/Udelta", "Uphe(I>)", "Uphe(I>>)", "Uphph(I>)", "Uphph(I>>)", "Ux CONNECT", "dR/dT"],
+  "coverage": null,
+  "catalog_sources_absent": null,
+  "golden": {"points": [], "outlines": []}
+}

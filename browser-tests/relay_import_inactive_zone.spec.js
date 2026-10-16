@@ -11,7 +11,7 @@
 //   helper text, nothing to confirm, and no blocker.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {
   await routeConfig(page);
@@ -25,7 +25,7 @@ const NOT_REQUIRED = "Not required while zone is disabled";
 
 async function review(page, options) {
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf(options));
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal", ...options }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel(page)).toBeVisible();
@@ -51,7 +51,7 @@ test("a defeated zone's missing Left Resistive Reach is visible, not required, n
 });
 
 test("Zone P with settings, no decoded state and a delay that is not defeated is not defaulted: Missing and blocking until resolved", async ({ page }) => {
-  await review(page, { overrides: { "3023": "1" } });
+  await review(page, { set: { "3023": "1" } });
   await expect(zoneP(page).locator("> summary")).toContainText("Status missing");
   await expect(zoneP(page)).not.toContainText("was not found in the uploaded relay settings");
   await expect(row(page, "zone.ZP.status")).toHaveAttribute("data-blocking", "true");

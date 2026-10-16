@@ -7,7 +7,7 @@
 // Runs against LOCAL code.
 
 const { test, expect } = require("@playwright/test");
-const { siemens7sa511Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;
 test.beforeEach(async ({ page }) => {
@@ -31,7 +31,7 @@ const legendItems = (page) => page.locator("#wwDistanceZoneLegend .ww-dist-zone-
 
 async function openReview(page, pdfOptions) {
   await openDistance(page);
-  await pick(page, "document.pdf", siemens7sa511Pdf(pdfOptions));
+  await pick(page, "document.pdf", relaySheet("7sa511", pdfOptions));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel(page)).toBeVisible();
@@ -75,7 +75,7 @@ async function makeReady(page, { extra = false } = {}) {
 
 test("a 7SA511 sheet is identified and opens the generic review with every zone", async ({ page }) => {
   await openDistance(page);
-  await pick(page, "document.pdf", siemens7sa511Pdf());
+  await pick(page, "document.pdf", relaySheet("7sa511"));
   const card = page.locator("#wwRelayImportFile");
   await expect(card).toContainText("Siemens");
   await expect(card).toContainText("7SA511");
@@ -173,7 +173,7 @@ test("Apply Settings fills the dynamic cards and draws only the enabled zones on
 });
 
 test("an enabled Zone 1B becomes a dynamic card with the sheet's own label, is plotted and fitted", async ({ page }) => {
-  await openReview(page, { notes: false });
+  await openReview(page, { notes: [] });
   await expect(row(page, "zone.Z1B.status")).toContainText("Source value missing");
   await makeReady(page, { extra: true });
   await applyBtn(page).click();

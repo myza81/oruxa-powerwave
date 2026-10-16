@@ -506,8 +506,7 @@ class TestShippedCatalogsUnchanged:
 
     def test_no_other_shipped_catalog_uses_the_new_declarations(self):
         # REL511 (1.1.0 / 1.2.0), 7SL87 (1.1.0), 7SA613 (1.1.0) and GRZ100 (1.1.0) are the only catalogs to use them
-        # (their own tests: test_relay_rel511_documented_behaviour.py, test_relay_7sl87_documented_behaviour.py,
-        # test_relay_7sa613_documented_behaviour.py, test_relay_grz100_documented_behaviour.py)
+        # (their behaviour: the generic conformance suite, tests/test_relay_conformance.py, DEC-199)
         for catalog in default_store().catalogs:
             if catalog.catalog_id in ("hitachi-rel511-catalog", "siemens-siprotec5-7sl87-catalog", "siemens-7sa613-catalog",
                                       "toshiba-grz100-catalog"):

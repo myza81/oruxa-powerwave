@@ -1,0 +1,46 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real lfzp111 sheet (lfzp.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "lfzp.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": null, "relay_family": "LFZP", "model": "LFZP111", "profile_id": "lfzp111", "profile_version": "lfzp111-catalog-v1.0.0", "catalog_id": "lfzp111-catalog", "catalog_version": "1.0.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 5},
+  "counts": {"mapped": 6, "documented": 0, "assumption": 5, "to_confirm": 5, "missing": 36, "conflict": 0, "unsupported": 8, "unverified": 0, "not_exposed": 0, "unreadable": 0, "approximate": 0, "blocking": 13, "not_required": 16},
+  "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": ["Enabled", "assumption"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "missing"},
+    "Z1X": {"name": "Zone 1X", "status": ["Disabled / Defeated", "assumption"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "not_in_service"},
+    "Z1Y": {"name": "Zone 1Y", "status": ["Disabled / Defeated", "assumption"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "not_in_service"},
+    "Z2": {"name": "Zone 2", "status": ["Enabled", "assumption"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "missing"},
+    "Z3": {"name": "Zone 3", "status": ["Enabled", "assumption"], "direction": [null, "missing"], "characteristic": [null, "missing"], "geometry": "missing"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"basis_unresolved": ["-"], "characteristic_unresolved": ["Z1", "Z2", "Z3"], "direction_unsupported": ["Z1", "Z2", "Z3"], "loop_type_unsupported": ["Z1", "Z2", "Z3"], "timer_unresolved": ["Z1", "Z2", "Z3"]}
+  },
+  "blocking": {
+    "transformers.setting_basis": "missing",
+    "zones[Z1].characteristic.type": "missing",
+    "zones[Z1].common_timer_s": "missing",
+    "zones[Z1].direction": "missing",
+    "zones[Z1].phase_phase_enabled": "missing",
+    "zones[Z2].characteristic.type": "missing",
+    "zones[Z2].common_timer_s": "missing",
+    "zones[Z2].direction": "missing",
+    "zones[Z2].phase_phase_enabled": "missing",
+    "zones[Z3].characteristic.type": "missing",
+    "zones[Z3].common_timer_s": "missing",
+    "zones[Z3].direction": "missing",
+    "zones[Z3].phase_phase_enabled": "missing"
+  },
+  "values": {
+    "transformers.setting_basis": [null, "missing"]
+  },
+  "provenance": {},
+  "offers": {"suggestions": [], "manual_entries": ["zones[Z1X].common_timer_s", "zones[Z1X].direction", "zones[Z1X].resistive_reach.phase_earth", "zones[Z1X].resistive_reach.phase_phase", "zones[Z1Y].common_timer_s", "zones[Z1Y].direction", "zones[Z1Y].resistive_reach.phase_earth", "zones[Z1Y].resistive_reach.phase_phase", "zones[Z1].common_timer_s", "zones[Z1].direction", "zones[Z1].resistive_reach.phase_earth", "zones[Z1].resistive_reach.phase_phase", "zones[Z2].common_timer_s", "zones[Z2].direction", "zones[Z2].resistive_reach.phase_earth", "zones[Z2].resistive_reach.phase_phase", "zones[Z3].common_timer_s", "zones[Z3].direction", "zones[Z3].resistive_reach.phase_earth", "zones[Z3].resistive_reach.phase_phase"]},
+  "approximations": [],
+  "apply": {"status": 409},
+  "not_interpreted_distance": ["ALL G TRIPPING", "DIST G CHARACTERISTIC", "In", "KR", "KZ6", "KZ6_PRIME", "KZF", "KZM", "KZN", "KZPh", "LEFT_QUAD/KR", "MUTUAL COMP.", "OVERHEAD/CABLE", "PwrSwg DETECTOR", "PwrSwg DETECTOR TIMING", "PwrSwg DETECTOR TO Z1", "PwrSwg DETECTOR TO Z1X", "PwrSwg DETECTOR TO Z1Y", "PwrSwg DETECTOR TO Z2", "PwrSwg DETECTOR TO Z3", "RIGHT_QUAD/KR", "SCHEME SELECTION", "SWCH ON TO FAULT", "SWCH ON TO FAULT METHOD", "SWITCH ON TO FAULT 110s/0.2s", "THETA G", "THETA M", "THETA N", "THETA Ph", "Z6 Lenticular a/b"],
+  "coverage": {"canonical_values_assumed": 5, "canonical_values_conflicting": 0, "canonical_values_mapped": 4, "canonical_values_missing": 0, "canonical_values_not_exposed": 0, "canonical_values_total": 9, "canonical_values_unreadable": 0, "canonical_values_unsupported": 0, "canonical_values_unverified": 0, "catalog_id": "lfzp111-catalog", "catalog_mapped_settings": 10, "catalog_recognised_settings": 18, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 8, "catalog_version": "1.0.0", "extension_interpreted_settings": 0, "extracted_settings": 102, "not_interpreted_settings": 30, "outside_distance_settings": 54, "unmapped_settings": 84},
+  "catalog_sources_absent": [],
+  "golden": {"points": [], "outlines": []}
+}

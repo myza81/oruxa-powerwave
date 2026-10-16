@@ -34,7 +34,7 @@ from tests.relay_review_tokens import (
     TEST_IMPORT_ID, TEST_KNOWLEDGE, TEST_SIGNER, TEST_SIGNING_KEY, seal, sealed_knowledge_for, sign_payload,
 )
 from tests.test_relay_import_upload import _p441_pdf
-from tests.test_relay_remaining_families import APPLY, UPLOAD, VALIDATE, client, decisions, upload  # noqa: F401
+from tests.relay_api_helpers import APPLY, UPLOAD, VALIDATE, client, decisions, upload  # noqa: F401
 
 KEY = "k" * 40
 INVALID = {"code": "invalid_review_token", "message": INVALID_REVIEW_TOKEN}

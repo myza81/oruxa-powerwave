@@ -1,0 +1,20 @@
+{
+  "schema": "oruxa.relay-conformance-findings/1",
+  "description": "Known deviations the generic conformance suite reports but Phase 0 does not fix (no production or catalog change). Each must be resolved by a later, approved slice; the suite fails if the list is out of date.",
+  "uncited_references": {
+    "siemens-siprotec5-7sl87-catalog": {
+      "ids": [
+        "siemens-c53000-g5040-c011-9-load"
+      ],
+      "note": "Finding F-3: declared for the load-cutout shape, which no mapping cites yet (DEC-198 Amendment 3 left the load cutout preserved and unverified)."
+    }
+  },
+  "production_mentions": {
+    "siemens-7sa613": {
+      "files": [
+        "relay_profiles/siemens_7sa511.py"
+      ],
+      "note": "Prose only: the 7SA511 profile's docstring states it shares no base class or logic with 7SA613 (no mapping logic)."
+    }
+  }
+}

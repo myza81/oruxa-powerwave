@@ -1,0 +1,51 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real rel511 sheet (rel511.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "rel511.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": "Hitachi Energy", "relay_family": "REx5xx", "model": "REL511", "profile_id": "hitachi-rel511", "profile_version": "hitachi-rel511-catalog-v1.2.0", "catalog_id": "hitachi-rel511-catalog", "catalog_version": "1.2.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 5},
+  "counts": {"mapped": 34, "documented": 18, "assumption": 5, "to_confirm": 5, "missing": 5, "conflict": 0, "unsupported": 12, "unverified": 4, "not_exposed": 3, "unreadable": 0, "approximate": 0, "blocking": 12, "not_required": 7},
+  "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z2": {"name": "Zone 2", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z3": {"name": "Zone 3", "status": ["Enabled", "mapped"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z4": {"name": "Zone 4", "status": ["Enabled", "mapped"], "direction": ["Reverse", "mapped"], "characteristic": ["Quadrilateral · Explicit R/X", "documented"], "geometry": "unverified"},
+    "Z5": {"name": "Zone 5", "status": ["Disabled / Defeated", "mapped"], "direction": [null, "unsupported"], "characteristic": [null, "not_exposed"], "geometry": "not_in_service"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"resistive_reach_unresolved": ["Z1", "Z2", "Z3", "Z4"], "unverified_setting": ["Z1", "Z2", "Z3", "Z4"]}
+  },
+  "blocking": {
+    "raw:Z1/Z1Block": "unverified",
+    "raw:Z2/Z2Block": "unverified",
+    "raw:Z3/Z3Block": "unverified",
+    "raw:Z4/Z4Block": "unverified",
+    "zones[Z1].resistive_reach.phase_phase": "unsupported",
+    "zones[Z1].resistive_reach.reverse": "unsupported",
+    "zones[Z2].resistive_reach.phase_phase": "unsupported",
+    "zones[Z2].resistive_reach.reverse": "unsupported",
+    "zones[Z3].resistive_reach.phase_phase": "unsupported",
+    "zones[Z3].resistive_reach.reverse": "unsupported",
+    "zones[Z4].resistive_reach.phase_phase": "unsupported",
+    "zones[Z4].resistive_reach.reverse": "unsupported"
+  },
+  "values": {
+    "transformers.setting_basis": ["Secondary", "documented"],
+    "zones[Z1].resistive_reach.phase_phase": [null, "unsupported"],
+    "zones[Z1].x_reach_ohm": ["3.08 Ω", "mapped"]
+  },
+  "provenance": {
+    "transformers.setting_basis": {"sources": ["Ir"], "references": ["abb-1mrk506109-uen-conv", "abb-1mrk506101-uen-zm"]},
+    "zones[Z1].resistive_reach.phase_phase": {"raw": "4.62", "sources": ["RFZ1"], "references": ["abb-1mrk506109-uen-pp", "abb-1mrk506101-uen-zm", "abb-1mrk506167-uen-zm"]},
+    "zones[Z1].x_reach_ohm": {"raw": "3.08", "sources": ["X1Z1"]}
+  },
+  "offers": {"suggestions": [], "manual_entries": ["zones[Z5].common_timer_s"]},
+  "approximations": [],
+  "apply": {"status": 409},
+  "not_interpreted_distance": ["ARGLd", "Automatic_SOTF", "CurrRev_Z", "Distance Unit", "I>_FFS", "I>_GFC", "IN>_GFC", "Operation_Extension", "Operation_FFS", "Operation_GFC", "Operation_LossOfLoad", "Operation_PSB", "Operation_SOTF", "PSB", "R1SA", "R1SB", "RFGFC", "RFNGFC", "RFPSB", "RLd", "Rm0", "SOTF", "Scheme_Type_Z", "U<_UV", "U>_FFS", "Unblock_Z", "WEI_Z", "X0GFCFw", "X0GFCRv", "X1GFCFw", "X1GFCRv", "X1PSB", "X1SA", "X1SB", "Xm0", "tCoord_Z", "tDelay_CurrRev", "tN_GFC", "tPhase_GFC", "tPickUp_CurrRev", "tSecurity_Z", "tSendmin_Z"],
+  "coverage": {"canonical_values_assumed": 5, "canonical_values_conflicting": 0, "canonical_values_mapped": 54, "canonical_values_missing": 1, "canonical_values_not_exposed": 3, "canonical_values_total": 74, "canonical_values_unreadable": 0, "canonical_values_unsupported": 11, "canonical_values_unverified": 0, "catalog_id": "hitachi-rel511-catalog", "catalog_mapped_settings": 53, "catalog_recognised_settings": 66, "catalog_unresolved_settings": 2, "catalog_unsupported_settings": 11, "catalog_version": "1.2.0", "extension_interpreted_settings": 0, "extracted_settings": 238, "not_interpreted_settings": 46, "outside_distance_settings": 126, "unmapped_settings": 172},
+  "catalog_sources_absent": [],
+  "golden": {"points": [], "outlines": []}
+}

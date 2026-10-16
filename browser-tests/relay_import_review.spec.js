@@ -8,7 +8,7 @@
 // refresh. Runs against LOCAL code.
 
 const { test, expect } = require("@playwright/test");
-const { p441Pdf, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
+const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {
   await routeConfig(page);
@@ -21,7 +21,7 @@ const chip = (page, key) => row(page, key).locator(".ww-rr-status").first();
 
 async function reviewP441(page) {
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel(page)).toBeVisible();
@@ -266,7 +266,7 @@ test("each uncertain row is classified by why it is uncertain, with the reason i
 
 test("a setting the profile keeps raw (a per-loop tilt) is Unsupported and cannot be confirmed", async ({ page }) => {
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf({ extraRows: [["3026", "Z1m Tilt Angle", "0", "-90 to +90 deg."]] }));
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal_with_tilt" }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   const tilt = panel(page).locator("li", { hasText: "Z1m Tilt Angle" });
@@ -285,7 +285,7 @@ test("a setting the profile keeps raw (a per-loop tilt) is Unsupported and canno
 test("a conflicting source value is a Conflict: no Confirm, no typed value, and nothing is chosen", async ({ page }) => {
   await openDistance(page);
   // the same setting printed twice with different values
-  await pick(page, "document.pdf", p441Pdf({ extraRows: [["300E", "tZ1", "0.4", "0-10.0 s"]] }));
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal", append: [["300E", "tZ1", "0.4", "0-10.0 s"]] }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText(/1 conflict/);
@@ -299,7 +299,7 @@ test("a conflicting source value is a Conflict: no Confirm, no typed value, and 
 
 test("a value that could not be read is Unreadable: no Confirm, and the row suggests a clearer source", async ({ page }) => {
   await openDistance(page);
-  await pick(page, "document.pdf", p441Pdf({ overrides: { "300A": "1,43" } }));
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal", set: { "300A": "1,43" } }));
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(page.locator("#wwRelayReviewSummary .ww-rr-counts")).toContainText(/\d+ unreadable/);
@@ -391,13 +391,13 @@ test("Remove, a new upload and a refresh each discard every decision", async ({ 
   await page.locator("#wwRelayImportRemoveBtn").click();
   await expect(panel(page)).toBeHidden();
   // new upload: nothing carried over
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await page.locator("#wwRelayReviewBtn").click();
   await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption");
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Source value missing");
   // replacing the file with another upload also starts clean
   await button(page, "Confirm Zone 1 Reach").click();
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await page.locator("#wwRelayReviewBtn").click();
   await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption");
   // a hard refresh leaves nothing in the page, in any browser storage
@@ -450,7 +450,7 @@ test("reaching Ready to apply (Slice 9) offers only Apply Settings and never tou
   const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
   const before = [];
   for (const sel of inputs) before.push(await page.locator(sel).inputValue());
-  await pick(page, "document.pdf", p441Pdf());
+  await pick(page, "document.pdf", relaySheet("p441", { variant: "minimal" }));
   await page.locator("#wwRelayReviewBtn").click();
   await page.locator("#wwRelayReviewConfirmAll").click();
   await resolveAllBlockers(page);

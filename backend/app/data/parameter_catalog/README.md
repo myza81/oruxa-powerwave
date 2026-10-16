@@ -169,3 +169,9 @@ to the extracted settings), plus canonical values by outcome. Review rows are no
 Support status per relay and the owner-UAT matrix: `docs/project-memory/RELAY_IMPORT_ARCHITECTURE.md`, "Remaining relay families".
 
 Not covered here: 7SA511 (paused pending verified source data), any administrator UI, database storage, CSV/Excel/XML.
+
+## Conformance data for a new relay (DEC-199)
+
+A catalog ships with its synthetic sheet (`backend/tests/relay_conformance/sheets/<id>.json`) and expectation
+(`backend/tests/relay_conformance/expectations/<id>.json`); the generic conformance suite tests it with no relay-specific
+test code. See `backend/tests/relay_conformance/README.md`.

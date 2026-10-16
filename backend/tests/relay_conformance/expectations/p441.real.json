@@ -1,0 +1,48 @@
+{
+  "schema": "oruxa.relay-expectation/1",
+  "description": "The owner's real p441 sheet (p441.pdf, never committed; gated on RELAY_SAMPLE_PDF_DIR).",
+  "sample": {"kind": "real", "file": "p441.pdf"},
+  "values_mode": "subset",
+  "identity": {"identification_status": "identified", "manufacturer": "Schneider Electric", "relay_family": "MiCOM P44x", "model": "P441", "profile_id": "schneider-micom-p441", "profile_version": "micom-p441-v1", "catalog_id": "schneider-micom-p44x-catalog", "catalog_version": "1.0.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 5},
+  "counts": {"mapped": 32, "documented": 0, "assumption": 36, "to_confirm": 36, "missing": 7, "conflict": 0, "unsupported": 4, "unverified": 0, "not_exposed": 0, "unreadable": 0, "approximate": 0, "blocking": 3, "not_required": 2},
+  "readiness": {"initial": "not_ready", "reviewed": "ready"},
+  "zones": {
+    "Z1": {"name": "Zone 1", "status": ["Enabled", "assumption"], "direction": ["Forward", "assumption"], "characteristic": ["Quadrilateral", "assumption"], "geometry": "missing"},
+    "Z2": {"name": "Zone 2", "status": ["Enabled", "assumption"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral", "assumption"], "geometry": "missing"},
+    "Z3": {"name": "Zone 3", "status": ["Enabled", "assumption"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral", "assumption"], "geometry": "missing"},
+    "Z4": {"name": "Zone 4", "status": ["Disabled / Defeated", "assumption"], "direction": ["Reverse", "assumption"], "characteristic": ["Quadrilateral", "assumption"], "geometry": "not_in_service"},
+    "ZP": {"name": "Zone P", "status": ["Disabled", "assumption"], "direction": ["Forward", "mapped"], "characteristic": ["Quadrilateral", "assumption"], "geometry": "not_in_service"}
+  },
+  "engine": {
+    "supported": false,
+    "reasons": {"resistive_reach_unresolved": ["Z1", "Z2", "Z3"]}
+  },
+  "blocking": {
+    "zones[Z1].resistive_reach.reverse": "missing",
+    "zones[Z2].resistive_reach.reverse": "missing",
+    "zones[Z3].resistive_reach.reverse": "missing"
+  },
+  "values": {
+    "transformers.setting_basis": ["Secondary", "mapped"],
+    "zones[Z1].reach": ["1.43 Ω", "assumption"],
+    "zones[Z1].common_timer_s": ["0 s", "mapped"]
+  },
+  "provenance": {
+    "transformers.setting_basis": {"raw": "Secondary", "sources": ["092E Setting Values"]},
+    "zones[Z1].reach": {"raw": "1.43 | 80", "sources": ["300A Z1", "3005 Line Angle"]},
+    "zones[Z1].common_timer_s": {"raw": "0", "sources": ["300E tZ1"]}
+  },
+  "offers": {"suggestions": ["zones[Z1].resistive_reach.reverse", "zones[Z2].resistive_reach.reverse", "zones[Z3].resistive_reach.reverse"], "manual_entries": ["zones[Z1].resistive_reach.reverse", "zones[Z2].resistive_reach.reverse", "zones[Z3].resistive_reach.reverse", "zones[Z4].resistive_reach.reverse", "zones[ZP].resistive_reach.reverse", "zones[ZP].status"]},
+  "approximations": [],
+  "apply": {"status": 200, "characteristic": "quadrilateral", "impedance_basis": "secondary", "zones": [
+      {"id": "Z1", "enabled": true, "direction": "forward", "delay_s": 0.0, "geometry_mode": "polar", "characteristic_angle_deg": 80.0, "reach_ohm": null, "reactive_reach_ohm": 1.43, "resistive_reach_forward_ohm": 2.11, "resistive_reach_reverse_ohm": 0.0},
+      {"id": "Z2", "enabled": true, "direction": "forward", "delay_s": 0.3, "geometry_mode": "polar", "characteristic_angle_deg": 80.0, "reach_ohm": null, "reactive_reach_ohm": 2.13, "resistive_reach_forward_ohm": 3.14, "resistive_reach_reverse_ohm": 0.0},
+      {"id": "Z3", "enabled": true, "direction": "forward", "delay_s": 3.0, "geometry_mode": "polar", "characteristic_angle_deg": 80.0, "reach_ohm": null, "reactive_reach_ohm": 4.48, "resistive_reach_forward_ohm": 6.34, "resistive_reach_reverse_ohm": 0.0},
+      {"id": "Z4", "enabled": false, "direction": "reverse", "delay_s": 3.0, "geometry_mode": "polar", "characteristic_angle_deg": null, "reach_ohm": null, "reactive_reach_ohm": null, "resistive_reach_forward_ohm": null, "resistive_reach_reverse_ohm": null},
+      {"id": "ZP", "enabled": false, "direction": "forward", "delay_s": 10.0, "geometry_mode": "polar", "characteristic_angle_deg": null, "reach_ohm": null, "reactive_reach_ohm": null, "resistive_reach_forward_ohm": null, "resistive_reach_reverse_ohm": null}
+  ]},
+  "not_interpreted_distance": ["Blocking Zones", "Delta I Status", "Delta R", "Delta X", "DistCR", "Fwd Z Chgt Delay", "I2> (%Imax)", "I2> status", "IN> (%Imax)", "IN> status", "ImaxLine >", "ImaxLine> Status", "LoL:Mode Status", "LoL:Window", "Out of Step", "Overlap Z Mode", "Program Mode", "SOTF Delay", "SOTF/TOR Mode", "Serial Comp Line", "Sig Send Zone", "Stable Swing", "Standard Mode", "Tp", "Unblocking Logic", "Unblocking delay", "WI:Mode Status", "Z1Ext On Chan.Fail", "kZm Angle", "kZm Mutual Comp", "tReversal Guard"],
+  "coverage": {"canonical_values_assumed": 0, "canonical_values_conflicting": 0, "canonical_values_mapped": 21, "canonical_values_missing": 0, "canonical_values_not_exposed": 0, "canonical_values_total": 21, "canonical_values_unreadable": 0, "canonical_values_unsupported": 0, "canonical_values_unverified": 0, "catalog_id": "schneider-micom-p44x-catalog", "catalog_mapped_settings": 20, "catalog_recognised_settings": 20, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 0, "catalog_version": "1.0.0", "extension_interpreted_settings": 32, "extracted_settings": 361, "not_interpreted_settings": 31, "outside_distance_settings": 278, "unmapped_settings": 309},
+  "catalog_sources_absent": [],
+  "golden": {"points": [], "outlines": []}
+}
