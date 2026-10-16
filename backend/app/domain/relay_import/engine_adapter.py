@@ -29,6 +29,8 @@ its unavailable delay is reported as 0.0 in a warning.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -86,6 +88,14 @@ class UnsupportedCode(StrEnum):
     #: DEC-198: an enabled zone carries a setting that may change its operation and whose meaning is
     #: not verified (a raw zone setting the interpretation marks as material). Nothing in the review can clear it.
     UNVERIFIED_SETTING = "unverified_setting"
+    #: DEC-198: an enabled zone carries a geometry-affecting setting whose configured cell is blank, so its
+    #: effect on the zone is unknown (a source-data gap; e.g. a load-cutout resistance).
+    SETTING_MISSING = "setting_missing"
+    #: DEC-198: an enabled zone carries a stated geometry-affecting setting the engine cannot apply.
+    SETTING_UNSUPPORTED = "setting_unsupported"
+    #: DEC-198: the zone's delay is set to infinity -- documented relay behaviour: it picks up but never
+    #: trips on its own timer. The engine has no zone that only picks up.
+    DELAY_INFINITE = "delay_infinite"
 
 
 @dataclass(frozen=True)
@@ -301,10 +311,21 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         warn(f"{zone.zone_id}: earth timer is preserved in the model but not used by the phase-phase engine.")
     if zone.compensation is not None:
         warn(f"{zone.zone_id}: residual compensation is preserved in the model but not used by the engine.")
-    if any(u.material for u in zone.unresolved_settings):
+    causes = {u.material_cause for u in zone.unresolved_settings if u.material}
+    if "unverified" in causes:
         fail(
             UnsupportedCode.UNVERIFIED_SETTING,
             "A setting that may change this zone's operation has a meaning that is not yet verified.", zone,
+        )
+    if "missing" in causes:
+        fail(
+            UnsupportedCode.SETTING_MISSING,
+            "A setting that can change this zone's boundary has no configured value in the source.", zone,
+        )
+    if "unsupported" in causes:
+        fail(
+            UnsupportedCode.SETTING_UNSUPPORTED,
+            "A setting that changes this zone's boundary cannot yet be represented by the engine.", zone,
         )
 
     # DEC-198: one review gives the complete picture. Explicit R/X limits describe a quadrilateral, so
@@ -447,6 +468,19 @@ def _delay(zone: DistanceZone, status: bool, fail, warn, allow_incomplete: bool 
     phase-phase, so that is the semantically matching one). Differing
     candidates are a conflict."""
     candidates = [t.value for t in (zone.common_timer_s, zone.phase_timer_s) if t.is_resolved]
+    if any(math.isinf(c) for c in candidates if isinstance(c, (int, float))):
+        # DEC-198: "infinity" is a configured value -- the zone picks up but never trips on its own timer.
+        if status is False:
+            warn(f"{zone.zone_id}: the delay is set to infinity (no timed trip); no delay is carried for a disabled zone.")
+            return None
+        fail(
+            UnsupportedCode.DELAY_INFINITE,
+            "The zone delay is set to infinity: the zone picks up but does not trip on its own timer. The "
+            "current engine cannot represent a zone that only picks up.",
+            zone,
+            (zone_path(zone, "common_timer_s"), zone_path(zone, "phase_timer_s")),
+        )
+        return 0.0
     if len(set(candidates)) > 1:
         fail(
             UnsupportedCode.TIMER_CONFLICT, "Common and phase timers differ; which applies is not guessed.", zone,

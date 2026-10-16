@@ -178,6 +178,8 @@ SA613_ROWS: list[Row] = [
     ("1116 RE/RL(Z1)", "1.5", "-0.33-7"), ("1117 XE/XL(Z1)", "0.5", "-0.33-7"),
     ("1118 RE/RL(Z1B...Z5)", "1.5", "-0.33-7"), ("1119 XE/XL(Z1B...Z5)", "0.5", "-0.33-7"),
     ("1201 FCT Distance", "ON", "ON,OFF"), ("1211 Distance Angle", "82", "30-89 deg."),
+    ("1241 R load (ph-E)", "", "Infinity"), ("1242 phi load (ph-E)", "30", "20-60 deg."),
+    ("1243 R load (ph-ph)", "", "Infinity"), ("1244 phi load (ph-ph)", "30", "20-60 deg."),
     ("1301 Op. mode Z1", "Forward", "Fwd/Rev/Non/Inactive"), ("1302 R(Z1) ph-ph", "1.5", "0.05-250 ohms"),
     ("1303 X(Z1)", "2.4", "0.05-250 ohms"), ("1304 RE(Z1) ph-E", "7.8", "0.05-250 ohms"),
     ("1307 Zone Reduction", "0", "0-45 deg."),
@@ -186,12 +188,24 @@ SA613_ROWS: list[Row] = [
     ("1333 X(Z4)", "250", "0.05-250 ohms"), ("1335 T4 DELAY", "Infinity", "Infinity"),
     ("1341 Op. mode Z5", "Non-Directional", "Fwd/Rev/Non/Inactive"), ("1342 R(Z5) ph-ph", "2.9", "0.05-250 ohms"),
     ("1343 X(Z5)+", "10", "0.05-250 ohms"), ("1346 X(Z5)-", "7", "0.05-250 ohms"),
+    ("1345 T5 DELAY", "Infinity", "Infinity"),
+    ("1351 Op. mode Z1B", "Forward", "Fwd/Rev/Non/Inactive"), ("1352 R(Z1B) ph-ph", "1.6", "0.05-250 ohms"),
+    ("1353 X(Z1B)", "3.2", "0.05-250 ohms"), ("1354 RE(Z1B) ph-E", "8.4", "0.05-250 ohms"),
+    ("1355 T1B-1phase", "Infinity", "Infinity"), ("1356 T1B-multi-phase", "Infinity", "Infinity"),
+    ("1221A 2Ph-E faults", "only phase-phase loops", "Ph-E/All/Ph-Ph"),
 ]
 SA613_NOTES: list[Row] = [("Zone 1 Forward direction timer set to 0.15s",)]
 
 
-def sa613_pdf() -> bytes:
-    return sheet_pdf("7SA6131_4AB02_3GA0", SA613_ROWS, SA613_NOTES)
+def sa613_pdf(*, angle: str = "82", zone_reduction: str = "0", r_load_pp: str = "", z1_delays: tuple[str, str] = ("", ""),
+              z5_mode: str = "Non-Directional") -> bytes:
+    """The owner sheet's shape (invented numbers): blank Z1 delay cells, 'Infinity' T4 / T5 / T1B, a blank R load
+    (ph-ph) beside an 'Infinity' range. ``angle`` sets 1211 Distance Angle, ``zone_reduction`` 1307, ``r_load_pp``
+    1243 ("" = blank), ``z1_delays`` the (T1-1phase, T1-multi-phase) cells and ``z5_mode`` Zone 5's Op. mode."""
+    cells = {"1211 Distance Angle": angle, "1307 Zone Reduction": zone_reduction, "1243 R load (ph-ph)": r_load_pp,
+             "1305 T1-1phase": z1_delays[0], "1306 T1-multi-phase": z1_delays[1], "1341 Op. mode Z5": z5_mode}
+    rows = [(r[0], cells[r[0]], *r[2:]) if r[0] in cells else r for r in SA613_ROWS]
+    return sheet_pdf("7SA6131_4AB02_3GA0", rows, SA613_NOTES)
 
 
 # --- Toshiba GRZ100 ---------------------------------------------------------------------------------------------

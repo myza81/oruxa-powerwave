@@ -41,8 +41,8 @@ class TestShippedCatalogs:
         for profile_id in ("hitachi-rel670", "hitachi-rel511", "siemens-siprotec5-7sl87", "siemens-7sa613",
                            "toshiba-grz100", "toshiba-grl200", "nr-rcs941", "lfzp111", "relz100"):
             assert by_id[profile_id].extension is None                               # catalog-only: no Python
-            # documented relay behaviour (DEC-198): REL511 1.2.0, 7SL87 1.1.0
-            version = {"hitachi-rel511": "1.2.0", "siemens-siprotec5-7sl87": "1.1.0"}.get(profile_id, "1.0.0")
+            # documented relay behaviour (DEC-198): REL511 1.2.0, 7SL87 1.1.0, 7SA613 1.1.0
+            version = {"hitachi-rel511": "1.2.0", "siemens-siprotec5-7sl87": "1.1.0", "siemens-7sa613": "1.1.0"}.get(profile_id, "1.0.0")
             assert by_id[profile_id].version == f"{by_id[profile_id].catalog_id}-v{version}"
 
     def test_the_lock_matches_the_shipped_locked_catalogs(self):

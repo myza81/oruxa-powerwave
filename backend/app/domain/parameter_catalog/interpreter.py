@@ -21,6 +21,7 @@ free-text note is never a value source (the catalog validator refuses it).
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, fields, is_dataclass, replace
 from typing import Any
@@ -74,6 +75,10 @@ _HEADING = re.compile(r"^[A-Za-z_][A-Za-z0-9_ ]*/")
 _CAUSE_ORDER = (UnresolvedCause.CONFLICT, UnresolvedCause.UNREADABLE, UnresolvedCause.UNSUPPORTED)
 #: Primitives whose sentence belongs in the provenance ("how the printed value became the canonical one").
 _NUMERIC_STEPS = frozenset({"scale", "multiply", "divide", "ratio", "unit_conversion", "percentage"})
+
+
+#: How a source states "infinity" (case-folded).
+_INFINITY_TEXTS = frozenset({"infinity", "∞", "inf", "oo"})
 
 
 def _clean(text: Any) -> str:
@@ -357,11 +362,19 @@ class _Run:
         if sel.type != "number":
             r.value = r.raw
             return r
+        if sel.infinity and norm_text(r.raw) in _INFINITY_TEXTS:
+            # the relay's own documented setting "infinity" (e.g. a stage that never trips on time): a
+            # configured value, never a default, a range or a finite number
+            r.value = math.inf
+            return r
         if not _NUMBER.match(r.raw or ""):
             r.fail("the value is not a plain number", UnresolvedCause.UNREADABLE)
             return r
         value = float(r.raw)
         rng_text = _range_text(r.entries[0])
+        if sel.infinity and rng_text and norm_text(rng_text) in _INFINITY_TEXTS:
+            # an infinity-capable setting whose range column shows only "Infinity": not a printed unit
+            rng_text = ""
         printed = ""
         val = sel.validate
         if val.printed_range_pattern is not None:
@@ -696,12 +709,24 @@ class _Run:
                     hits = [s for s in self.doc.settings if s.name and pattern.search(s.name)]
                 kept = self.zone_kept.setdefault(z["zone"], {})
                 material = {norm_text(x) for x in rule.unverified_when}
+                harmless = {norm_text(x) for x in rule.material_unless}
                 for s in hits:
                     if s.setting_id in taken:
                         continue
+                    raw = _clean(s.raw_value) if s.raw_value is not None else ""
+                    cause = "unverified"
+                    if rule.unverified_when:
+                        is_material = bool(raw) and norm_text(raw) in material
+                    elif rule.material_unless:
+                        # a geometry-affecting setting: harmless only with a value that has no effect; a blank
+                        # cell leaves its effect unknown (missing), any other value is not representable
+                        is_material = not raw or norm_text(raw) not in harmless
+                        cause = "missing" if not raw else "unsupported"
+                    else:
+                        is_material = False
                     kept.setdefault(s.setting_id, UnresolvedSetting(
                         s.setting_id, s.name, s.raw_value, s.unit, reason=rule.reason,
-                        material=s.raw_value is not None and norm_text(_clean(s.raw_value)) in material,
+                        material=is_material, material_cause=cause,
                     ))
                     self.preserved_ids.add(s.setting_id)
         self.consumed |= self.preserved_ids

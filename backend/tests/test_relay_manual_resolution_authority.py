@@ -125,10 +125,11 @@ class TestLegitimateManualWorkflows:
         assert post(client, APPLY, sl87, manual=[{"item_id": "zones[Z1].phase_timer_s", "value": 0.15}]).status_code == 409
 
     def test_an_unreadable_cell_can_still_be_typed(self, client):
-        model = _model(client, F.sa613_pdf())
+        # a malformed delay cell ("abc"); an "Infinity" cell is a configured value since DEC-198 Amendment 6
+        model = _model(client, F.sa613_pdf(z1_delays=("abc", "")))
         unreadable = [p for p, s in model.iter_sourced() if not s.is_resolved and s.provenance.cause is UnresolvedCause.UNREADABLE
                       and manual_entry_spec(p, s) is not None]
-        assert unreadable                                                      # e.g. an 'Infinity' setting cell
+        assert unreadable == ["zones[Z1].earth_timer_s"]
         apply_review(model, ReviewDecisions(manual={unreadable[0]: 1.0}), offered_manual=manual_entry_paths(model))
 
     def test_p441_zone_status_override_and_left_reach_still_reach_apply(self, client):

@@ -171,15 +171,15 @@ class TestInterpretation:
         assert (body["mapped_setting_count"], body["inferred_setting_count"], body["unresolved_setting_count"]) == (0, 0, 0)
         assert body["interpretation_warnings"] == []
 
-    @pytest.mark.parametrize("scheme, profile_id, catalog_id", [
-        ("7SA6131_4AB02_3GA0", "siemens-7sa613", "siemens-7sa613-catalog"),
-        ("GRL200_TNB", "toshiba-grl200", "toshiba-grl200-catalog"),
-        ("RELZ100_3.0", "relz100", "relz100-catalog"),
+    @pytest.mark.parametrize("scheme, profile_id, catalog_id, version", [
+        ("7SA6131_4AB02_3GA0", "siemens-7sa613", "siemens-7sa613-catalog", "1.1.0"),   # DEC-198 Amendment 6
+        ("GRL200_TNB", "toshiba-grl200", "toshiba-grl200-catalog", "1.0.0"),
+        ("RELZ100_3.0", "relz100", "relz100-catalog", "1.0.0"),
     ])
-    def test_a_catalogued_relay_is_interpreted_by_its_own_catalog(self, client, scheme, profile_id, catalog_id):
+    def test_a_catalogued_relay_is_interpreted_by_its_own_catalog(self, client, scheme, profile_id, catalog_id, version):
         body = client.post(URL, files=_files(_sheet(scheme))).json()
         assert body["profile_id"] == profile_id and body["catalog_id"] == catalog_id
-        assert body["profile_version"] == f"{catalog_id}-v1.0.0"
+        assert body["profile_version"] == f"{catalog_id}-v{version}"
         assert body["interpretation_status"] in ("interpreted", "incomplete")
 
     def test_p441_settings_under_another_relays_scheme_are_not_interpreted_as_a_p441(self, client):

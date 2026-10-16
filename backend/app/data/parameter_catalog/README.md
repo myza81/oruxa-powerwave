@@ -65,7 +65,10 @@ A mapping: `canonical` (registry id), `zone` (`"*"`, an id or a list; zone-scope
 (or named `sources`), an optional `transform` (a primitive or a chain), `requires` (gates), `value_source`,
 `authority`, `confidence`, `note`. A selector matches by `name` (templates `{n}` `{nn}` `{zone}`), `code` (+ `name`),
 `name_pattern`, `pattern_in_text`, `indexed_family` or `zone_family`, and says how to read the value: `type`,
-`unit`, `printed_unit`, `validate`, `allowed_text`.
+`unit`, `printed_unit`, `validate`, `allowed_text`, `infinity`. DEC-198 Amendment 6: `"infinity": true` (number sources
+only) reads the relay's own setting "Infinity" / "∞" as a configured value (`inf`) -- e.g. a stage timer that never trips
+on time -- instead of an unreadable one; a range column showing only "Infinity" is then not taken as a printed unit.
+Without the option, "Infinity" stays Unreadable.
 
 **Value sources.** Only the configured setting (`setting_value`), a structured `engineering_instruction` or a
 `profile_inference` can supply a canonical value. A printed **range**, a **default** or a free-text **note** is refused
@@ -98,6 +101,10 @@ behaviour applies only while the zone's own switch is On); the gate's setting is
 **Material preserved settings** (DEC-198). A `zone_preserved` entry may list `unverified_when: [raw values]`: a preserved
 setting with such a value may change the zone's operation while its meaning is not verified. It is shown Unverified
 ("Not yet supported"), keeps its exact value (never interpreted) and blocks an **enabled** zone.
+DEC-198 Amendment 6: instead, `material_unless: [raw values]` declares a *geometry-affecting* preserved setting that is
+harmless only with those values (e.g. a load-cutout resistance of "infinity"): a **blank** configured cell blocks an
+enabled zone as a missing source value ("Source value missing" -- its effect is unknown), any other stated value blocks it
+as a boundary the engine cannot represent ("Not yet supported"). The two options are exclusive.
 
 **Not exposed** (DEC-198). `"not_exposed": {"note": ...}` on a mapping (no source, transform, gate, evidence, authority or
 gap) states that the relay has **no configurable setting** for this canonical parameter -- inherent / fixed behaviour.
@@ -141,7 +148,7 @@ to the extracted settings), plus canonical values by outcome. Review rows are no
 | `hitachi_energy/rel670.json` | REL670 | catalog-only |
 | `hitachi_energy/rel511.json` | REL511 | catalog-only, 1.2.0: documented characteristic / loops (ABB 1MDB06309-YN), documented Secondary basis and RFZn / RFNZn meanings (ABB 1MRK 506 101 / 109 / 167-UEN, REL 511 2.3 / 2.5 -- verified for the family, version-dependent for the 1.x-style sheet); RFZn inclined boundary and left / directional boundary unsupported; ZnBlock unverified |
 | `siemens/siprotec5_7sl87.json` | 7SL87 | catalog-only, 1.1.0: documented quadrilateral characteristic (selector not exposed), per-phase R (ph-ph) / R (ph-g) and the operate-delay loop assignment (Siemens C53000-G5040-C011-9, V07.50 -- version-dependent for the 7SL87_8.81 sheet); +R inclined at the distance characteristic angle and the left / directional boundary unsupported (+R = R (ph-ph) only at 90 deg); phase-phase load cutout in use unverified; blank delays Missing |
-| `siemens/siprotec4_7sa613.json` | 7SA613 | catalog-only (verified subset) |
+| `siemens/siprotec4_7sa613.json` | 7SA613 | catalog-only, 1.1.0: documented polygonal characteristic and PP / PE loops (selectors not exposed), documented Secondary basis, per-phase R(Zn) ph-ph and the delay loop assignment (Siemens 7SA6 manuals C53000-G1176-C156-2 / -7, version-dependent for the V4.2-style sheet); explicit Infinity delays configured (engine-unsupported on a zone in service); inclined +R / -R and non-directional Z5 unsupported; blank delays and a blank R load (ph-ph) Missing |
 | `toshiba/grz100.json` | GRZ100 | catalog-only (verified subset) |
 | `toshiba/grl200.json` | GRL200 | catalog-only (verified subset) |
 | `nr_electric/rcs941.json` | RCS-941 | catalog-only (verified subset) |

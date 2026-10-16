@@ -124,7 +124,8 @@ def build_apply_plan(
         if not settings.enabled:
             # Preserved in the canonical model, not applied: no geometry and nothing
             # fabricated. A delay is carried only when the source actually states one.
-            stated = any(t.is_resolved for t in (zone.common_timer_s, zone.phase_timer_s))
+            # (a delay of "infinity" -- no timed trip -- is not a delay the analysis can hold: not carried)
+            stated = settings.delay_s is not None and any(t.is_resolved for t in (zone.common_timer_s, zone.phase_timer_s))
             zones.append(
                 ApplyZone(
                     zone_id, name, False, zone_direction(zone),

@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "siemens-7sa613-catalog",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "lifecycle": "active",
   "profile_id": "siemens-7sa613",
   "registry_version": "1.1.0",
-  "description": "Siemens SIPROTEC 4 7SA613 distance zones (Z1, Z2, Z3, Z4, Z5, Z1B) as a DIGSI 4 setting sheet prints them (address | name | value | range). Catalog-only, verified subset: the per-zone Op. mode (status and direction, with 1201 FCT Distance), R(Zn) ph-ph, X(Zn), RE(Zn) ph-E, the RE/RL - XE/XL compensation, the CT / VT ratings (units printed in the range column) and the line data. Every zone delay setting cell is blank or 'Infinity': no delay is assumed. The impedance basis and the characteristic are not stated and are not assumed; Z5's negative reactance reach, Z1's zone-reduction angle and the distance angle (inclined resistance boundaries) are preserved as capability gaps.",
+  "description": "Siemens SIPROTEC 4 7SA613 distance zones (Z1, Z2, Z3, Z4, Z5, Z1B) as a DIGSI 4 setting sheet prints them (address | name | value | range). Catalog-only. Configured settings: the per-zone Op. mode (status and direction, with 1201 FCT Distance), X(Zn) / X(Z5)+, RE(Zn) ph-E, Z1's Zone Reduction (tilt), the RE/RL - XE/XL compensation, the CT / VT ratings (units printed in the range column), the line data and the zone delays (an 'Infinity' setting is a configured value: the zone picks up but does not trip on its own timer). Documented relay behaviour (DEC-198, Siemens 7SA6 manuals C53000-G1176-C156-2 (V4.2) / -7 (V4.70), version-dependent for this V4.2-style parameter set): the polygonal (quadrilateral) characteristic and the phase-phase / phase-earth loops of every zone in service (no selector exists), the secondary-ohm setting basis, R(Zn) ph-ph as a per-phase value and the delay loop assignment. Source-data gaps: blank delay cells (Z1-Z3) and a blank load-cutout resistance. Not representable (blocking): the parallelogram's resistance edges inclined at the distance angle (+R and -R; exact relations preserved), a zone that only picks up (infinite delay), the non-directional Zone 5 polygon and a stated load cutout.",
   "applicability": {
     "manufacturer": "Siemens",
     "family": "SIPROTEC 4 7SA6",
@@ -28,10 +28,30 @@
     "names": ["PSB", "SOTF"]
   },
   "interpretation_notes": [
-    "The zones are the sheet's Z1, Z2, Z3, Z4, Z5 and Z1B parameter groups (addresses 13xx); each zone's state and direction come from its own 'Op. mode' setting, with the distance function itself (1201 FCT Distance) switched on.",
-    "The sheet states impedances in ohms but not whether they are primary or secondary ohms, and does not name the zone characteristic: neither is assumed (Missing).",
-    "Every zone delay (T1-1phase, T1-multi-phase, T2..., T3 DELAY, T4 DELAY, T5 DELAY, T1B...) has a blank setting cell or 'Infinity'. A blank cell is not a delay, the 'Infinity' in the range column is not a setting, and an 'Infinity' setting is not a finite delay: no delay is assumed, and the document notes' timers are not used.",
-    "The polygon's resistance boundaries are inclined at the distance angle (1211); the current model cannot draw an inclined boundary, so that setting is preserved with every zone. No left (-R) boundary is stated."
+    "The zones are the sheet's Z1, Z2, Z3, Z4, Z5 and Z1B parameter groups (addresses 13xx); each zone's state and direction come from its own 'Op. mode' setting (Forward / Reverse / Non-Directional / Inactive), with the distance function itself (1201 FCT Distance) switched on.",
+    "Documented relay behaviour (Siemens SIPROTEC 4 7SA6 manuals C53000-G1176-C156-2, V4.2, and C53000-G1176-C156-7, V4.70): each distance zone is a polygon, 'a parallelogram which intersects the axes with the values R and X' tilted at the distance angle, symmetrical about the origin; the directional characteristic limits a directional zone to its quadrants, and a non-directional zone uses the entire parallelogram. A circle characteristic exists only on Region-DE devices (10th order-code digit A) through address 115, which this sheet does not carry; the V4.2 generation is polygon-only. Each zone measures the phase-phase and phase-earth loops (R(Zn) ph-ph / RE(Zn) ph-E); there is no per-zone loop selector. Applicability: this sheet's parameter set (Z1-Z5 + Z1B, R / X ranges 0.05-250 ohm, Zone Reduction 0-45 deg) matches the V4.2 manual; version-dependent, no firmware version is asserted.",
+    "Documented setting basis: secondary ohms. DIGSI 4 lets the settings be entered as primary or secondary values; the V4.2 settings table states its impedance ranges as secondary values for IN = 1 A, and this sheet prints exactly those ranges (0.05-250 ohms) for a 1 A device (CT SECONDARY 1 AMP; order code position 7 = 1), with its voltages and currents in secondary form (V, multiples of IN). Never inferred from the CT / VT ratios or from any magnitude.",
+    "Documented phase-phase geometry (per-phase R-X plane): R(Zn) ph-ph is a per-phase value (half the loop arc resistance), used directly; the right edge is Rright(X) = R + X * cot(phi) and the left edge Rleft(X) = -R + X * cot(phi), phi = the distance angle (1211, common to all zones); top X = X(Zn) (Z1 inclined downward in the first quadrant by Zone Reduction, 0 deg = horizontal); bottom -X; Zone 5 / 6 have separate forward (X+) and reverse (X-) reaches. The current engine draws vertical resistive edges, so neither edge is plotted while phi is not 90 deg. Approximation candidates A613 (+R = R, conservative, shortfall X * cot(phi)) and B613 (-R = 0 in the first quadrant, conservative where R >= X * cot(phi)) are documented only and not approved.",
+    "Delays: T-1phase is the zone's delay for single-phase faults, T-multi-phase for multi-phase faults; 'Infinity' is a configured value (documented: the stage then never trips on time). A blank delay cell is a missing source value: never Infinity, a range, a default or a note.",
+    "Load trapezoid (1241-1244, common to all zones): R load / phi load may cut the load area out of every polygon; R load = infinity switches it off. A blank R load (ph-ph) cell leaves its effect on the phase-phase plot unknown, so it blocks a zone in service. The phase-earth load cutout acts on the phase-earth loops, which the phase-phase engine does not draw."
+  ],
+  "references": [
+    {"id": "siemens-c53000-g1176-c156-2-polygon", "title": "SIPROTEC Distance Protection 7SA6 V4.2 Manual", "verification": "verified",
+     "document": "Siemens C53000-G1176-C156-2 (V4.2)",
+     "section": "6.2.4 Distance protection with polygonal tripping characteristic: operating polygons, direction determination, setting notes", "page": "6-55 to 6-63",
+     "scope": "SIPROTEC 4 7SA6 distance protection. The owner sheet's parameter set matches the V4.2 manual (Z1-Z5 + Z1B, 0.05-250 ohm, 0-45 deg); version-dependent, no firmware version is asserted."},
+    {"id": "siemens-c53000-g1176-c156-2-settings", "title": "SIPROTEC Distance Protection 7SA6 V4.2 Manual", "verification": "verified",
+     "document": "Siemens C53000-G1176-C156-2 (V4.2)",
+     "section": "6.2.4.3 Settings: impedance ranges stated as secondary values for IN = 1 A; stage timers 0.00-30.00 s or infinity", "page": "6-64 to 6-66",
+     "scope": "SIPROTEC 4 7SA6 distance protection. The owner sheet's parameter set matches the V4.2 manual (Z1-Z5 + Z1B, 0.05-250 ohm, 0-45 deg); version-dependent, no firmware version is asserted."},
+    {"id": "siemens-c53000-g1176-c156-7-polygon", "title": "SIPROTEC Distance Protection 7SA6 V4.70 Manual", "verification": "verified",
+     "document": "Siemens C53000-G1176-C156-7 (V4.70, 02.2011)",
+     "section": "2.2.2 Quadrilateral characteristic: operating polygons (Fig. 2-22), direction (Fig. 2-24), setting notes (R per phase, Zone Reduction, Z5, T5)", "page": "89-102",
+     "scope": "SIPROTEC 4 7SA6 distance protection, V4.70 (a later generation than the owner sheet's V4.2-style parameter set): used where it agrees with the V4.2 manual; version-dependent."},
+    {"id": "siemens-c53000-g1176-c156-7-ordering", "title": "SIPROTEC Distance Protection 7SA6 V4.70 Manual", "verification": "verified",
+     "document": "Siemens C53000-G1176-C156-7 (V4.70, 02.2011)",
+     "section": "2.1 address 115 DIS Charact. (Region DE only); A.1 ordering information (position 7 inputs, 10 region, 14 polygon); 2.2.2.2 primary / secondary entry", "page": "35, 96, 603-605",
+     "scope": "SIPROTEC 4 7SA6, V4.70: ordering-code meaning and the characteristic option; version-dependent for the owner sheet's V4.2-style parameter set."}
   ],
   "source_notes": [
     {
@@ -44,12 +64,18 @@
     }
   ],
   "zone_preserved": [
-    {"zone": "*", "names": ["Distance Angle"],
-     "reason": "The polygon's resistance boundaries are inclined at the distance angle. The current model draws resistance limits as vertical lines, so this geometry cannot be represented; the setting is preserved, not approximated."},
-    {"zone": "Z1", "names": ["Zone Reduction"],
-     "reason": "Zone 1's zone-reduction angle is preserved as stated; the current model cannot apply it to the drawn boundary."},
     {"zone": "Z5", "names": ["X(Z5)-"],
-     "reason": "The reactance reach of non-directional Zone 5 in the reverse direction (X-). The canonical zone carries one reactive reach (X+ is mapped); the reverse reach cannot be represented and is preserved."}
+     "reason": "The reverse reactance reach of non-directional Zone 5 (the parallelogram's bottom edge at -X(Z5)-). A non-directional zone uses the entire parallelogram, which the current engine cannot represent; preserved, not drawn."},
+    {"zone": "*", "names": ["R load (ph-ph)"], "material_unless": ["infinity"],
+     "reason": "Geometry-affecting: the phase-phase load trapezoid's minimum load resistance (1243), common to all zones; it cuts the load area out of the polygon unless set to infinity (Siemens C53000-G1176-C156-7, 2.2.2). Preserved; no value is assumed and no effect is claimed without it."},
+    {"zone": "*", "names": ["phi load (ph-ph)"],
+     "reason": "The phase-phase load trapezoid's maximum load angle (1244), common to all zones; it matters only with a finite R load (ph-ph). Preserved, not drawn."},
+    {"zone": "*", "names": ["R load (ph-E)", "phi load (ph-E)"],
+     "reason": "The phase-earth load trapezoid (1241 / 1242), common to all zones: it acts on the phase-earth loops, which the phase-phase engine does not draw. Preserved, not drawn."},
+    {"zone": "*", "names": ["2Ph-E faults"],
+     "reason": "Loop selection for two-phase-to-earth faults (1221): which measured loops are evaluated, not the polygon boundary. Preserved, not interpreted."},
+    {"zone": "*", "names": ["DIS Charact."], "unverified_when": ["circle"],
+     "reason": "The distance characteristic selector (address 115, Region-DE devices only). The documented polygon applies to the parameter set without it; a 'Circle' setting is not interpreted and blocks."}
   ],
   "mappings": [
     {
@@ -73,6 +99,17 @@
       "id": "7sa613.vt_secondary",
       "canonical": "ct_vt.vt_secondary",
       "source": {"name": "Unom SECONDARY", "type": "number", "unit": "V"}
+    },
+    {
+      "id": "7sa613.basis",
+      "canonical": "ct_vt.impedance_basis",
+      "transform": {"type": "constant", "value": "secondary"},
+      "evidence": [{"name": "CT SECONDARY"}, {"name": "R(Z1) ph-ph"}],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-2-settings", "siemens-c53000-g1176-c156-7-ordering"],
+      "note": "The impedance settings are secondary ohms: DIGSI 4 lets settings be entered as primary or secondary values, the V4.2 settings table states its impedance ranges as secondary values for IN = 1 A, and this sheet prints exactly those ranges (0.05-250 ohms) for a 1 A device (CT SECONDARY 1 AMP), with its voltages and currents in secondary form. Version-dependent; not inferred from the CT / VT ratios or from any magnitude.",
+      "unresolved_note": "the CT secondary rating and the impedance setting range the documented secondary basis refers to were not found"
     },
     {
       "id": "7sa613.line_angle",
@@ -114,7 +151,86 @@
       "canonical": "distance.zone.direction",
       "zone": "*",
       "source": {"name": "Op. mode {zone}"},
-      "transform": {"type": "enum", "map": {"forward": "forward", "reverse": "reverse", "non-directional": "non_directional", "inactive": "inactive"}}
+      "transform": {"type": "enum", "map": {"forward": "forward", "reverse": "reverse", "non-directional": "non_directional", "inactive": "inactive"}},
+      "note": "Op. mode as set. A non-directional zone has no directional characteristic: the entire parallelogram applies (Siemens 7SA6 manual)."
+    },
+    {
+      "id": "7sa613.characteristic",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "transform": {"type": "constant", "value": "quadrilateral"},
+      "evidence": [{"name": "R({zone}) ph-ph"}, {"name": "X({zone})"}, {"name": "X({zone})+"}, {"name": "RE({zone}) ph-E"}],
+      "requires": [
+        {"source": {"name": "FCT Distance", "allowed_text": ["on", "off"]}, "equals": ["on"],
+         "off_note": "The distance function (1201 FCT Distance) is OFF: the documented zone behaviour is not applied.",
+         "missing_note": "the distance function switch (1201 FCT Distance) was not found"},
+        {"source": {"name": "Op. mode {zone}", "allowed_text": ["forward", "reverse", "non-directional", "inactive"]},
+         "equals": ["forward", "reverse", "non-directional"],
+         "off_note": "{name} is Inactive: the documented zone behaviour is not applied to it.",
+         "missing_note": "the zone's Op. mode setting was not found"}
+      ],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-7-ordering"],
+      "note": "A SIPROTEC 4 7SA6 distance zone is a polygon -- a parallelogram crossing the axes at R and X, tilted at the distance angle (Siemens C53000-G1176-C156-2, 6.2.4; -7, 2.2.2). The V4.2 generation is polygon-only, and a circle characteristic exists only on Region-DE devices through address 115, which this sheet does not carry (order code position 10 = B, position 14 = G: 'polygon'). Applied to a zone in service. The resistance edges are inclined at the distance angle, which the current engine does not reproduce."
+    },
+    {
+      "id": "7sa613.characteristic.not_exposed",
+      "canonical": "distance.zone.characteristic",
+      "zone": "*",
+      "not_exposed": {"note": "This SIPROTEC 4 7SA6 parameter set has no characteristic selector: its distance zones are polygons."}
+    },
+    {
+      "id": "7sa613.pp_enabled",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "transform": {"type": "constant", "value": true},
+      "evidence": [{"name": "R({zone}) ph-ph"}],
+      "requires": [
+        {"source": {"name": "FCT Distance", "allowed_text": ["on", "off"]}, "equals": ["on"],
+         "off_note": "The distance function (1201 FCT Distance) is OFF: the documented zone behaviour is not applied.",
+         "missing_note": "the distance function switch (1201 FCT Distance) was not found"},
+        {"source": {"name": "Op. mode {zone}", "allowed_text": ["forward", "reverse", "non-directional", "inactive"]},
+         "equals": ["forward", "reverse", "non-directional"],
+         "off_note": "{name} is Inactive: the documented zone behaviour is not applied to it.",
+         "missing_note": "the zone's Op. mode setting was not found"}
+      ],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"],
+      "note": "Each 7SA6 distance zone measures the phase-phase loops, with its own R(Zn) ph-ph resistance setting (Siemens C53000-G1176-C156-7, 2.2.2: six zones for each fault impedance loop); there is no per-zone loop switch. Applied to a zone in service."
+    },
+    {
+      "id": "7sa613.pp_enabled.not_exposed",
+      "canonical": "distance.zone.pp_enabled",
+      "zone": "*",
+      "not_exposed": {"note": "SIPROTEC 4 7SA6 has no per-zone phase-phase loop switch: each zone measures the phase-phase loops."}
+    },
+    {
+      "id": "7sa613.pe_enabled",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "transform": {"type": "constant", "value": true},
+      "evidence": [{"name": "RE({zone}) ph-E"}],
+      "requires": [
+        {"source": {"name": "FCT Distance", "allowed_text": ["on", "off"]}, "equals": ["on"],
+         "off_note": "The distance function (1201 FCT Distance) is OFF: the documented zone behaviour is not applied.",
+         "missing_note": "the distance function switch (1201 FCT Distance) was not found"},
+        {"source": {"name": "Op. mode {zone}", "allowed_text": ["forward", "reverse", "non-directional", "inactive"]},
+         "equals": ["forward", "reverse", "non-directional"],
+         "off_note": "{name} is Inactive: the documented zone behaviour is not applied to it.",
+         "missing_note": "the zone's Op. mode setting was not found"}
+      ],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"],
+      "note": "Each 7SA6 distance zone measures the phase-earth loops, with its own RE(Zn) ph-E resistance setting (Siemens C53000-G1176-C156-7, 2.2.2); there is no per-zone loop switch (only binary inputs can block the Z4-Z6 phase-earth loops). Applied to a zone in service."
+    },
+    {
+      "id": "7sa613.pe_enabled.not_exposed",
+      "canonical": "distance.zone.pe_enabled",
+      "zone": "*",
+      "not_exposed": {"note": "SIPROTEC 4 7SA6 has no per-zone phase-earth loop switch: each zone measures the phase-earth loops."}
     },
     {
       "id": "7sa613.geometry_mode",
@@ -122,7 +238,7 @@
       "zone": "*",
       "transform": {"type": "constant", "value": "explicit_rx"},
       "authority": "documented_derivation",
-      "note": "The zone is stated as X and R limits (X(Zn), R(Zn) ph-ph, RE(Zn) ph-E), not as a polar reach. Its resistance boundaries are inclined at the distance angle, which this representation cannot carry (preserved with the zone)."
+      "note": "The zone is stated as X and R intersections (X(Zn), R(Zn) ph-ph, RE(Zn) ph-E), not as a polar reach. Its resistance edges are inclined at the distance angle, which this representation cannot carry (see the Right / Left Resistive Reach)."
     },
     {
       "id": "7sa613.x_reach",
@@ -138,18 +254,54 @@
       "note": "X(Z5)+: the forward reactance reach of Zone 5. Its reverse reach X(Z5)- is preserved with the zone."
     },
     {
+      "id": "7sa613.tilt_z1",
+      "canonical": "distance.zone.tilt",
+      "zone": "Z1",
+      "source": {"name": "Zone Reduction", "type": "number", "unit": "deg"},
+      "note": "Zone Reduction (1307): the inclination of Zone 1's upper limit in the first quadrant (Siemens 7SA6 manual); 0 deg = horizontal. Zones Z1B and higher have no such tilt."
+    },
+    {
       "id": "7sa613.r_right",
       "canonical": "distance.zone.r_right",
       "zone": "*",
+      "gap": {
+        "note": "R({zone}) ph-ph is documented as a per-phase resistance reach (half the loop arc resistance), used directly, never halved (Siemens C53000-G1176-C156-7, 2.2.2.2). The zone is a parallelogram whose right edge is inclined at the distance angle phi (1211, common to all zones): Rright(X) = R + X * cot(phi), with R = R({zone}) ph-ph ({evidence}). The current engine draws only a vertical resistive limit (Rright = R), so this boundary cannot be represented exactly; no Right Resistive Reach (+R) is plotted and no approximation is applied. Only phi = 90 deg would make the edge vertical.",
+        "evidence": [{"name": "R({zone}) ph-ph"}, {"name": "Distance Angle"}]
+      },
+      "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"]
+    },
+    {
+      "id": "7sa613.r_right.vertical",
+      "canonical": "distance.zone.r_right",
+      "zone": "*",
       "source": {"name": "R({zone}) ph-ph", "type": "number", "unit": "ohm"},
-      "note": "R(Zn) ph-ph, the phase-phase resistance reach, as printed."
+      "requires": [{
+        "source": {"name": "Distance Angle"}, "equals": ["90", "90.0"],
+        "off_note": "The distance angle is not 90 deg, so the resistance edge is inclined and R ph-ph is not a vertical +R.",
+        "missing_note": "the distance angle (1211) was not found, so the inclination of the resistance edges is not established"
+      }],
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon"],
+      "note": "R(Zn) ph-ph is a per-phase resistance reach, used directly (not halved; Siemens C53000-G1176-C156-7, 2.2.2.2). With the distance angle at 90 deg the resistance edge is vertical, so R ph-ph is exactly the Right Resistive Reach (+R)."
+    },
+    {
+      "id": "7sa613.r_left",
+      "canonical": "distance.zone.r_left",
+      "zone": "*",
+      "gap": {
+        "note": "The polygon has a real left edge: the parallelogram is symmetrical about the origin, so Rleft(X) = -R + X * cot(phi), with R = R({zone}) ph-ph and phi the distance angle ({evidence}); a directional zone is further limited by the device's fixed directional characteristic (Siemens C53000-G1176-C156-7, 2.2.2.1, Fig. 2-22 / 2-24), a non-directional zone is not. The current engine cannot represent this edge; no left boundary is drawn, offered or approximated.",
+        "evidence": [{"name": "R({zone}) ph-ph"}, {"name": "Distance Angle"}]
+      },
+      "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"]
     },
     {
       "id": "7sa613.r_phase_earth",
       "canonical": "distance.zone.r_phase_earth",
       "zone": "*",
       "source": {"name": "RE({zone}) ph-E", "type": "number", "unit": "ohm"},
-      "note": "RE(Zn) ph-E, the phase-earth resistance reach, as printed. Not drawn by the phase-phase engine."
+      "references": ["siemens-c53000-g1176-c156-7-polygon"],
+      "note": "RE(Zn) ph-E, the polygon's R intersection for phase-earth faults, as printed: a per-phase value in the earth-compensated loop domain (RE/RL, XE/XL; Siemens C53000-G1176-C156-7, 2.2.2.2), its edges inclined at the distance angle like R ph-ph. Not drawn by the phase-phase engine."
     },
     {
       "id": "7sa613.comp_re_rl_z1",
@@ -192,51 +344,60 @@
 
     {
       "id": "7sa613.delay_z1_pp", "canonical": "distance.zone.phase_delay", "zone": "Z1",
-      "source": {"name": "T1-multi-phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
-      "authority": "assumption", "confidence": "inferred",
-      "note": "Delay for multi-phase faults, read as the phase-phase loop delay (the loop assignment is an assumption)."
+      "source": {"name": "T1-multi-phase", "type": "number", "unit": "s", "infinity": true},
+      "authority": "documented_derivation", "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"],
+      "note": "T1-multi-phase is Zone 1's delay for multi-phase faults (Siemens 7SA6 manual): the phase-phase loop delay. 'Infinity' is a configured value (the stage never trips on time). A blank cell is a missing source value -- never Infinity, a range, a default or a note."
     },
     {
       "id": "7sa613.delay_z1_pe", "canonical": "distance.zone.earth_delay", "zone": "Z1",
-      "source": {"name": "T1-1phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
-      "authority": "assumption", "confidence": "inferred",
-      "note": "Delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+      "source": {"name": "T1-1phase", "type": "number", "unit": "s", "infinity": true},
+      "authority": "documented_derivation", "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"],
+      "note": "T1-1phase is Zone 1's delay for single-phase faults (Siemens 7SA6 manual): the phase-earth loop delay for single-phase faults. 'Infinity' is a configured value. A blank cell is a missing source value."
     },
     {
       "id": "7sa613.delay_z2_pp", "canonical": "distance.zone.phase_delay", "zone": "Z2",
-      "source": {"name": "T2-multi-phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
-      "authority": "assumption", "confidence": "inferred",
-      "note": "Delay for multi-phase faults, read as the phase-phase loop delay (the loop assignment is an assumption)."
+      "source": {"name": "T2-multi-phase", "type": "number", "unit": "s", "infinity": true},
+      "authority": "documented_derivation", "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"],
+      "note": "T2-multi-phase is Zone 2's delay for multi-phase faults (Siemens 7SA6 manual): the phase-phase loop delay. 'Infinity' is a configured value. A blank cell is a missing source value."
     },
     {
       "id": "7sa613.delay_z2_pe", "canonical": "distance.zone.earth_delay", "zone": "Z2",
-      "source": {"name": "T2-1phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
-      "authority": "assumption", "confidence": "inferred",
-      "note": "Delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+      "source": {"name": "T2-1phase", "type": "number", "unit": "s", "infinity": true},
+      "authority": "documented_derivation", "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"],
+      "note": "T2-1phase is Zone 2's delay for single-phase faults (Siemens 7SA6 manual): the phase-earth loop delay for single-phase faults. 'Infinity' is a configured value. A blank cell is a missing source value."
     },
     {
       "id": "7sa613.delay_z1b_pp", "canonical": "distance.zone.phase_delay", "zone": "Z1B",
-      "source": {"name": "T1B-multi-phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
-      "authority": "assumption", "confidence": "inferred",
-      "note": "Delay for multi-phase faults, read as the phase-phase loop delay (the loop assignment is an assumption)."
+      "source": {"name": "T1B-multi-phase", "type": "number", "unit": "s", "infinity": true},
+      "authority": "documented_derivation", "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"],
+      "note": "T1B-multi-phase is Zone 1B's delay for multi-phase faults (Siemens 7SA6 manual): the phase-phase loop delay. 'Infinity' is a configured value: the zone picks up but never trips on its own timer."
     },
     {
       "id": "7sa613.delay_z1b_pe", "canonical": "distance.zone.earth_delay", "zone": "Z1B",
-      "source": {"name": "T1B-1phase", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"},
-      "authority": "assumption", "confidence": "inferred",
-      "note": "Delay for single-phase faults, read as the earth-loop delay (the loop assignment is an assumption)."
+      "source": {"name": "T1B-1phase", "type": "number", "unit": "s", "infinity": true},
+      "authority": "documented_derivation", "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-7-polygon", "siemens-c53000-g1176-c156-2-settings"],
+      "note": "T1B-1phase is Zone 1B's delay for single-phase faults (Siemens 7SA6 manual): the phase-earth loop delay for single-phase faults. 'Infinity' is a configured value."
     },
     {
       "id": "7sa613.delay_z3", "canonical": "distance.zone.common_delay", "zone": "Z3",
-      "source": {"name": "T3 DELAY", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"}
+      "source": {"name": "T3 DELAY", "type": "number", "unit": "s", "infinity": true},
+      "note": "Zone 3's delay. 'Infinity' is a configured value (the stage never trips on time); a blank cell is a missing source value."
     },
     {
       "id": "7sa613.delay_z4", "canonical": "distance.zone.common_delay", "zone": "Z4",
-      "source": {"name": "T4 DELAY", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"}
+      "source": {"name": "T4 DELAY", "type": "number", "unit": "s", "infinity": true},
+      "note": "Zone 4's delay. 'Infinity' is a configured value (the stage never trips on time); a blank cell is a missing source value."
     },
     {
       "id": "7sa613.delay_z5", "canonical": "distance.zone.common_delay", "zone": "Z5",
-      "source": {"name": "T5 DELAY", "type": "number", "unit": "s", "note": "an 'Infinity' setting means the stage never trips on time; it is not a finite delay"}
+      "source": {"name": "T5 DELAY", "type": "number", "unit": "s", "infinity": true},
+      "note": "Zone 5's delay. 'Infinity' is a configured value: Siemens documents T5 = infinite as the way to keep the (non-directional final) stage from tripping. A blank cell is a missing source value."
     }
   ]
 }

@@ -104,8 +104,8 @@ FAMILIES = {
 
 
 #: The active catalog version per family (documented relay behaviour, DEC-198: REL511 1.2.0, Amendments 1-2;
-#: 7SL87 1.1.0, Amendment 3).
-CATALOG_VERSIONS = {name: {"rel511": "1.2.0", "7sl87": "1.1.0"}.get(name, "1.0.0") for name in FAMILIES}
+#: 7SL87 1.1.0, Amendment 3; 7SA613 1.1.0, Amendment 6).
+CATALOG_VERSIONS = {name: {"rel511": "1.2.0", "7sl87": "1.1.0", "7sa613": "1.1.0"}.get(name, "1.0.0") for name in FAMILIES}
 
 
 class TestEveryFamilyIsCatalogOnly:
@@ -290,23 +290,23 @@ class TestSiprotec4_7SA613:
         assert i["zones[Z4].status"]["value_text"].startswith("Disabled")             # Op. mode Inactive
         assert i["zones[Z5].direction"]["category"] == "unsupported"                  # non-directional: engine limit
 
-    def test_timers_are_never_taken_from_the_range_column_or_infinity(self, client):
+    def test_timers_are_never_taken_from_the_range_column_and_infinity_is_a_configured_value(self, client):
         i = items(upload(client, F.sa613_pdf())["review"])
         assert unresolved(i["zones[Z1].phase_timer_s"], "missing") and unresolved(i["zones[Z1].earth_timer_s"], "missing")
-        t4 = i["zones[Z4].common_timer_s"]
-        assert unresolved(t4, "unreadable") and t4["raw_value"] == "Infinity"
-        assert any("not a finite delay" in n for n in t4["notes"])
+        t4 = i["zones[Z4].common_timer_s"]                                            # DEC-198 Am. 6: never Unreadable
+        assert (t4["value_text"], t4["raw_value"], t4["category"]) == ("∞ (no timed trip)", "Infinity", "mapped")
 
-    def test_z5_reverse_reach_and_zone_reduction_are_preserved_not_drawn(self, client):
+    def test_z5_reverse_reach_is_preserved_and_zone_reduction_is_the_z1_tilt(self, client):
         review = upload(client, F.sa613_pdf())["review"]
         assert items(review)["zones[Z5].x_reach_ohm"]["value_text"] == "10 Ω"         # X(Z5)+
         assert raw_rows(review, "Z5")["X(Z5)-"]["raw_value"] == "7"
-        assert raw_rows(review, "Z1")["Zone Reduction"]["category"] == "unsupported"
+        tilt = items(review)["zones[Z1].tilt_deg"]
+        assert (tilt["value_text"], tilt["category"]) == ("0°", "mapped")             # 0 deg: exact
 
-    def test_basis_and_characteristic_are_not_inferred(self, client):
+    def test_basis_and_characteristic_are_documented_relay_behaviour(self, client):
         i = items(upload(client, F.sa613_pdf())["review"])
-        assert unresolved(i["transformers.setting_basis"], "missing")
-        assert unresolved(i["zones[Z1].characteristic.type"], "missing")
+        assert (i["transformers.setting_basis"]["value_text"], i["transformers.setting_basis"]["category"]) == ("Secondary", "documented")
+        assert i["zones[Z1].characteristic.type"]["category"] == "documented"
 
 
 class TestGrz100:
@@ -456,11 +456,12 @@ class TestRealSamples:
         assert i["transformers.setting_basis"]["value_text"] == "Primary"
         assert all(unresolved(i[f"zones[Z{n}].{t}"], "missing") for n in (1, 2, 3) for t in ("phase_timer_s", "earth_timer_s"))
 
-    def test_7sa613_real_sheet_no_timer_and_no_basis(self, client):
+    def test_7sa613_real_sheet_blank_timers_and_documented_secondary_basis(self, client):
         i = items(real(client, "7sa613")["review"])
         assert all(i[f"zones[{z}].{t}"]["value_text"] is None
-                   for z, t in (("Z1", "phase_timer_s"), ("Z2", "earth_timer_s"), ("Z3", "common_timer_s"), ("Z1B", "phase_timer_s")))
-        assert unresolved(i["transformers.setting_basis"], "missing")
+                   for z, t in (("Z1", "phase_timer_s"), ("Z2", "earth_timer_s"), ("Z3", "common_timer_s")))
+        assert i["zones[Z1B].phase_timer_s"]["value_text"] == "∞ (no timed trip)"     # a configured value (DEC-198 Am. 6)
+        assert (i["transformers.setting_basis"]["value_text"], i["transformers.setting_basis"]["category"]) == ("Secondary", "documented")
 
     @pytest.mark.parametrize("name", ["rel511", "7sl87", "7sa613", "grz100", "grl200", "rcs941", "lfzp111", "relz100"])
     def test_partial_and_deferred_relays_stay_review_only(self, client, name):

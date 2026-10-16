@@ -40,6 +40,7 @@ the catalog references behind it and, for an approximation, its record.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -86,6 +87,19 @@ MATERIAL_UNVERIFIED = (
     "With this value the setting may change the zone's operation, and what it does is not yet verified, "
     "so the zone cannot be applied."
 )
+#: DEC-198: a geometry-affecting setting whose configured cell is blank / whose stated value the engine cannot apply.
+MATERIAL_MISSING = (
+    "The configured setting cell is blank, so whether this setting changes the zone's boundary is not known; "
+    "no value is assumed and the zone cannot be applied."
+)
+MATERIAL_UNSUPPORTED = (
+    "With this value the setting changes the zone's boundary in a way the current engine cannot represent, "
+    "so the zone cannot be applied."
+)
+_MATERIAL = {"unverified": ("unverified", MATERIAL_UNVERIFIED), "missing": ("missing", MATERIAL_MISSING),
+             "unsupported": ("unsupported", MATERIAL_UNSUPPORTED)}
+#: DEC-198: how a configured "infinity" delay is shown (documented relay behaviour, never a finite number).
+INFINITE_DELAY_TEXT = "∞ (no timed trip)"
 NOT_REQUIRED_REASON = "Not required while zone is disabled"
 _ZONE_PATH = re.compile(r"^zones\[(?P<zone>[^\]]+)\]\.(?P<rest>.+)$")
 
@@ -425,6 +439,8 @@ def _value_text(value: object, unit: str | None = None) -> str:
     if isinstance(value, bool):
         return "Enabled" if value else "Disabled"
     if isinstance(value, (int, float)):
+        if math.isinf(value):
+            return INFINITE_DELAY_TEXT
         return _with_unit(_number(float(value)), unit)
     text = str(_enum_str(value))
     return text.replace("_", " ").capitalize() if text.islower() else text
@@ -688,8 +704,9 @@ class _Builder:
         raw = self._raw.get(setting.setting_id)
         sources = (self.source_from_setting(setting.setting_id),) if raw else ()
         notes = (setting.reason,) if setting.reason else (NOT_STATED,)
+        category, why = _MATERIAL.get(setting.material_cause, _MATERIAL["unverified"]) if setting.material else ("unsupported", "")
         if setting.material:
-            notes = (*notes, MATERIAL_UNVERIFIED)
+            notes = (*notes, why)
         return ReviewItem(
             key=key,
             label=setting.name or setting.setting_id,
@@ -704,7 +721,7 @@ class _Builder:
             # (e.g. a per-loop tilt): Oruxa cannot represent or use it, and nothing the
             # user does with it changes that. DEC-198: a catalog-declared material setting is an
             # unverified meaning instead, and it blocks an enabled zone.
-            category="unverified" if setting.material else "unsupported",
+            category=category,
             blocking=setting.material and active,
         )
 

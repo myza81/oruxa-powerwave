@@ -1209,7 +1209,7 @@ PDF -> generic extractor -> identifier (unchanged descriptors) -> active OEM cat
 | Hitachi Energy REL670 | `hitachi_energy/rel670.json` | **READY FOR OWNER UAT** (catalog-only proof) |
 | Hitachi Energy REL511 | `hitachi_energy/rel511.json` (1.2.0, DEC-198 Am. 1-2) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Siemens SIPROTEC 5 7SL87 | `siemens/siprotec5_7sl87.json` (1.1.0, DEC-198 Am. 3) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
-| Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
+| Siemens SIPROTEC 4 7SA613 | `siemens/siprotec4_7sa613.json` (1.1.0, DEC-198 Am. 6) | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRZ100 | `toshiba/grz100.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | Toshiba GRL200 | `toshiba/grl200.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
 | NR Electric RCS-941 | `nr_electric/rcs941.json` | PARTIALLY SUPPORTED — UAT WITH LIMITATIONS |
@@ -1275,7 +1275,9 @@ the R-X renderer, so per the batch rules it is not done here; every such setting
   R(Zn) ph-ph / X(Zn) / RE(Zn) ph-E, Z5 `X+` -> X (`X-` preserved), RE/RL - XE/XL compensation (Z1 own, Z2..Z1B shared;
   format-gated), CT / VT with units from the printed range (kV, AMP), line angle / length / unit. Timers: blank -> Missing,
   `Infinity` setting -> Unreadable "not a finite delay". **Not interpreted:** basis, characteristic, Distance Angle (inclined
-  boundary, preserved), Zone Reduction (preserved).
+  boundary, preserved), Zone Reduction (preserved). *(Superseded by DEC-198 Amendment 6 -- see "7SA613 -- documented relay
+  behaviour": characteristic, loops, Secondary basis and the delay assignment are documented, `Infinity` is a configured
+  value, the inclined +R / -R and the load cutout block, Zone Reduction is the Z1 tilt.)*
 * **GRZ100** -- CT / VT **ratios**, line data, ZS-C / ZG-C -> characteristic (Quad + Quad -> quadrilateral; differing -> "unknown",
   which the engine reports Unsupported -- never forced into one), TZnS / TZnG -> phase / earth delays. **Not interpreted:**
   zone status and direction (no per-zone switch), each zone's reach setting (reactance limit or impedance reach not established),
@@ -1325,7 +1327,7 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
 | REL670 | rel670.pdf | READY FOR OWNER UAT | Hitachi Energy · REL670, V1.2, high | CT 900/1 A (IL1-IL3); VT 132 kV / 110 V (unit assumption) | Primary (IBase/UBase, documented) | Z1-Z4 | Z1-Z4 Enabled (Operation/OperationDir) | Z1-Z3 Fwd, Z4 Rev | Quadrilateral (ZMQPDIS) | X 0.65 / 1.3 / 4.65 / 0.16 Ω | RFPP/2: 0.49 / 0.97 / 3.49 / 0.125 Ω (raw 0.98 / 1.94 / 6.98 / 0.25) | RFPE 3.27 / 6.48 / 17.26 / 0.8 Ω | tPP = tPE 0.15 / 0.45 / 3 / 3 s | none stated (R0/X0 kept) | Not ready -> Ready after 4 × 0.00 Ω approximation + 9 confirmations | Yes | 4 explicit R/X boxes, Z4 dashed reverse | Left boundary is the ZDRDIR directional element (0 Ω is an approximation); PE not plotted | Z4 reverse in service correct?; RFPP/2 for REL670 like RED670; VT/UBase units; the 0 Ω approximation acceptable for viewing |
 | REL511 | rel511.pdf | PARTIAL | Hitachi Energy · REL511, V1.2, high | CT 1200 A, Ir 1 A (assumption); VT 132 kV (assumption) / Ur 110 V (assumption) | Missing | Z1-Z5 | Z1-Z4 Enabled, Z5 Disabled (Operation_Zn) | Z1-Z3 Fwd, Z4 Rev; Z5 'None' not interpreted | Missing | X1Zn 3.08 / 4.7 / 10.28 / 0.77 Ω | Unsupported: RFZn preserved (4.62 / 6.77 / 11.87 / 1.15) | RFNZn as printed 15.39 / 17.5 / 23.26 / 3.85 (assumption) | t1-t4 0 / 0.3 / 3 / 3 s (Timer on); Z5 Missing | none (R0/X0 kept) | Not ready (basis, characteristic, PP loops) | No | No | RF loop / per-phase, characteristic, basis, ZnBlock unknown | Is REL511 primary or secondary ohms? Characteristic? RF per loop or per phase? ZnBlock meaning? |
 | 7SL87 | 7sl87.pdf | PARTIAL | Siemens · 7SL87, high | CT 1500/1 A; VT 275 kV / 110 V (unit assumption) | Primary (Edit mode) | Z1-Z6 | Z1-Z3 Enabled, Z4-Z6 Disabled (Mode) | Z1-Z3 Fwd, Z4 Rev | Quadrilateral, documented (Siemens C53000-G5040-C011-9; DEC-198 Am. 3) | X 4.7 / 8.5 / 30.5 Ω | Not yet supported: R (ph-ph) 3.1 / 3.6 / 6.6 Ω inclined at 82.7° (per-phase, not halved) | R (ph-g) 11.2 / 14.4 / 34 Ω | **all Missing** (blank cells; Infinity is the range); loop assignment documented | Kr 1.72 / Kx 0.58 (Z1-Z3) | Not ready (delays, inclined +R, left boundary, ph-ph load cutout) | No | No | Inclined R boundary (82.7°) and left / directional boundary not representable (candidate A7 documented only); load cutout effect not verified; explicit tilt = 0° Mapped | Notes' 0.15 / 0.45 / 3 s are not settings -- confirm the real delays; Z4 off matches "Zone 4 Inactive" note |
-| 7SA613 | 7sa613.pdf | PARTIAL | Siemens · 7SA613, high | CT 1200/1 A; VT 275 kV / 110 V (units printed) | Missing | Z1, Z2, Z3, Z4, Z5, Z1B | Z1-Z3, Z5, Z1B Enabled; Z4 Disabled (Op. mode Inactive) | Z1-Z3, Z1B Fwd; Z5 Non-directional | Missing | X 2.4 / 3.6 / 8.8 / 250 / 10.6 (X+) / 3.2 Ω; Z5 X- 6.9 preserved | 1.5 / 1.7 / 2.4 / 250 / 2.9 / 1.6 Ω | 7.8 / 8.6 / 13.6 / 250 / 16.3 / 8.4 Ω | T1-T3 Missing (blank); T4, T5, T1B 'Infinity' (not a delay) | RE/RL 1.51, XE/XL 0.48 | Not ready (basis, characteristic, delays) | No | No | Inclined boundary (Distance Angle 82) and Zone Reduction preserved | Primary or secondary ohms? Real delays (blank on sheet) |
+| 7SA613 | 7sa613.pdf | PARTIAL | Siemens · 7SA613, high | CT 1200/1 A; VT 275 kV / 110 V (units printed) | Secondary, documented (DEC-198 Am. 6) | Z1, Z2, Z3, Z4, Z5, Z1B | Z1-Z3, Z5, Z1B Enabled; Z4 Disabled (Op. mode Inactive) | Z1-Z3, Z1B Fwd; Z5 Non-directional (engine-unsupported) | Polygon (quadrilateral), documented | X 2.4 / 3.6 / 8.8 / 250 / 10.6 (X+) / 3.2 Ω; Z5 X- 6.9 preserved | Not yet supported: R ph-ph 1.5 / 1.7 / 2.4 / 250 / 2.9 / 1.6 Ω inclined at 82° (per phase, not halved); left edge unsupported, no 0 Ω offer | 7.8 / 8.6 / 13.6 / 250 / 16.3 / 8.4 Ω | T1-T3 Missing (blank); T4, T5, T1B ∞ (no timed trip) -- configured, engine-unsupported on Z5 / Z1B | RE/RL 1.51, XE/XL 0.48 | Not ready (delays, R load, inclined +R / −R, ∞ delays, non-directional Z5) | No | No | Inclined polygon, ∞-delay zones, non-directional Z5 and the load trapezoid not representable (A613 / B613 documented only); Zone Reduction 0° exact | Real delays (blank on sheet); R load (ph-ph) / (ph-E) values (blank on sheet) |
 | GRZ100 | grz100.pdf | PARTIAL | Toshiba · GRZ100, Ver 2.1, high | CT ratio 1200, VT ratio 1200 | Missing | Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2, ZND | Missing (no zone switch) | Missing (not stated) | Quadrilateral (ZS-C = ZG-C = Quad) | not interpreted (ZnS/ZnG preserved) | not interpreted (BFRS preserved) | not interpreted | TZ1S 0, TZ2S 0.3, TZFS 0.35, TZ3S 3, TZR1S 0.5, TZR2S 3, TZNDS 0.7 s (+G) | Krs 560 / Kxs 313 % preserved | Not ready (basis, status) | No | No | Blinder geometry (BFRS / BFLS-angle) a capability gap | Reach setting = reactance limit or impedance? Which zones are in service? Basis |
 | GRL200 | grl200.pdf | PARTIAL | Toshiba · GRL200, high | Missing (only in the notes) | Missing | Z1-Z5, Z1X | Missing; PP/PE enables Z1-Z3 on, Z4, Z5, Z1X off | Z1-Z3 Fwd, Z4 Rev (agreed) | Unknown -> Unsupported (MHO phase / QUAD earth) | mho 3.59 / 7.18 / 10.53 Ω ∠85° | not interpreted (blinder 4.2 / 5 / 5.32 preserved) | ZnG-R.Reach 15.42 / 18.34 / 21.06 Ω | TZnS = TZnG 0.15 / 0.45 / 3 s | Krs/Kxs preserved | Not ready (basis, characteristic, status) | No | No | Mho-with-blinders + quad earth needs a per-loop / blinder geometry model | Basis; CT/VT; is the review useful as it stands? |
 | RCS-941 | rcs.pdf | PARTIAL | NR Electric · RCS-941, high | CT 1200/1 A; VT 76.2 kV / 63.5 V (as printed, phase-neutral) | Missing | Z1, Z2, Z3, Reverse Zone | Missing; PP/PE enables on | Z1-Z3 Missing; Reverse Zone Reverse (assumption) | Missing | Z_PP 0.53 / 1.23 / 3.57 / 0.15 Ω ∠80° | not stated | Rn_Quad 2.44 / 4.92 / 14.28 Ω (quad enabled) | t_Z1 0.15; Z2 0.45 / 0.45; Z3 3 / 3; Rev 3 s | K0 0.83 (assumption) | Not ready (basis, characteristic, status) | No | No | PG mho reach (Z_PGn) and blinder not interpreted | Characteristic (mho?); basis; K0 definition |
@@ -1343,10 +1345,12 @@ Upload each owner sheet in Distance Protection -> Import Relay Settings, open *R
 
 1. Whether the RFPP / 2 convention approved for RED670 applies to REL670 unchanged (same ZMQPDIS parameters; implemented so).
 2. The impedance basis of REL511, 7SA613, GRZ100, GRL200, RCS-941 and RELZ100 sheets (not stated; never inferred from magnitudes).
-   **REL511 resolved (DEC-198 Amendment 2):** Secondary, documented relay behaviour (ABB 1MRK 506 109-UEN Eq. 39); the others stay open.
+   **REL511 resolved (DEC-198 Amendment 2):** Secondary, documented relay behaviour (ABB 1MRK 506 109-UEN Eq. 39).
+   **7SA613 resolved (DEC-198 Amendment 6):** Secondary, documented (Siemens C53000-G1176-C156-2 secondary ranges). The others stay open.
 3. The characteristic of REL511, 7SL87, 7SA613, RCS-941, RELZ100 (not named on the sheets; the parameter sets suggest
    quadrilateral / mho, but nothing is assumed). **REL511 resolved (DEC-198 Amendment 1):** quadrilateral, documented.
    **7SL87 resolved (DEC-198 Amendment 3):** quadrilateral, documented (Siemens C53000-G5040-C011-9).
+   **7SA613 resolved (DEC-198 Amendment 6):** polygon (quadrilateral), documented (Siemens C53000-G1176-C156-2 / -7).
 4. The per-loop / per-phase meaning of REL511 RFZn / RELZ100 Rn (preserved, not used). **REL511 resolved (DEC-198 Amendment 2):**
    RFZn phase-phase and RFNZn phase-earth, both ohm/loop; RELZ100 Rn stays open.
 5. ~~Whether a zero tilt (7SL87 Zone-inclination angle 0) should be acceptable to the engine.~~ **Resolved (owner, 2026-10-14,
@@ -1624,6 +1628,51 @@ Apply        -> import_id matches the request -> knowledge == the service's curr
 | Browser | Holds `validation_token` / `import_id` from the upload and returns them unchanged; no crypto, no parsing (`wwRrPayload`). Remove / new-import ownership unchanged (`d032dcd`, `9ceb7a6`). |
 | Not provided | Revocation: after a browser Remove or a newer upload, the earlier token stays valid until it expires (tested as such). The token is signed, not encrypted: its payload is readable, and holds only the interpretation the review already shows. |
 
+### 7SA613 -- documented relay behaviour (DEC-198 Amendment 6, catalog 1.1.0)
+
+**7SA613 artificial semantic blockers resolved.** **7SA613 remains partial due to genuine source gaps and engine
+limitations.** Investigation first (owner-accepted), then this slice; no approximation rule.
+
+**References (verified; version-dependent).** Siemens *SIPROTEC Distance Protection 7SA6* manuals **C53000-G1176-C156-2**
+(V4.2) and **C53000-G1176-C156-7** (V4.70, 02.2011). The owner sheet's parameter set matches V4.2 (Z1-Z5 + Z1B, R / X ranges
+0.05-250 Ω, x' 0.005-6.5 Ω/km, Zone Reduction 0-45°; V4.70 widened the ranges and added Z6); V4.70 is used where it agrees.
+No firmware version is asserted.
+
+| Catalog reference id | Section (pages) | Used for |
+|---|---|---|
+| `siemens-c53000-g1176-c156-2-polygon` | V4.2, 6.2.4 polygonal tripping characteristic (6-55 to 6-63) | polygon, symmetric parallelogram, direction, setting notes |
+| `siemens-c53000-g1176-c156-2-settings` | V4.2, 6.2.4.3 settings (6-64 to 6-66): "secondary values of impedance ... refer to IN = 1 A"; timers 0-30 s or ∞ | basis; delays |
+| `siemens-c53000-g1176-c156-7-polygon` | V4.70, 2.2.2 (89-102): operating polygons (Fig. 2-22), direction (Fig. 2-24), R per phase, Zone Reduction, Z5, "Setting T5 to infinite prevents that this stage causes a trip" | characteristic; loops; R convention; ∞ |
+| `siemens-c53000-g1176-c156-7-ordering` | V4.70, 2.1 address 115 (Region DE only, p. 35), 2.2.2.2 primary / secondary entry (p. 96), A.1 ordering (603-605) | characteristic option; basis |
+
+| Item | Now (1.1.0) | Classification |
+|---|---|---|
+| Characteristic | Quadrilateral (polygon), `documented_derivation`, zones in service (FCT Distance ON, Op. mode not Inactive); selector `not_exposed`; a `DIS Charact. = Circle` row (Region-DE address 115) would be preserved as Unverified and block | Documented -- **no longer a blocker** |
+| PP / PE loops | Enabled, `documented_derivation` (six loops per zone; no per-zone switch), zones in service; selectors `not_exposed`; `1221A 2Ph-E faults` preserved (loop selection, not boundary) | Documented -- **no longer a blocker** |
+| Basis | **Secondary**, `documented_derivation` (owner-approved): V4.2 secondary ranges printed on the sheet, 1 A device, secondary-form V / I settings; never from CT / VT ratios | Documented -- **no longer a blocker** |
+| R(Zn) ph-ph | per phase (half the loop arc resistance), used directly, never halved | Documented convention (in the +R / −R provenance) |
+| +R at φ = 82° | `gap` (unsupported), evidence R(Zn) ph-ph + Distance Angle (raw `1.5 \| 82`); `Rright(X) = R + X·cot φ`; direct mapping only at φ = 90° | Engine geometry limitation -- blocking |
+| Left (−R) | `gap` (unsupported), same evidence; `Rleft(X) = −R + X·cot φ` (symmetric parallelogram) + fixed directional characteristic; **no 0.00 Ω offer** (was Missing + offer) | Engine geometry limitation -- blocking |
+| Zone Reduction (Z1) | mapped to `tilt` (0° = exact; non-zero = Unsupported, DEC-197 Am. 1) | Exact |
+| T1-T3 delays | blank cells -> Missing (never Infinity, a range, a default or the notes); T-1phase -> PE, T-multi-phase -> PP documented | **Source-data gap** -- blocking |
+| T4 / T5 / T1B = Infinity | configured value `inf`, shown "∞ (no timed trip)" (generic `infinity` selector option) -- never Unreadable; Z4 (Inactive) non-blocking, no delay carried; Z5 / Z1B in service -> `DELAY_INFINITE` | Documented value; **engine limitation** (no zone that only picks up) -- blocking |
+| Z5 Non-Directional | direction preserved (never forced forward / reverse); X(Z5)− preserved; entire parallelogram ±X, no directional clipping | **Engine limitation** -- blocking |
+| R load (ph-ph) blank | preserved with every zone, `material_unless: ["infinity"]`: blank -> "Source value missing", blocks a zone in service; a stated finite value would block as an engine limitation; `Infinity` -> no effect | **Source-data gap** -- blocking |
+| R load / phi load (ph-E), phi load (ph-ph) | preserved, not material (phase-earth loops not drawn; phi only matters with a finite R) | Not blocking |
+
+**Approximation candidates -- documented only, NOT approved, NOT in `APPROVED_RULES`, no record emitted.**
+
+| Candidate | Rule | Class | Condition / envelope | Owner sheet |
+|---|---|---|---|---|
+| A613 | +R = R (vertical) | conservative (first quadrant, φ ≤ 90°) | shortfall ≤ X·cot φ at X = X(Zn), 0 at X = 0 | Z1 0.34, Z2 0.51, Z3 1.24, Z1B 0.45, Z5 1.49 Ω (cot 82° = 0.1405) |
+| B613 | −R = 0 with X ≥ 0 | conservative where R ≥ X·cot φ (and the directional characteristic keeps its safety margin outside the first quadrant) | omits the 2nd-quadrant part of the polygon | holds for Z1, Z2, Z3, Z1B, Z5 (left edge at the top −1.15 to −1.41 Ω) |
+
+**Result (owner 7SA613 sheet).** Blocking settings **21 -> 18**: removed basis 1, characteristic 5, PP loops 5 (artificial);
+remaining Z1-Z3 delays 3 (source), +R 5 and −R 5 (engine geometry), R load (ph-ph) 5 (source; zones in service Z1, Z2, Z3,
+Z5, Z1B); plus the engine refusals on resolved values -- infinite delay (Z5, Z1B) and non-directional Z5. Documented relay
+behaviour 0 -> 17; not exposed 3 (Z4); Unreadable 3 -> 0; 0.00 Ω offers 5 -> 0; `approximations[]` empty.
+**PARTIALLY SUPPORTED / NOT_READY.**
+
 ### Recommended next slices (not started)
 
 1. ~~REL511 references + verified derivations~~ -- done (Amendment 1). Still open: Relion 670 references; RELZ100 Rn as `unverified`.
@@ -1633,6 +1682,9 @@ Apply        -> import_id matches the request -> knowledge == the service's curr
    delays (source data), the Siemens polygon / directional evidence (6.6.9.1, Fig. 6-102) for the left boundary, the load-cutout
    shape (Fig. 6-106), then candidate A7 for owner approval. ~~Generic: refuse a manual value where the review offers none~~ -- done
    (Amendment 4). ~~Still open (generic): authenticate the validation context~~ -- done (Amendment 5).
+   ~~7SA613 characteristic / loops / basis / delay assignment / Infinity~~ -- done (Amendment 6). Still open for 7SA613: the
+   real Z1-Z3 delays and R load (ph-ph) (source data), then owner decisions on A613 / B613; generic engine support for a
+   zone that only picks up (infinite delay) and for non-directional zones.
 2. Narrow assumption gating to values the engine / analysis consumes (deferred by the owner: P441 / RED670 regression risk).
 3. The first approximation rule (ZDRDIR directional boundary) with its established classification and envelope, opted into by
    RED670 / REL670; resolve the open 670 resistive-line inclination question first.

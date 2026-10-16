@@ -152,6 +152,10 @@ class UnresolvedSetting:
     #: zone's operation while its meaning is not verified. An enabled zone carrying one is not
     #: applicable (the engine adapter refuses it); no meaning is ever assigned to the value.
     material: bool = False
+    #: Why a material setting blocks: ``unverified`` (what the value does is not verified),
+    #: ``missing`` (the configured cell is blank, so the setting's effect is unknown) or
+    #: ``unsupported`` (the stated value changes the zone in a way the engine cannot represent).
+    material_cause: str = "unverified"
 
 
 # ---------------------------------------------------------------------------

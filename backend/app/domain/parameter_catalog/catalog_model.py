@@ -138,6 +138,10 @@ class Selector:
     allowed_text: tuple[str, ...] = ()
     #: Free text shown when this source cannot be read (appended to the generic note).
     note: str = ""
+    #: A ``number`` source whose setting may be set to infinity (the relay's own documented value,
+    #: e.g. a stage timer that never trips on time): "Infinity" / "∞" is then read as a configured
+    #: value (``math.inf``) instead of an unreadable one. Never a default and never a range value.
+    infinity: bool = False
 
 
 @dataclass(frozen=True)
@@ -296,6 +300,11 @@ class PreservedSettings:
     #: operation although its meaning is not verified -- such a row is Unverified and blocks an
     #: enabled zone. The value is never interpreted.
     unverified_when: tuple[str, ...] = ()
+    #: DEC-198: raw values (case-folded) with which this geometry-affecting setting has no effect on
+    #: the drawn zone (e.g. "infinity" = the load cutout is off). Any other value blocks an enabled
+    #: zone: a blank configured cell as a missing source value, a stated value as a boundary the
+    #: engine cannot represent. The value is never interpreted.
+    material_unless: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

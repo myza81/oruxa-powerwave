@@ -71,7 +71,7 @@ _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "app
 _NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
 _NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
 _NOTE_SUBJECTS = ("timer", "status")
-_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason", "unverified_when"}
+_PRESERVED_KEYS = {"zone", "names", "name_pattern", "reason", "unverified_when", "material_unless"}
 _APPLICABILITY_KEYS = {"manufacturer", "family", "model", "versions"}
 _IDENT_KEYS = {"model_patterns", "family_markers", "parameter_signatures", "scheme_pattern", "scheme_model_pattern", "version_pattern"}
 _ZONES_KEYS = {"discover", "static"}
@@ -80,7 +80,7 @@ _MAPPING_KEYS = {"id", "canonical", "zone", "source", "sources", "transform", "r
                  "confidence", "note", "evidence", "evidence_from", "requires_resolved", "unresolved_note", "gap",
                  "references", "verification", "not_exposed"}
 _SELECTOR_KEYS = {"name", "code", "name_pattern", "pattern_in_text", "indexed_family", "zone_family", "section", "type",
-                  "unit", "printed_unit", "validate", "allowed_text", "note"}
+                  "unit", "printed_unit", "validate", "allowed_text", "note", "infinity"}
 _PRINTED_KEYS = {"policy", "accept", "accept_if", "missing_when_unprinted"}
 _VALIDATE_KEYS = {"within_printed_range", "allowed_values", "printed_range_pattern"}
 _FAMILY_KEYS = {"index", "member", "expected_count", "aggregate"}
@@ -384,6 +384,13 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
         if not isinstance(material, list) or not all(isinstance(x, str) and x.strip() for x in material):
             v.add(f"{path}.unverified_when", IssueCode.MALFORMED, "unverified_when must be a list of raw setting values")
             ok, material = False, []
+        unless = item.get("material_unless", [])
+        if not isinstance(unless, list) or not all(isinstance(x, str) and x.strip() for x in unless):
+            v.add(f"{path}.material_unless", IssueCode.MALFORMED, "material_unless must be a list of raw setting values")
+            ok, unless = False, []
+        if material and unless:
+            v.add(path, IssueCode.MALFORMED, "give at most one of unverified_when or material_unless")
+            ok = False
         if (names is None) == (pattern is None):
             v.add(path, IssueCode.INVALID_SELECTOR, "give exactly one of names or name_pattern")
             continue
@@ -400,7 +407,7 @@ def _zone_preserved(v: _Validator, raw: Any, zones: ZoneModel | None) -> tuple[P
             _check_template(v, f"{path}.name_pattern", pattern, _ZONE_VARS, zones)
             ok = v.regex(_TEMPLATE.sub("x", pattern), f"{path}.name_pattern") and ok
         if ok and targets:
-            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern, tuple(material)))
+            out.append(PreservedSettings(targets, reason.strip(), tuple(names or ()), pattern, tuple(material), tuple(unless)))
     return tuple(out)
 
 
@@ -725,8 +732,12 @@ def _selector(v: _Validator, raw: Any, path: str, variables: set[str], zones: Zo
     if not isinstance(allowed, list) or not all(isinstance(x, str) for x in allowed):
         v.add(f"{path}.allowed_text", IssueCode.MALFORMED, "allowed_text must be a list of strings")
         allowed = []
+    infinity = raw.get("infinity", False)
+    if not isinstance(infinity, bool) or (infinity and stype != "number"):
+        v.add(f"{path}.infinity", IssueCode.MALFORMED, "infinity must be true or false, and only for a number source")
+        infinity = False
     return Selector(type=stype, unit=unit, printed_unit=printed, validate=validation, allowed_text=tuple(allowed),
-                    note=str(raw.get("note") or ""), **out)
+                    note=str(raw.get("note") or ""), infinity=infinity, **out)
 
 
 def _check_template(v: _Validator, path: str, text: str, allowed: set[str], zones: ZoneModel | None) -> None:

@@ -286,4 +286,32 @@ async function openDistance(page) {
 const pick = (page, name, buffer) =>
   page.locator("#wwRelayImportFileInput").setInputFiles({ name, mimeType: "application/pdf", buffer });
 
-module.exports = { BACKEND_PORT, buildPdf, p441Pdf, siemens7sa511Pdf, red670Pdf, rel670Pdf, rel511Pdf, sl87Pdf, grz100Pdf, routeConfig, openDistance, pick };
+// A synthetic Siemens SIPROTEC 4 7SA613-shaped sheet (DIGSI 4: address | name | value | range): Z1 / Z1B Forward, Z4
+// Inactive, Z5 Non-Directional; blank Z1 delay cells and a blank R load (ph-ph) beside an "Infinity" range; T4 / T5 / T1B
+// set to Infinity; distance angle 82 deg, Zone Reduction 0. Invented numbers.
+function sa613Pdf() {
+  const rows = [
+    ["LZOP: 275kV AAAA - BBBB No 1", "Scheme: 7SA6131_4AB02_3GA0"], ["Utility ID: 1", "Active Group: SET-TEST"], ["TAP NAME", "TAP SETTING", "TAP RANGE"],
+    ["0203 Unom PRIMARY", "275", "1-1200 kV"], ["0204 Unom SECONDARY", "110", "80-125 V"],
+    ["0205 CT PRIMARY", "1200", "10-5000 AMP"], ["0206 CT SECONDARY", "1", "1 AMP"],
+    ["0237 Format Z0/Z1", "RE/RL and XE/XL", "K0 Setting Format"], ["1105 Line Angle", "82", "30-89 deg."],
+    ["1116 RE/RL(Z1)", "1.5", "-0.33-7"], ["1117 XE/XL(Z1)", "0.5", "-0.33-7"],
+    ["1201 FCT Distance", "ON", "ON,OFF"], ["1211 Distance Angle", "82", "30-89 deg."],
+    ["1241 R load (ph-E)", "", "Infinity"], ["1242 phi load (ph-E)", "30", "20-60 deg."],
+    ["1243 R load (ph-ph)", "", "Infinity"], ["1244 phi load (ph-ph)", "30", "20-60 deg."],
+    ["1301 Op. mode Z1", "Forward", "Fwd/Rev/Non/Inactive"], ["1302 R(Z1) ph-ph", "1.5", "0.05-250 ohms"],
+    ["1303 X(Z1)", "2.4", "0.05-250 ohms"], ["1304 RE(Z1) ph-E", "7.8", "0.05-250 ohms"], ["1307 Zone Reduction", "0", "0-45 deg."],
+    ["1305 T1-1phase", "", "Infinity"], ["1306 T1-multi-phase", "", "Infinity"],
+    ["1331 Op. mode Z4", "Inactive", "Fwd/Rev/Non/Inactive"], ["1332 R(Z4) ph-ph", "250", "0.05-250 ohms"],
+    ["1333 X(Z4)", "250", "0.05-250 ohms"], ["1335 T4 DELAY", "Infinity", "Infinity"],
+    ["1341 Op. mode Z5", "Non-Directional", "Fwd/Rev/Non/Inactive"], ["1342 R(Z5) ph-ph", "2.9", "0.05-250 ohms"],
+    ["1343 X(Z5)+", "10", "0.05-250 ohms"], ["1345 T5 DELAY", "Infinity", "Infinity"], ["1346 X(Z5)-", "7", "0.05-250 ohms"],
+    ["1351 Op. mode Z1B", "Forward", "Fwd/Rev/Non/Inactive"], ["1352 R(Z1B) ph-ph", "1.6", "0.05-250 ohms"],
+    ["1353 X(Z1B)", "3.2", "0.05-250 ohms"], ["1354 RE(Z1B) ph-E", "8.4", "0.05-250 ohms"],
+    ["1355 T1B-1phase", "Infinity", "Infinity"], ["1356 T1B-multi-phase", "Infinity", "Infinity"],
+    ["Zone 1 Forward direction timer set to 0.15s"],
+  ];
+  return rowsPdf(rows);
+}
+
+module.exports = { BACKEND_PORT, buildPdf, p441Pdf, siemens7sa511Pdf, red670Pdf, rel670Pdf, rel511Pdf, sl87Pdf, sa613Pdf, grz100Pdf, routeConfig, openDistance, pick };
