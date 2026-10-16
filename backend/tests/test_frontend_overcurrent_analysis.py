@@ -137,6 +137,19 @@ class TestOvercurrentPanelStructure:
         assert "manual.inputBasis === \"primary\"" in fn
         assert "WW_ANALYSIS_INPUT_SOURCE_MANUAL" in fn
 
+    def test_recording_basis_field_follows_the_recording_input_source_gate(self):
+        """The Recording current basis label + select are hidden together
+        in Manual (Direct Current and Equipment Loading) by the existing
+        input-source visibility function -- never removed, and the gate
+        never touches the selection/state."""
+        source = _source()
+        field = _function_body(source, 'id="wwOvercurrentBasisField"', "</label>")
+        assert 'id="wwOvercurrentBasisSelect"' in field
+        fn = _function_body(source, "function wwOvercurrentUpdateRecordingSectionVisibility()", "function wwOvercurrentUpdateInputSourceAvailability")
+        assert 'getElementById("wwOvercurrentBasisField")' in fn
+        assert "basisField.hidden = !isRecording;" in fn
+        assert "recordingBasis" not in fn
+
     def test_numeric_result_fields_render(self):
         source = _source()
         fn = _function_body(source, "function wwOvercurrentRenderResult(result)", "function wwOvercurrentEnsureCurveAndRenderPoint")
@@ -1113,7 +1126,7 @@ class TestSettingsFormLayoutCorrection:
     def test_characteristic_and_basis_span_the_full_row_never_squeezed_to_half_width(self):
         source = _source()
         assert 'class="ww-phasor-field ww-oc-field-full">\n                                            <span class="ww-phasor-field-label">Characteristic</span>' in source
-        assert 'class="ww-phasor-field ww-oc-field-full">\n                                            <span class="ww-phasor-field-label">Recording current basis</span>' in source
+        assert 'class="ww-phasor-field ww-oc-field-full" id="wwOvercurrentBasisField">\n                                            <span class="ww-phasor-field-label">Recording current basis</span>' in source
         css_rule = _function_body(source, ".ww-oc-field-full {", "}")
         assert "grid-column: 1 / -1;" in css_rule
         # Pickup/TMS and the two CT fields deliberately do NOT get this

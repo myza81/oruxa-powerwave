@@ -11541,7 +11541,7 @@
                                             <span class="ww-phasor-field-label">TMS</span>
                                             <input type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">
                                         </label>
-                                        <label class="ww-phasor-field ww-oc-field-full">
+                                        <label class="ww-phasor-field ww-oc-field-full" id="wwOvercurrentBasisField">
                                             <span class="ww-phasor-field-label">Recording current basis</span>
                                             <select id="wwOvercurrentBasisSelect">
                                                 <option value="secondary" selected>Secondary</option>
@@ -49528,9 +49528,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // state hid Manual's own controls too, since they used to live
         // INSIDE the now-recording-gated body). See
         // docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+        // The "Recording current basis" field sits in the shared Settings
+        // grid but only describes recorded data (Manual has its own basis,
+        // Equipment Loading is always primary), so it follows the same
+        // gate. Only the field is hidden: `settings.recordingBasis` and
+        // the select's value are kept, and CT visibility is unchanged
+        // (wwOvercurrentCtFieldsNeeded()).
         function wwOvercurrentUpdateRecordingSectionVisibility() {
+            const isRecording = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING;
             const section = document.getElementById("wwOvercurrentRecordingSection");
-            if (section) section.hidden = wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            if (section) section.hidden = !isRecording;
+            const basisField = document.getElementById("wwOvercurrentBasisField");
+            if (basisField) basisField.hidden = !isRecording;
         }
 
         // Recording is "available" once at least one Engineering Context

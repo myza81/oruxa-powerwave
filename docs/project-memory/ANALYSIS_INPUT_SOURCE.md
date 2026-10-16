@@ -312,7 +312,12 @@ For Overcurrent specifically: `#wwOvercurrentRecordingSection` wraps
 the Bay/Context bar, `#wwOvercurrentPlaybackPanel`,
 `#wwOvercurrentRelatedWaveformsAnchor`, `#wwOvercurrentStatusRow`, and
 `#wwOvercurrentEmptyState`; `#wwOvercurrentBody` (Settings/Manual
-Input/Results/Chart) sits outside it as a sibling.
+Input/Results/Chart) sits outside it as a sibling. One Recording-only
+control lives in the Body's shared Settings grid: the "Recording current
+basis" field (`#wwOvercurrentBasisField`). It is hidden in Manual by the
+same function that gates the Recording section
+(`wwOvercurrentUpdateRecordingSectionVisibility()`), so visibility is
+still decided in one place (2026-10-16; see OVERCURRENT_ANALYSIS.md).
 `wwOvercurrentShowEmptyState()` — the callback every recording-lifecycle
 phase (`NO_SOURCES`/`NO_SUGGESTIONS`/`UNREACHABLE`/no context selected)
 funnels through — now touches only `#wwOvercurrentRecordingSection`'s

@@ -1817,3 +1817,89 @@ test.describe("Overcurrent Analysis v1 -- Manual Input: Equipment Loading input 
     });
   }
 });
+
+test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only for the Recording input source", () => {
+  // The field only describes recorded data: Manual -> Direct Current has
+  // its own Primary/Secondary basis and Manual -> Equipment Loading is
+  // always primary. Hidden as a whole (label + select), never removed;
+  // the selection survives a Manual round trip. CT visibility rules are
+  // unchanged (wwOvercurrentCtFieldsNeeded()).
+
+  async function setField(page, selector, value) {
+    const input = page.locator(selector);
+    await input.fill(String(value));
+    await input.dispatchEvent("change");
+    await input.blur();
+  }
+
+  test("visible in Recording, hidden in both Manual methods, restored with the selected basis on return", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const field = page.locator("#wwOvercurrentBasisField");
+    const select = page.locator("#wwOvercurrentBasisSelect");
+    await expect(field).toBeVisible();
+    await expect(field).toContainText("Recording current basis");
+    await select.selectOption("primary");
+    await setField(page, "#wwOvercurrentCtPrimaryInput", "1000");
+    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/40\.0\s*A primary/);
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentInputMethodDirectBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(field).toBeHidden();
+    await expect(select).toBeHidden();
+
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expect(page.locator("#wwOvercurrentManualLoadingFields")).toBeVisible();
+    await expect(field).toBeHidden();
+    await expect(select).toBeHidden();
+    await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
+    await expect(field).toBeHidden();
+
+    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
+    await expect(field).toBeVisible();
+    await expect(select).toHaveValue("primary");
+    expect(await page.evaluate(() => wwOvercurrentState.settings.recordingBasis)).toBe("primary");
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible();
+    // Recording-mode result is unchanged: 40 A primary through 1000:1.
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A primary/);
+      expect(text).toMatch(/0\.0(4|40)\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("CT fields keep their existing rules in both Manual methods while the basis field is hidden", async ({ page }) => {
+    await page.goto("/index.html");
+    await openAnalysisOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+
+    const field = page.locator("#wwOvercurrentBasisField");
+    const ctPrimary = page.locator("#wwOvercurrentCtPrimaryField");
+    const ctSecondary = page.locator("#wwOvercurrentCtSecondaryField");
+
+    // Direct Current, Primary (default) -> CT needed.
+    await expect(field).toBeHidden();
+    await expect(page.locator("#wwOvercurrentManualBasisSelect")).toHaveValue("primary");
+    await expect(ctPrimary).toBeVisible();
+    await expect(ctSecondary).toBeVisible();
+
+    // Direct Current, Secondary (Recording basis still its default
+    // Secondary) -> no CT needed.
+    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
+    await expect(ctPrimary).toBeHidden();
+    await expect(ctSecondary).toBeHidden();
+    await expect(field).toBeHidden();
+
+    // Equipment Loading is always primary -> CT needed.
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expect(field).toBeHidden();
+    await expect(ctPrimary).toBeVisible();
+    await expect(ctSecondary).toBeVisible();
+
+    // The hidden select keeps its value untouched throughout.
+    await expect(page.locator("#wwOvercurrentBasisSelect")).toHaveValue("secondary");
+  });
+});

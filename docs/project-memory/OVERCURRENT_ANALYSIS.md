@@ -1627,6 +1627,46 @@ unchanged, per change governance):
    therefore repaint the previous result after the field was made invalid.
    Equipment Loading does not have this race.
 
+## Recording current basis shown only for the Recording input source (2026-10-16)
+
+Owner requirement (UI refinement). The **Recording current basis**
+field in the shared Settings grid describes recorded data only, so it is
+shown only while Recording is the Input Source:
+
+| Input Source | Input Method      | Recording current basis |
+|--------------|-------------------|-------------------------|
+| Recording    | —                 | Visible                 |
+| Manual       | Direct Current    | Hidden                  |
+| Manual       | Equipment Loading | Hidden                  |
+
+Direct Current has its own Primary/Secondary basis, and Equipment Loading
+always yields a primary current, so neither needs it.
+
+- The `<label id="wwOvercurrentBasisField">` (label and select together)
+  gets the `hidden` attribute from the existing
+  `wwOvercurrentUpdateRecordingSectionVisibility()`. That is the same
+  function that gates `#wwOvercurrentRecordingSection`, so it runs on
+  every input-source change, on reset and on init. No new CSS: the
+  existing `.ww-phasor-field[hidden]` rule applies.
+- The control is hidden, never removed. `settings.recordingBasis` and
+  the select's value are untouched, so the selection survives a Manual
+  round trip and Recording mode behaves exactly as before.
+- CT field visibility (`wwOvercurrentCtFieldsNeeded()`), pickup, TMS,
+  the IEC curves, CT conversion, the operating time and the chart are
+  unchanged.
+
+Tests: `test_recording_basis_field_follows_the_recording_input_source_gate`
+(static), and the "Recording current basis is shown only for the
+Recording input source" block in `browser-tests/overcurrent_analysis.spec.js`.
+
+**`[OPEN]` (pre-existing, left unchanged by instruction):**
+`wwOvercurrentCtFieldsNeeded()` still ORs in `settings.recordingBasis`
+in every mode. If Recording's basis was set to Primary, the CT fields
+therefore stay visible in Manual → Direct Current with a Secondary
+basis. Now that the Recording basis is hidden there, the engineer
+cannot see why the CT fields are shown. Should the Recording term apply
+only while Recording is active?
+
 ## Not yet implemented (future slices)
 
 - **ANSI/IEEE curves** (C37.112 and its own distinct constants).
