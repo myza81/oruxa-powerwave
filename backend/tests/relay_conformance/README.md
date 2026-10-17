@@ -169,3 +169,26 @@ The suite checks that:
 Samples:
 - `rel511--closed-region` -- forward Z1 bounded by the lower limit, reverse Z2 by the left line;
 - `rel511--wide-sector` -- the refused 220 deg sector.
+
+## Shadow tilted upper reactance limits (DEC-199 Phase 2D)
+
+When a catalog declares a `reactance_upper` boundary, each zone record holds `tilt`:
+- `x_at_reference`, `tilt_deg`, the frame, the unit and the fidelity;
+- the source row with its raw value, the transform, references and the equation;
+- `null` if it is not derived.
+
+The tilted limit is added *alongside* the zone's plain horizontal top, never in its place, so `represented` gains
+`"tilt"` without changing `"top"` or `not_represented`. A zone with no verified left resistive boundary (e.g. 7SL87)
+is never fully assembled, but its tilt boundary is still derived and recorded on its own.
+
+The golden adds:
+- `tilt_points` -- on the tilted line at R = 0 (the pivot), 0.25 and 0.5 x the X reach;
+- `tilt_probes` -- just inside (below) / outside (above) each point, checked against the tilted half-plane alone.
+
+The existing resistive `probes` and their `inside()` membership also apply the tilt constraint for R >= 0, so a
+probe near the top that was inside before a non-zero tilt can correctly become outside -- the golden recomputes
+this every time, it is never hand-patched.
+
+Samples:
+- `7sa613--zone-reduction-10` -- a non-zero Zone 1 tilt, now assembled;
+- `7sl87--tilt-5` / `--tilt-blank` / `--tilt-malformed` -- the tilt boundary alone, derived / blank / unreadable.

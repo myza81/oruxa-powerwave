@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "siemens-siprotec5-7sl87-catalog",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "lifecycle": "active",
   "profile_id": "siemens-siprotec5-7sl87",
   "registry_version": "1.1.0",
-  "description": "Siemens SIPROTEC 5 7SL87 distance zones (function '21 Distance prot.1', zones Z1..Zn) as a DIGSI 5 setting sheet prints them, with the DIGSI address written inside each setting name (21.901.357n.xxx). Catalog-only. Configured settings: per-zone Mode (status), Directional mode, Function mode (loops), X reach, R (ph-g), Zone-inclination angle (tilt), zone-specific Kr / Kx, the CT / VT ratings, the Edit-mode basis and the line data. Documented relay behaviour (DEC-198, Siemens C53000-G5040-C011-9, V07.50, version-dependent for the 7SL87_8.81 sheet): the quadrilateral characteristic of every enabled zone stated with the quadrilateral parameter set (no selector exists), R (ph-ph) / R (ph-g) as per-phase values, and the operate-delay loop assignment. Source-data gaps: the operating-delay setting cells on the sheet are blank (Infinity is printed in the range column), so every delay is Missing. Not representable (blocking): the resistance boundary inclined at the distance characteristic angle (exact relation preserved; no vertical +R mapped unless the angle is 90 deg) and the left / directional boundary. Not yet verified (blocking while in use): the phase-phase load cutout's effect on the zone.",
+  "description": "Siemens SIPROTEC 5 7SL87 distance zones (function '21 Distance prot.1', zones Z1..Zn) as a DIGSI 5 setting sheet prints them, with the DIGSI address written inside each setting name (21.901.357n.xxx). Catalog-only. Configured settings: per-zone Mode (status), Directional mode, Function mode (loops), X reach, R (ph-g), Zone-inclination angle (tilt), zone-specific Kr / Kx, the CT / VT ratings, the Edit-mode basis and the line data. Documented relay behaviour (DEC-198, Siemens C53000-G5040-C011-9, V07.50, version-dependent for the 7SL87_8.81 sheet): the quadrilateral characteristic of every enabled zone stated with the quadrilateral parameter set (no selector exists), R (ph-ph) / R (ph-g) as per-phase values, and the operate-delay loop assignment. Source-data gaps: the operating-delay setting cells on the sheet are blank (Infinity is printed in the range column), so every delay is Missing. Not representable (blocking): the resistance boundary inclined at the distance characteristic angle (exact relation preserved; no vertical +R mapped unless the angle is 90 deg) and the left / directional boundary. A non-zero Zone-inclination angle tilt is also exact-relation-preserved -- since 1.2.0 derived as a canonical tilted upper reactance boundary in SHADOW mode only, per zone, added alongside the zone's plain top (DEC-199 Phase 2D; production unchanged). A full shadow zone cannot yet be assembled for any 7SL87 zone: the left resistive boundary is not established from verified sources (see above), so `assemble_zone` is never called for this catalog. Not yet verified (blocking while in use): the phase-phase load cutout's effect on the zone.",
   "applicability": {
     "manufacturer": "Siemens",
     "family": "SIPROTEC 5",
@@ -50,6 +50,15 @@
      "document": "Siemens C53000-G5040-C011-9 (V07.50, Edition 11.2017)",
      "section": "6.6.5.1-6.6.5.2 Impedance pickup: load cutout (Fig. 6-106)", "page": "504-508",
      "scope": "SIPROTEC 5 distance protection with classic method. The owner sheet is scheme 7SL87_8.81: applicability by matching function and parameter structure, version-dependent; not a firmware-version match."}
+  ],
+  "boundaries": [
+    {"id": "7sl87.boundary.tilt", "zone": "*", "kind": "reactance_upper", "frame": "zone",
+     "x_at_reference": {"source": {"name": "21.901.357{n}.102 X reach", "unit": "ohm"}},
+     "tilt_deg": {"source": {"name": "21.901.357{n}.113 Zone-inclination angle", "unit": "deg"}, "range": [0, 45]},
+     "requires": [{"source": {"name": "21.901.357{n}.1 Mode", "allowed_text": ["on", "off", "test"]}, "equals": ["on"]}],
+     "fidelity": "documented", "references": ["siemens-c53000-g5040-c011-9-quad"],
+     "equation": "X(R) = X reach - R * tan(Zone-inclination angle) for R >= 0, added alongside the plain top X <= X reach (Siemens C53000-G5040-C011-9, 6.6.15.6: 'the limit of the X setting for Zone 1 is inclined downwards by the zone inclination'; the parameter is per-zone)",
+     "canonical": "zones[{zone}].tilt_deg"}
   ],
   "source_notes": [
     {

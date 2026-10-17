@@ -153,9 +153,10 @@ _FIDELITY_ORDER = ("exact", "documented", "static_equivalent")
 
 
 def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -> dict[str, Any] | None:
-    """DEC-199 Phase 2A / 2B / 2C, SHADOW ONLY: the catalog's canonical boundaries for this document and, per zone, the V2
-    assembly beside the production (V1) classification. ``None`` when the catalog declares no boundary. A zone whose
-    catalog declares directional boundaries or a lower reactance limit is assembled only when all of them are derived.
+    """DEC-199 Phase 2A / 2B / 2C / 2D, SHADOW ONLY: the catalog's canonical boundaries for this document and, per
+    zone, the V2 assembly beside the production (V1) classification. ``None`` when the catalog declares no boundary.
+    A zone whose catalog declares directional, lower or upper (tilted) boundaries is assembled only when all of them
+    are derived -- never defaulted (e.g. no ArgDir / ArgNegRes, no Zone Reduction value on the sheet).
 
     An assembled zone states two separate things: ``shadow_geometry`` ``exact`` -- the region is the documented relations
     represented exactly -- and ``relay_behaviour_fidelity``, the weakest fidelity of its boundaries (exact > documented >
@@ -176,16 +177,20 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
     out: dict[str, Any] = {"unresolved": [list(u) for u in run.unresolved], "zones": {}}
     directional_specs = [s for s in catalog.boundaries if s.kind == "directional"]
     lower_specs = [s for s in catalog.boundaries if s.kind == "reactance_lower"]
+    upper_specs = [s for s in catalog.boundaries if s.kind == "reactance_upper"]
 
     def sources(b) -> list:
         return [[x.role, " ".join(v for v in (x.code, x.name) if v), x.raw_value, x.unit] for x in b.provenance.sources]
 
-    for zone_id in sorted({b.zone_id for b in run.boundaries}):
+    zone_ids = {b.zone_id for b in (*run.boundaries, *run.directional, *run.lower, *run.upper)}
+    for zone_id in sorted(zone_ids):
         edges = [b for b in run.boundaries if b.zone_id == zone_id]
         rays = [b for b in run.directional if b.zone_id == zone_id]
         declared = [s for s in directional_specs if "*" in s.zones or zone_id in s.zones]
         lowers = [b for b in run.lower if b.zone_id == zone_id]
         declared_lower = [s for s in lower_specs if "*" in s.zones or zone_id in s.zones]
+        uppers = [b for b in run.upper if b.zone_id == zone_id]
+        declared_upper = [s for s in upper_specs if "*" in s.zones or zone_id in s.zones]
         record: dict[str, Any] = {"production_geometry": zones.get(zone_id, {}).get("geometry"), "edges": {}}
         for b in edges:
             record["edges"][b.side.value] = {
@@ -209,13 +214,21 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
                     "canonical_path": b.provenance.canonical_path, "sources": sources(b), "transform": b.provenance.transform,
                     "references": list(b.provenance.reference_ids), "equation": b.provenance.equation,
                 }
+        if declared_upper:
+            # DEC-199 Phase 2D: the tilted upper limit, added alongside the plain top, with its own pivot and tilt
+            record["tilt"] = None
+            for b in uppers[:1]:
+                record["tilt"] = {
+                    "x_at_reference": b.x_at_reference, "tilt_deg": b.tilt_deg, "frame": b.frame.value, "unit": b.unit,
+                    "fidelity": b.fidelity, "canonical_path": b.provenance.canonical_path, "sources": sources(b),
+                    "transform": b.provenance.transform, "references": list(b.provenance.reference_ids),
+                    "equation": b.provenance.equation,
+                }
         zone = model.zone(zone_id) if model else None
-        x, tilt, direction = (zone.x_reach_ohm, zone.tilt_deg, zone.direction) if zone else (None, None, None)
+        x, direction = (zone.x_reach_ohm, zone.direction) if zone else (None, None)
         reason = None
         if not (x is not None and x.is_resolved):
             reason = "the reactance limit (X) is not resolved"
-        elif tilt is not None and (tilt.is_resolved and tilt.value != 0.0 or not tilt.is_resolved and tilt.provenance.sources):
-            reason = "a non-zero or unread top-line tilt is not represented in Phase 2A"
         elif not (direction and direction.is_resolved and str(getattr(direction.value, "value", direction.value)) in ("forward", "reverse")):
             reason = "the zone direction is not forward / reverse"
         elif {e.side for e in edges} != {BoundarySide.RIGHT, BoundarySide.LEFT}:
@@ -224,12 +237,14 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
             reason = "the directional boundaries are not derived (the catalog declares them for this zone)"
         elif len(lowers) != len(declared_lower):
             reason = "the lower reactance limit is not derived (the catalog declares it for this zone)"
+        elif len(uppers) != len(declared_upper):
+            reason = "the tilted upper reactance boundary is not derived (the catalog declares it for this zone)"
         assembled = None
         if not reason:
             d = str(getattr(direction.value, "value", direction.value))
             try:
                 assembled = assemble_zone(zone_id, x_reach_ohm=x.value, direction=d, boundaries=tuple(edges), directional=tuple(rays),
-                                          lower=lowers[0] if lowers else None)
+                                          lower=lowers[0] if lowers else None, upper=uppers[0] if uppers else None)
             except ValueError as exc:
                 reason = str(exc)
         if reason:
@@ -239,7 +254,7 @@ def shadow_geometry(pdf: bytes, catalog_id: str | None, zones: dict[str, Any]) -
             # relay behaviour is its own `fidelity` (e.g. static_equivalent)
             record.update({"shadow_geometry": "exact", "direction": d, "top": {"x_reach_ohm": x.value, "canonical_path": f"zones[{zone_id}].x_reach_ohm"},
                            "represented": list(assembled.represented), "not_represented": list(assembled.not_represented),
-                           "relay_behaviour_fidelity": max((b.fidelity for b in (*edges, *rays, *lowers)), key=_FIDELITY_ORDER.index)})
+                           "relay_behaviour_fidelity": max((b.fidelity for b in (*edges, *rays, *lowers, *uppers)), key=_FIDELITY_ORDER.index)})
         out["zones"][zone_id] = record
     return out
 

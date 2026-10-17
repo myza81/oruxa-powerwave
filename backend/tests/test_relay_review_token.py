@@ -120,7 +120,7 @@ class TestToken:
         assert payload["schema"] == TOKEN_SCHEMA and payload["import_id"] == sl87["import_id"]
         assert payload["expires_at"] - payload["issued_at"] == 24 * 3600
         assert payload["knowledge"] == current_relay_knowledge("siemens-siprotec5-7sl87")
-        assert payload["knowledge"]["catalog"]["version"] == "1.1.0" and len(payload["knowledge"]["catalog"]["digest"]) == 64
+        assert payload["knowledge"]["catalog"]["version"] == "1.2.0" and len(payload["knowledge"]["catalog"]["digest"]) == 64
 
     def test_a_round_trip_returns_the_sealed_interpretation(self):
         model = TEST_SIGNER.verify(seal(_model()), import_id=TEST_IMPORT_ID, knowledge_for=sealed_knowledge_for)
@@ -245,7 +245,7 @@ class TestBinding:
 
     def test_a_catalog_change_after_upload_invalidates_the_review(self, client, sl87, monkeypatch):
         changed = {**current_relay_knowledge("siemens-siprotec5-7sl87")}
-        changed["catalog"] = {**changed["catalog"], "version": "1.2.0"}
+        changed["catalog"] = {**changed["catalog"], "version": "9.9.9"}            # deliberately not the shipped version
         monkeypatch.setattr("app.services.relay_review_validation.current_relay_knowledge", lambda _pid: changed)
         assert refused(client.post(VALIDATE, json={"validation_token": sl87["validation_token"], "import_id": sl87["import_id"]}))
         assert refused(client.post(APPLY, json={"validation_token": sl87["validation_token"], "import_id": sl87["import_id"]}))

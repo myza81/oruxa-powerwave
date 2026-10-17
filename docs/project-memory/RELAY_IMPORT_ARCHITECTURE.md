@@ -1899,3 +1899,33 @@ static phase-phase region is closed.
 
 **Union support remains intentionally deferred** until a real documented relay configuration requires it. A directional
 sweep of 180 deg or more stays a refused assembly with its provenance kept (`rel511--wide-sector`).
+
+### Phase 2D: canonical tilted upper reactance boundary (DEC-199 Amendment 5)
+
+**Inclined upper-reactance boundaries are now a first-class V2 primitive where OEM tilt convention is independently
+verified.** 7SA613 and 7SL87 are the first verified cases; production remains on V1.
+
+| Piece | Location | Role |
+|---|---|---|
+| Tilted upper limit | `app/domain/distance_boundaries.py` `TiltedReactanceBoundary` | `X <= x_at_reference - R*tan(tilt_deg)` for all R; added alongside the plain horizontal top, never in its place |
+| Assembly | `assemble_zone(..., upper=...)` | Intersecting both half-planes reproduces "inclined ... in the 1st quadrant" without quadrant-conditional logic |
+| Catalog section | `boundaries` `kind: reactance_upper` (`x_at_reference {source}`, `tilt_deg {source, range}`) | Shadow only |
+| Goldens | `shadow_golden.py` `tilt`, `tilt_points`, `tilt_probes` | From the plain line equation; the existing resistive probes also pick up the tilt automatically |
+
+**The line.** Through `(0, x_at_reference)` on the X axis, retaining `X <= x_at_reference - R*tan(tilt_deg)`
+(`-90 < tilt_deg < 90`). At `tilt_deg = 0` this is bit-exact `HalfPlane(0, 1, x_at_reference)` -- the same half-plane
+`assemble_zone` already builds for the plain top, not a separate case. The boundary is **added alongside** the
+horizontal top: for R >= 0 the tilted line is the tighter constraint (reproducing the manuals' "1st quadrant" scope);
+for R < 0 the horizontal one stays tighter -- no quadrant conditional in the kernel.
+
+**7SA613 (catalog 1.3.0), Zone 1 only.** `x_at_reference = X(Z1)`, `tilt_deg = Zone Reduction` (range 0-45 deg;
+Siemens C53000-G1176-C156-7, 2.2.2.2: *"Parameter 1307 Zone Reduction allows an inclination of the upper limit of
+zone Z1 in the 1st quadrant"*). Z1B and the higher zones have no such tilt (manual, both generations). A non-zero
+tilt stays `TILT_UNSUPPORTED` in production; shadow geometry is now `exact` for it.
+
+**7SL87 (catalog 1.2.0), every zone.** `x_at_reference = X reach`, `tilt_deg = Zone-inclination angle` (per zone,
+range 0-45 deg; Siemens C53000-G5040-C011-9, 6.6.15.6: *"the limit of the X setting for Zone 1 is inclined downwards
+by the zone inclination"*). 7SL87 has no verified left resistive boundary (DEC-198), so no full shadow zone can be
+assembled for it yet; the tilt boundary alone is still derived and verified against independent goldens.
+
+Neither relay's convention was inferred from the other -- each is cited to its own accepted manual text.

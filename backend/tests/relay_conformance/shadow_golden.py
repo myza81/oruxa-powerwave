@@ -1,14 +1,16 @@
-"""Independent engineering goldens for shadow (V2) canonical boundaries (DEC-199 Phase 2A / 2B / 2C).
+"""Independent engineering goldens for shadow (V2) canonical boundaries (DEC-199 Phase 2A / 2B / 2C / 2D).
 
-V1 cannot draw an inclined resistive edge, a directional line or a lower reactance limit, so V1 is not the truth source
-here. Each golden is computed from the documented relations only, using plain arithmetic -- never the V2 kernel, its
-half-plane normals or the boundary compiler:
+V1 cannot draw an inclined resistive edge, a directional line, a lower reactance limit or a tilted upper reactance
+limit, so V1 is not the truth source here. Each golden is computed from the documented relations only, using plain
+arithmetic -- never the V2 kernel, its half-plane normals or the boundary compiler:
 
 * resistive edges: ``R(X) = r_at_axis + X / tan(angle)`` with the zone's X reach (``X <= X reach``);
 * directional lines (Phase 2B): a ray at its canonical angle; membership is the documented angular condition on
   ``arg(Z) = atan2(X, R)`` -- the counter-clockwise sweep from the counter-clockwise-retained ray to the point is no more
   than the sweep to the clockwise-retained ray (one ray alone: the point is within 180 deg on its retained side);
-* lower reactance limit (Phase 2C): ``X >= -x_minus``.
+* lower reactance limit (Phase 2C): ``X >= -x_minus``;
+* tilted upper reactance limit (Phase 2D): ``X <= x_at_reference - R * tan(tilt_deg)`` for ``R >= 0`` only (the plain
+  top ``X <= x_reach_ohm`` stays the binding constraint for R < 0; see `app.domain.distance_boundaries`).
 
 Per assembled zone::
 
@@ -24,17 +26,22 @@ Per assembled zone::
     lower                 (Phase 2C, a zone with a lower limit only) x_minus
     lower_points          [[R, X], ...] on X = -x_minus at 0.25, 0.5 and 0.75 across the resistive band there
     lower_probes          [[R, X, 0|1], ...] just above (1) / below (0) each lower point: the lower limit's own side
+    tilt                  (Phase 2D, a zone with a tilted upper limit only) {x_at_reference, tilt_deg}
+    tilt_points           [[R, X], ...] on the tilted line at R = 0 (the pivot), 0.25 and 0.5 x the X reach
+    tilt_probes           [[R, X, 0|1], ...] just inside (below, 1) / outside (above, 0) each tilt point: the tilted
+                          limit's own side
     closed                true when top, lower, right and left are all present (a bounded region)
     active                the boundaries with a stretch on the region's outline, found by sampling each documented
                           line for points that satisfy every other relation with a clearance of 3 probe offsets
     boundary_probes       [[label, R, X, 0|1], ...] -- for each active boundary one point a probe offset inside
                           ("inside_<b>") and one outside ("beyond_<b>"), stepped off that sampled point (vertically for
-                          top / lower, horizontally for an edge, by angle for a ray); 0|1 from the documented relations
+                          top / lower, horizontally for an edge, by angle for a ray, or for the tilted upper limit);
+                          0|1 from the documented relations
 
-A resistive probe closer than a quarter of the probe offset to a directional line, and a directional probe that close
-to any documented line, is dropped (its side would be decided by rounding). A reverse zone's points are reflected
-through the origin once (its boundaries are stated in the zone frame). Values are rounded to 9 decimals; a probe offset
-is 1 % of the X reach.
+A resistive probe closer than a quarter of the probe offset to a directional line or the tilted upper limit, and a
+directional probe that close to any documented line, is dropped (its side would be decided by rounding). A reverse
+zone's points are reflected through the origin once (its boundaries are stated in the zone frame). Values are rounded
+to 9 decimals; a probe offset is 1 % of the X reach.
 """
 
 from __future__ import annotations
@@ -51,6 +58,8 @@ RAY_PROBE_DEG = 2.0
 #: Representative directions (deg from +R) at 0.2 x the X reach: first quadrant, +X, negative R, -X, third quadrant.
 REPRESENTATIVE_DEG = (30.0, 60.0, 90.0, 100.0, 150.0, 180.0, -90.0, -135.0)
 LOWER_FRACTIONS = (0.25, 0.5, 0.75)
+#: Fractions of the X reach at which a tilt point / probe is placed (R >= 0, the tilt's documented scope).
+TILT_FRACTIONS = (0.0, 0.25, 0.5)
 #: Samples per documented line when looking for a stretch of the region's outline.
 LINE_SAMPLES = 401
 
@@ -69,9 +78,16 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
     sign = -1.0 if zone["direction"] == "reverse" else 1.0
     rays = {side: ray["angle_deg"] for side, ray in (zone.get("directional") or {}).items()}
     xm = (zone.get("lower") or {}).get("x_minus")
+    tilt = zone.get("tilt")
 
     def edge(x: float) -> tuple[float, float]:
         return right["r_at_axis"] + x * cot, left["r_at_axis"] + x * cot
+
+    def tilt_x(r: float) -> float | None:
+        """X on the tilted upper limit at R, or None where it does not apply (R < 0, or no tilt declared)."""
+        if tilt is None or r < 0.0:
+            return None
+        return tilt["x_at_reference"] - r * math.tan(math.radians(tilt["tilt_deg"]))
 
     def in_sector(r: float, x: float, sides: dict[str, float]) -> bool:
         phi = math.degrees(math.atan2(x, r))
@@ -86,7 +102,9 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
 
     def inside(r: float, x: float) -> int:
         rr, rl = edge(x)
-        return int(rl <= r <= rr and x <= xr and (xm is None or x >= -xm) and in_sector(r, x, rays))
+        tx = tilt_x(r)
+        ok = rl <= r <= rr and x <= xr and (xm is None or x >= -xm) and in_sector(r, x, rays)
+        return int(ok and (tx is None or x <= tx))
 
     def gaps(r: float, x: float) -> dict[str, float]:
         """The signed distance to each documented line, positive on the retained side (sample selection only)."""
@@ -94,15 +112,18 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
         out = {"top": xr - x, "right": (rr - r) * math.sin(a), "left": (r - rl) * math.sin(a)}
         if xm is not None:
             out["lower"] = x + xm
+        tx = tilt_x(r)
+        if tx is not None:
+            out["tilt"] = tx - x
         for side, t in rays.items():
             cross = -math.sin(math.radians(t)) * r + math.cos(math.radians(t)) * x
             out[side] = cross if side == "counter_clockwise" else -cross
         return out
 
-    def clear(r: float, x: float, resistive: bool = True) -> bool:
+    def clear(r: float, x: float, lines: list[str] | None = None) -> bool:
         d = gaps(r, x)
-        lines = list(d) if resistive else list(rays)
-        return not lines or min(abs(d[k]) for k in lines) >= 0.25 * PROBE_FRACTION * xr
+        keys = list(d) if lines is None else [k for k in lines if k in d]
+        return not keys or min(abs(d[k]) for k in keys) >= 0.25 * PROBE_FRACTION * xr
 
     delta = PROBE_FRACTION * xr
     probes = []
@@ -116,7 +137,7 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "x_reach_ohm": xr, "cot": _r(cot), "direction": zone["direction"],
         "edge_points": [[_r(sign * f * xr), _r(sign * edge(f * xr)[0]), _r(sign * edge(f * xr)[1])] for f in FRACTIONS],
-        "probes": [[_r(sign * r), _r(sign * x), inside(r, x)] for r, x in probes if clear(r, x, resistive=False)],
+        "probes": [[_r(sign * r), _r(sign * x), inside(r, x)] for r, x in probes if clear(r, x, lines=["tilt", *rays])],
     }
 
     def polar(t: float, rho: float) -> tuple[float, float]:
@@ -129,6 +150,12 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
         out["directional"] = {side: rays[side] for side in sorted(rays)}
         out["directional_points"] = [[side, _r(sign * r), _r(sign * x)] for side, r, x in points]
         out["directional_probes"] = [[_r(sign * r), _r(sign * x), inside(r, x)] for r, x in candidates if clear(r, x)]
+    if tilt is not None:
+        pts = [(f * xr, tilt_x(f * xr)) for f in TILT_FRACTIONS]
+        out["tilt"] = {"x_at_reference": tilt["x_at_reference"], "tilt_deg": tilt["tilt_deg"]}
+        out["tilt_points"] = [[_r(sign * r), _r(sign * x)] for r, x in pts]
+        # moving the point down (s = -1) goes inside the upper limit; up (s = +1) goes outside
+        out["tilt_probes"] = [[_r(sign * r), _r(sign * (x + s * delta)), int(s < 0)] for r, x in pts for s in (1, -1)]
     if xm is None:
         return out
 

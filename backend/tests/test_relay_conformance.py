@@ -51,7 +51,7 @@ from tests.relay_conformance.harness import (
     sample_pdf,
     upload,
 )
-from app.domain.distance_geometry import TOLERANCE_OHM
+from app.domain.distance_geometry import TOLERANCE_OHM, HalfPlane
 from app.domain.distance_geometry_compat import compile_v1_zone
 from tests.relay_api_helpers import client  # noqa: F401
 from tests.relay_conformance.golden import grid_points, v1_golden, zone_settings
@@ -285,10 +285,20 @@ def shadow_zones(expectation: dict, pdf: bytes) -> dict:
             edges = tuple(b for b in run.boundaries if b.zone_id == zone_id)
             rays = tuple(b for b in run.directional if b.zone_id == zone_id)
             lower = next((b for b in run.lower if b.zone_id == zone_id), None)
-            out[zone_id] = (edges + rays + ((lower,) if lower else ()),
+            upper = next((b for b in run.upper if b.zone_id == zone_id), None)
+            out[zone_id] = (edges + rays + ((lower,) if lower else ()) + ((upper,) if upper else ()),
                             assemble_zone(zone_id, x_reach_ohm=z["top"]["x_reach_ohm"], direction=z["direction"],
-                                          boundaries=edges, directional=rays, lower=lower))
+                                          boundaries=edges, directional=rays, lower=lower, upper=upper))
     return out
+
+
+def _plane_key(b) -> str:
+    """Which golden key a live boundary's half-plane belongs under (DEC-199 Phase 2A-2D, by shape, not isinstance)."""
+    if hasattr(b, "side"):
+        return b.side                                     # ResistiveBoundary: "right" | "left"
+    if hasattr(b, "retained_side"):
+        return b.retained_side                             # DirectionalBoundary: "counter_clockwise" | "clockwise"
+    return "lower" if hasattr(b, "x_minus") else "tilt"    # ReactanceLowerBoundary | TiltedReactanceBoundary
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTATIONS))
@@ -307,8 +317,7 @@ def test_the_shadow_v2_geometry_reproduces_the_engineering_golden(name):
     assert set(assembled) == set(e["shadow_golden"])
     for zone_id, golden in e["shadow_golden"].items():
         boundaries, zone = assembled[zone_id]
-        planes = {getattr(b, "side", None) or getattr(b, "retained_side", None) or "lower": b.half_plane(golden["direction"])
-                  for b in boundaries}
+        planes = {_plane_key(b): b.half_plane(golden["direction"]) for b in boundaries}
         for x, r_right, r_left in golden["edge_points"]:               # every golden edge point lies on the V2 edge
             assert abs(planes["right"].signed_distance(r_right, x)) <= TOLERANCE_OHM, (zone_id, x, "right")
             assert abs(planes["left"].signed_distance(r_left, x)) <= TOLERANCE_OHM, (zone_id, x, "left")
@@ -323,6 +332,16 @@ def test_the_shadow_v2_geometry_reproduces_the_engineering_golden(name):
             assert abs(planes["lower"].signed_distance(r, x)) <= TOLERANCE_OHM, (zone_id, r, x)
         for r, x, above in golden.get("lower_probes", ()):
             assert planes["lower"].contains(r, x) is bool(above), (zone_id, r, x)
+        # DEC-199 Phase 2D: the tilted upper limit on its own -- at tilt_deg = 0 it is exactly the plain horizontal top
+        assert ("tilt" in planes) is ("tilt" in golden)
+        for r, x in golden.get("tilt_points", ()):
+            assert abs(planes["tilt"].signed_distance(r, x)) <= TOLERANCE_OHM, (zone_id, r, x)
+        for r, x, below in golden.get("tilt_probes", ()):
+            assert planes["tilt"].contains(r, x) is bool(below), (zone_id, r, x)
+        if "tilt" in golden and golden["tilt"]["tilt_deg"] == 0.0:
+            # 0 deg degenerates to exactly the plain horizontal top (DEC-199 Phase 2D, requirement 4)
+            top_direction = -1.0 if golden["direction"] == "reverse" else 1.0
+            assert planes["tilt"] == HalfPlane(0.0, top_direction, golden["tilt"]["x_at_reference"], planes["tilt"].meta)
         for label, r, x, inside in golden.get("boundary_probes", ()):
             assert zone.characteristic.contains(r, x) is bool(inside), (zone_id, label, r, x)
         if golden.get("closed"):
@@ -361,18 +380,23 @@ def test_geometry_exactness_and_relay_behaviour_fidelity_stay_distinct(name):
     for zone_id, z in EXPECTATIONS[name]["shadow_geometry"]["zones"].items():
         if z["shadow_geometry"] != "exact":
             continue
-        parts = [*z["edges"].values(), *(z.get("directional") or {}).values(), *([z["lower"]] if z.get("lower") else [])]
+        parts = [*z["edges"].values(), *(z.get("directional") or {}).values(), *([z["lower"]] if z.get("lower") else []),
+                *([z["tilt"]] if z.get("tilt") else [])]
         assert z["relay_behaviour_fidelity"] == max((p["fidelity"] for p in parts), key=order.index), zone_id
 
 
 @pytest.mark.parametrize("name", SHADOW)
 def test_the_production_engine_still_holds_no_inclined_edge(name):
-    """Shadow geometry never changes production: V1 keeps an inclined edge unresolved (Not yet supported)."""
+    """Shadow geometry never changes production: V1 keeps an inclined edge, and a non-zero tilt, unresolved (Not yet
+    supported) -- DEC-199 Phase 2D adds no readiness, blocker, Apply or plot change."""
     e = EXPECTATIONS[name]
     for zone_id, z in e["shadow_geometry"]["zones"].items():
         for side, b in z["edges"].items():
             if b["angle_deg"] != 90.0:
                 assert e["values"].get(b["canonical_path"], [None, "unsupported"]) == [None, "unsupported"], (zone_id, side)
+        tilt = z.get("tilt")
+        if tilt and tilt["tilt_deg"] != 0.0:
+            assert e["values"].get(tilt["canonical_path"], [None, "unsupported"])[1] == "unsupported", zone_id
         assert z["production_geometry"] != "exact", zone_id
 
 

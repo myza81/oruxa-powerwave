@@ -333,8 +333,8 @@ class Applicability:
 
 @dataclass(frozen=True)
 class BoundarySpec:
-    """DEC-199 Phase 2A / 2B: a canonical zone boundary the catalog derives from settings, evaluated in SHADOW mode only
-    (never part of the canonical model, a review or readiness) (`app.domain.distance_boundaries`):
+    """DEC-199 Phase 2A / 2B / 2C / 2D: a canonical zone boundary the catalog derives from settings, evaluated in
+    SHADOW mode only (never part of the canonical model, a review or readiness) (`app.domain.distance_boundaries`):
 
     * ``kind`` "resistive" -- an inclined resistive edge ``R(X) = r_at_axis + X * cot(angle)``, with
       ``r_at_axis = r_sign * r_scale * source`` and the angle either ``angle_sign * source`` or
@@ -342,14 +342,16 @@ class BoundarySpec:
     * ``kind`` "directional" -- a half-plane through the origin along the ray at ``angle_sign * source`` degrees,
       keeping ``retained_side``. ``convention`` states how the source writes the angle when it is not the canonical one;
     * ``kind`` "reactance_lower" (Phase 2C) -- a lower reactance limit ``X >= -x_minus`` with ``x_minus`` the source
-      value as printed.
+      value as printed;
+    * ``kind`` "reactance_upper" (Phase 2D) -- a tilted upper reactance limit through ``(0, x_at_reference)``, with
+      ``tilt_deg = tilt_sign * source``, added *alongside* the zone's plain horizontal top (never in its place).
 
-    ``angle_range`` is the documented setting range of the *source* value: a value outside it is not derived (it would
-    mean the documented convention does not hold for that value)."""
+    ``angle_range`` / ``tilt_range`` is the documented setting range of the *source* value: a value outside it is not
+    derived (it would mean the documented convention does not hold for that value)."""
 
     id: str
     zones: tuple[str, ...]
-    kind: str                                         # resistive | directional | reactance_lower
+    kind: str                                         # resistive | directional | reactance_lower | reactance_upper
     frame: str                                        # zone | absolute
     angle_deg: Selector | None = None
     angle_sign: float = 1.0                           # +1 or -1: angle = sign * the source value
@@ -360,6 +362,10 @@ class BoundarySpec:
     r_sign: float = 1.0                               # +1 or -1
     r_scale: float = 1.0                              # a documented factor (e.g. 0.5 for half a loop reach)
     x_minus: Selector | None = None                   # reactance_lower: X >= -x_minus
+    x_at_reference: Selector | None = None            # reactance_upper: the X-axis crossing of the tilted line
+    tilt_deg: Selector | None = None                  # reactance_upper: the source of the tilt angle
+    tilt_sign: float = 1.0                            # +1 or -1: tilt_deg = sign * the source value
+    tilt_range: tuple[float, float] | None = None
     retained_side: str | None = None                  # directional: counter_clockwise | clockwise
     convention: str | None = None
     gates: tuple[Gate, ...] = ()

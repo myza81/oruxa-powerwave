@@ -361,16 +361,18 @@ def _source_notes(v: _Validator, raw: Any) -> tuple[ZoneNoteRule, ...]:
     return tuple(rules)
 
 
-_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "retained_side", "frame", "r_at_axis", "angle_deg", "x_minus", "requires",
-                  "fidelity", "references", "equation", "canonical", "convention"}
+_BOUNDARY_KEYS = {"id", "zone", "kind", "side", "retained_side", "frame", "r_at_axis", "angle_deg", "x_minus",
+                  "x_at_reference", "tilt_deg", "requires", "fidelity", "references", "equation", "canonical", "convention"}
 _BOUNDARY_FIDELITY = {"resistive": ("exact", "documented"), "directional": ("exact", "documented", "static_equivalent"),
-                      "reactance_lower": ("exact", "documented")}
+                      "reactance_lower": ("exact", "documented"), "reactance_upper": ("exact", "documented")}
 #: The keys only one kind of boundary has (any other kind refuses them).
-_KIND_ONLY = {"side": "resistive", "r_at_axis": "resistive", "retained_side": "directional", "x_minus": "reactance_lower"}
+_KIND_ONLY = {"side": "resistive", "r_at_axis": "resistive", "retained_side": "directional", "x_minus": "reactance_lower",
+             "x_at_reference": "reactance_upper", "tilt_deg": "reactance_upper"}
 
 
 def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tuple[Reference, ...]) -> tuple[BoundarySpec, ...]:
-    """DEC-199 Phase 2A / 2B / 2C: shadow canonical boundaries (``kind`` "resistive", "directional" or "reactance_lower")."""
+    """DEC-199 Phase 2A / 2B / 2C / 2D: shadow canonical boundaries (``kind`` "resistive", "directional",
+    "reactance_lower" or "reactance_upper")."""
     if raw is None:
         return ()
     if not isinstance(raw, list):
@@ -439,12 +441,38 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             x_sel = number(xm.get("source"), f"{path}.x_minus.source", "ohm")
             ok = ok and x_sel is not None
 
+        xref_sel, tilt_sel, tilt_sign, tilt_range = None, None, 1.0, None
+        if kind == "reactance_upper":
+            xref = item.get("x_at_reference")
+            if not isinstance(xref, dict) or set(xref) != {"source"}:
+                v.add(f"{path}.x_at_reference", IssueCode.MALFORMED, "x_at_reference needs a source (the line's X-axis crossing)")
+                ok, xref = False, {}
+            xref_sel = number(xref.get("source"), f"{path}.x_at_reference.source", "ohm")
+            ok = ok and xref_sel is not None
+            tilt = item.get("tilt_deg")
+            if (not isinstance(tilt, dict) or "source" not in tilt or set(tilt) - {"source", "sign", "range"}
+                    or tilt.get("sign", 1) not in (1, -1)):
+                v.add(f"{path}.tilt_deg", IssueCode.MALFORMED,
+                      "tilt_deg needs a source (with an optional sign of 1 or -1 and range)")
+                ok, tilt = False, {}
+            tilt_sel = number(tilt.get("source"), f"{path}.tilt_deg.source", "deg")
+            tilt_sign = float(tilt.get("sign", 1))
+            rng = tilt.get("range")
+            if rng is not None:
+                if (not isinstance(rng, list) or len(rng) != 2
+                        or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in rng) or rng[0] > rng[1]):
+                    v.add(f"{path}.tilt_deg.range", IssueCode.MALFORMED, "range is the documented [low, high] of the source value")
+                    ok = False
+                else:
+                    tilt_range = (float(rng[0]), float(rng[1]))
+            ok = ok and tilt_sel is not None
+
         a = item.get("angle_deg")
         a_sel = atan2 = a_range = None
         a_sign = 1.0
-        if kind == "reactance_lower":
+        if kind in ("reactance_lower", "reactance_upper"):
             if a is not None:
-                v.add(f"{path}.angle_deg", IssueCode.MALFORMED, "a lower reactance limit is horizontal: it has no angle")
+                v.add(f"{path}.angle_deg", IssueCode.MALFORMED, f"a {kind} boundary has its own angle field, not angle_deg")
                 ok = False
         elif (isinstance(a, dict) and kind == "resistive" and set(a) == {"atan2"} and isinstance(a["atan2"], dict)
                 and set(a["atan2"]) == {"x", "r"}):
@@ -490,6 +518,7 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             out.append(BoundarySpec(
                 id=bid, zones=targets, kind=kind, frame=item["frame"], angle_deg=a_sel, angle_sign=a_sign, angle_range=a_range,
                 angle_atan2=atan2, side=item.get("side"), r_at_axis=r_sel, r_sign=r_sign, r_scale=r_scale, x_minus=x_sel,
+                x_at_reference=xref_sel, tilt_deg=tilt_sel, tilt_sign=tilt_sign, tilt_range=tilt_range,
                 retained_side=item.get("retained_side"), convention=convention, gates=tuple(gates),
                 fidelity=item.get("fidelity", "documented"), references=tuple(cited), equation=item["equation"],
                 canonical=item.get("canonical"),

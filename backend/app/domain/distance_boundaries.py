@@ -1,9 +1,11 @@
-"""Canonical distance-zone boundaries (DEC-199 Phase 2A / 2B / 2C) -- SHADOW MODE.
+"""Canonical distance-zone boundaries (DEC-199 Phase 2A / 2B / 2C / 2D) -- SHADOW MODE.
 
 A relay-neutral description of a zone boundary, compiled into the V2 geometry kernel (`app.domain.distance_geometry`).
-Three boundary kinds -- an **inclined resistive edge** (Phase 2A), a **directional half-plane** through the origin
-(Phase 2B) and a **lower reactance limit** ``X >= -x_minus`` (Phase 2C) -- and the shadow assembly of a zone from them. It is not used by any production path: V1 (`app.domain.distance_protection`) stays authoritative for membership, readiness,
-Apply and the plot, and nothing here changes a review, a blocker or a readiness state.
+Four boundary kinds -- an **inclined resistive edge** (Phase 2A), a **directional half-plane** through the origin
+(Phase 2B), a **lower reactance limit** ``X >= -x_minus`` (Phase 2C) and a **tilted upper reactance limit** through a
+point on the X axis (Phase 2D) -- and the shadow assembly of a zone from them. It is not used by any production path:
+V1 (`app.domain.distance_protection`) stays authoritative for membership, readiness, Apply and the plot, and nothing
+here changes a review, a blocker or a readiness state.
 
 ## The inclined resistive edge
 
@@ -49,6 +51,25 @@ has no union. `assemble_zone` therefore refuses a sweep of 180 deg or more rathe
 ``reactance_lower(x_minus, frame)``: ``X >= -x_minus`` (ohms, ``x_minus >= 0``), the horizontal line ``x_minus`` below
 the R axis -- as a half-plane ``(0, -1) . (R, X) <= x_minus``. A ``zone`` limit is point-reflected for a reverse zone
 (``X <= x_minus`` in the absolute frame); an ``absolute`` one is not.
+
+## The tilted upper reactance limit (DEC-199 Phase 2D)
+
+``reactance_upper(x_at_reference, tilt_deg, frame)``: the straight line through the point ``(0, x_at_reference)`` on
+the X axis, retaining ``X <= x_at_reference - R * tan(tilt_deg)``. ``tilt_deg`` is the line's rotation from horizontal
+(degrees, ``-90 < tilt_deg < 90``); a positive value lowers the retained region as R increases. Multiplying by
+cos(tilt_deg) > 0:
+
+    (sin(tilt_deg), cos(tilt_deg)) . (R, X) <= x_at_reference * cos(tilt_deg)
+
+At ``tilt_deg = 0`` this is exactly the plain horizontal top ``HalfPlane(0, 1, x_at_reference)`` -- the same formula
+`assemble_zone` already uses for ``x_reach_ohm``, not a separate case.
+
+This boundary is **added alongside** the zone's existing horizontal top, never in its place: the two half-planes
+together, intersected, implement "inclined ... in the 1st quadrant" (the documented scope of every verified case)
+without any quadrant-conditional logic in the kernel -- for R >= 0 the tilted line is the tighter of the two and
+binds; for R < 0 the plain horizontal one is tighter and binds, exactly reproducing the horizontal top there. This
+requires the two boundaries to share the same X-axis crossing (``x_at_reference`` = the zone's own ``x_reach_ohm``);
+`assemble_zone` does not cross-check the two values (they are read from the same raw setting by construction).
 
 ``fidelity`` says how the boundary relates to **relay behaviour** (exact | documented | static_equivalent). It is
 distinct from the geometry, which represents the documented relation exactly in every case: a ``static_equivalent``
@@ -191,6 +212,50 @@ class ReactanceLowerBoundary:
         return hp
 
 
+@dataclass(frozen=True, slots=True)
+class TiltedReactanceBoundary:
+    """A tilted upper reactance limit through ``(0, x_at_reference)`` (see the module docstring for the equation and
+    why it is added alongside the horizontal top, never in its place)."""
+
+    zone_id: str
+    x_at_reference: float
+    tilt_deg: float
+    frame: BoundaryFrame
+    provenance: BoundaryProvenance
+    unit: str = "ohm"
+    #: exact | documented (an approximation is never a canonical boundary)
+    fidelity: str = "documented"
+
+    def __post_init__(self) -> None:
+        if not (math.isfinite(self.x_at_reference) and math.isfinite(self.tilt_deg)):
+            raise ValueError("a tilted reactance limit needs a finite axis crossing and tilt")
+        if not -90.0 < self.tilt_deg < 90.0:
+            raise ValueError("a tilted reactance limit's tilt must lie strictly between -90 and 90 degrees")
+        if not isinstance(self.frame, BoundaryFrame):
+            raise ValueError("a tilted reactance limit states its frame")
+        if self.unit != "ohm":
+            raise ValueError("a tilted reactance limit is stated in ohms")
+        if self.fidelity not in ("exact", "documented"):
+            raise ValueError("a canonical boundary is exact or documented, never approximate")
+
+    def x_at(self, r: float) -> float:
+        """X on the line at resistance R: x_at_reference - R * tan(tilt_deg)."""
+        return self.x_at_reference - r * math.tan(math.radians(self.tilt_deg))
+
+    def half_plane(self, direction: Direction | str = Direction.FORWARD) -> HalfPlane:
+        """The limit as a kernel half-plane in the absolute frame (reflected once for a reverse zone-frame limit). At
+        tilt_deg = 0 this is exactly HalfPlane(0, 1, x_at_reference), the existing horizontal top."""
+        a = math.radians(self.tilt_deg)
+        s, c = math.sin(a), math.cos(a)
+        meta = BoundaryMeta(source_path=self.provenance.canonical_path, unit=self.unit, transform=self.provenance.transform,
+                            frame=Frame.ZONE_LOCAL if self.frame is BoundaryFrame.ZONE else Frame.ABSOLUTE,
+                            reference=",".join(self.provenance.reference_ids) or None, fidelity=self.fidelity)
+        hp = HalfPlane(s, c, self.x_at_reference * c, meta)
+        if self.frame is BoundaryFrame.ZONE and Direction(direction) is Direction.REVERSE:
+            hp = hp.reflected()
+        return hp
+
+
 class RetainedSide(StrEnum):
     COUNTER_CLOCKWISE = "counter_clockwise"
     CLOCKWISE = "clockwise"
@@ -258,10 +323,13 @@ class ShadowZoneGeometry:
 def assemble_zone(zone_id: str, *, x_reach_ohm: float, direction: Direction | str,
                   boundaries: tuple[ResistiveBoundary, ...],
                   directional: tuple[DirectionalBoundary, ...] = (),
-                  lower: ReactanceLowerBoundary | None = None) -> ShadowZoneGeometry:
+                  lower: ReactanceLowerBoundary | None = None,
+                  upper: TiltedReactanceBoundary | None = None) -> ShadowZoneGeometry:
     """A zone from its horizontal reactance limit (X <= x_reach_ohm, stated in the zone frame), one right and one left
-    resistive boundary and, optionally, its directional half-planes (at most one per retained side) and its lower
-    reactance limit. Without a lower limit the region is open below and is reported so (``not_represented``).
+    resistive boundary and, optionally, its directional half-planes (at most one per retained side), its lower
+    reactance limit and its tilted upper reactance limit. Without a lower limit the region is open below and is
+    reported so (``not_represented``); the tilted upper limit is added *alongside* the horizontal top (see the module
+    docstring), never in its place, so it never makes the zone unbounded or changes ``not_represented``.
 
     Every boundary is placed in the absolute frame exactly once, by its own frame and the zone direction; the result is
     an absolute characteristic, which `Characteristic.to_absolute` leaves unchanged -- a reverse zone cannot be
@@ -287,8 +355,12 @@ def assemble_zone(zone_id: str, *, x_reach_ohm: float, direction: Direction | st
         top = top.reflected()
     if lower is not None and lower.zone_id != zone_id:
         raise ValueError(f"the lower reactance limit of zone {lower.zone_id} is not zone {zone_id}'s")
+    if upper is not None and upper.zone_id != zone_id:
+        raise ValueError(f"the tilted upper reactance limit of zone {upper.zone_id} is not zone {zone_id}'s")
     parts = (top, sides[BoundarySide.RIGHT].half_plane(d), sides[BoundarySide.LEFT].half_plane(d),
-             *(b.half_plane(d) for b in rays), *((lower.half_plane(d),) if lower else ()))
-    represented = ("top", "right", "left") + (("directional",) if rays else ()) + (("lower",) if lower else ())
+             *(b.half_plane(d) for b in rays), *((lower.half_plane(d),) if lower else ()),
+             *((upper.half_plane(d),) if upper else ()))
+    represented = (("top", "right", "left") + (("directional",) if rays else ()) + (("lower",) if lower else ())
+                  + (("tilt",) if upper else ()))
     not_represented = () if lower else ("lower",)
     return ShadowZoneGeometry(zone_id, Characteristic(Intersection(parts), Frame.ABSOLUTE), represented, not_represented)

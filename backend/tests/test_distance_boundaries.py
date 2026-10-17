@@ -20,9 +20,10 @@ from app.domain.distance_boundaries import (
     ReactanceLowerBoundary,
     ResistiveBoundary,
     RetainedSide,
+    TiltedReactanceBoundary,
     assemble_zone,
 )
-from app.domain.distance_geometry import TOLERANCE_OHM, Frame
+from app.domain.distance_geometry import TOLERANCE_OHM, Frame, HalfPlane
 from app.domain.parameter_catalog.catalog_validation import parse_catalog
 from app.domain.parameter_catalog.errors import CatalogValidationError
 from app.domain.parameter_catalog.interpreter import CatalogInterpreter
@@ -134,8 +135,9 @@ class TestCatalogSection:
             with pytest.raises(CatalogValidationError):
                 catalog(bad)
 
-    @pytest.mark.parametrize("path,sheet,overrides", [(SA613, "7sa613", {}), (REL511, "rel511", {"variant": "directional"}),
-                                                      (REL511, "rel511", {})])
+    @pytest.mark.parametrize("path,sheet,overrides", [(SA613, "7sa613", {}), (SA613, "7sa613", {"set": {"1307 Zone Reduction": "10"}}),
+                                                      (REL511, "rel511", {"variant": "directional"}), (REL511, "rel511", {}),
+                                                      (CATALOG_ROOT / "siemens" / "siprotec5_7sl87.json", "7sl87", {})])
     def test_production_interpretation_and_coverage_never_see_the_boundaries(self, path, sheet, overrides):
         data = json.loads(path.read_text(encoding="utf-8"))
         bare = {k: v for k, v in copy.deepcopy(data).items() if k != "boundaries"}
@@ -166,6 +168,19 @@ class TestCatalogSection:
 def rel511_run(overrides: dict) -> "object":
     document = extract_pdf(sheet_pdf("rel511", overrides)).document
     return CatalogInterpreter(catalog(json.loads(REL511.read_text(encoding="utf-8"))), canonical_registry()).shadow_boundaries(document)
+
+
+SL87 = CATALOG_ROOT / "siemens" / "siprotec5_7sl87.json"
+
+
+def sa613_run(overrides: dict) -> "object":
+    document = extract_pdf(sheet_pdf("7sa613", overrides)).document
+    return CatalogInterpreter(catalog(json.loads(SA613.read_text(encoding="utf-8"))), canonical_registry()).shadow_boundaries(document)
+
+
+def sl87_run(overrides: dict) -> "object":
+    document = extract_pdf(sheet_pdf("7sl87", overrides)).document
+    return CatalogInterpreter(catalog(json.loads(SL87.read_text(encoding="utf-8"))), canonical_registry()).shadow_boundaries(document)
 
 
 class TestDirectionalCatalogSection:
@@ -462,10 +477,156 @@ class TestLowerCatalogSection:
             catalog(bad)
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Tilted upper reactance limit X <= x_at_reference - R * tan(tilt_deg) (DEC-199 Phase 2D). Expected sides come from the
+# plain line equation, worked by hand.
+# ---------------------------------------------------------------------------------------------------------------------
+
+UPROV = BoundaryProvenance((BoundarySource("x_at_reference", "X", "9", "2.4", "ohm"), BoundarySource("tilt_deg", "ZR", "10", "10", "deg")),
+                           "zones[Z].tilt_deg", "x_at_reference = +X; tilt_deg = +ZR", "X <= Xref - R tan(tilt)", ("ref-a",), "test")
+
+
+def upper(x_at_reference: float, tilt_deg: float, frame: str = "zone", fidelity: str = "documented") -> TiltedReactanceBoundary:
+    return TiltedReactanceBoundary("Z", x_at_reference, tilt_deg, BoundaryFrame(frame), UPROV, fidelity=fidelity)
+
+
+class TestTiltedUpper:
+    def test_the_line_passes_through_the_pivot_point(self):
+        for tilt in (-45.0, -10.0, 0.0, 10.0, 45.0, 89.0):
+            b = upper(2.4, tilt)
+            assert b.x_at(0.0) == pytest.approx(2.4)
+            assert abs(b.half_plane().signed_distance(0.0, 2.4)) <= TOLERANCE_OHM
+
+    def test_retained_side_is_below_the_line(self):
+        b = upper(2.4, 10.0)
+        hp = b.half_plane()
+        for r in (-5.0, 0.0, 3.0):
+            x = b.x_at(r)
+            assert hp.contains(r, x - 0.01) and not hp.contains(r, x + 0.01)
+
+    def test_zero_tilt_is_exactly_the_plain_horizontal_top(self):
+        hp = upper(2.4, 0.0).half_plane()
+        assert (hp.nr, hp.nx, hp.offset) == (0.0, 1.0, 2.4)        # bit-exact: sin(0.0) == 0.0, cos(0.0) == 1.0
+        assert hp == HalfPlane(0.0, 1.0, 2.4, hp.meta)
+
+    def test_a_positive_tilt_lowers_the_limit_as_r_increases(self):
+        b = upper(2.4, 10.0)
+        # hand-worked: tan(10 deg) = 0.1763270; X(1) = 2.4 - 0.1763270 = 2.2236730; X(-1) = 2.5763270
+        assert b.x_at(1.0) == pytest.approx(2.2236730, abs=1e-6) and b.x_at(1.0) < 2.4
+        assert b.x_at(-1.0) == pytest.approx(2.5763270, abs=1e-6) and b.x_at(-1.0) > 2.4
+
+    def test_a_negative_tilt_raises_the_limit_as_r_increases(self):
+        b = upper(2.4, -10.0)
+        assert b.x_at(1.0) == pytest.approx(2.5763270, abs=1e-6) and b.x_at(1.0) > 2.4
+        assert b.x_at(-1.0) == pytest.approx(2.2236730, abs=1e-6) and b.x_at(-1.0) < 2.4
+
+    def test_a_zone_frame_limit_is_reflected_for_a_reverse_zone(self):
+        fwd, rev = upper(2.4, 10.0).half_plane(), upper(2.4, 10.0).half_plane("reverse")
+        for r, x in ((1.0, 1.0), (3.0, -0.5), (-2.0, 4.0)):
+            assert rev.contains(-r, -x) == fwd.contains(r, x)
+
+    def test_an_absolute_limit_is_not_reflected(self):
+        b = upper(2.4, 10.0, "absolute")
+        assert b.half_plane("reverse") == b.half_plane("forward")
+
+    def test_the_provenance_and_fidelity_travel_into_the_kernel_half_plane(self):
+        meta = upper(2.4, 10.0, fidelity="exact").half_plane("reverse").meta
+        assert (meta.source_path, meta.unit, meta.frame, meta.reference, meta.fidelity, meta.transform) == (
+            "zones[Z].tilt_deg", "ohm", Frame.ZONE_LOCAL, "ref-a", "exact", "x_at_reference = +X; tilt_deg = +ZR")
+
+    @pytest.mark.parametrize("kw", [{"tilt_deg": -90.0}, {"tilt_deg": 90.0}, {"tilt_deg": float("nan")}, {"x_at_reference": float("inf")},
+                                    {"frame": "zone"}, {"unit": "kohm"}, {"fidelity": "approximate"}, {"fidelity": "static_equivalent"}])
+    def test_invalid_tilted_limits_are_refused(self, kw):
+        base = dict(zone_id="Z", x_at_reference=2.4, tilt_deg=10.0, frame=BoundaryFrame.ZONE, provenance=UPROV)
+        with pytest.raises(ValueError):
+            TiltedReactanceBoundary(**{**base, **kw})
+
+    def test_the_tilted_limit_is_added_alongside_the_plain_top_not_in_its_place(self):
+        # at R = -1 the tilted line alone would allow X up to 2.576 (see test_a_positive_tilt...); the plain top
+        # X <= 2.4 still binds there -- added alongside, not replacing it
+        z = assemble_zone("Z", x_reach_ohm=2.4, direction="forward",
+                          boundaries=(edge(1.5, 80.0, "right"), edge(-1.5, 80.0, "left")), upper=upper(2.4, 10.0))
+        assert z.characteristic.contains(-1.0, 2.39) and not z.characteristic.contains(-1.0, 2.41)
+        # at R = +1 (inside the resistive band) the tilted line is the tighter constraint: X <= 2.2236730
+        assert z.characteristic.contains(1.0, 2.22) and not z.characteristic.contains(1.0, 2.24)
+        assert z.represented == ("top", "right", "left", "tilt") and z.not_represented == ("lower",)
+
+    def test_zero_tilt_assembled_matches_the_untilted_zone_exactly(self):
+        edges = (edge(1.5, 80.0, "right"), edge(-1.5, 80.0, "left"))
+        with_zero_tilt = assemble_zone("Z", x_reach_ohm=2.4, direction="forward", boundaries=edges, upper=upper(2.4, 0.0))
+        untilted = assemble_zone("Z", x_reach_ohm=2.4, direction="forward", boundaries=edges)
+        for r, x in ((0.0, 2.4), (0.0, 2.41), (1.8, 2.4), (-1.8, 2.4), (0.0, -5.0)):
+            assert with_zero_tilt.characteristic.contains(r, x) == untilted.characteristic.contains(r, x)
+
+    def test_an_upper_limit_of_another_zone_is_refused(self):
+        with pytest.raises(ValueError):
+            assemble_zone("Y", x_reach_ohm=2.0, direction="forward",
+                          boundaries=(ResistiveBoundary("Y", 1.0, 80.0, BoundarySide.RIGHT, BoundaryFrame.ZONE, PROV),
+                                      ResistiveBoundary("Y", -1.0, 80.0, BoundarySide.LEFT, BoundaryFrame.ZONE, PROV)),
+                          upper=upper(2.0, 10.0))
+
+
+class TestTiltCatalogSection:
+    def test_7sa613_zone_reduction_is_only_derived_for_z1(self):
+        run = sa613_run({"set": {"1307 Zone Reduction": "10"}})
+        z1 = next(b for b in run.upper if b.zone_id == "Z1")
+        assert (z1.x_at_reference, z1.tilt_deg, z1.frame, z1.fidelity) == (2.4, 10.0, BoundaryFrame.ZONE, "documented")
+        assert [(s.role, s.name, s.raw_value, s.unit) for s in z1.provenance.sources] == [
+            ("x_at_reference", "X(Z1)", "2.4", "ohm"), ("tilt_deg", "Zone Reduction", "10", "deg")]
+        assert z1.provenance.transform == "x_at_reference = +X(Z1) (as printed, ohm); tilt_deg = +Zone Reduction = 10 deg (Zone Reduction 10 as printed, deg)"
+        assert z1.provenance.canonical_path == "zones[Z1].tilt_deg"
+        assert {b.zone_id for b in run.upper} == {"Z1"}                # Z1B and the higher zones have no such tilt
+
+    def test_7sa613_default_zero_is_derived_too(self):
+        run = sa613_run({})
+        assert [(b.zone_id, b.tilt_deg) for b in run.upper] == [("Z1", 0.0)]
+
+    def test_7sl87_zone_inclination_is_derived_per_zone(self):
+        run = sl87_run({"set": {"21.901.3571.113 Zone-inclination angle": "5"}})
+        z1 = next(b for b in run.upper if b.zone_id == "Z1")
+        assert (z1.x_at_reference, z1.tilt_deg) == (4.7, 5.0)
+        assert "21.901.3571.102 X reach" in z1.provenance.transform
+
+    @pytest.mark.parametrize("sheet,run_fn,field,value", [
+        ("7sa613", sa613_run, "1307 Zone Reduction", "50"),             # outside the documented 0-45 deg range
+        ("7sl87", sl87_run, "21.901.3571.113 Zone-inclination angle", "50"),
+    ])
+    def test_a_value_outside_the_documented_range_is_not_derived(self, sheet, run_fn, field, value):
+        run = run_fn({"set": {field: value}})
+        assert not any(b.zone_id == "Z1" for b in run.upper)
+        assert any("outside the documented setting range" in why for _, zone, why in run.unresolved if zone == "Z1")
+
+    def test_a_blank_or_malformed_tilt_derives_no_boundary(self):
+        for cell in ("", "abc"):
+            run = sa613_run({"set": {"1307 Zone Reduction": cell}})
+            assert not any(b.zone_id == "Z1" for b in run.upper)
+
+    def test_the_tilt_section_is_validated(self):
+        data = json.loads(SA613.read_text(encoding="utf-8"))
+        k = next(i for i, b in enumerate(data["boundaries"]) if b["kind"] == "reactance_upper")
+        for change in ({"side": "right"}, {"retained_side": "clockwise"}, {"angle_deg": {"source": {"name": "Distance Angle", "unit": "deg"}}},
+                       {"r_at_axis": {"source": {"name": "R({zone}) ph-ph", "unit": "ohm"}}}, {"fidelity": "static_equivalent"},
+                       {"tilt_deg": {"source": {"name": "Zone Reduction", "unit": "deg"}, "range": [45, 0]}},
+                       {"tilt_deg": {"source": {"name": "Zone Reduction", "unit": "ohm"}}},
+                       {"x_at_reference": {"source": {"name": "X(Z1)", "unit": "deg"}}}):
+            bad = copy.deepcopy(data)
+            bad["boundaries"][k].update(change)
+            with pytest.raises(CatalogValidationError):
+                catalog(bad)
+        bad = copy.deepcopy(data)
+        del bad["boundaries"][k]["x_at_reference"]
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+        bad = copy.deepcopy(data)
+        del bad["boundaries"][k]["tilt_deg"]
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+
+
 def test_the_boundary_module_is_relay_neutral():
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[1] / "app" / "domain" / "distance_boundaries.py").read_text(encoding="utf-8").lower()
-    for oem in ("siemens", "toshiba", "hitachi", "abb", "7sa", "grz", "rel511", "rel670", "red670", "argdir", "argnegres",
-                "zdrdir", "catalog_id"):
+    for oem in ("siemens", "toshiba", "hitachi", "abb", "7sa", "7sl", "grz", "rel511", "rel670", "red670", "argdir", "argnegres",
+                "zdrdir", "zone reduction", "zone-inclination", "catalog_id"):
         assert oem not in text, oem

@@ -27660,3 +27660,111 @@ documented relay configuration requires it.**
   0.12 ms.
 
 **Results (2026-10-17):** backend full suite 9,952 passed, 148 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR); boundary unit tests 93 passed; shadow conformance: 12 samples, 19 assembled zones (4 closed) -- every golden edge, ray and lower-limit point on its V2 line within 1e-6 ohm (24 ray points, 12 lower points) and 265 resistive, 64 directional, 24 lower and 36 boundary-by-boundary probes as hand-derived; every closed zone outlines without plotting bounds; production / readiness diff none; browser: every relay-import, relay_review_copy and Distance spec 235 / 235 in the isolated :8102 / :8200 run (incl. rel511--closed-region and rel511--wide-sector). Full browser suite not run.
+
+### DEC-199 Amendment 5 -- Phase 2D: canonical tilted upper reactance boundary, 7SA613 Zone Reduction and 7SL87 Zone-inclination angle as the first verified OEM cases (2026-10-17)
+
+Status: Phase 2D implemented on `feature/remaining-relay-imports` (not merged, not deployed). Shadow mode only: V1
+remains production-authoritative. **Inclined upper-reactance boundaries are now a first-class V2 primitive where OEM
+tilt convention is independently verified.** 7SA613 and 7SL87 stay **PARTIALLY SUPPORTED / NOT_READY**; readiness,
+blockers, Apply, `approximations[]`, manual resolution and the frontend plot are unchanged.
+
+* **Evidence (independently verified for each relay; neither relay's convention was inferred from the other).**
+  - **7SA613** (both accepted manuals, re-checked against the exact text):
+    - TRM 1MRK... no -- Siemens C53000-G1176-C156-2 (V4.2), p. 6-63/6-64: "For the first zone, Z1, an additional tilt
+      alpha (Figure 6-29) can be set by means of the parameter in address 1307 Zone Reduction. ... For Z1B and the
+      higher zones this tilt does not exist."
+    - Siemens C53000-G1176-C156-7 (V4.70), 2.2.2.2, pp. 99-100: **"Parameter 1307 Zone Reduction allows an inclination
+      of the upper limit of zone Z1 in the 1st quadrant (see Figure 2-22). This prevents spurious pickup of zone Z1 in
+      the presence of faults outside the protected area."** Setting range 0-45 deg, default 0 deg ("Zone Reduction
+      Angle (load compensation)").
+    - Both existing, already-verified references (`siemens-c53000-g1176-c156-2-polygon`, `siemens-c53000-g1176-c156-7-polygon`)
+      cover these pages; no new reference entry was needed.
+  - **7SL87** (Siemens C53000-G5040-C011-9, V07.50, 6.6.15.6, already-verified reference `siemens-c53000-g5040-c011-9-quad`):
+    *"The Zone-inclination angle parameter is used to set the angle by which the upper limit of the polygon is
+    inclined in the first quadrant. ... To prevent this, the limit of the X setting for Zone 1 is inclined downwards
+    by the zone inclination."* Worked
+    examples for other zones in the same application chapter (Z1B, Z3, Z4) state "Zone-inclination angle = 0 deg: the
+    polygon ... is not inclined" -- confirming 0 deg = horizontal and that, unlike 7SA613, **every zone** of 7SL87 has
+    its own independent Zone-inclination angle setting (the catalog's existing `7sl87.tilt` mapping is already scoped
+    `"zone": "*"`, not restricted to Z1).
+  - Both relays: the tilted line is the **upper** (top) limit, scoped to the **first quadrant** (R >= 0), and a
+    positive angle **lowers** the limit as R increases.
+* **Canonical boundary** (`app/domain/distance_boundaries.py`, relay-neutral): `TiltedReactanceBoundary(zone_id,
+  x_at_reference, tilt_deg, frame, provenance, unit="ohm", fidelity)`.
+  - **Line:** through `(0, x_at_reference)`, retaining `X <= x_at_reference - R * tan(tilt_deg)`, `-90 < tilt_deg < 90`.
+  - **Half-plane:** `(sin(tilt_deg), cos(tilt_deg)) . (R, X) <= x_at_reference * cos(tilt_deg)`.
+  - **At `tilt_deg = 0`** this is bit-exact `HalfPlane(0, 1, x_at_reference)` -- the SAME formula `assemble_zone`
+    already uses for the plain top, not a separate case (`math.sin(0.0) == 0.0`, `math.cos(0.0) == 1.0` exactly).
+  - **Added alongside, never in place of, the plain horizontal top:** `assemble_zone(..., upper=...)` intersects BOTH
+    half-planes. For R >= 0 the tilted line is the tighter of the two and binds (reproducing "inclined ... in the 1st
+    quadrant"); for R < 0 the plain horizontal one is tighter and binds (reproducing the untouched top there) -- no
+    quadrant-conditional logic in the kernel, and no duplicated primitive: `tilt_deg = 0` is the existing primitive,
+    not a new one.
+  - **Frame:** mandatory; a zone-frame limit is reflected once for a reverse zone (`X <= x_at_reference - R*tan(tilt)`
+    becomes `X >= -x_at_reference - R*tan(tilt)` in the absolute frame); an absolute one is not.
+  - `fidelity`: exact | documented (no `static_equivalent`: the tilt is a static geometric modification of the polygon,
+    not a dynamic/polarised measurement).
+* **Catalog spec (generic; every other catalog's digest unchanged):** `kind` `reactance_upper`, with `x_at_reference
+  {source: ohm}` and `tilt_deg {source: deg, sign?, range?}`. Validation refuses `angle_deg`, `side`, `retained_side`
+  or `r_at_axis` on this kind, a reversed range, a non-deg/non-ohm source, or `static_equivalent` fidelity.
+* **7SA613** (catalog 1.2.0 -> **1.3.0**, new lock entry, 1.2.0 kept). New boundary `7sa613.boundary.tilt`, zone `Z1`
+  only (matching the existing `7sa613.tilt_z1` canonical mapping's own zone restriction and the manual: "Z1B and the
+  higher zones have no such tilt"):
+  - `x_at_reference` = `X(Z1)`; `tilt_deg` = `Zone Reduction`, documented range `[0, 45]`;
+  - zone frame, documented fidelity, gated like the existing resistive edges (FCT Distance on, Op. mode Z1
+    Forward/Reverse);
+  - canonical path `zones[Z1].tilt_deg`.
+
+  The existing `7sa613--zone-reduction-10` scenario (Zone Reduction = 10 deg) now gains `shadow_geometry: exact`
+  instead of "a non-zero or unread top-line tilt is not represented in Phase 2A"; production is unchanged (V1's
+  `zones[Z1].tilt_deg` stays `unsupported`, `TILT_UNSUPPORTED`, tested). The owner sheet's Zone Reduction = 0 deg is
+  derived too (default), and is bit-exact-equivalent to the untilted top (tested).
+* **7SL87** (catalog 1.1.0 -> **1.2.0**, new lock entry, 1.1.0 kept). New boundary `7sl87.boundary.tilt`, zone `*`
+  (every zone, matching the manual): `x_at_reference` = `X reach`; `tilt_deg` = `Zone-inclination angle`, range
+  `[0, 45]`; gated on the zone's own `Mode = on`.
+
+  **A full shadow zone cannot yet be assembled for any 7SL87 zone**: 7SL87 has no verified left resistive boundary
+  (DEC-198: "a forward zone's left side is formed by the quadrilateral's own resistance limit and the device's fixed
+  directional characteristic ... not established from the verified sources"), so `assemble_zone` is never reached;
+  every 7SL87 zone stays `not_assembled` ("a right and a left boundary are both needed"). The tilt boundary is still
+  derived and recorded with full provenance for every zone where Mode = on, independent of that gap, proving the
+  mapping on its own (the existing synthetic `7sl87--tilt-5` scenario, and `7sl87--tilt-blank` / `--tilt-malformed`,
+  which correctly derive nothing).
+* **Harness generalisation** (`tests/relay_conformance/harness.py`): zone enumeration is now the union across all four
+  boundary kinds (resistive, directional, lower, upper), not resistive-only -- needed for 7SL87, whose only derived
+  boundary kind is `reactance_upper`. The old model-based tilt gate (`"a non-zero or unread top-line tilt is not
+  represented in Phase 2A"`) is removed, replaced by the same declared/derived pattern as directional and lower
+  boundaries (`"the tilted upper reactance boundary is not derived"`). No other shipped catalog maps `distance.zone.tilt`
+  with a `boundaries` section (GRZ100 maps tilt but declares no boundaries at all, so `shadow_geometry()` returns
+  `None` for it unchanged), so this is a safe generalisation with no coverage gap.
+* **Independent goldens** (`shadow_golden.py`), from the plain line equation, never V2:
+  - `tilt_points` on the line at R = 0 (the pivot), 0.25 and 0.5 x the X reach;
+  - `tilt_probes` just inside (below) / outside (above) each point, checked against the tilted half-plane alone;
+  - the existing resistive `probes` and `inside()` membership now also apply the tilt constraint for R >= 0 (so a
+    pre-existing near-top probe correctly flips from inside to outside once a non-zero tilt makes it binding -- the
+    golden recomputes this, it is never hand-patched).
+* **Fidelity -- unchanged distinction.** `shadow_geometry: exact` states the geometry is the documented relations,
+  exactly; `relay_behaviour_fidelity` (the weakest of a zone's boundaries) now also considers the tilt boundary. Both
+  7SA613 and 7SL87's tilt boundaries are `documented` (never `static_equivalent`): the Siemens tilt is a static
+  modification of the polygon, not a polarised/dynamic measurement, so it does not weaken relay-behaviour fidelity
+  the way REL511's directional lines do.
+* **Generic tests (no bespoke 7SA613/7SL87 file).**
+  - `tests/test_distance_boundaries.py` covers: the pivot point; retained-below-side; `tilt_deg = 0` bit-exact
+    equivalence to `HalfPlane(0, 1, x_at_reference)`; positive and negative tilt; zone/absolute frame and reverse
+    reflection; provenance; validation; "added alongside, never replacing" (a point where the plain top still binds
+    for R < 0, and another where the tilt binds for R >= 0, in the same assembled zone); a zero-tilt assembled zone
+    matching the untilted one pointwise; the 7SA613 / 7SL87 catalog mappings and their out-of-range / blank /
+    malformed refusals; catalog-section validation.
+  - **Conformance:** every golden tilt point lies on the V2 line; every tilt probe matches the V2 half-plane alone;
+    `relay_behaviour_fidelity` includes the tilt boundary; production (`zones[Z1].tilt_deg` stays `unsupported` for a
+    non-zero tilt) is unchanged.
+  - The relay-neutrality word list now also refuses "7sl", "zone reduction" and "zone-inclination".
+* **Production / readiness diff: none.**
+  - 7SA613 and 7SL87 expectations: only the catalog version string and the shadow keys change.
+  - REL511: untouched (no tilt mapping, no `reactance_upper` boundary declared for it).
+* **Performance:** 7SA613 shadow derivation with a non-zero tilt about 0.94 ms (catalog interpretation ~23 ms);
+  assembly plus 34 probes about 0.17 ms.
+* **Scope kept:** no union/subtraction region, no load encroachment, no non-directional / mho+blinder geometry, no
+  GRZ100 top geometry, no new operational-state behaviour. Findings F-1 to F-3 unchanged.
+
+**Results (2026-10-17):** backend full suite 10,028 passed, 148 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the first run surfaced two pre-existing tests pinning 7SA613/7SL87's prior catalog versions and one review-token test whose probe value coincidentally matched the new shipped version -- all three updated, then the full suite re-run clean); boundary unit tests 121 passed; shadow conformance: 24 samples, 20 assembled zones -- every golden tilt point on its V2 line within 1e-6 ohm (21 points) and 42 / 42 tilt probes as hand-derived, the pre-existing resistive probes near the 7SA613 top correctly re-classified once the tilt makes them binding; production / readiness diff none (7SA613's zone-reduction-10 sample keeps TILT_UNSUPPORTED in production); browser: every relay-import, relay_review_copy and Distance spec 235 / 235 in the isolated :8102 / :8200 run (incl. 7sa613--zone-reduction-10 and the three 7sl87 tilt samples). Full browser suite not run.

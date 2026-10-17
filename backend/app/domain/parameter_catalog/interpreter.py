@@ -45,6 +45,7 @@ from app.domain.distance_boundaries import (
     ReactanceLowerBoundary,
     ResistiveBoundary,
     RetainedSide,
+    TiltedReactanceBoundary,
 )
 from app.domain.parameter_catalog.transforms import PRIMITIVES, TransformError, expected_unit, fmt, norm_text
 from app.domain.parameter_catalog.units import conversion_factor, printed_matches
@@ -213,13 +214,14 @@ class CatalogInterpreter:
         return dict(run.results)
 
     def shadow_boundaries(self, document: RawRelayDocument) -> "BoundaryRun":
-        """DEC-199 Phase 2A / 2B / 2C, SHADOW MODE: the catalog's canonical boundaries for this document. Never part of the
-        canonical model, a review or readiness, and nothing is consumed (coverage is unchanged)."""
+        """DEC-199 Phase 2A / 2B / 2C / 2D, SHADOW MODE: the catalog's canonical boundaries for this document. Never
+        part of the canonical model, a review or readiness, and nothing is consumed (coverage is unchanged)."""
         run = _Run(self.catalog, self.registry, document)
         run._zones()
         boundaries: list[ResistiveBoundary] = []
         directional: list[DirectionalBoundary] = []
         lower: list[ReactanceLowerBoundary] = []
+        upper: list[TiltedReactanceBoundary] = []
         unresolved: list[tuple[str, str, str]] = []
         for spec in self.catalog.boundaries:
             for z in run.zone_vars:
@@ -240,10 +242,12 @@ class CatalogInterpreter:
                     unresolved.append((spec.id, z["zone"], str(exc)))
                     continue
                 (directional if isinstance(derived, DirectionalBoundary)
-                 else lower if isinstance(derived, ReactanceLowerBoundary) else boundaries).append(derived)
-        return BoundaryRun(tuple(boundaries), tuple(unresolved), tuple(directional), tuple(lower))
+                 else lower if isinstance(derived, ReactanceLowerBoundary)
+                 else upper if isinstance(derived, TiltedReactanceBoundary) else boundaries).append(derived)
+        return BoundaryRun(tuple(boundaries), tuple(unresolved), tuple(directional), tuple(lower), tuple(upper))
 
-    def _shadow_boundary(self, run: "_Run", spec: BoundarySpec, z: dict[str, Any]) -> "ResistiveBoundary | DirectionalBoundary | ReactanceLowerBoundary":
+    def _shadow_boundary(self, run: "_Run", spec: BoundarySpec,
+                         z: dict[str, Any]) -> "ResistiveBoundary | DirectionalBoundary | ReactanceLowerBoundary | TiltedReactanceBoundary":
         """One boundary of one zone; a ValueError says why it is not derived."""
         canonical = _fill(spec.canonical, z) if spec.canonical else None
         if spec.kind == "reactance_lower":
@@ -256,6 +260,30 @@ class CatalogInterpreter:
                 z["zone"], xm.value, BoundaryFrame(spec.frame),
                 BoundaryProvenance(sources, canonical, f"x_minus = +{xm.name} (as printed, ohm): X >= -{fmt(xm.value)} ohm",
                                    spec.equation, spec.references, self.catalog.key, spec.convention),
+                fidelity=spec.fidelity)
+        if spec.kind == "reactance_upper":
+            xref = run._boundary_number(spec.x_at_reference, z)
+            if xref.problem:
+                raise ValueError(f"{xref.name}: {xref.problem}")
+            tilt = run._boundary_number(spec.tilt_deg, z)
+            if tilt.problem:
+                raise ValueError(f"{tilt.name}: {tilt.problem}")
+            if spec.tilt_range is not None and not spec.tilt_range[0] <= tilt.value <= spec.tilt_range[1]:
+                lo, hi = spec.tilt_range
+                raise ValueError(f"{tilt.name}: {fmt(tilt.value)} is outside the documented setting range {fmt(lo)}-{fmt(hi)} "
+                                 "deg, so the documented tilt convention is not established for it")
+            tilt_deg = spec.tilt_sign * tilt.value
+            sources = tuple(
+                BoundarySource(role, read.name, e.parameter_id, _clean(e.raw_value) or None, sel.unit, e.location.page, e.location.line)
+                for role, read, sel in (("x_at_reference", xref, spec.x_at_reference), ("tilt_deg", tilt, spec.tilt_deg))
+                for e in read.entries[:1]
+            )
+            transform = (f"x_at_reference = +{xref.name} (as printed, ohm); "
+                        f"tilt_deg = {'-' if spec.tilt_sign < 0 else '+'}{tilt.name} = {fmt(tilt_deg)} deg "
+                        f"({tilt.name} {fmt(tilt.value)} as printed, deg)")
+            return TiltedReactanceBoundary(
+                z["zone"], xref.value, tilt_deg, BoundaryFrame(spec.frame),
+                BoundaryProvenance(sources, canonical, transform, spec.equation, spec.references, self.catalog.key, spec.convention),
                 fidelity=spec.fidelity)
         reads: list[tuple[str, _Read, Selector]] = []
         if spec.r_at_axis is not None:
@@ -307,14 +335,15 @@ class CatalogInterpreter:
 
 @dataclass(frozen=True)
 class BoundaryRun:
-    """The shadow boundaries of one document (DEC-199 Phase 2A / 2B) and the (boundary id, zone, why) of those not
-    derived: resistive edges in ``boundaries``, directional half-planes in ``directional``, lower reactance limits in
-    ``lower``."""
+    """The shadow boundaries of one document (DEC-199 Phase 2A / 2B / 2C / 2D) and the (boundary id, zone, why) of
+    those not derived: resistive edges in ``boundaries``, directional half-planes in ``directional``, lower reactance
+    limits in ``lower``, tilted upper reactance limits in ``upper``."""
 
     boundaries: tuple["ResistiveBoundary", ...]
     unresolved: tuple[tuple[str, str, str], ...]
     directional: tuple["DirectionalBoundary", ...] = ()
     lower: tuple["ReactanceLowerBoundary", ...] = ()
+    upper: tuple["TiltedReactanceBoundary", ...] = ()
 
 
 class _Run:
