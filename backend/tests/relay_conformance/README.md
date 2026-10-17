@@ -192,3 +192,20 @@ this every time, it is never hand-patched.
 Samples:
 - `7sa613--zone-reduction-10` -- a non-zero Zone 1 tilt, now assembled;
 - `7sl87--tilt-5` / `--tilt-blank` / `--tilt-malformed` -- the tilt boundary alone, derived / blank / unreadable.
+
+## 7SA613's closed shadow region (DEC-199 Phase 2F)
+
+7SA613's lower reactance boundary (`7sa613.boundary.lower`) reuses the Phase 2C `reactance_lower` kind with no new
+code anywhere in `app/domain/distance_boundaries.py`, the catalog model/validator/interpreter, this harness or
+`shadow_golden.py`: zone discovery, assembly and the independent goldens already handled an arbitrary relay's lower
+boundary generically. Only the catalog JSON changed.
+
+Z1, Z2, Z3 and Z1B now report `represented` including `"lower"` and `not_represented: []`: their shadow phase-phase
+region is closed. Z5 is excluded by the boundary's own zone scope (its reach is independently forward/reverse, not
+symmetric about one setting), unaffected by this change.
+
+`shadow_geometry: exact` still states only that the assembled relations are exact; it is not a claim that directional
+clipping or load-trapezoid encroachment -- both still unrepresented -- are resolved.
+
+Sample `7sa613--lower-reverse` (Op. mode Z1B = Reverse) proves the lower boundary reflects together with the rest of
+a reverse zone's boundaries.

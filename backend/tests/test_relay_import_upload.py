@@ -172,7 +172,7 @@ class TestInterpretation:
         assert body["interpretation_warnings"] == []
 
     @pytest.mark.parametrize("scheme, profile_id, catalog_id, version", [
-        ("7SA6131_4AB02_3GA0", "siemens-7sa613", "siemens-7sa613-catalog", "1.3.0"),   # DEC-198 Am. 6; DEC-199 Phase 2A/2D boundaries
+        ("7SA6131_4AB02_3GA0", "siemens-7sa613", "siemens-7sa613-catalog", "1.4.0"),   # DEC-198 Am. 6; DEC-199 Phase 2A/2D/2F boundaries
         ("GRL200_TNB", "toshiba-grl200", "toshiba-grl200-catalog", "1.0.0"),
         ("RELZ100_3.0", "relz100", "relz100-catalog", "1.0.0"),
     ])

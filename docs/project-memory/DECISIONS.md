@@ -27768,3 +27768,72 @@ blockers, Apply, `approximations[]`, manual resolution and the frontend plot are
   GRZ100 top geometry, no new operational-state behaviour. Findings F-1 to F-3 unchanged.
 
 **Results (2026-10-17):** backend full suite 10,028 passed, 148 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; the first run surfaced two pre-existing tests pinning 7SA613/7SL87's prior catalog versions and one review-token test whose probe value coincidentally matched the new shipped version -- all three updated, then the full suite re-run clean); boundary unit tests 121 passed; shadow conformance: 24 samples, 20 assembled zones -- every golden tilt point on its V2 line within 1e-6 ohm (21 points) and 42 / 42 tilt probes as hand-derived, the pre-existing resistive probes near the 7SA613 top correctly re-classified once the tilt makes them binding; production / readiness diff none (7SA613's zone-reduction-10 sample keeps TILT_UNSUPPORTED in production); browser: every relay-import, relay_review_copy and Distance spec 235 / 235 in the isolated :8102 / :8200 run (incl. 7sa613--zone-reduction-10 and the three 7sl87 tilt samples). Full browser suite not run.
+
+### DEC-199 Amendment 6 -- Phase 2F: 7SA613's lower reactance boundary, reusing the Phase 2C primitive (catalog only) (2026-10-17)
+
+Status: Phase 2F implemented on `feature/remaining-relay-imports` (not merged, not deployed). Shadow mode only: V1
+remains production-authoritative. 7SA613 stays **PARTIALLY SUPPORTED / NOT_READY**. **Zero new production Python or
+JavaScript was written for this slice** -- it is the first direct demonstration that DEC-199's architecture lets a
+relay gain verified V2 geometry through catalog configuration alone.
+
+* **Why this slice exists.** The Phase 2E assessment found that 7SA613's own catalog already quotes the exact OEM
+  text needed for a symmetric lower reactance boundary ("bottom -X", already cited to a reference the catalog already
+  uses for the right/left edges), and that the generic `ReactanceLowerBoundary` primitive built in Phase 2C for REL511
+  was already capable of representing it. This slice does only that: add the catalog boundary, nothing else.
+* **Evidence, re-verified against the exact text.**
+  - Siemens C53000-G1176-C156-2 (V4.2), p. 6-55 (PDF p. 245): "In total, there are five independent zones and one
+    additional controlled zone... The parallelogram is symmetrical with respect to the origin of the R-X-coordinate
+    system; the directional characteristic however limits the tripping range to the desired quadrants." Both already
+    used by `7sa613.boundary.right` / `.left`.
+  - Siemens C53000-G1176-C156-7 (V4.70), p. 89: the same sentence, word for word, for the six-zone generation.
+  - **Zone scope, independently confirmed from the same manuals.** Z1, Z2, Z3, Z4 and Z1B each have exactly one
+    `X(Zn)` setting (the single value already read for the top limit) -- the symmetric statement applies to them
+    directly. **Z5 (and Z6 in V4.70) is excluded**: its own setting table states a separate `X(Z5)+` (forward) and
+    `X(Z5)-` (reverse) reach with different default values (12.000 / 4.000 ohm in the V4.2 table) -- the zone's own
+    documented reach is not symmetric about a single `X(Zn)`, so the generic `X >= -X(Zn)` relation does not apply to
+    it and Z5 needed separate treatment, exactly as the brief required. No new reference was added; both citations
+    were already in `7sa613.boundary.right` / `.left`'s `references`.
+* **Catalog mapping** (`siemens-7sa613-catalog` 1.3.0 -> **1.4.0**, new lock entry, 1.3.0 kept). New boundary
+  `7sa613.boundary.lower`:
+  - `kind: reactance_lower` (the existing Phase 2C kind, unchanged);
+  - `zone: ["Z1", "Z2", "Z3", "Z4", "Z1B"]` -- the exact same explicit list already used by the existing
+    `7sa613.x_reach` mapping (the set of zones with one `X(Zn)`), not a new list;
+  - `x_minus = X({zone})`, the same setting already read for the top limit;
+  - `frame: zone`, `fidelity: documented`, the same `requires` gates as the right/left edges (FCT Distance on,
+    Op. mode Forward/Reverse);
+  - `canonical: zones[{zone}].x_reach_ohm` (the same canonical path Phase 2C used for REL511's lower boundary).
+* **Zero new production code.** `app/domain/distance_boundaries.py`, `catalog_model.py`, `catalog_validation.py` and
+  `interpreter.py` are **untouched** by this slice -- `kind: reactance_lower` already existed, fully generic, since
+  Phase 2C. The harness (`tests/relay_conformance/harness.py`) already enumerated zones across all boundary kinds and
+  already called `assemble_zone(..., lower=...)` generically (from Phase 2C/2D); it required **no edit**. The
+  independent golden computation (`shadow_golden.py`'s `lower_points` / `lower_probes` / `closed` / `active` /
+  `boundary_probes`) is the same code REL511 already exercises; it required **no edit**. This is the acceptance
+  criterion this slice set out to demonstrate, and it held exactly.
+* **Shadow composition.** Z1, Z2, Z3 and Z1B now assemble with `represented = ("top", "right", "left", "lower")`
+  (Z1 additionally `"tilt"`) and **`not_represented: []`** -- every one of these zones' static phase-phase regions is
+  now a closed, bounded parallelogram in shadow mode. Z4 stays excluded (Inactive on both sheets); Z5 stays excluded
+  by zone scope, unaffected.
+  - **Geometry completeness is reported precisely, not inflated.** `shadow_geometry: exact` states only that the
+    assembled region is the documented static relations, exactly; it does not claim the relay's full characteristic
+    is complete. Directional clipping (the real device also limits tripping by quadrant, a separate directional
+    element 7SA613 has no verified mapping for) and load-trapezoid encroachment (R load, blocking in production
+    today) remain outside what any `exact` zone represents, and are **not** implied by `not_represented: []`
+    becoming empty -- that field only ever tracked the lower limit.
+  - **A new reverse-zone sample proves the reflection.** `7sa613--lower-reverse` (Op. mode Z1B = Reverse) assembles
+    Z1B as `direction: reverse`, `closed: true`; its lower boundary reflects together with the rest of the zone-frame
+    boundaries, placed once (no double reflection), exactly as the existing `Characteristic.to_absolute` contract
+    already guarantees for every other boundary kind.
+* **Independent goldens** (`shadow_golden.py`, unmodified): `lower_points` on `X = -X(Zn)`, `lower_probes` just
+  above/below, `edge_points` / `probes` for the top and the right/left inclined edges, `tilt_points` / `tilt_probes`
+  for Z1, and the `closed` / `active` / `boundary_probes` composite (one inside/outside probe per active boundary) --
+  all computed from the plain inequalities, never from V2, exactly as already established.
+* **Fidelity.** `7sa613.boundary.lower` is `documented` (an exact relation, not a dynamic measurement) -- the same
+  fidelity as the resistive edges and the tilt. `relay_behaviour_fidelity` for Z1/Z1B/Z2/Z3 stays `documented`
+  (no `static_equivalent` boundary is present for 7SA613).
+* **Production / readiness diff: none.** Every 7SA613 expectation changes only in the catalog version string and the
+  shadow keys (`lower`, `represented`, `not_represented`); `values`, `readiness`, `apply`, `approximations`,
+  `coverage` (apart from its own version field) and `counts` are byte-identical, checked programmatically against
+  every affected expectation. 7SA613 stays PARTIALLY SUPPORTED / NOT_READY with the same blockers (Z1-Z3 delays,
+  R load (ph-ph), the inclined +R/-R, non-directional Z5, infinite-delay zones).
+
+**Results (2026-10-17):** backend full suite 10,039 passed, 150 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; two pre-existing catalog-version pins updated for the 1.4.0 bump, as in prior phases); boundary unit tests 121 passed, unchanged from Phase 2D (zero new production code means zero new unit tests needed); shadow conformance: 18 7SA613 zones now closed (up from 0), all 18 reported closed/active/boundary_probes correctly via the pre-existing generic goldens with no code edit; a new reverse-zone sample (7sa613--lower-reverse) proves the lower boundary reflects correctly; production / readiness diff none, verified programmatically (every affected expectation's values/readiness/apply/coverage/counts are byte-identical apart from the catalog version string and the shadow_geometry/shadow_golden keys); browser: every relay-import, relay_review_copy and Distance spec 236 / 236 in the isolated :8102 / :8200 run (incl. the new sample). Full browser suite not run.

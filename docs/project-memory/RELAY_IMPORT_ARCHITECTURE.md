@@ -1929,3 +1929,26 @@ by the zone inclination"*). 7SL87 has no verified left resistive boundary (DEC-1
 assembled for it yet; the tilt boundary alone is still derived and verified against independent goldens.
 
 Neither relay's convention was inferred from the other -- each is cited to its own accepted manual text.
+
+### Phase 2F: 7SA613's lower reactance boundary, catalog-only reuse (DEC-199 Amendment 6)
+
+**7SA613 gains a fully closed shadow phase-phase region (Z1, Z2, Z3, Z1B) by reusing the Phase 2C
+`ReactanceLowerBoundary` primitive through a catalog addition alone -- zero new production code.** V1 stays
+authoritative; this is the first direct proof of DEC-199's "catalog + references + data, not new code" goal.
+
+| Piece | Location | Role |
+|---|---|---|
+| Lower limit | `app/domain/distance_boundaries.py` `ReactanceLowerBoundary` (Phase 2C, unchanged) | `X >= -X(Zn)`, reused as-is |
+| Catalog section | `7sa613.boundary.lower`, `kind: reactance_lower`, `zone: ["Z1","Z2","Z3","Z4","Z1B"]` | The only change; `x_minus = X({zone})`, the same setting already read for the top |
+| Harness / goldens | `tests/relay_conformance/harness.py`, `shadow_golden.py` (Phase 2C/2D, unchanged) | Already generic across boundary kinds; no edit needed |
+
+**Evidence.** Siemens C53000-G1176-C156-2 (V4.2, p. 6-55) and C53000-G1176-C156-7 (V4.70, p. 89), both already cited
+by `7sa613.boundary.right` / `.left`: *"The parallelogram is symmetrical with respect to the origin of the
+R-X-coordinate system."* Z1, Z2, Z3, Z4, Z1B each have one `X(Zn)` setting, so the symmetric bottom reuses it
+directly. **Z5 is excluded**: it states an independent forward `X(Z5)+` and reverse `X(Z5)-` reach (different default
+values), so its reach is not symmetric about a single setting and needs separate treatment, out of scope here.
+
+**Result.** Z1, Z2, Z3, Z1B now assemble with `not_represented: []` -- a closed, bounded parallelogram in shadow
+mode (proven also for a reverse zone: `7sa613--lower-reverse`, Z1B reversed). This is **not** a claim that 7SA613's
+full characteristic is complete: directional clipping and load-trapezoid encroachment remain outside what any
+`exact` zone represents, exactly as before. 7SA613 stays PARTIALLY SUPPORTED / NOT_READY; production unchanged.
