@@ -24,6 +24,7 @@ from app.domain.distance_boundaries import (
     assemble_zone,
 )
 from app.domain.distance_geometry import TOLERANCE_OHM, Frame, HalfPlane
+from app.domain.parameter_catalog.catalog_model import ConstantValue
 from app.domain.parameter_catalog.catalog_validation import parse_catalog
 from app.domain.parameter_catalog.errors import CatalogValidationError
 from app.domain.parameter_catalog.interpreter import CatalogInterpreter
@@ -623,10 +624,120 @@ class TestTiltCatalogSection:
             catalog(bad)
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Generic constant-value boundaries (DEC-199 Phase 2G): {"constant": number, "unit": ..., "name": ...} in place of
+# {"source": ...}. First verified case: GRZ100's fixed 75 deg right blinder angle.
+# ---------------------------------------------------------------------------------------------------------------------
+
+GRZ100 = CATALOG_ROOT / "toshiba" / "grz100.json"
+
+
+def grz100_run(overrides: dict) -> "object":
+    document = extract_pdf(sheet_pdf("grz100", overrides)).document
+    return CatalogInterpreter(catalog(json.loads(GRZ100.read_text(encoding="utf-8"))), canonical_registry()).shadow_boundaries(document)
+
+
+class TestConstantCatalogSection:
+    """Generic validation of ``{"constant": ..., "unit": ..., "name": ...}``, independent of GRZ100."""
+
+    def test_a_valid_constant_is_accepted(self):
+        data = json.loads(SA613.read_text(encoding="utf-8"))
+        k = next(i for i, b in enumerate(data["boundaries"]) if b["kind"] == "resistive")
+        ok = copy.deepcopy(data)
+        ok["boundaries"][k]["angle_deg"] = {"constant": 75, "unit": "deg", "name": "test constant"}
+        catalog(ok)                                                        # does not raise
+
+    @pytest.mark.parametrize("angle_deg", [
+        {"constant": 75, "unit": "deg", "name": "x", "source": {"name": "Distance Angle", "unit": "deg"}},  # both
+        {"constant": "75", "unit": "deg", "name": "x"},                    # string
+        {"constant": True, "unit": "deg", "name": "x"},                    # bool
+        {"constant": float("nan"), "unit": "deg", "name": "x"},            # NaN
+        {"constant": float("inf"), "unit": "deg", "name": "x"},            # infinite
+        {"constant": 75, "unit": "ohm", "name": "x"},                      # wrong unit
+        {"constant": 75, "unit": "deg"},                                   # no name
+        {"constant": 75, "unit": "deg", "name": ""},                       # blank name
+        {"constant": 75, "unit": "deg", "name": "x", "range": [0, 45]},    # range not allowed on a constant
+        {"constant": 75, "unit": "deg", "name": "x", "sign": 2},           # bad sign
+    ])
+    def test_invalid_constants_are_refused(self, angle_deg):
+        data = json.loads(SA613.read_text(encoding="utf-8"))
+        k = next(i for i, b in enumerate(data["boundaries"]) if b["kind"] == "resistive")
+        bad = copy.deepcopy(data)
+        bad["boundaries"][k]["angle_deg"] = angle_deg
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+
+    def test_a_constant_boundary_still_needs_a_verified_reference(self):
+        data = json.loads(SA613.read_text(encoding="utf-8"))
+        k = next(i for i, b in enumerate(data["boundaries"]) if b["kind"] == "resistive")
+        bad = copy.deepcopy(data)
+        bad["boundaries"][k]["angle_deg"] = {"constant": 75, "unit": "deg", "name": "x"}
+        bad["boundaries"][k]["references"] = []
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+
+    def test_existing_source_based_boundaries_are_unaffected(self):
+        """Regression (DEC-199 Phase 2G): adding constant support changes nothing about REL511 / 7SA613 / 7SL87's own
+        source-based mappings."""
+        for path in (SA613, REL511, SL87):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            c = catalog(data)                                             # still parses
+            for b in c.boundaries:
+                if b.angle_deg is not None:
+                    assert not isinstance(b.angle_deg, ConstantValue), (path.name, b.id)
+
+
+class TestGRZ100CatalogSection:
+    def test_the_right_blinder_is_a_resistive_boundary_at_a_fixed_75_degrees(self):
+        run = grz100_run({})
+        by_zone = {b.zone_id: b for b in run.boundaries}
+        assert set(by_zone) == {"Z1", "Z1X", "Z2", "ZF", "Z3"}            # forward zones only -- never ZR1/ZR2/ZND/Z4
+        z1 = by_zone["Z1"]
+        assert (z1.r_at_axis, z1.angle_deg, z1.side, z1.frame, z1.fidelity) == (
+            20.0, 75.0, BoundarySide.RIGHT, BoundaryFrame.ZONE, "documented")
+        roles = {s.role: (s.name, s.raw_value, s.unit, s.page, s.line) for s in z1.provenance.sources}
+        assert roles["r_at_axis"] == ("BFRS", "20", "ohm", 1, 33)          # read from the document, with a location
+        assert roles["angle_deg"][1:3] == ("75", "deg") and roles["angle_deg"][3:] == (None, None)  # a constant: no location
+        assert "abb-" not in str(z1.provenance.reference_ids)             # Toshiba references, never ABB's
+        assert set(z1.provenance.reference_ids) == {"toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"}
+        assert z1.provenance.canonical_path == "zones[Z1].resistive_reach.phase_phase"
+
+    def test_a_blank_bfrs_derives_no_boundary_and_substitutes_no_default(self):
+        """The safeguard this phase exists for: a missing configured BFRS is never silently replaced by the fixed
+        75 deg constant standing in for it, and the 75 deg constant never substitutes for BFRS either."""
+        for cell in ("", "x"):
+            run = grz100_run({"set": {"BFRS": cell}})
+            assert run.boundaries == ()
+            assert {zone for bid, zone, why in run.unresolved if bid == "grz100.boundary.right"} == {
+                "Z1", "Z1X", "Z2", "ZF", "Z3"}
+
+    def test_mho_characteristic_derives_no_boundary(self):
+        run = grz100_run({"set": {"ZS-C": "Mho"}})
+        assert run.boundaries == ()
+        assert all("Mho" in why for _, _, why in run.unresolved)
+
+    def test_production_interpretation_and_coverage_never_see_the_boundary(self):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        bare = {k: v for k, v in copy.deepcopy(data).items() if k != "boundaries"}
+        document = extract_pdf(sheet_pdf("grz100")).document
+        with_b, without = (CatalogInterpreter(catalog(d), canonical_registry()).run(document) for d in (data, bare))
+        assert with_b.model == without.model
+        assert with_b.consumed == without.consumed and with_b.preserved_ids == without.preserved_ids
+
+    def test_the_catalog_section_is_validated(self):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        for change in ({"side": "top"}, {"retained_side": "clockwise"}, {"frame": "implicit"}, {"fidelity": "static_equivalent"},
+                       {"zone": ["ZQ"]}, {"r_at_axis": {"source": {"name": "BRRS", "unit": "ohm"}, "sign": 2}}):
+            bad = copy.deepcopy(data)
+            bad["boundaries"][0].update(change)
+            with pytest.raises(CatalogValidationError):
+                catalog(bad)
+
+
 def test_the_boundary_module_is_relay_neutral():
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[1] / "app" / "domain" / "distance_boundaries.py").read_text(encoding="utf-8").lower()
     for oem in ("siemens", "toshiba", "hitachi", "abb", "7sa", "7sl", "grz", "rel511", "rel670", "red670", "argdir", "argnegres",
-                "zdrdir", "zone reduction", "zone-inclination", "catalog_id"):
+                "zdrdir", "zone reduction", "zone-inclination", "bfrs", "blinder", "catalog_id"):
         assert oem not in text, oem

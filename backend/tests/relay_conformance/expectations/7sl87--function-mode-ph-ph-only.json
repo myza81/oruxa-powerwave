@@ -133,5 +133,6 @@
   "catalog_sources_absent": [],
   "shadow_geometry": {"unresolved": [["7sl87.boundary.tilt", "Z2", "21.901.3572.1 Mode is 'off'"]], "zones": {"Z1": {"production_geometry": "unverified", "edges": {}, "tilt": {"x_at_reference": 4.7, "tilt_deg": 0.0, "frame": "zone", "unit": "ohm", "fidelity": "documented", "canonical_path": "zones[Z1].tilt_deg", "sources": [["x_at_reference", "21.901.3571.102 X reach", "4.7", "ohm"], ["tilt_deg", "21.901.3571.113 Zone-inclination angle", "0", "deg"]], "transform": "x_at_reference = +21.901.3571.102 X reach (as printed, ohm); tilt_deg = +21.901.3571.113 Zone-inclination angle = 0 deg (21.901.3571.113 Zone-inclination angle 0 as printed, deg)", "references": ["siemens-c53000-g5040-c011-9-quad"], "equation": "X(R) = X reach - R * tan(Zone-inclination angle) for R >= 0, added alongside the plain top X <= X reach (Siemens C53000-G5040-C011-9, 6.6.15.6: 'the limit of the X setting for Zone 1 is inclined downwards by the zone inclination'; the parameter is per-zone)"}, "shadow_geometry": "not_assembled", "reason": "a right and a left boundary are both needed"}}},
   "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},
-  "shadow_golden": {}
+  "shadow_golden": {},
+  "shadow_edge_golden": null
 }

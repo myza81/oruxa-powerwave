@@ -17,6 +17,7 @@ Format version ``oruxa.parameter-catalog/1``. A catalog has:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -109,6 +110,27 @@ class Family:
     where_canonical: str | None = None
     where_equals: Any = None
     min_count: int = 1
+
+
+@dataclass(frozen=True)
+class ConstantValue:
+    """A fixed numeric value an OEM reference establishes directly for a boundary parameter (DEC-199 Phase 2G) --
+    never read from the document, and never a stand-in for a missing configured setting. ``value`` is the magnitude
+    as the reference states it (a sign, where the field has one, is applied the same way as for a source-based
+    value); ``unit`` is explicit because a boundary parameter is never unitless; ``name`` is the label its
+    provenance shows (e.g. "BFR characteristic angle (fixed)"), since there is no document row to name it."""
+
+    value: float
+    unit: str
+    name: str
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.value):
+            raise ValueError("a constant boundary value must be finite")
+        if not self.unit:
+            raise ValueError("a constant boundary value states its unit")
+        if not self.name:
+            raise ValueError("a constant boundary value states its provenance label")
 
 
 @dataclass(frozen=True)
@@ -333,7 +355,7 @@ class Applicability:
 
 @dataclass(frozen=True)
 class BoundarySpec:
-    """DEC-199 Phase 2A / 2B / 2C / 2D: a canonical zone boundary the catalog derives from settings, evaluated in
+    """DEC-199 Phase 2A / 2B / 2C / 2D / 2G: a canonical zone boundary the catalog derives from settings, evaluated in
     SHADOW mode only (never part of the canonical model, a review or readiness) (`app.domain.distance_boundaries`):
 
     * ``kind`` "resistive" -- an inclined resistive edge ``R(X) = r_at_axis + X * cot(angle)``, with
@@ -347,13 +369,16 @@ class BoundarySpec:
       ``tilt_deg = tilt_sign * source``, added *alongside* the zone's plain horizontal top (never in its place).
 
     ``angle_range`` / ``tilt_range`` is the documented setting range of the *source* value: a value outside it is not
-    derived (it would mean the documented convention does not hold for that value)."""
+    derived (it would mean the documented convention does not hold for that value). It never applies to a
+    `ConstantValue` (Phase 2G): a fixed OEM constant has no configured-setting range to fall outside of, and
+    carries no range field at all -- see ``catalog_validation._boundaries``."""
 
     id: str
     zones: tuple[str, ...]
     kind: str                                         # resistive | directional | reactance_lower | reactance_upper
     frame: str                                        # zone | absolute
-    angle_deg: Selector | None = None
+    #: A document-read value, or (Phase 2G) a fixed OEM constant -- never a stand-in for a missing configured value.
+    angle_deg: Selector | ConstantValue | None = None
     angle_sign: float = 1.0                           # +1 or -1: angle = sign * the source value
     angle_range: tuple[float, float] | None = None
     angle_atan2: tuple[Selector, Selector] | None = None   # (x source, r source): angle = atan2(x, r)

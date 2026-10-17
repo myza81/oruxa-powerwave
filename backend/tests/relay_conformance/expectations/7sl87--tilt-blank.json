@@ -133,5 +133,6 @@
   "catalog_sources_absent": [],
   "shadow_geometry": {"unresolved": [["7sl87.boundary.tilt", "Z1", "21.901.3571.113 Zone-inclination angle: the configured setting cell is blank (the range column shows '0-45', which is not a setting); no value is assumed"], ["7sl87.boundary.tilt", "Z2", "21.901.3572.1 Mode is 'off'"]], "zones": {}},
   "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},
-  "shadow_golden": {}
+  "shadow_golden": {},
+  "shadow_edge_golden": null
 }

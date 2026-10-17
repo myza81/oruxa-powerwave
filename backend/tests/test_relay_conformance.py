@@ -55,7 +55,7 @@ from app.domain.distance_geometry import TOLERANCE_OHM, HalfPlane
 from app.domain.distance_geometry_compat import compile_v1_zone
 from tests.relay_api_helpers import client  # noqa: F401
 from tests.relay_conformance.golden import grid_points, v1_golden, zone_settings
-from tests.relay_conformance.shadow_golden import shadow_golden
+from tests.relay_conformance.shadow_golden import shadow_edge_golden, shadow_golden
 from tests.relay_conformance.sheet_spec import load_spec, note_lines, sheet_ids, sheet_lines, sheet_pdf
 
 #: Deviations the suite reports but Phase 0 does not fix (tests/relay_conformance/known_findings.json).
@@ -305,6 +305,40 @@ def _plane_key(b) -> str:
 def test_the_shadow_golden_is_the_documented_equation(name):
     """The stored engineering golden is R(X) = r_at_axis + X / tan(angle) of the recorded boundary (never V2)."""
     assert EXPECTATIONS[name].get("shadow_golden") == shadow_golden(EXPECTATIONS[name].get("shadow_geometry"))
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTATIONS))
+def test_the_shadow_edge_golden_is_the_documented_equation(name):
+    """DEC-199 Phase 2G: the independent golden for a resistive edge recorded on a zone that is not (yet) fully
+    assembled (e.g. GRZ100's right blinder, with no verified left / directional boundary) is the documented
+    R(X) = r_at_axis + X / tan(angle) of that edge alone -- never V2, and never duplicating a zone `shadow_golden`
+    already covers."""
+    assert EXPECTATIONS[name].get("shadow_edge_golden") == shadow_edge_golden(EXPECTATIONS[name].get("shadow_geometry"))
+
+
+EDGE_ONLY = sorted(n for n, e in EXPECTATIONS.items() if e.get("shadow_edge_golden"))
+
+
+@pytest.mark.parametrize("name", EDGE_ONLY)
+def test_the_shadow_v2_edge_matches_the_golden_when_not_yet_assembled(name):
+    """The live V2 half-plane for a boundary recorded on its own (no paired edge, no assembled zone) passes through
+    every golden point and classifies every probe exactly as the documented equation does, checked against that one
+    boundary's half-plane -- never the full zone (which cannot be built yet)."""
+    e = EXPECTATIONS[name]
+    pdf = sample_pdf(e["sample"])
+    if pdf is None:
+        pytest.skip("owner sample PDFs are not committed; set RELAY_SAMPLE_PDF_DIR to run")
+    catalog = default_store().get(e["identity"]["catalog_id"])
+    run = CatalogInterpreter(catalog, canonical_registry()).shadow_boundaries(extract_pdf(pdf).document)
+    for zone_id, by_side in e["shadow_edge_golden"].items():
+        for side, golden in by_side.items():
+            b = next(bb for bb in run.boundaries if bb.zone_id == zone_id and bb.side.value == side)
+            assert b.r_at_axis == golden["r_at_axis"] and b.angle_deg == golden["angle_deg"], (zone_id, side)
+            hp = b.half_plane()
+            for x, r in golden["edge_points"]:
+                assert abs(hp.signed_distance(r, x)) <= TOLERANCE_OHM, (zone_id, side, x)
+            for r, x, inside in golden["probes"]:
+                assert hp.contains(r, x) is bool(inside), (zone_id, side, r, x)
 
 
 @pytest.mark.parametrize("name", SHADOW)

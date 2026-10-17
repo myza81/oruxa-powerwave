@@ -31,6 +31,7 @@ from app.domain.parameter_catalog.catalog_model import (
     VALUE_SOURCE_PRECEDENCE,
     BoundarySpec,
     Catalog,
+    ConstantValue,
     Family,
     Mapping,
     Selector,
@@ -285,12 +286,17 @@ class CatalogInterpreter:
                 z["zone"], xref.value, tilt_deg, BoundaryFrame(spec.frame),
                 BoundaryProvenance(sources, canonical, transform, spec.equation, spec.references, self.catalog.key, spec.convention),
                 fidelity=spec.fidelity)
+        is_constant_angle = spec.angle_atan2 is None and isinstance(spec.angle_deg, ConstantValue)
         reads: list[tuple[str, _Read, Selector]] = []
         if spec.r_at_axis is not None:
             reads.append(("r_at_axis", run._boundary_number(spec.r_at_axis, z), spec.r_at_axis))
         if spec.angle_atan2 is not None:
             reads += [("angle_x", run._boundary_number(spec.angle_atan2[0], z), spec.angle_atan2[0]),
                       ("angle_r", run._boundary_number(spec.angle_atan2[1], z), spec.angle_atan2[1])]
+        elif is_constant_angle:
+            # DEC-199 Phase 2G: a fixed OEM constant, never a document read -- entries stays empty, so it
+            # contributes no source from the comprehension below; its own BoundarySource is added explicitly.
+            reads.append(("angle_deg", _Read(spec.angle_deg.name, value=spec.angle_deg.value), None))
         else:
             reads.append(("angle_deg", run._boundary_number(spec.angle_deg, z), spec.angle_deg))
         problem = next((f"{x.name}: {x.problem}" for _, x, _ in reads if x.problem), None)
@@ -300,6 +306,9 @@ class CatalogInterpreter:
             BoundarySource(role, e.name, e.parameter_id, _clean(e.raw_value) or None, sel.unit, e.location.page, e.location.line)
             for role, read, sel in reads for e in read.entries[:1]
         )
+        if is_constant_angle:
+            sources += (BoundarySource("angle_deg", spec.angle_deg.name, None, fmt(spec.angle_deg.value),
+                                       spec.angle_deg.unit, None, None),)
         values = {role: read for role, read, _ in reads}
         if spec.angle_atan2 is not None:
             x, r = values["angle_x"], values["angle_r"]
@@ -307,6 +316,11 @@ class CatalogInterpreter:
                 raise ValueError(f"{x.name}: the reactance an edge is parallel to must be positive")
             angle = math.degrees(math.atan2(x.value, r.value))
             angle_text = f"angle = atan2({x.name}, {r.name}) = {fmt(angle)} deg"
+        elif is_constant_angle:
+            a = values["angle_deg"]
+            angle = spec.angle_sign * a.value
+            angle_text = (f"angle = {'-' if spec.angle_sign < 0 else ''}{a.name} = {fmt(angle)} deg "
+                          f"({a.name}, fixed {fmt(a.value)} deg, not a configured setting)")
         else:
             a = values["angle_deg"]
             if spec.angle_range is not None and not spec.angle_range[0] <= a.value <= spec.angle_range[1]:
@@ -324,8 +338,8 @@ class CatalogInterpreter:
         rd = values["r_at_axis"]
         sign = "-" if spec.r_sign < 0 else "+"
         scale = "" if spec.r_scale == 1.0 else f"{fmt(spec.r_scale)} x "
-        transform = (f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); angle = {values['angle_deg'].name} (deg)"
-                     if spec.angle_atan2 is None else f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); {angle_text}")
+        angle_part = f"angle = {values['angle_deg'].name} (deg)" if spec.angle_atan2 is None and not is_constant_angle else angle_text
+        transform = f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); {angle_part}"
         return ResistiveBoundary(
             z["zone"], spec.r_sign * spec.r_scale * rd.value, angle, BoundarySide(spec.side), BoundaryFrame(spec.frame),
             BoundaryProvenance(sources, canonical, transform, spec.equation, spec.references, self.catalog.key, spec.convention),

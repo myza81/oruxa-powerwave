@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "toshiba-grz100-catalog",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "lifecycle": "active",
   "profile_id": "toshiba-grz100",
   "registry_version": "1.1.0",
-  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only. Configured settings: the phase (ZS-C) and earth (ZG-C) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Documented relay behaviour (DEC-198, Toshiba instruction manual 6F2S0834-0 and brochure 6641-1, version-dependent for this GRZ100-201A sheet): the fixed zone directions, the phase-fault and earth-fault elements of every zone, the secondary-ohm setting basis, ZnS as the quadrilateral's X reach, Zone 1's horizontal reactance line (Z1S-angle1 = 0), Zone 1X's instantaneous trip. Not verified: whether each zone trips in service -- the relay runs a site-specific PLC program the source does not define (geometry reviewed, operational state not verified). Not representable (blocking): the 75-degree right blinders, the polarised left blinder / directional boundary, the reverse zones' forward offset, the non-directional impedance element and Zone 4 (command protection only). No source value is missing.",
+  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only. Configured settings: the phase (ZS-C) and earth (ZG-C) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Documented relay behaviour (DEC-198, Toshiba instruction manual 6F2S0834-0 and brochure 6641-1, version-dependent for this GRZ100-201A sheet): the fixed zone directions, the phase-fault and earth-fault elements of every zone, the secondary-ohm setting basis, ZnS as the quadrilateral's X reach, Zone 1's horizontal reactance line (Z1S-angle1 = 0), Zone 1X's instantaneous trip. Not verified: whether each zone trips in service -- the relay runs a site-specific PLC program the source does not define (geometry reviewed, operational state not verified). Not representable (blocking): the 75-degree right blinders (exact relation preserved -- since 1.2.0 the forward Z1 / Z1X / Z2 / ZF / Z3 right blinder is also derived as a canonical inclined resistive boundary in SHADOW mode only, its fixed 75 deg angle a documented OEM constant, never a configured setting or a substituted default; DEC-199 Phase 2G; production unchanged), the polarised left blinder / directional boundary, the reverse zones' blinder, the reverse zones' forward offset, the non-directional impedance element and Zone 4 (command protection only). No source value is missing.",
   "applicability": {
     "manufacturer": "Toshiba",
     "family": "GRZ100",
@@ -62,6 +62,15 @@
      "document": "Toshiba 6641-1",
      "section": "Relay functions: zones, quadrilateral characteristics (Fig. 3), reverse zones' offset directional element, Z4 for command protection; ordering (Model 201)", "page": "3-4, 21",
      "scope": "GRZ100 family including Model 201 (product overview, not a setting manual). Version-dependent relative to the owner's GRZ100_201A_Ver2.1 sheet."}
+  ],
+  "boundaries": [
+    {"id": "grz100.boundary.right", "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"], "kind": "resistive", "side": "right", "frame": "zone",
+     "r_at_axis": {"source": {"name": "BFRS", "unit": "ohm"}, "sign": 1},
+     "angle_deg": {"constant": 75, "unit": "deg", "name": "BFR characteristic angle (fixed 75 deg to the R-axis)"},
+     "requires": [{"source": {"name": "ZS-C", "allowed_text": ["mho", "quad"]}, "equals": ["quad"]}],
+     "fidelity": "documented", "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"],
+     "equation": "Rright(X) = BFRS + X * cot(75 deg); the forward blinder BFR: X >= (R - BFRS) * tan 75 deg (Toshiba 6F2S0834-0, 2.6.1, Fig. 2.6.1.9: 'The BFR has an angle of 75 deg to the R-axis'; 'The characteristic of the BFR is obtained by the following equation. X >= (R - Rs) tan 75 deg', Rs = BFRS, 'the reach setting'; settings p. 34, BFRS angle 'Fixed to 75 deg'). BFRS is one forward right blinder common to Z1, Z1X, Z2, ZF and Z3 on this sheet. The reverse zones' blinder (BRR/BRRS), ZND's blinder (BNDS), the left blinder BFL and the directional element are separately scoped and not represented by this boundary.",
+     "canonical": "zones[{zone}].resistive_reach.phase_phase"}
   ],
   "source_notes": [
     {

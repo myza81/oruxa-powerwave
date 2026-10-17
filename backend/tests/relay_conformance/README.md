@@ -209,3 +209,24 @@ clipping or load-trapezoid encroachment -- both still unrepresented -- are resol
 
 Sample `7sa613--lower-reverse` (Op. mode Z1B = Reverse) proves the lower boundary reflects together with the rest of
 a reverse zone's boundaries.
+
+## Fixed OEM constants and boundaries recorded on their own (DEC-199 Phase 2G)
+
+A boundary's angle (or any field already shaped `{source: ...}`) may instead be a fixed OEM constant --
+`{"constant": <number>, "unit": ..., "name": ..., "sign"?: 1|-1}` -- when the OEM reference states it directly
+rather than as a document setting. It carries no `range` (a constant has no setting range to be outside of) and may
+not coexist with `source` on the same field. A constant's own `BoundarySource` has no page/line: there is no
+document location for it.
+
+**This is never a substitute for a missing configured value, in either direction.** A boundary with one field
+sourced from the document and another fixed by a constant still needs the document-sourced field to actually be
+present and readable; a blank or unreadable configured value derives no boundary regardless of what else is fixed.
+
+When a boundary is derived for a zone whose region cannot (yet) be fully assembled -- no paired edge, no verified
+left/directional boundary -- it is still recorded, with full provenance, and `shadow_edge_golden` (`shadow_golden.py`)
+gives it an independent engineering golden of its own: points on the documented line, with inside/outside probes,
+checked against that edge's half-plane alone. A zone whose region *is* assembled keeps using the existing
+`shadow_golden` instead; the two are never both populated for the same zone.
+
+Sample: GRZ100's forward zones (Z1, Z1X, Z2, ZF, Z3) derive their right blinder (`BFRS`, fixed 75 deg) this way, with
+no zone reaching a complete assembled region.

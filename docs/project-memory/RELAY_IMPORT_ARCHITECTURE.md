@@ -1952,3 +1952,30 @@ values), so its reach is not symmetric about a single setting and needs separate
 mode (proven also for a reverse zone: `7sa613--lower-reverse`, Z1B reversed). This is **not** a claim that 7SA613's
 full characteristic is complete: directional clipping and load-trapezoid encroachment remain outside what any
 `exact` zone represents, exactly as before. 7SA613 stays PARTIALLY SUPPORTED / NOT_READY; production unchanged.
+
+### Phase 2G: generic constant-value boundaries, GRZ100's right blinder (DEC-199 Amendment 7)
+
+**A boundary field can now be a fixed OEM constant instead of a document setting, distinct from both a configured
+value and a default.** GRZ100's right blinder (BFR, fixed 75 deg) is the first verified case; production remains on
+V1.
+
+| Piece | Location | Role |
+|---|---|---|
+| Constant value | `app/domain/parameter_catalog/catalog_model.py` `ConstantValue(value, unit, name)` | A finite, named, unit-explicit fixed value -- never read from the document |
+| Catalog field | `{"constant": <number>, "unit": ..., "name": ..., "sign"?: 1\|-1}` in place of `{"source": ...}` | No `range` (a constant has no setting range to fall outside of); refuses coexisting with `source` |
+| Interpreter | `CatalogInterpreter._shadow_boundary()` | Builds the constant's own `BoundarySource` directly (no document location); never calls the document reader for it |
+| Goldens | `shadow_golden.py` `shadow_edge_golden()` | Independent checks for a resistive edge recorded on a zone that is **not** (yet) fully assembled |
+
+**The safeguard this exists for.** A missing *configured* value is never satisfied by a *constant*, and a *constant*
+never substitutes for a missing *configured* value -- they are independent fields (GRZ100: the constant supplies
+only the 75 deg angle; the configured `BFRS` reach must still be read from the sheet, or nothing is derived).
+
+**GRZ100 (catalog 1.2.0).** `grz100.boundary.right`: `r_at_axis = BFRS` (configured), `angle_deg = 75 deg` (constant,
+Toshiba 6F2S0834-0, 2.6.1, Fig. 2.6.1.9: *"The BFR has an angle of 75 deg to the R-axis"*), zones Z1/Z1X/Z2/ZF/Z3
+only (the forward zones sharing one `BFRS`; the reverse blinder BRR/BRRS and ZND's BNDS are separately scoped and
+not represented), gated on `ZS-C = quad`.
+
+The right blinder is now derived and fully provenanced, **even though no GRZ100 zone assembles a complete region**
+-- there is still no verified left/directional boundary, so `assemble_zone` is never reached. GRZ100 stays PARTIALLY
+SUPPORTED / NOT_READY; left/directional orientation, the reverse-zone forward offset, the ZND circle and the
+site-PLC trip status remain exactly as unresolved as before.

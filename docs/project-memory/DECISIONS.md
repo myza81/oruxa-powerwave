@@ -27837,3 +27837,89 @@ relay gain verified V2 geometry through catalog configuration alone.
   R load (ph-ph), the inclined +R/-R, non-directional Z5, infinite-delay zones).
 
 **Results (2026-10-17):** backend full suite 10,039 passed, 150 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; two pre-existing catalog-version pins updated for the 1.4.0 bump, as in prior phases); boundary unit tests 121 passed, unchanged from Phase 2D (zero new production code means zero new unit tests needed); shadow conformance: 18 7SA613 zones now closed (up from 0), all 18 reported closed/active/boundary_probes correctly via the pre-existing generic goldens with no code edit; a new reverse-zone sample (7sa613--lower-reverse) proves the lower boundary reflects correctly; production / readiness diff none, verified programmatically (every affected expectation's values/readiness/apply/coverage/counts are byte-identical apart from the catalog version string and the shadow_geometry/shadow_golden keys); browser: every relay-import, relay_review_copy and Distance spec 236 / 236 in the isolated :8102 / :8200 run (incl. the new sample). Full browser suite not run.
+
+### DEC-199 Amendment 7 -- Phase 2G: generic constant-value boundaries, GRZ100's fixed 75 deg right blinder as the first verified case (2026-10-17)
+
+Status: Phase 2G implemented on `feature/remaining-relay-imports` (not merged, not deployed). Shadow mode only: V1
+remains production-authoritative. GRZ100 stays **PARTIALLY SUPPORTED / NOT_READY**; readiness, blockers, Apply,
+`approximations[]`, signed-review-token semantics, manual resolution and the frontend plot are unchanged.
+
+* **Why this slice exists.** The Phase 2E assessment found GRZ100's right blinder (BFR) needs the *same* inclined
+  resistive line already proven three times over (REL511, 7SA613, 7SL87's right edge) -- except its angle is a
+  **fixed OEM characteristic**, not a document setting. The catalog schema had no way to state "this number is not
+  read from the sheet" until this slice.
+* **OEM evidence.** Toshiba 6F2S0834-0 ("GRZ100 Distance Relay Instruction Manual"), 2.6.1, Fig. 2.6.1.9 (re-verified
+  against the manual mirror, not only the catalog's prior notes): *"The blinder element is commonly applicable to
+  Z1, Z1X, Z2, ZF, Z3, ZR1, ZR2 and Z4... The BFR has an angle of 75 deg to the R-axis... The characteristic of the
+  BFR is obtained by the following equation. X >= (R - Rs) tan 75 deg"*, where *"Rs = reach setting"* (= `BFRS`).
+  Settings p. 34: *"BFRSθ ... Fixed to 75 deg ... Angle of BFRS."* Both already-verified references
+  (`toshiba-6f2s0834-0-elements`, `toshiba-6f2s0834-0-settings`) already cover this text; no new reference was
+  needed.
+  - **Forward-only.** The REVERSE blinder (`BRR: X <= (R + Rs) tan 75 deg`, its own `Rs = BRRS`) is a *different*
+    inequality direction with a *different* setting, and `BRL`'s angle "is linked with" `BFL`'s (unverified
+    combined orientation) -- confirming the brief's instruction not to extend this mapping to reverse zones, ZND or
+    Z4.
+  - **Zone scope.** `BFRS` is printed once on the sheet ("Forward right blinder reach... Common"), matching the
+    catalog's existing (pre-2G) gap note's own zone list `["Z1", "Z1X", "Z2", "ZF", "Z3"]` -- reused verbatim, not
+    re-derived.
+* **Generic constant-value mechanism** (`catalog_model.py`, `catalog_validation.py`, `interpreter.py`). A boundary's
+  `angle_deg` (and, by the same mechanism, any future field that already accepts `{source: ...}`) may instead be
+  `{"constant": <finite number>, "unit": "<unit>", "name": "<provenance label>"}`, optionally with `sign` (no
+  `range`: a constant cannot be "outside a setting range" -- it has none).
+  - **New type:** `ConstantValue(value, unit, name)` (`catalog_model.py`), validated finite on construction.
+  - **Validator:** a dedicated `constant()` helper refuses a string, bool, NaN, infinite, wrong-unit, unnamed,
+    ranged, or badly-signed constant, and a NEW explicit check refuses `angle_deg` carrying *both* `source` and
+    `constant`.
+  - **Still requires a verified reference.** The existing, untouched "a documented boundary must cite a verified
+    reference" check already applies uniformly to a constant-using boundary -- no new code needed for this.
+  - **Interpreter:** a constant never calls `run._boundary_number()` (no document read at all); its own
+    `BoundarySource` is built directly (role `angle_deg`, the constant's own name, no page/line -- there is no
+    document location), kept in provenance beside the configured `r_at_axis` source read normally. The transform
+    text says explicitly *"fixed ... deg, not a configured setting."*
+* **The missing-value / default safeguard (the reason this slice exists).** A blank or unreadable `BFRS` derives
+  **no** boundary for any of the five zones -- the fixed 75 deg constant is never used to stand in for a missing
+  configured reach, and the reach is never defaulted from the constant either (they are two independent values; the
+  constant supplies only the angle). Tested directly (`test_a_blank_bfrs_derives_no_boundary_and_substitutes_no_default`).
+* **GRZ100 mapping** (catalog 1.1.0 -> **1.2.0**, new lock entry, 1.1.0 kept). New boundary `grz100.boundary.right`:
+  `kind: resistive`, `side: right`, `frame: zone`, `zone: ["Z1", "Z1X", "Z2", "ZF", "Z3"]`,
+  `r_at_axis = {"source": {"name": "BFRS", "unit": "ohm"}}`,
+  `angle_deg = {"constant": 75, "unit": "deg", "name": "BFR characteristic angle (fixed 75 deg to the R-axis)"}`,
+  gated on `ZS-C = quad` (the same gate `grz100.x_reach` already uses -- the blinder is part of the quadrilateral
+  characteristic, meaningless for Mho).
+* **Shadow isolation and completeness.** The right blinder is derived and fully recorded (with provenance for both
+  the configured reach and the fixed angle) for every forward zone where `ZS-C = quad` -- **even though no GRZ100
+  zone assembles a complete region**: `assemble_zone` is never reached (no verified left boundary), so every zone
+  stays `not_assembled` ("a right and a left boundary are both needed"). This is the expected, unchanged outcome;
+  `shadow_geometry` never claims completeness it has not verified. Left/directional orientation, the reverse-zone
+  forward offset, the ZND circle and the site-PLC-dependent trip status remain exactly as unresolved as before this
+  slice.
+* **Independent engineering goldens -- a new kind, for a boundary recorded on its own.** The existing
+  `shadow_golden()` (REL511/7SA613's style) requires a fully assembled zone and does not apply here. A new
+  `shadow_edge_golden()` (`shadow_golden.py`) covers a resistive edge recorded for a zone that is *not* assembled:
+  points on the documented line at X = 0 (R = BFRS), +1x and +2x \|BFRS\| and -1x \|BFRS\|, with inside/outside
+  probes at each -- checked against that edge's own half-plane in isolation, from the plain equation, never V2. A
+  zone already covered by `shadow_golden` is never duplicated here.
+  - `harness.py`'s `differences()` (used by the live-observation conformance test) now also skips
+    `shadow_edge_golden`, exactly like it already skipped `shadow_golden` -- both are recomputed-from-stored-state
+    checks, not live-observation fields.
+* **Regression (REL511 / 7SA613 / 7SL87).** All three catalogs re-parse unchanged; none of their boundaries carry a
+  `ConstantValue` (tested explicitly). Every expectation whose `shadow_geometry` is populated (32 files: 8 7SA613, 11
+  7SL87, 7 GRZ100, 5 REL511, 1 shared owner each where applicable) was regenerated once, solely to add the new
+  `shadow_edge_golden` key (`None` for every relay except REL511 and GRZ100, whose not-yet-assembled zones have
+  edges recorded on their own); every field outside `shadow_geometry` / `shadow_golden` / `shadow_edge_golden` (and,
+  for GRZ100 only, the catalog version string) is byte-identical to the pre-Phase-2G committed version, verified
+  programmatically.
+* **Production / readiness diff: none.** GRZ100 stays PARTIALLY SUPPORTED / NOT_READY with the same blockers.
+* **Maintainability observation (no refactor performed).** `catalog_validation.py`'s `_boundaries()` is now about 184
+  lines, having grown across five phases (2A resistive, 2B directional, 2C lower, 2D upper, 2G constant), each
+  adding its own kind-specific inline branch. It still reads linearly and every branch is independently testable,
+  but a future slice touching boundary validation again should consider splitting per-kind validation into separate
+  functions (e.g. `_resistive_spec`, `_directional_spec`, `_lower_spec`, `_upper_spec`) dispatched by `kind`, rather
+  than bundling a sixth kind into the same function. Not done here, per instruction.
+* **Scalability.** The constant mechanism is reusable without new production code for any OTHER fixed OEM geometry
+  parameter that already fits an existing boundary kind's `{source}`-shaped field (e.g. a future relay's own fixed
+  blinder/tilt angle). It does not, by itself, unblock GRZ100's left/directional boundary, reverse offset or ZND --
+  those remain OEM-evidence or kernel-capability gaps, unchanged by this slice (consistent with the Phase 2E
+  assessment's ranking).
+
+**Results (2026-10-17):** backend full suite 10,144 passed, 150 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; one pre-existing catalog-version pin updated for GRZ100's 1.2.0 bump, as in prior phases); boundary unit tests 139 passed (121 + 18 new: constant-value shape refusals, the missing-value/default safeguard, catalog-section validation, and a direct regression check that REL511/7SA613/7SL87 carry no ConstantValue); shadow conformance: GRZ100's right blinder derived and fully provenanced for 5 forward zones on both the synthetic and owner sheets, verified by a new shadow_edge_golden independent of full assembly (edge points at X=0/±1x/+2x |BFRS|, inside/outside probes); 32 expectations with shadow_geometry regenerated once for the new key, production / readiness diff none, verified programmatically on every one of them; browser: every relay-import, relay_review_copy and Distance spec 236 / 236 in the isolated :8102 / :8200 run. Full browser suite not run.

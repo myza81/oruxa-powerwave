@@ -1,4 +1,4 @@
-"""Independent engineering goldens for shadow (V2) canonical boundaries (DEC-199 Phase 2A / 2B / 2C / 2D).
+"""Independent engineering goldens for shadow (V2) canonical boundaries (DEC-199 Phase 2A / 2B / 2C / 2D / 2G).
 
 V1 cannot draw an inclined resistive edge, a directional line, a lower reactance limit or a tilted upper reactance
 limit, so V1 is not the truth source here. Each golden is computed from the documented relations only, using plain
@@ -42,6 +42,17 @@ A resistive probe closer than a quarter of the probe offset to a directional lin
 directional probe that close to any documented line, is dropped (its side would be decided by rounding). A reverse
 zone's points are reflected through the origin once (its boundaries are stated in the zone frame). Values are rounded
 to 9 decimals; a probe offset is 1 % of the X reach.
+
+``shadow_edge_golden`` (Phase 2G) covers a resistive edge recorded for a zone whose region is **not** (yet) fully
+assembled -- e.g. a right blinder with no verified left/directional boundary (GRZ100). It checks the edge's own line
+in isolation, independent of any zone extent or paired edge::
+
+    r_at_axis, angle_deg, cot   the numbers the golden is built from
+    edge_points                 [[X, R(X)], ...] at X = 0 (so R = r_at_axis), and +/-1 and +2 x |r_at_axis| (or 1 ohm
+                                if r_at_axis is 0) -- the only scale one edge carries on its own
+    probes                      [[R, X, 0|1], ...] just inside / outside the edge's own retained side at each point
+
+A zone already covered by `shadow_golden` (its region assembled) is not repeated here.
 """
 
 from __future__ import annotations
@@ -204,3 +215,45 @@ def shadow_golden(shadow: dict[str, Any] | None) -> dict[str, Any] | None:
     if not shadow:
         return None
     return {zone_id: zone_golden(z) for zone_id, z in shadow["zones"].items() if z.get("shadow_geometry") == "exact"}
+
+
+#: Multiples of |r_at_axis| at which an isolated edge's golden points are placed (0 first, so R = r_at_axis there).
+EDGE_FRACTIONS = (0.0, 1.0, -1.0, 2.0)
+
+
+def edge_golden(side: str, edge: dict[str, Any]) -> dict[str, Any]:
+    """Independent golden for one resistive edge recorded on its own (DEC-199 Phase 2G): the documented
+    ``R(X) = r_at_axis + X / tan(angle)``, checked only against the edge's own retained side -- no paired edge, no
+    top, no assembled zone. The scale is the edge's own ``r_at_axis`` (1 ohm if that is 0, so the points are not all
+    degenerate)."""
+    r0, angle_deg = edge["r_at_axis"], edge["angle_deg"]
+    cot = 1.0 / math.tan(math.radians(angle_deg))
+
+    def r_at(x: float) -> float:
+        return r0 + x * cot
+
+    scale = abs(r0) if r0 else 1.0
+    delta = PROBE_FRACTION * scale
+    points = [(f * scale, r_at(f * scale)) for f in EDGE_FRACTIONS]
+    probes = []
+    for x, r in points:
+        inner, outer = (r - delta, r + delta) if side == "right" else (r + delta, r - delta)
+        probes += [(inner, x, 1), (outer, x, 0)]
+    return {
+        "r_at_axis": r0, "angle_deg": angle_deg, "cot": _r(cot),
+        "edge_points": [[_r(x), _r(r)] for x, r in points],
+        "probes": [[_r(r), _r(x), inside] for r, x, inside in probes],
+    }
+
+
+def shadow_edge_golden(shadow: dict[str, Any] | None) -> dict[str, Any] | None:
+    """DEC-199 Phase 2G: independent goldens for every resistive edge recorded on a zone whose region is not (yet)
+    fully assembled. A zone already covered by `shadow_golden` is skipped here, never duplicated."""
+    if not shadow:
+        return None
+    out = {
+        zone_id: {side: edge_golden(side, edge) for side, edge in z["edges"].items()}
+        for zone_id, z in shadow["zones"].items()
+        if z.get("shadow_geometry") != "exact" and z.get("edges")
+    }
+    return out or None

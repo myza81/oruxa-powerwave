@@ -20,6 +20,7 @@ declarations (the relay has no such setting: they read, transform and assert not
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -37,6 +38,7 @@ from app.domain.parameter_catalog.catalog_model import (
     BoundarySpec,
     Catalog,
     ConditionalText,
+    ConstantValue,
     DistanceScope,
     Family,
     FamilyIndex,
@@ -412,6 +414,23 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
                 v.add(f"{path}.{key}", IssueCode.MALFORMED, f"a {kind} boundary has no {key}")
                 ok = False
 
+        def constant(raw: Any, at: str, unit: str) -> tuple[ConstantValue, float] | None:
+            """DEC-199 Phase 2G: ``{"constant": number, "unit": <unit>, "name": str, "sign": 1|-1 (optional)}`` -- a
+            fixed value an OEM reference states directly, never read from the document and never a stand-in for a
+            missing configured value (so there is no ``range``: a constant cannot be "outside the setting range" --
+            it has none). ``sign`` is applied exactly like a source's, so a kind's existing ``*_sign`` field covers
+            both forms uniformly."""
+            ok_shape = (isinstance(raw, dict) and not set(raw) - {"constant", "unit", "name", "sign"}
+                       and "constant" in raw and "unit" in raw and "name" in raw)
+            value = raw.get("constant") if ok_shape else None
+            if (not ok_shape or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                    or raw.get("unit") != unit or not isinstance(raw.get("name"), str) or not raw.get("name")
+                    or raw.get("sign", 1) not in (1, -1)):
+                v.add(at, IssueCode.MALFORMED,
+                      f"a constant needs a finite number, unit {unit!r}, a provenance name and an optional sign of 1 or -1")
+                return None
+            return ConstantValue(float(value), unit, raw["name"]), float(raw.get("sign", 1))
+
         def number(src: Any, at: str, unit: str) -> Selector | None:
             sel = _selector(v, {**src, "type": "number"}, at, _ZONE_VARS, zones, True, None) if isinstance(src, dict) else None
             if sel is None or sel.unit != unit:
@@ -480,6 +499,15 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             rr_sel = number(a["atan2"]["r"], f"{path}.angle_deg.atan2.r", "ohm")
             atan2 = (x_sel, rr_sel) if x_sel and rr_sel else None
             ok = ok and atan2 is not None
+        elif isinstance(a, dict) and "constant" in a and "source" not in a:
+            # DEC-199 Phase 2G: a fixed OEM constant, never a document read
+            result = constant(a, f"{path}.angle_deg", "deg")
+            ok = ok and result is not None
+            if result is not None:
+                a_sel, a_sign = result
+        elif isinstance(a, dict) and "source" in a and "constant" in a:
+            v.add(f"{path}.angle_deg", IssueCode.MALFORMED, "angle_deg has both a source and a constant; exactly one")
+            ok = False
         elif isinstance(a, dict) and "source" in a and not set(a) - {"source", "sign", "range"} and a.get("sign", 1) in (1, -1):
             a_sel = number(a["source"], f"{path}.angle_deg.source", "deg")
             a_sign = float(a.get("sign", 1))
@@ -494,7 +522,8 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
             ok = ok and a_sel is not None
         else:
             v.add(f"{path}.angle_deg", IssueCode.MALFORMED,
-                  "angle_deg needs a source (with an optional sign of 1 or -1 and range) or, for a resistive edge, atan2 {x, r}")
+                  "angle_deg needs a source (with an optional sign of 1 or -1 and range), a constant {constant, unit, "
+                  "name}, or, for a resistive edge, atan2 {x, r}")
             ok = False
         convention = item.get("convention")
         if convention is not None and (not isinstance(convention, str) or not convention):

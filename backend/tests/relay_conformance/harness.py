@@ -373,7 +373,8 @@ def differences(expected: dict[str, Any], observed: dict[str, Any]) -> list[str]
     out: list[str] = []
     subset = expected.get("values_mode") == "subset"
     for key, want in expected.items():
-        if key in ("schema", "sample", "golden", "shadow_golden", "values_mode", "description", "browser", "mutations"):
+        if key in ("schema", "sample", "golden", "shadow_golden", "shadow_edge_golden", "values_mode", "description",
+                   "browser", "mutations"):
             continue
         got = observed.get(key)
         if key in ("values", "provenance") and subset:

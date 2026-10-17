@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from tests.relay_conformance.golden import v1_golden
-from tests.relay_conformance.shadow_golden import shadow_golden
+from tests.relay_conformance.shadow_golden import shadow_edge_golden, shadow_golden
 from tests.relay_conformance.harness import EXPECTATIONS_DIR, SCHEMA, observe, sample_pdf
 
 
@@ -106,6 +106,8 @@ def main(argv: list[str]) -> int:
     record["golden"] = v1_golden(observed.get("apply"))              # V1 geometry, never V2 (DEC-199 Phase 1)
     # independent engineering goldens for shadow boundaries V1 cannot draw (DEC-199 Phase 2A)
     record["shadow_golden"] = shadow_golden(observed.get("shadow_geometry"))
+    # ... and for a boundary recorded on its own, its zone not (yet) fully assembled (DEC-199 Phase 2G)
+    record["shadow_edge_golden"] = shadow_edge_golden(observed.get("shadow_geometry"))
     text = dump(record)
     if args.write:
         path.write_text(text, encoding="utf-8", newline="\n")
