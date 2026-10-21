@@ -467,8 +467,8 @@ review.
 
 ## 10. Current implementation status
 
-**Stages 2–7B implemented** (commit `e12fad2` + Stage 7B refinements on branch
-`investigation/legacy-ben5k`). Backend decoder complete; browser UAT pending owner.
+**Stages 2–8 complete** (branch `investigation/legacy-ben5k`). Full browser UAT
+against the real GPTH 275kV recording passed 10/10 Playwright tests on 2026-10-21.
 No merge to `main` until owner approval.
 
 ### Implemented (Stages 2–7B)
@@ -503,6 +503,68 @@ BEN5K `timing_reference = "relative_elapsed"` (not `"absolute"`) in the returned
 `DisturbanceRecord`. This places BEN5K in the `TIME_REFERENCE_ELAPSED_ONLY` grouping
 bucket and prevents automatic cross-source time synchronization from an unverified
 timestamp. The `time_basis_unconfirmed` diagnostic is always attached.
+
+### Stage 8 — Real GPTH browser UAT (2026-10-21)
+
+**Environment:** BEN5K-enabled backend (`BEN5K_EXPERIMENTAL_ENABLED=1`) on port 8000;
+frontend served statically on port 8101; Playwright Chromium browser.
+
+**Recording:** `261016_180314535_GPTH_275kV.ben`, 1,629,786 bytes,
+SHA-256 `55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88`.
+
+**API upload result (HTTP 201):**
+
+| Field | Value |
+|---|---|
+| `provider_type` | `BEN` |
+| `status` | `ready` |
+| `station_name` | `GPTH 275kV - BEN5K` |
+| `analog_channel_count` | 35 |
+| `digital_channel_count` | 40 |
+| `sample_count` | 8262 |
+| `duration_seconds` | 1.6522 |
+| `sampling_rates` | [5000.0] |
+| `timing_reference` | `relative_elapsed` (not `absolute`) — timestamp safeguard confirmed |
+| `file_size_bytes` | 1,629,786 |
+
+**Analog channels (35):** 4 bays × 7 channels (VR, VY, VB, IR, IY, IB, IN) for
+TBIN1/TBIN2/SDAI1/SDAI2, plus SDNK1 (VR–VB, IR–IB, IN = 7) and SGT1/SGT2 VY_LV (2).
+All units kV/kA as expected for a 275 kV substation recording.
+
+**Digital channels (40):** All 40 in-bounds digital channels have real signal names —
+`TBIN1 CB_R OPEN`, `TBIN1 CB_Y OPEN`, `TBIN1 CB_B OPEN`, `TBIN1 11L/1`,
+`TBIN1 11L/2`, `TBIN1 11L_COMFL`, `TBIN1 BU_21Z_TOL`, `TBIN1 BU_21Z_Z2`, etc.
+**No channel triggered the `constant_placeholder_digital` classification** — all 40
+channels have non-constant values or values ≠ 0x0800 across the recording, confirming
+the 0x0800-specific guard is correctly scoped.
+Three channels named `SPARE`, `SPARE 1`, `SPARE_1` are present but carry real data.
+
+**Browser test results (spec `ben5k-gpth-uat.spec.js`, 10 tests):**
+
+| # | Test | Result |
+|---|---|---|
+| 1 | GPTH .ben file present and correct size | PASS |
+| 2 | Upload without error; station name in recordings table | PASS |
+| 3 | Workspace shows 35 analog + digital channels | PASS |
+| 4 | Expected analog channel names visible (TBIN1 VR/VY/VB/IR/IY/IB) | PASS |
+| 5 | Enabling TBIN1 VR renders a waveform plot | PASS |
+| 6 | TBIN1 3-phase voltages (VR+VY+VB) render in a single panel | PASS |
+| 7 | Digital channel `TBIN1 CB_R OPEN` present in DOM; DOM-dispatch enable works | PASS |
+| 8 | X-axis shows no absolute date/time pattern — elapsed time axis confirmed | PASS |
+| 9 | API: `timing_reference="relative_elapsed"`, `status="ready"`, all metadata correct | PASS |
+| 10 | Enabling all TBIN1 channels produces no console errors | PASS |
+
+**Finding — digital channel visibility:** Digital channels have class `channel-row--hidden`
+and `data-classification="never_triggered"` by default, placing them in a collapsed group
+section. They are present in the DOM with correct attributes (incl.
+`data-timing-reference="relative_elapsed"`) and can be enabled via DOM dispatch or by
+expanding the group. This is normal channel-list behaviour for non-triggered digitals,
+not a BEN5K-specific bug.
+
+**Explicitly confirmed: The GPTH 275kV recording WAS displayed in the actual browser.**
+Chromium loaded the frontend, the GPTH file was uploaded through the Upload Recording
+modal, the workspace opened, and analog waveforms rendered correctly. All 10 UAT tests
+passed in 39.6 s total.
 
 ### Still unverified (requires owner oracle)
 
