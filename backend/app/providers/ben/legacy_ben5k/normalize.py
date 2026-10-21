@@ -295,8 +295,8 @@ def parse_ben5k(data: bytes) -> BenRecord:
             severity="info",
             message=(
                 f"{len(ch_map.constant_placeholder_digital)} digital channel(s) excluded: "
-                f"sample word carries constant value across all samples "
-                f"(inactive feeder placeholder). "
+                f"sample word carries constant value 0x0800 across all samples "
+                f"(confirmed inactive-feeder placeholder). "
                 f"First: {ch_map.constant_placeholder_digital[0].name!r}."
             ),
         ))

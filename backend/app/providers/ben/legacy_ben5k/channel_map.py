@@ -9,11 +9,13 @@ Rules (in order, first match wins):
                           addressing scheme; not decoded in this version)
   - Digital group 1-N, sw >= words_per_sample  →  inactive_digital
     (structurally out of bounds; cannot be decoded safely)
-  - Digital group 1-N, sw in bounds AND column is constant in sample_words
+  - Digital group 1-N, sw in bounds AND column is constant 0x0800
                        →  constant_placeholder_digital
-    (inactive feeder placeholder, e.g. constant 0x0800; only classified
-    when sample_words is provided, otherwise falls through to verified)
-  - Digital group 1-N, sw in bounds AND varying   →  verified_digital
+    (confirmed inactive-feeder placeholder value; only classified when
+    sample_words is provided; other constant values fall through to verified)
+  - Digital group 1-N, sw in bounds AND (varying OR constant ≠ 0x0800)
+                       →  verified_digital
+    (genuine bitmask data, or legitimately constant signal during recording)
   - Analog word_index >= first_digital_sw  →  inactive_analog
     (word falls in the digital bitmask or constant region)
   - Analog word_index already claimed by an earlier channel  →  inactive_analog
@@ -47,6 +49,13 @@ from app.providers.ben.legacy_ben5k.reader import Ben5kAnalogChannel, Ben5kDigit
 
 _UNSUPPORTED_WORD_GROUP = 0
 
+# Confirmed inactive-feeder placeholder raw value in the GPTH 275 kV recording.
+# Inactive feeder word slots carry exactly this value across all samples.
+# This is the ONLY raw value that triggers constant_placeholder_digital; a
+# constant column with any other value (e.g. 0xFFFF quiescent) is classified
+# as verified_digital (legitimately constant signal, no transitions recorded).
+_PLACEHOLDER_CONSTANT_VALUE: int = 0x0800
+
 
 @dataclass(frozen=True)
 class Ben5kChannelMap:
@@ -73,8 +82,10 @@ class Ben5kChannelMap:
     # not decoded in this version.
     unsupported_digital: tuple[Ben5kDigitalChannel, ...]
 
-    # Digital channels whose sample word is in bounds but carries a constant
-    # value across all samples (inactive feeder placeholder, e.g. 0x0800).
+    # Digital channels whose sample word is in bounds and carries the constant
+    # value 0x0800 across all samples (confirmed inactive-feeder placeholder).
+    # Channels with a different constant value (e.g. 0xFFFF quiescent) stay in
+    # verified_digital so legitimately-constant signals are not hidden.
     # Empty when classify_channels() is called without sample_words.
     constant_placeholder_digital: tuple[Ben5kDigitalChannel, ...]
 
@@ -101,8 +112,11 @@ def classify_channels(
         words_per_sample: Total sample words (from Ben5kHeader.words_per_sample).
         sample_words: Optional (n_samples × words_per_sample) uint16 array.
             When provided, in-bounds digital channels whose sample-word column
-            has zero variance are classified as constant_placeholder_digital
-            rather than verified_digital.
+            carries the constant value 0x0800 across all samples are classified
+            as constant_placeholder_digital rather than verified_digital.
+            Other constant-value columns (e.g. 0xFFFF quiescent) stay in
+            verified_digital — they represent real channels that did not
+            transition during this recording.
 
     Returns:
         Ben5kChannelMap with all six classification groups populated.
@@ -127,15 +141,19 @@ def classify_channels(
         else:
             inactive_digital.append(ch)
 
-    # Variance split: when sample_words is available, constant columns are
-    # inactive-feeder placeholders.  Without sample_words all in-bounds
-    # channels are treated as verified (backward-compatible).
+    # Placeholder split: when sample_words is available, in-bounds channels
+    # whose column carries the constant 0x0800 value are inactive-feeder
+    # placeholders.  A constant value other than 0x0800 (e.g. 0xFFFF
+    # quiescent) means the channel is real but did not transition during
+    # this recording — keep it in verified_digital so it is not hidden.
+    # Without sample_words all in-bounds channels are treated as verified.
     verified_digital: list[Ben5kDigitalChannel] = []
     constant_placeholder_digital: list[Ben5kDigitalChannel] = []
     if sample_words is not None:
         for ch in in_bounds:
             col = sample_words[:, ch.sample_word_index]
-            if int(col.min()) == int(col.max()):
+            col_min = int(col.min())
+            if col_min == int(col.max()) == _PLACEHOLDER_CONSTANT_VALUE:
                 constant_placeholder_digital.append(ch)
             else:
                 verified_digital.append(ch)

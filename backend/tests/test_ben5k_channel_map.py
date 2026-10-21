@@ -207,8 +207,8 @@ def _make_sample_words(n_samples: int, wps: int, **col_values: int) -> np.ndarra
     return sw
 
 
-def test_constant_column_becomes_placeholder():
-    # sw=38: all 0x0800 → constant → constant_placeholder_digital (not verified)
+def test_constant_0x0800_becomes_placeholder():
+    # sw=38: all 0x0800 → confirmed placeholder value → constant_placeholder_digital
     digital = [_digital("CB_OPEN", 1)]  # group 1 → sw=38
     sw = _make_sample_words(10, 97, **{"38": 0x0800})
     cm = classify_channels([], digital, words_per_sample=97, sample_words=sw)
@@ -216,6 +216,28 @@ def test_constant_column_becomes_placeholder():
     assert cm.constant_placeholder_digital[0].name == "CB_OPEN"
     assert cm.verified_digital == ()
     assert cm.digital_bitmask_word_count == 0
+
+
+def test_constant_non_0x0800_stays_verified():
+    # sw=38: constant 0x0000 (not the placeholder value) → verified_digital, not placeholder.
+    # e.g. a CB quiescent at 0xFFFF, or any non-0x0800 value, means real channel.
+    digital = [_digital("CB_OPEN", 1)]  # group 1 → sw=38
+    sw = _make_sample_words(10, 97, **{"38": 0x0000})  # constant but not 0x0800
+    cm = classify_channels([], digital, words_per_sample=97, sample_words=sw)
+    assert len(cm.verified_digital) == 1
+    assert cm.verified_digital[0].name == "CB_OPEN"
+    assert cm.constant_placeholder_digital == ()
+    assert cm.digital_bitmask_word_count == 1
+
+
+def test_constant_0xffff_stays_verified():
+    # sw=38: constant 0xFFFF = all bits high = all channels inactive in active-low.
+    # This is a legitimate quiescent recording, not an inactive-feeder slot.
+    digital = [_digital("CB_NORMAL", 1)]
+    sw = _make_sample_words(10, 97, **{"38": 0xFFFF})
+    cm = classify_channels([], digital, words_per_sample=97, sample_words=sw)
+    assert len(cm.verified_digital) == 1
+    assert cm.constant_placeholder_digital == ()
 
 
 def test_varying_column_stays_verified():

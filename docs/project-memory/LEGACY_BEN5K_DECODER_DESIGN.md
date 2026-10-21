@@ -467,23 +467,51 @@ review.
 
 ## 10. Current implementation status
 
-**Owner has approved Phase 2 direct implementation.** Binary investigation has established
-confirmed structural facts sufficient to implement Stages 2 and 3 without an oracle.
-Remaining unknowns (digital word→slot mapping, UTC/local, polarity) are flagged
-explicitly and will be resolved as the implementation proceeds.
+**Stages 2–7B implemented** (commit `e12fad2` + Stage 7B refinements on branch
+`investigation/legacy-ben5k`). Backend decoder complete; browser UAT pending owner.
+No merge to `main` until owner approval.
 
-Confirmed facts enabling implementation:
-- word_index at descriptor byte 53, 0-indexed (22 channels verified)
-- Payload boundary formula: `file_size − count × wps × 2`
-- Sample decode: big-endian u16 → `.astype(np.int16)` → `scale × raw + offset`
-- Digital words at sample positions 38–42 (confirmed by payload analysis)
-- Digital convention: active-low (0xFFFF quiescent, bits go to 0 on activation)
+### Implemented (Stages 2–7B)
 
-**Unverified interpretations** — present in code as named constants or flags, never
-silently applied:
-- UTC vs local time: timestamp stored without timezone assumption pending oracle
-- digital word_group → sample word formula: `37 + group` (inferred, flagged in code)
-- polarity_flag semantics: byte preserved in descriptor dataclass, not yet decoded
+| Module | Status |
+|---|---|
+| `legacy_ben5k/reader.py` | Complete — flat header + 58-byte descriptor walk |
+| `legacy_ben5k/channel_map.py` | Complete — six-way classification; 0x0800-specific constant_placeholder criterion (Stage 7B) |
+| `legacy_ben5k/normalize.py` | Complete — `parse_ben5k()` builds `BenRecord`; `time_basis_unconfirmed` diagnostic always attached |
+| `providers/ben/parser.py` | Complete — `parse_ben_experimental()` opt-in wrapper; BEN5K dispatched only with flag |
+| `providers/ben/provider.py` | Complete — `BenProvider(ben5k_experimental_enabled=True/False)`; BEN5K sets `timing_reference="relative_elapsed"` to prevent auto-synchronization |
+| `config.py` | Complete — `BEN5K_EXPERIMENTAL_ENABLED` env var → `Settings.ben5k_experimental_enabled` |
+| `services/import_service.py` | Complete — flag threaded to `BenProvider` |
+| `api/v1/sources.py` | Complete — upload endpoint reads flag from settings |
+
+**Feature flag:** `BEN5K_EXPERIMENTAL_ENABLED=1` enables BEN5K decoding. Default: disabled.
+All existing SubBen tests continue to pass unchanged (exit 0, 190+ tests).
+
+### Channel classification (Stage 7B refinement)
+
+Six-way classification in `channel_map.py`:
+1. `unsupported_digital` — group-0 SENS OUT channels (unconfirmed addressing)
+2. `inactive_digital` — sample_word_index ≥ words_per_sample (structurally out of bounds)
+3. `constant_placeholder_digital` — in-bounds AND constant value **exactly 0x0800** (confirmed inactive-feeder placeholder; other constant values, e.g. 0xFFFF quiescent, remain in verified_digital)
+4. `verified_digital` — in-bounds AND (varying OR constant ≠ 0x0800)
+5. `inactive_analog` — word_index ≥ first_digital_sw OR duplicate word_index
+6. `recorded_analog` — all other analog channels
+
+### Timestamp safety (Stage 7B)
+
+BEN5K `timing_reference = "relative_elapsed"` (not `"absolute"`) in the returned
+`DisturbanceRecord`. This places BEN5K in the `TIME_REFERENCE_ELAPSED_ONLY` grouping
+bucket and prevents automatic cross-source time synchronization from an unverified
+timestamp. The `time_basis_unconfirmed` diagnostic is always attached.
+
+### Still unverified (requires owner oracle)
+
+- UTC vs local time (+8): timestamp stored as UTC internally but may be local time.
+- Digital word_group → sample word formula: `37 + group` (inferred, not oracle-confirmed).
+- `polarity_flag` semantics: byte preserved in descriptor, not yet decoded.
+- Active-low polarity: assumed from GPTH quiescent 0xFFFF observation; not oracle-confirmed.
+- Scale/offset correctness for voltage channels: no oracle comparison done.
+- Missing-value encoding: no BEN5K-specific test; SubBen rule (raw = -32768) assumed.
 
 ---
 
