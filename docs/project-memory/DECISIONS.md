@@ -27923,3 +27923,69 @@ remains production-authoritative. GRZ100 stays **PARTIALLY SUPPORTED / NOT_READY
   assessment's ranking).
 
 **Results (2026-10-17):** backend full suite 10,144 passed, 150 skipped, 0 failed (owner sheets via RELAY_SAMPLE_PDF_DIR; one pre-existing catalog-version pin updated for GRZ100's 1.2.0 bump, as in prior phases); boundary unit tests 139 passed (121 + 18 new: constant-value shape refusals, the missing-value/default safeguard, catalog-section validation, and a direct regression check that REL511/7SA613/7SL87 carry no ConstantValue); shadow conformance: GRZ100's right blinder derived and fully provenanced for 5 forward zones on both the synthetic and owner sheets, verified by a new shadow_edge_golden independent of full assembly (edge points at X=0/±1x/+2x |BFRS|, inside/outside probes); 32 expectations with shadow_geometry regenerated once for the new key, production / readiness diff none, verified programmatically on every one of them; browser: every relay-import, relay_review_copy and Distance spec 236 / 236 in the isolated :8102 / :8200 run. Full browser suite not run.
+
+### DEC-199 Amendment 8 -- Phase 2I: GRZ100 left blinder as a static-equivalent canonical boundary, forward zones now assemble (2026-10-21)
+
+Status: Phase 2I implemented on `feature/remaining-relay-imports` (not merged, not deployed). Shadow mode only: V1
+remains production-authoritative. GRZ100 stays **PARTIALLY SUPPORTED / NOT_READY**; readiness, blockers, Apply,
+`approximations[]`, signed-review-token semantics, manual resolution and the frontend plot are unchanged.
+
+* **Why this slice exists.** Phase 2G verified GRZ100's right blinder (BFR, fixed 75 deg) and introduced a mechanism
+  for fixed OEM constants. No GRZ100 forward zone assembled a complete region because no verified left boundary
+  existed. Phase 2H (read-only assessment) established that BFL's retained side can be independently derived from two
+  OEM facts that are individually verifiable, making the left blinder tractable with existing primitives.
+* **OEM evidence.** Toshiba 6F2S0834-0 ("GRZ100 Distance Relay Instruction Manual"), 2.6.1 (p. 119-120):
+  - **BFL operating condition:** `Vp * I * cos(φ + θ - 90°) > 0` where `θ = BFLS-angle`. Re-arranged:
+    `sin(φ + θ) > 0`, i.e. `sin θ * R >= cos θ * X`, i.e. **`R >= X * cot(BFLSθ)`** (left half-plane, origin
+    intercept exactly zero). The static equivalent is `R >= X * cot(BFLSθ)` -- DC steady-state geometry, not
+    dependent on the direction of cross-polarisation.
+  - **BFLS intercept (fixed):** Settings p. 34: *"BFLS ... Fixed ... Forward left blinder reach (intercept)"*
+    explicitly confirms BFLS = 0 Ω (no configurable reach offset). This is a fixed OEM constant, not a configured
+    value.
+  - **BFLSθ setting range:** Settings p. 34: *"BFLS θ  90-135 deg  1 deg  120 deg  Forward left blinder angle"* --
+    configurable, not fixed; read from the sheet per zone run, gated on `ZS-C = quad`.
+  - **Fidelity:** Toshiba 6641-1 brochure: the relay uses cross-polarisation with voltage memory for BFL; the static
+    equivalent captures the DC steady-state boundary only (`static_equivalent` fidelity).
+  - Both references (`toshiba-6f2s0834-0-elements`, `toshiba-6f2s0834-0-settings`) were already verified.
+* **Derivation.** `ResistiveBoundary(r_at_axis=0, angle_deg=BFLSθ, side="left", frame="zone",
+  fidelity="static_equivalent")` -- a generic primitive already in use for BFR and for REL511, 7SA613, 7SL87.
+  - `r_at_axis = 0`: BFLS fixed at 0 Ω (a `ConstantValue`, reusing the Phase 2G constant mechanism extended to the
+    `r_at_axis` field).
+  - `angle_deg = BFLSθ`: read from the configured sheet, documented range 90-135 deg; an out-of-range value refuses
+    derivation.
+  - Zone scope: Z1, Z1X, Z2, ZF, Z3 (same as BFR); gate: `ZS-C = quad` (same gate).
+* **`r_at_axis` constant extension (Phase 2G mechanism extended).** A boundary's `r_at_axis` field can now also be a
+  fixed OEM constant (`{"constant": <finite>, "unit": "ohm", "name": ...}`) on exactly the same terms as `angle_deg`.
+  The "missing configured value is never satisfied by a constant, in either direction" safeguard applies: BFLSθ
+  must still be present and readable; a blank BFLS-angle derives no left boundary regardless of the fixed zero
+  intercept.
+* **`static_equivalent` fidelity extended to resistive boundaries.** Previously restricted to directional
+  boundaries. BFL is voltage-polarised (cross-polarisation with memory) so its DC steady-state representation is
+  `static_equivalent`, not `documented`. The fidelity field now accepts `"static_equivalent"` for both resistive and
+  directional boundaries.
+* **Forward zones now assemble.** With both a right edge (BFR, `documented`) and a left edge (BFL,
+  `static_equivalent`) derived, `assemble_zone` now assembles the five forward zones (Z1, Z1X, Z2, ZF, Z3) into
+  a complete open-bottomed region: `represented = ["top", "right", "left"]`, `not_represented = ["lower"]` (no
+  directional or lower-reactance boundary modelled), `relay_behaviour_fidelity = "static_equivalent"` (the weaker
+  of the two edges). `shadow_geometry = "exact"` for those zones.
+* **Asymmetric-angle golden extension.** `zone_golden()` previously required both edges to share the same angle
+  (parallelogram). BFR (75 deg) and BFL (BFLSθ, typically 120 deg) are different, so `zone_golden` now handles
+  asymmetric angles: symmetric zones continue to output `"cot"` (backward-compatible); asymmetric zones output
+  `"cot_right"` and `"cot_left"` instead.
+* **GRZ100 mapping** (catalog 1.2.0 -> **1.3.0**, new lock entry, 1.2.0 kept). New boundary `grz100.boundary.left`:
+  `kind: resistive`, `side: left`, `frame: zone`, `zone: ["Z1", "Z1X", "Z2", "ZF", "Z3"]`,
+  `r_at_axis = {"constant": 0, "unit": "ohm", "name": "..."}` (BFLS = 0 Ω fixed),
+  `angle_deg = {"source": {"name": "BFLS-angle", "unit": "deg", "printed_unit": {"accept": ["degree"]}},
+  "range": [90.0, 135.0]}`, gated on `ZS-C = quad`, `fidelity: "static_equivalent"`.
+* **All 28 synthetic conformance expectations regenerated.** GRZ100 forward-zone expectations with `ZS-C = quad`
+  and a readable BFLS-angle now carry `shadow_golden` (assembled, open-bottom region) instead of `shadow_edge_golden`
+  only; `grz100--mho` is unchanged (no boundaries). REL511 / 7SA613 / 7SL87 expectations are unchanged in their
+  geometric content; only the new `shadow_golden` / `shadow_edge_golden` split applies (symmetric zones retain the
+  existing `"cot"` field; no field outside the golden section changed). 4 real-sheet expectations were not
+  regenerated (owner PDFs required; geometric changes are equivalent for those sheets).
+* **Production / readiness diff: none.** GRZ100 stays PARTIALLY SUPPORTED / NOT_READY. ZBS directional element,
+  reverse-zone blinders, reverse-zone forward offset, ZND circle and Zone 4 remain unresolved. No Apply,
+  `approximations[]`, signed-review-token, manual-resolution or plot change.
+* **Stopped after Phase 2I; ZBS directional geometry, reverse zones and ZND untouched, as instructed. Not pushed.**
+
+**Results (2026-10-21):** backend full suite 9993 passed, 321 skipped, 0 failed (0:20:26) (owner sheets skipped -- RELAY_SAMPLE_PDF_DIR not set; key modules test_distance_boundaries / test_parameter_catalog_shipped / test_relay_conformance: 749 passed, 119 skipped, 0 failed; all new Phase 2I tests pass: constant r_at_axis, static_equivalent-resistive fidelity, GRZ100 left blinder, asymmetric zone golden); shadow conformance: 28 synthetic expectations regenerated, all pass; GRZ100 forward zones now assemble for the first time (shadow_golden replaces shadow_edge_golden), verified by independent goldens; REL511 / 7SA613 / 7SL87 geometrically unchanged; browser: all relay-import + Distance specs 236 / 236 passed (193 relay-import + relay_review_copy, 43 Distance; 0 failed). Full browser suite not run.

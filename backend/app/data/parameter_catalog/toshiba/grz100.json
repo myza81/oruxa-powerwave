@@ -1,11 +1,11 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "toshiba-grz100-catalog",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "lifecycle": "active",
   "profile_id": "toshiba-grz100",
   "registry_version": "1.1.0",
-  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only. Configured settings: the phase (ZS-C) and earth (ZG-C) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Documented relay behaviour (DEC-198, Toshiba instruction manual 6F2S0834-0 and brochure 6641-1, version-dependent for this GRZ100-201A sheet): the fixed zone directions, the phase-fault and earth-fault elements of every zone, the secondary-ohm setting basis, ZnS as the quadrilateral's X reach, Zone 1's horizontal reactance line (Z1S-angle1 = 0), Zone 1X's instantaneous trip. Not verified: whether each zone trips in service -- the relay runs a site-specific PLC program the source does not define (geometry reviewed, operational state not verified). Not representable (blocking): the 75-degree right blinders (exact relation preserved -- since 1.2.0 the forward Z1 / Z1X / Z2 / ZF / Z3 right blinder is also derived as a canonical inclined resistive boundary in SHADOW mode only, its fixed 75 deg angle a documented OEM constant, never a configured setting or a substituted default; DEC-199 Phase 2G; production unchanged), the polarised left blinder / directional boundary, the reverse zones' blinder, the reverse zones' forward offset, the non-directional impedance element and Zone 4 (command protection only). No source value is missing.",
+  "description": "Toshiba GRZ100 distance elements as a GRZ100 setting sheet prints them ([Parameter], [Trip/Com(Sw)], [Trip/Com(Ele)]). Catalog-only. Configured settings: the phase (ZS-C) and earth (ZG-C) characteristic selections, the per-zone phase / earth timers, the CT and VT ratios and the line data. Documented relay behaviour (DEC-198, Toshiba instruction manual 6F2S0834-0 and brochure 6641-1, version-dependent for this GRZ100-201A sheet): the fixed zone directions, the phase-fault and earth-fault elements of every zone, the secondary-ohm setting basis, ZnS as the quadrilateral's X reach, Zone 1's horizontal reactance line (Z1S-angle1 = 0), Zone 1X's instantaneous trip. Not verified: whether each zone trips in service -- the relay runs a site-specific PLC program the source does not define (geometry reviewed, operational state not verified). Not representable (blocking): the 75-degree right blinders (exact relation preserved -- since 1.2.0 the forward Z1 / Z1X / Z2 / ZF / Z3 right blinder is also derived as a canonical inclined resistive boundary in SHADOW mode only, its fixed 75 deg angle a documented OEM constant; DEC-199 Phase 2G), the left blinder (since 1.3.0 the BFL is also derived as a static-equivalent inclined resistive boundary in SHADOW mode only, R >= X * cot(BFLSθ) with origin intercept BFLS fixed at 0 Ω; DEC-199 Phase 2I; forward Z1 / Z1X / Z2 / ZF / Z3 now assemble an open-bottom region; production unchanged), the ZBS directional boundary, the reverse zones' blinder, the reverse zones' forward offset, the non-directional impedance element and Zone 4 (command protection only). No source value is missing.",
   "applicability": {
     "manufacturer": "Toshiba",
     "family": "GRZ100",
@@ -70,7 +70,15 @@
      "requires": [{"source": {"name": "ZS-C", "allowed_text": ["mho", "quad"]}, "equals": ["quad"]}],
      "fidelity": "documented", "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"],
      "equation": "Rright(X) = BFRS + X * cot(75 deg); the forward blinder BFR: X >= (R - BFRS) * tan 75 deg (Toshiba 6F2S0834-0, 2.6.1, Fig. 2.6.1.9: 'The BFR has an angle of 75 deg to the R-axis'; 'The characteristic of the BFR is obtained by the following equation. X >= (R - Rs) tan 75 deg', Rs = BFRS, 'the reach setting'; settings p. 34, BFRS angle 'Fixed to 75 deg'). BFRS is one forward right blinder common to Z1, Z1X, Z2, ZF and Z3 on this sheet. The reverse zones' blinder (BRR/BRRS), ZND's blinder (BNDS), the left blinder BFL and the directional element are separately scoped and not represented by this boundary.",
-     "canonical": "zones[{zone}].resistive_reach.phase_phase"}
+     "canonical": "zones[{zone}].resistive_reach.phase_phase"},
+    {"id": "grz100.boundary.left", "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"], "kind": "resistive", "side": "left", "frame": "zone",
+     "r_at_axis": {"constant": 0, "unit": "ohm", "name": "BFL origin intercept (BFLS fixed at 0 ohm, no configurable reach)"},
+     "angle_deg": {"source": {"name": "BFLS-angle", "unit": "deg", "printed_unit": {"accept": ["degree"]}}, "range": [90.0, 135.0]},
+     "requires": [{"source": {"name": "ZS-C", "allowed_text": ["mho", "quad"]}, "equals": ["quad"]}],
+     "fidelity": "static_equivalent",
+     "references": ["toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"],
+     "equation": "Rleft(X) = X * cot(BFLSθ); derived from Vp * I * cos(φ + θ - 90°) > 0 (6F2S0834-0, 2.6.1, Fig. 2.6.1.9, p.119-120) as sin(φ + θ) > 0, i.e. R * sin θ >= X * cos θ, i.e. R >= X * cot(BFLSθ), with BFLS fixed at 0 ohm (settings p.34: 'BFLS θ 90-135 deg ... 120 deg ... Forward left blinder angle'; BFLS intercept always at the origin). BFLSθ is the configured inclination angle of BFL to the R-axis (90-135 deg, default 120 deg, read from the sheet). Static equivalent: the relay uses cross-polarisation with voltage memory (Toshiba 6641-1); this boundary is the DC steady-state geometry. The reverse blinder BRL and the ZBS directional element are separately scoped and not represented by this boundary.",
+     "canonical": "zones[{zone}].r_left.phase_phase"}
   ],
   "source_notes": [
     {
@@ -385,7 +393,7 @@
       "canonical": "distance.zone.r_left",
       "zone": ["Z1", "Z1X", "Z2", "ZF", "Z3"],
       "gap": {
-        "note": "The left side is bounded by the forward left blinder BFL, Vp * I * cos(phi + theta - 90 deg) > 0 with theta = BFLS-angle, and by the directional element, I * Vp * cos(theta - phi) >= 0 with theta = ZBS-angle (quad) ({evidence}; 6F2S0834-0, 2.6.1). Both are voltage-polarised boundaries through the origin whose combined orientation on the R-X plane is not fully verified. The current engine cannot represent them; no left boundary is drawn, offered or approximated.",
+        "note": "The left side is bounded by the forward left blinder BFL, Vp * I * cos(phi + theta - 90 deg) > 0 with theta = BFLS-angle, and by the directional element, I * Vp * cos(theta - phi) >= 0 with theta = ZBS-angle (quad) ({evidence}; 6F2S0834-0, 2.6.1). BFL derives as R >= X * cot(BFLSθ) with origin intercept 0 (BFLS fixed at 0 ohm; static equivalent: DC steady-state geometry; DEC-199 Phase 2I, grz100.boundary.left) -- but only for a Quad zone where BFLS-angle is present and readable. The ZBS directional element and its combined orientation with BFL are not fully verified; ZBS is not represented by this gap or by the boundary. The current engine cannot represent voltage-polarised boundaries; production unchanged.",
         "evidence": [{"name": "BFLS-angle"}, {"name": "ZBS-angle (quad)"}]
       },
       "references": ["toshiba-6f2s0834-0-elements"]

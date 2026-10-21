@@ -690,7 +690,8 @@ class TestConstantCatalogSection:
 class TestGRZ100CatalogSection:
     def test_the_right_blinder_is_a_resistive_boundary_at_a_fixed_75_degrees(self):
         run = grz100_run({})
-        by_zone = {b.zone_id: b for b in run.boundaries}
+        right = [b for b in run.boundaries if b.side == BoundarySide.RIGHT]
+        by_zone = {b.zone_id: b for b in right}
         assert set(by_zone) == {"Z1", "Z1X", "Z2", "ZF", "Z3"}            # forward zones only -- never ZR1/ZR2/ZND/Z4
         z1 = by_zone["Z1"]
         assert (z1.r_at_axis, z1.angle_deg, z1.side, z1.frame, z1.fidelity) == (
@@ -702,12 +703,12 @@ class TestGRZ100CatalogSection:
         assert set(z1.provenance.reference_ids) == {"toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"}
         assert z1.provenance.canonical_path == "zones[Z1].resistive_reach.phase_phase"
 
-    def test_a_blank_bfrs_derives_no_boundary_and_substitutes_no_default(self):
+    def test_a_blank_bfrs_derives_no_right_boundary_and_substitutes_no_default(self):
         """The safeguard this phase exists for: a missing configured BFRS is never silently replaced by the fixed
         75 deg constant standing in for it, and the 75 deg constant never substitutes for BFRS either."""
         for cell in ("", "x"):
             run = grz100_run({"set": {"BFRS": cell}})
-            assert run.boundaries == ()
+            assert all(b.side == BoundarySide.LEFT for b in run.boundaries)  # right derives nothing; left still does
             assert {zone for bid, zone, why in run.unresolved if bid == "grz100.boundary.right"} == {
                 "Z1", "Z1X", "Z2", "ZF", "Z3"}
 
@@ -726,10 +727,120 @@ class TestGRZ100CatalogSection:
 
     def test_the_catalog_section_is_validated(self):
         data = json.loads(GRZ100.read_text(encoding="utf-8"))
-        for change in ({"side": "top"}, {"retained_side": "clockwise"}, {"frame": "implicit"}, {"fidelity": "static_equivalent"},
+        for change in ({"side": "top"}, {"retained_side": "clockwise"}, {"frame": "implicit"}, {"fidelity": "approximate"},
                        {"zone": ["ZQ"]}, {"r_at_axis": {"source": {"name": "BRRS", "unit": "ohm"}, "sign": 2}}):
             bad = copy.deepcopy(data)
             bad["boundaries"][0].update(change)
+            with pytest.raises(CatalogValidationError):
+                catalog(bad)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# DEC-199 Phase 2I: constant r_at_axis (e.g. BFLS origin intercept = 0 Ω) and GRZ100 left blinder.
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+class TestConstantRAtAxisCatalogSection:
+    """Generic validation of a constant ``r_at_axis`` field, independent of GRZ100."""
+
+    def test_a_valid_constant_r_at_axis_is_accepted(self):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        catalog(data)                                                       # does not raise with the new left boundary
+
+    @pytest.mark.parametrize("r_at_axis", [
+        {"constant": 0, "unit": "ohm", "name": "x", "source": {"name": "BFRS", "unit": "ohm"}},  # both
+        {"constant": "0", "unit": "ohm", "name": "x"},                     # string
+        {"constant": True, "unit": "ohm", "name": "x"},                    # bool
+        {"constant": float("nan"), "unit": "ohm", "name": "x"},            # NaN
+        {"constant": float("inf"), "unit": "ohm", "name": "x"},            # infinite
+        {"constant": 0, "unit": "deg", "name": "x"},                       # wrong unit
+        {"constant": 0, "unit": "ohm"},                                    # no name
+        {"constant": 0, "unit": "ohm", "name": ""},                        # blank name
+        {"constant": 0, "unit": "ohm", "name": "x", "sign": 2},            # bad sign
+    ])
+    def test_invalid_constant_r_at_axis_is_refused(self, r_at_axis):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        bad = copy.deepcopy(data)
+        # target grz100.boundary.left (index 1)
+        left_idx = next(i for i, b in enumerate(bad["boundaries"]) if b["id"] == "grz100.boundary.left")
+        bad["boundaries"][left_idx]["r_at_axis"] = r_at_axis
+        with pytest.raises(CatalogValidationError):
+            catalog(bad)
+
+    def test_static_equivalent_fidelity_is_accepted_by_resistive_boundary(self):
+        b = ResistiveBoundary("Z", 0.0, 120.0, BoundarySide.LEFT, BoundaryFrame.ZONE, PROV, fidelity="static_equivalent")
+        assert b.fidelity == "static_equivalent"
+        hp = b.half_plane()
+        assert hp.meta.fidelity == "static_equivalent"
+
+    def test_static_equivalent_fidelity_in_catalog_is_accepted_for_resistive(self):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        catalog(data)                                                       # grz100.boundary.left is static_equivalent
+
+
+class TestGRZ100LeftBlinder:
+    def test_the_left_blinder_is_derived_at_the_default_120_degree_angle(self):
+        run = grz100_run({})
+        left = [b for b in run.boundaries if b.side == BoundarySide.LEFT]
+        by_zone = {b.zone_id: b for b in left}
+        assert set(by_zone) == {"Z1", "Z1X", "Z2", "ZF", "Z3"}
+        z1 = by_zone["Z1"]
+        assert (z1.r_at_axis, z1.angle_deg, z1.side, z1.frame, z1.fidelity) == (
+            0.0, 120.0, BoundarySide.LEFT, BoundaryFrame.ZONE, "static_equivalent")
+        roles = {s.role: (s.name, s.raw_value, s.unit, s.page, s.line) for s in z1.provenance.sources}
+        assert roles["r_at_axis"][1:3] == ("0", "ohm") and roles["r_at_axis"][3:] == (None, None)   # constant: no location
+        assert roles["angle_deg"] == ("BFLS-angle", "120", "deg", 1, 34)   # read from the document, with a location
+        assert set(z1.provenance.reference_ids) == {"toshiba-6f2s0834-0-elements", "toshiba-6f2s0834-0-settings"}
+        assert z1.provenance.canonical_path == "zones[Z1].r_left.phase_phase"
+
+    @pytest.mark.parametrize("angle", [90.0, 120.0, 135.0])
+    def test_valid_angles_derive_the_left_blinder(self, angle):
+        run = grz100_run({"set": {"BFLS-angle": str(int(angle))}})
+        left = [b for b in run.boundaries if b.side == BoundarySide.LEFT]
+        assert {b.zone_id for b in left} == {"Z1", "Z1X", "Z2", "ZF", "Z3"}
+        assert all(b.angle_deg == angle for b in left)
+        assert all(b.r_at_axis == 0.0 for b in left)
+
+    @pytest.mark.parametrize("angle", ["89", "136", "45", "0"])
+    def test_angle_outside_documented_range_derives_no_left_blinder(self, angle):
+        run = grz100_run({"set": {"BFLS-angle": angle}})
+        left = [b for b in run.boundaries if b.side == BoundarySide.LEFT]
+        assert left == []
+        assert {zone for bid, zone, _ in run.unresolved if bid == "grz100.boundary.left"} == {
+            "Z1", "Z1X", "Z2", "ZF", "Z3"}
+
+    def test_blank_bfls_angle_derives_no_left_blinder(self):
+        run = grz100_run({"set": {"BFLS-angle": ""}})
+        left = [b for b in run.boundaries if b.side == BoundarySide.LEFT]
+        assert left == []
+        assert {zone for bid, zone, _ in run.unresolved if bid == "grz100.boundary.left"} == {
+            "Z1", "Z1X", "Z2", "ZF", "Z3"}
+
+    def test_mho_characteristic_derives_no_left_blinder(self):
+        run = grz100_run({"set": {"ZS-C": "Mho"}})
+        assert run.boundaries == ()
+
+    def test_forward_zones_assemble_an_open_bottom_region(self):
+        run = grz100_run({})
+        right = {b.zone_id: b for b in run.boundaries if b.side == BoundarySide.RIGHT}
+        left = {b.zone_id: b for b in run.boundaries if b.side == BoundarySide.LEFT}
+        assert right.keys() == left.keys() == {"Z1", "Z1X", "Z2", "ZF", "Z3"}
+
+    def test_production_interpretation_never_sees_the_left_blinder(self):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        bare = {k: v for k, v in copy.deepcopy(data).items() if k != "boundaries"}
+        document = extract_pdf(sheet_pdf("grz100")).document
+        with_b, without = (CatalogInterpreter(catalog(d), canonical_registry()).run(document) for d in (data, bare))
+        assert with_b.model == without.model
+        assert with_b.consumed == without.consumed and with_b.preserved_ids == without.preserved_ids
+
+    def test_the_left_boundary_catalog_section_is_validated(self):
+        data = json.loads(GRZ100.read_text(encoding="utf-8"))
+        left_idx = next(i for i, b in enumerate(data["boundaries"]) if b["id"] == "grz100.boundary.left")
+        for change in ({"side": "top"}, {"fidelity": "approximate"}, {"frame": "implicit"},
+                       {"zone": ["ZQ"]}, {"r_at_axis": {"source": {"name": "BRRS", "unit": "ohm"}, "sign": 2}}):
+            bad = copy.deepcopy(data)
+            bad["boundaries"][left_idx].update(change)
             with pytest.raises(CatalogValidationError):
                 catalog(bad)
 

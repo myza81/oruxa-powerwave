@@ -365,7 +365,8 @@ def _source_notes(v: _Validator, raw: Any) -> tuple[ZoneNoteRule, ...]:
 
 _BOUNDARY_KEYS = {"id", "zone", "kind", "side", "retained_side", "frame", "r_at_axis", "angle_deg", "x_minus",
                   "x_at_reference", "tilt_deg", "requires", "fidelity", "references", "equation", "canonical", "convention"}
-_BOUNDARY_FIDELITY = {"resistive": ("exact", "documented"), "directional": ("exact", "documented", "static_equivalent"),
+_BOUNDARY_FIDELITY = {"resistive": ("exact", "documented", "static_equivalent"),
+                      "directional": ("exact", "documented", "static_equivalent"),
                       "reactance_lower": ("exact", "documented"), "reactance_upper": ("exact", "documented")}
 #: The keys only one kind of boundary has (any other kind refuses them).
 _KIND_ONLY = {"side": "resistive", "r_at_axis": "resistive", "retained_side": "directional", "x_minus": "reactance_lower",
@@ -441,15 +442,25 @@ def _boundaries(v: _Validator, raw: Any, zones: ZoneModel | None, references: tu
         r_sel, r_sign, r_scale = None, 1.0, 1.0
         if kind == "resistive":
             r = item.get("r_at_axis")
-            scale = r.get("scale", 1) if isinstance(r, dict) else 1
-            if (not isinstance(r, dict) or set(r) - {"source", "sign", "scale"} or r.get("sign", 1) not in (1, -1)
-                    or isinstance(scale, bool) or not isinstance(scale, (int, float)) or not 0 < scale <= 1):
-                v.add(f"{path}.r_at_axis", IssueCode.MALFORMED,
-                      "r_at_axis needs a source, an optional sign of 1 or -1 and an optional documented scale in (0, 1]")
-                ok, r, scale = False, {}, 1
-            r_sel = number(r.get("source"), f"{path}.r_at_axis.source", "ohm")
-            r_sign, r_scale = float(r.get("sign", 1)), float(scale)
-            ok = ok and r_sel is not None
+            if isinstance(r, dict) and "constant" in r and "source" not in r:
+                # DEC-199 Phase 2I: a fixed OEM constant for r_at_axis (e.g. BFLS origin intercept = 0 Ω)
+                result = constant(r, f"{path}.r_at_axis", "ohm")
+                ok = ok and result is not None
+                if result is not None:
+                    r_sel, r_sign = result
+            elif isinstance(r, dict) and "constant" in r and "source" in r:
+                v.add(f"{path}.r_at_axis", IssueCode.MALFORMED, "r_at_axis has both a source and a constant; exactly one")
+                ok = False
+            else:
+                scale = r.get("scale", 1) if isinstance(r, dict) else 1
+                if (not isinstance(r, dict) or set(r) - {"source", "sign", "scale"} or r.get("sign", 1) not in (1, -1)
+                        or isinstance(scale, bool) or not isinstance(scale, (int, float)) or not 0 < scale <= 1):
+                    v.add(f"{path}.r_at_axis", IssueCode.MALFORMED,
+                          "r_at_axis needs a source, an optional sign of 1 or -1 and an optional documented scale in (0, 1]")
+                    ok, r, scale = False, {}, 1
+                r_sel = number(r.get("source"), f"{path}.r_at_axis.source", "ohm")
+                r_sign, r_scale = float(r.get("sign", 1)), float(scale)
+                ok = ok and r_sel is not None
 
         x_sel = None
         if kind == "reactance_lower":

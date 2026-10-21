@@ -143,7 +143,7 @@ class ResistiveBoundary:
     frame: BoundaryFrame
     provenance: BoundaryProvenance
     unit: str = "ohm"
-    #: exact | documented (an approximation is never a canonical boundary)
+    #: exact | documented | static_equivalent (voltage-polarised: a DC static approximation of a polarised boundary)
     fidelity: str = "documented"
 
     def __post_init__(self) -> None:
@@ -153,7 +153,7 @@ class ResistiveBoundary:
             raise ValueError("a resistive boundary's angle must lie strictly between 0 and 180 degrees")
         if self.unit != "ohm":
             raise ValueError("a resistive boundary is stated in ohms")
-        if self.fidelity not in ("exact", "documented"):
+        if self.fidelity not in ("exact", "documented", "static_equivalent"):
             raise ValueError("a canonical boundary is exact or documented, never approximate")
 
     def r_at(self, x: float) -> float:

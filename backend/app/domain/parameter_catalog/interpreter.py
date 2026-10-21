@@ -287,9 +287,15 @@ class CatalogInterpreter:
                 BoundaryProvenance(sources, canonical, transform, spec.equation, spec.references, self.catalog.key, spec.convention),
                 fidelity=spec.fidelity)
         is_constant_angle = spec.angle_atan2 is None and isinstance(spec.angle_deg, ConstantValue)
+        is_constant_r = isinstance(spec.r_at_axis, ConstantValue)
         reads: list[tuple[str, _Read, Selector]] = []
         if spec.r_at_axis is not None:
-            reads.append(("r_at_axis", run._boundary_number(spec.r_at_axis, z), spec.r_at_axis))
+            if is_constant_r:
+                # DEC-199 Phase 2I: a fixed OEM constant for r_at_axis (e.g. BFL origin intercept = 0 Ω) -- never a
+                # document read; its own BoundarySource is added explicitly after the comprehension.
+                reads.append(("r_at_axis", _Read(spec.r_at_axis.name, value=spec.r_at_axis.value), None))
+            else:
+                reads.append(("r_at_axis", run._boundary_number(spec.r_at_axis, z), spec.r_at_axis))
         if spec.angle_atan2 is not None:
             reads += [("angle_x", run._boundary_number(spec.angle_atan2[0], z), spec.angle_atan2[0]),
                       ("angle_r", run._boundary_number(spec.angle_atan2[1], z), spec.angle_atan2[1])]
@@ -309,6 +315,9 @@ class CatalogInterpreter:
         if is_constant_angle:
             sources += (BoundarySource("angle_deg", spec.angle_deg.name, None, fmt(spec.angle_deg.value),
                                        spec.angle_deg.unit, None, None),)
+        if is_constant_r:
+            sources += (BoundarySource("r_at_axis", spec.r_at_axis.name, None, fmt(spec.r_at_axis.value),
+                                       spec.r_at_axis.unit, None, None),)
         values = {role: read for role, read, _ in reads}
         if spec.angle_atan2 is not None:
             x, r = values["angle_x"], values["angle_r"]
@@ -339,7 +348,11 @@ class CatalogInterpreter:
         sign = "-" if spec.r_sign < 0 else "+"
         scale = "" if spec.r_scale == 1.0 else f"{fmt(spec.r_scale)} x "
         angle_part = f"angle = {values['angle_deg'].name} (deg)" if spec.angle_atan2 is None and not is_constant_angle else angle_text
-        transform = f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); {angle_part}"
+        if is_constant_r:
+            transform = (f"r_at_axis = {rd.name} (fixed {fmt(spec.r_sign * spec.r_scale * rd.value)} ohm, "
+                         f"not a configured setting); {angle_part}")
+        else:
+            transform = f"r_at_axis = {sign}{scale}{rd.name} (as printed, ohm); {angle_part}"
         return ResistiveBoundary(
             z["zone"], spec.r_sign * spec.r_scale * rd.value, angle, BoundarySide(spec.side), BoundaryFrame(spec.frame),
             BoundaryProvenance(sources, canonical, transform, spec.equation, spec.references, self.catalog.key, spec.convention),

@@ -1979,3 +1979,26 @@ The right blinder is now derived and fully provenanced, **even though no GRZ100 
 -- there is still no verified left/directional boundary, so `assemble_zone` is never reached. GRZ100 stays PARTIALLY
 SUPPORTED / NOT_READY; left/directional orientation, the reverse-zone forward offset, the ZND circle and the
 site-PLC trip status remain exactly as unresolved as before.
+
+### Phase 2I: GRZ100 left blinder, forward zones assemble (DEC-199 Amendment 8)
+
+**GRZ100's forward zones (Z1, Z1X, Z2, ZF, Z3) now assemble a complete open-bottomed region** -- right edge (BFR,
+fixed 75 deg, `documented`) plus left edge (BFL, static-equivalent, `static_equivalent`). Production remains on V1.
+
+| Piece | Location | Role |
+|---|---|---|
+| `static_equivalent` fidelity for resistive | `app/domain/distance_boundaries.py` `ResistiveBoundary.__post_init__` | Voltage-polarised (cross-polarised) boundaries whose static DC equivalent is modelled; previously restricted to directional |
+| `r_at_axis` constant | `app/domain/parameter_catalog/catalog_model.py` `BoundarySpec.r_at_axis: Selector \| ConstantValue \| None` | BFLS = 0 Ω is a fixed OEM constant -- same `ConstantValue` introduced in Phase 2G, now extended to `r_at_axis` |
+| Constant `r_at_axis` validator | `app/domain/parameter_catalog/catalog_validation.py` `_boundaries()` | New constant branch parallel to the existing constant-`angle_deg` branch; refuses both `source` and `constant` on the same field |
+| Constant `r_at_axis` interpreter | `app/domain/parameter_catalog/interpreter.py` `CatalogInterpreter._shadow_boundary()` | `is_constant_r` flag, `_Read` pseudo-read (no document read), explicit `BoundarySource` with no page/line, adjusted transform text |
+| Asymmetric-angle zone golden | `tests/relay_conformance/shadow_golden.py` `zone_golden()` | Symmetric zones keep `"cot"`; asymmetric zones (different right/left angles) output `"cot_right"` / `"cot_left"` |
+
+**GRZ100 (catalog 1.3.0).** `grz100.boundary.left`: `r_at_axis = 0` (constant, BFLS fixed at 0 Ω), `angle_deg = BFLS-angle`
+(configured, 90-135 deg range, printed as `"degree"` -- `printed_unit` required), gated on `ZS-C = quad`, fidelity
+`static_equivalent`. A blank or out-of-range BFLS-angle derives no left boundary; the fixed zero intercept is never
+used to stand in for a missing angle.
+
+**Forward zones assemble open-bottomed.** `represented = ["top", "right", "left"]`,
+`not_represented = ["lower"]`, `relay_behaviour_fidelity = "static_equivalent"` (max of right=documented,
+left=static_equivalent). ZBS directional, reverse-zone offsets, ZND and load encroachment remain unresolved and
+not represented.

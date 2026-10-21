@@ -82,17 +82,18 @@ def _r(v: float) -> float:
 def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
     right, left = zone["edges"]["right"], zone["edges"]["left"]
     xr = zone["top"]["x_reach_ohm"]
-    if right["angle_deg"] != left["angle_deg"]:
-        raise ValueError("the goldens assume one angle for both edges (the documented parallelogram)")
-    a = math.radians(right["angle_deg"])
-    cot = 1.0 / math.tan(a)
+    a_right = math.radians(right["angle_deg"])
+    a_left = math.radians(left["angle_deg"])
+    cot_right = 1.0 / math.tan(a_right)
+    cot_left = 1.0 / math.tan(a_left)
+    symmetric = right["angle_deg"] == left["angle_deg"]
     sign = -1.0 if zone["direction"] == "reverse" else 1.0
     rays = {side: ray["angle_deg"] for side, ray in (zone.get("directional") or {}).items()}
     xm = (zone.get("lower") or {}).get("x_minus")
     tilt = zone.get("tilt")
 
     def edge(x: float) -> tuple[float, float]:
-        return right["r_at_axis"] + x * cot, left["r_at_axis"] + x * cot
+        return right["r_at_axis"] + x * cot_right, left["r_at_axis"] + x * cot_left
 
     def tilt_x(r: float) -> float | None:
         """X on the tilted upper limit at R, or None where it does not apply (R < 0, or no tilt declared)."""
@@ -120,7 +121,7 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
     def gaps(r: float, x: float) -> dict[str, float]:
         """The signed distance to each documented line, positive on the retained side (sample selection only)."""
         rr, rl = edge(x)
-        out = {"top": xr - x, "right": (rr - r) * math.sin(a), "left": (r - rl) * math.sin(a)}
+        out = {"top": xr - x, "right": (rr - r) * math.sin(a_right), "left": (r - rl) * math.sin(a_left)}
         if xm is not None:
             out["lower"] = x + xm
         tx = tilt_x(r)
@@ -145,8 +146,10 @@ def zone_golden(zone: dict[str, Any]) -> dict[str, Any]:
     rr, rl = edge(xr)
     mid = (rr + rl) / 2
     probes += [(mid, xr - delta), (mid, xr + delta)]
+    cot_entry: dict[str, Any] = ({"cot": _r(cot_right)} if symmetric
+                                  else {"cot_right": _r(cot_right), "cot_left": _r(cot_left)})
     out: dict[str, Any] = {
-        "x_reach_ohm": xr, "cot": _r(cot), "direction": zone["direction"],
+        "x_reach_ohm": xr, **cot_entry, "direction": zone["direction"],
         "edge_points": [[_r(sign * f * xr), _r(sign * edge(f * xr)[0]), _r(sign * edge(f * xr)[1])] for f in FRACTIONS],
         "probes": [[_r(sign * r), _r(sign * x), inside(r, x)] for r, x in probes if clear(r, x, lines=["tilt", *rays])],
     }

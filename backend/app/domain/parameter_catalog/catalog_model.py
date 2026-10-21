@@ -383,7 +383,7 @@ class BoundarySpec:
     angle_range: tuple[float, float] | None = None
     angle_atan2: tuple[Selector, Selector] | None = None   # (x source, r source): angle = atan2(x, r)
     side: str | None = None                           # resistive: right | left
-    r_at_axis: Selector | None = None
+    r_at_axis: Selector | ConstantValue | None = None
     r_sign: float = 1.0                               # +1 or -1
     r_scale: float = 1.0                              # a documented factor (e.g. 0.5 for half a loop reach)
     x_minus: Selector | None = None                   # reactance_lower: X >= -x_minus
@@ -394,7 +394,7 @@ class BoundarySpec:
     retained_side: str | None = None                  # directional: counter_clockwise | clockwise
     convention: str | None = None
     gates: tuple[Gate, ...] = ()
-    fidelity: str = "documented"                      # exact | documented (| static_equivalent: directional)
+    fidelity: str = "documented"                      # exact | documented (| static_equivalent: directional or resistive)
     references: tuple[str, ...] = ()
     equation: str = ""
     #: The canonical value the boundary represents, templated (e.g. ``zones[{zone}].resistive_reach.phase_phase``).

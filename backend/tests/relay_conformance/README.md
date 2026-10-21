@@ -230,3 +230,24 @@ checked against that edge's half-plane alone. A zone whose region *is* assembled
 
 Sample: GRZ100's forward zones (Z1, Z1X, Z2, ZF, Z3) derive their right blinder (`BFRS`, fixed 75 deg) this way, with
 no zone reaching a complete assembled region.
+
+## GRZ100 left blinder and assembled forward zones (DEC-199 Phase 2I)
+
+**GRZ100's five forward zones (Z1, Z1X, Z2, ZF, Z3) now assemble a complete open-bottomed region** when the sheet
+is quadrilateral and BFLS-angle is present and within its documented range (90-135 deg):
+- `shadow_geometry = "exact"`, `relay_behaviour_fidelity = "static_equivalent"` (BFL is a voltage-polarised
+  boundary; its DC steady-state geometry is the static equivalent -- a new fidelity level for resistive boundaries).
+- `represented = ["top", "right", "left"]`, `not_represented = ["lower"]` (no directional or lower-reactance
+  boundary modelled; ZBS, reverse zones, ZND and Z4 remain out of scope).
+
+**A resistive boundary's `r_at_axis` can now be a fixed OEM constant.** Same mechanism as Phase 2G's constant
+`angle_deg`: `{"constant": 0, "unit": "ohm", "name": "..."}`. BFL's intercept is BFLS = 0 Ω (Toshiba 6F2S0834-0,
+settings p. 34). A missing BFLS-angle is never satisfied by the fixed zero intercept.
+
+**`shadow_golden` for asymmetric zones.** `zone_golden()` now handles different right and left edge angles --
+the symmetric case (REL511 / 7SA613 / 7SL87) keeps `"cot"` unchanged; asymmetric zones (GRZ100, BFR 75 deg vs
+BFL typically 120 deg) output `"cot_right"` and `"cot_left"` instead of `"cot"`.
+
+**GRZ100 expectations** with `ZS-C = quad` and a readable BFLS-angle: `shadow_geometry` changes from
+`not_assembled` to `exact`; `shadow_golden` is populated; `shadow_edge_golden` becomes null. `grz100--mho`: no
+boundaries, no change. All 28 synthetic expectations regenerated.
