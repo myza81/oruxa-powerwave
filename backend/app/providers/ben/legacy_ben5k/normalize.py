@@ -139,17 +139,7 @@ def parse_ben5k(data: bytes) -> BenRecord:
     header5k = read_header(data)
     analog_raw, digital_raw = read_channel_descriptors(data, header5k)
 
-    # ── 2. Classify channels ───────────────────────────────────────────────
-    ch_map = classify_channels(
-        list(analog_raw),
-        list(digital_raw),
-        header5k.words_per_sample,
-    )
-
-    # ── 3. Build canonical BenHeader ──────────────────────────────────────
-    header = _build_header(header5k, data)
-
-    # ── 4. Build sample_words matrix (shared memory, big-endian u16) ──────
+    # ── 2. Build sample_words matrix (needed for variance detection) ───────
     payload_bytes = header5k.sample_count * header5k.words_per_sample * 2
     data_offset = len(data) - payload_bytes
     if data_offset <= layout.HEADER_SIZE:
@@ -163,7 +153,18 @@ def parse_ben5k(data: bytes) -> BenRecord:
         offset=data_offset,
     ).reshape(header5k.sample_count, header5k.words_per_sample)
 
-    # ── 5. Build value_channels from recorded_analog ──────────────────────
+    # ── 3. Classify channels with payload variance analysis ────────────────
+    ch_map = classify_channels(
+        list(analog_raw),
+        list(digital_raw),
+        header5k.words_per_sample,
+        sample_words=sample_words,
+    )
+
+    # ── 4. Build canonical BenHeader ──────────────────────────────────────
+    header = _build_header(header5k, data)
+
+    # ── 5. Build value_channels from recorded_analog ─────────────────────
     value_channels: list[BenValueChannel] = []
     for idx, ch in enumerate(ch_map.recorded_analog):
         # Map BEN5K type_byte → measurement kind
@@ -286,6 +287,17 @@ def parse_ben5k(data: bytes) -> BenRecord:
                 f"{len(ch_map.inactive_digital)} digital channel(s) excluded: "
                 f"sample word in constant-0x0800 region (inactive feeder). "
                 f"First: {ch_map.inactive_digital[0].name!r}."
+            ),
+        ))
+    if ch_map.constant_placeholder_digital:
+        diagnostics.append(BenDiagnostic(
+            code="ben5k_constant_placeholder_digital",
+            severity="info",
+            message=(
+                f"{len(ch_map.constant_placeholder_digital)} digital channel(s) excluded: "
+                f"sample word carries constant value across all samples "
+                f"(inactive feeder placeholder). "
+                f"First: {ch_map.constant_placeholder_digital[0].name!r}."
             ),
         ))
     if ch_map.unsupported_digital:

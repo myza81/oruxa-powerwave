@@ -1,14 +1,15 @@
 """Stage 4 tests: BEN5K channel classification (channel_map.py).
 
-Tests confirm the five-way classification of raw descriptor lists into:
+Tests confirm the six-way classification of raw descriptor lists into:
   recorded_analog, inactive_analog, verified_digital, inactive_digital,
-  unsupported_digital.
+  unsupported_digital, constant_placeholder_digital.
 
 No real recording is read here.  All tests use synthetic channel objects.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from app.providers.ben.legacy_ben5k.reader import Ben5kAnalogChannel, Ben5kDigitalChannel
@@ -53,6 +54,7 @@ def test_empty_inputs():
     assert cm.verified_digital == ()
     assert cm.inactive_digital == ()
     assert cm.unsupported_digital == ()
+    assert cm.constant_placeholder_digital == ()
     assert cm.digital_bitmask_word_count == 0
 
 
@@ -190,5 +192,100 @@ def test_gpth_like_scenario():
     assert len(cm.inactive_analog) == 18  # 16 duplicates + 2 digital-region
     assert len(cm.verified_digital) == 5  # groups 1-5: sw=38..42 < 43
     assert len(cm.inactive_digital) == 35  # groups 6-40: sw >= 43
+    assert cm.first_digital_sample_word == 38
+    assert cm.digital_bitmask_word_count == 5
+
+
+# ── Variance-based constant_placeholder_digital detection ─────────────────────
+
+
+def _make_sample_words(n_samples: int, wps: int, **col_values: int) -> np.ndarray:
+    """Build a sample_words array; col_values sets specific columns to a constant."""
+    sw = np.zeros((n_samples, wps), dtype=">u2")
+    for col, val in col_values.items():
+        sw[:, int(col)] = val
+    return sw
+
+
+def test_constant_column_becomes_placeholder():
+    # sw=38: all 0x0800 → constant → constant_placeholder_digital (not verified)
+    digital = [_digital("CB_OPEN", 1)]  # group 1 → sw=38
+    sw = _make_sample_words(10, 97, **{"38": 0x0800})
+    cm = classify_channels([], digital, words_per_sample=97, sample_words=sw)
+    assert len(cm.constant_placeholder_digital) == 1
+    assert cm.constant_placeholder_digital[0].name == "CB_OPEN"
+    assert cm.verified_digital == ()
+    assert cm.digital_bitmask_word_count == 0
+
+
+def test_varying_column_stays_verified():
+    # sw=38: alternating 0x0000/0x0001 → varying → verified_digital
+    digital = [_digital("CB_OPEN", 1)]  # group 1 → sw=38
+    sw = np.zeros((10, 97), dtype=">u2")
+    for i in range(10):
+        sw[i, 38] = i % 2
+    cm = classify_channels([], digital, words_per_sample=97, sample_words=sw)
+    assert len(cm.verified_digital) == 1
+    assert cm.constant_placeholder_digital == ()
+    assert cm.digital_bitmask_word_count == 1
+
+
+def test_mixed_constant_and_varying():
+    # group 1 (sw=38): varying; group 2 (sw=39): constant 0x0800
+    digital = [_digital("CB1", 1), _digital("CB2", 2)]
+    sw = np.zeros((10, 97), dtype=">u2")
+    for i in range(10):
+        sw[i, 38] = i % 2  # varying
+    sw[:, 39] = 0x0800     # constant
+    cm = classify_channels([], digital, words_per_sample=97, sample_words=sw)
+    assert len(cm.verified_digital) == 1
+    assert cm.verified_digital[0].name == "CB1"
+    assert len(cm.constant_placeholder_digital) == 1
+    assert cm.constant_placeholder_digital[0].name == "CB2"
+    assert cm.digital_bitmask_word_count == 1
+
+
+def test_constant_placeholder_does_not_affect_first_digital_sw():
+    # first_digital_sw comes from ALL in-bounds channels.
+    # group 1 (sw=38): constant; group 2 (sw=39): varying.
+    # first_digital_sw must still be 38 (not 39), so analog at wi=38 is excluded.
+    digital = [_digital("CB1", 1), _digital("CB2", 2)]
+    analog = [_analog("VR", 38)]  # should be inactive (wi=38 = first digital sw)
+    sw = np.zeros((10, 97), dtype=">u2")
+    sw[:, 38] = 0x0800     # constant
+    for i in range(10):
+        sw[i, 39] = i % 2  # varying
+    cm = classify_channels(analog, digital, words_per_sample=97, sample_words=sw)
+    assert cm.first_digital_sample_word == 38
+    assert len(cm.inactive_analog) == 1
+    assert cm.inactive_analog[0].name == "VR"
+
+
+def test_no_sample_words_all_in_bounds_are_verified():
+    # Without sample_words, all in-bounds channels go to verified_digital.
+    digital = [_digital(f"DIG_{g}", g) for g in range(1, 6)]  # groups 1-5, sw 38-42
+    cm = classify_channels([], digital, words_per_sample=97)
+    assert len(cm.verified_digital) == 5
+    assert cm.constant_placeholder_digital == ()
+
+
+def test_gpth_like_with_variance_detection():
+    # Real GPTH scenario (wps=97, groups 1-40, sw 38-77):
+    # groups 1-5 (sw 38-42): varying → verified_digital
+    # groups 6-40 (sw 43-77): constant 0x0800 → constant_placeholder_digital
+    digital = [_digital(f"DIG_G{g}", g) for g in range(1, 41)]
+    analog = [_analog(f"ACT_{i}", i) for i in range(38)]
+    sw = np.zeros((20, 97), dtype=">u2")
+    # sw 38-42: varying
+    for i in range(20):
+        for col in range(38, 43):
+            sw[i, col] = i % 2
+    # sw 43-77: constant 0x0800
+    for col in range(43, 78):
+        sw[:, col] = 0x0800
+    cm = classify_channels(analog, digital, words_per_sample=97, sample_words=sw)
+    assert len(cm.verified_digital) == 5  # groups 1-5 (one channel descriptor each)
+    assert len(cm.constant_placeholder_digital) == 35
+    assert len(cm.recorded_analog) == 38
     assert cm.first_digital_sample_word == 38
     assert cm.digital_bitmask_word_count == 5

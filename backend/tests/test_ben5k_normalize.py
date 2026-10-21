@@ -128,8 +128,11 @@ def _make_ben5k_fixture(
         payload_words = np.zeros((sample_count, words_per_sample), dtype=">u2")
         # wi=0 analog: raw 1000 → engineering = 0.01 × 1000 = 10.0
         payload_words[:, 0] = 1000
-        # digital sw=38 (group 1, bit 0): set to 0x0000 → bit 0 = 0 → active (active-low)
-        payload_words[:, 38] = 0x0000
+        # digital sw=38 (group 1, bit 0): alternate 0x0000/0x0002 so the column
+        # is non-constant (variance detection keeps it as verified_digital) while
+        # bit 0 stays 0 throughout → active-low → state=1 for all samples.
+        for i in range(sample_count):
+            payload_words[i, 38] = np.uint16(0x0000 if i % 2 == 0 else 0x0002)
 
     payload = payload_words.tobytes()
     return bytes(header) + config + payload
@@ -238,9 +241,11 @@ class TestParseBen5k:
         assert all(states == 1)
 
     def test_digital_inactive_when_bit_one(self):
-        # Set sw=38 = 0x0001 → bit 0 = 1 → inactive (active-low)
+        # sw=38: alternate 0x0001/0x0003 — bit 0 = 1 throughout (inactive, active-low),
+        # values differ so variance detection keeps the channel as verified_digital.
         payload = np.zeros((20, 40), dtype=">u2")
-        payload[:, 38] = 0x0001
+        for i in range(20):
+            payload[i, 38] = np.uint16(0x0001 if i % 2 == 0 else 0x0003)
         data = _make_ben5k_fixture(payload_words=payload)
         rec = parse_ben5k(data)
         ch = rec.digital_channels[0]
@@ -343,3 +348,62 @@ class TestParseBenExperimental:
         data = _make_subben_like_fixture()
         with pytest.raises(BenFormatError):
             parse_ben_experimental(data, allow_legacy_ben5k=True)
+
+    def test_constant_placeholder_diagnostic_absent_for_varying_channel(self):
+        # Default fixture has sw=38 with alternating values → no constant_placeholder
+        data = _make_ben5k_fixture()
+        rec = parse_ben5k(data)
+        codes = {d.code for d in rec.diagnostics}
+        assert "ben5k_constant_placeholder_digital" not in codes
+
+    def test_constant_placeholder_diagnostic_present_for_constant_channel(self):
+        # All-constant sw=38 → constant_placeholder_digital → diagnostic present
+        # (group 1 → sw=38 < wps=40, so structural rule does not apply — only variance)
+        payload = np.zeros((20, 40), dtype=">u2")
+        payload[:, 0] = 1000  # keep analog varying
+        payload[:, 38] = 0x0000  # constant → constant_placeholder
+        data = _make_ben5k_fixture(payload_words=payload)
+        rec = parse_ben5k(data)
+        codes = {d.code for d in rec.diagnostics}
+        assert "ben5k_constant_placeholder_digital" in codes
+        # Channel moved to constant_placeholder → not in digital_channels
+        assert len(rec.digital_channels) == 0
+
+
+# ── BenProvider feature flag integration tests ────────────────────────────────
+
+
+class TestBenProviderFeatureFlag:
+    def test_flag_disabled_rejects_ben5k(self, tmp_path):
+        from app.providers.ben.errors import BenUnsupportedVariantError as BenUVE
+        from app.providers.ben.provider import BenProvider
+        data = _make_ben5k_fixture()
+        p = tmp_path / "event.ben"
+        p.write_bytes(data)
+        provider = BenProvider(ben5k_experimental_enabled=False)
+        with pytest.raises(BenUVE):
+            provider.load_with_provenance(p)
+
+    def test_flag_enabled_decodes_ben5k(self, tmp_path):
+        from app.providers.ben.provider import BenProvider
+        from app.providers.ben.model import BenRecordClass
+        data = _make_ben5k_fixture()
+        p = tmp_path / "event.ben"
+        p.write_bytes(data)
+        provider = BenProvider(ben5k_experimental_enabled=True)
+        record, provenance = provider.load_with_provenance(p)
+        assert provenance["layout_family"] == "BEN32 BEN5K Legacy"
+        assert provenance["time_basis"] == "UTC (unverified)"
+        assert provenance["record_class"] == BenRecordClass.BEN5K_LEGACY.value
+
+    def test_flag_enabled_subben_still_works(self, tmp_path):
+        # A valid SubBen provider passes through unchanged when flag is True
+        from app.providers.ben.provider import BenProvider
+        data = _make_subben_like_fixture()
+        p = tmp_path / "event.ben"
+        p.write_bytes(data)
+        provider = BenProvider(ben5k_experimental_enabled=True)
+        # The minimal SubBen fixture is too short → BenFormatError (not BenUnsupportedVariantError)
+        from app.providers.ben.errors import BenFormatError
+        with pytest.raises(BenFormatError):
+            provider.load_with_provenance(p)

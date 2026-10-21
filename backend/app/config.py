@@ -54,6 +54,9 @@ class Settings:
     version: str
     event_reconstruction_large_gap_warning_s: float = DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
     max_relay_import_upload_size_mb: int = DEFAULT_MAX_RELAY_IMPORT_UPLOAD_SIZE_MB
+    # Stage 7: legacy BEN5K experimental decoder. Off by default; enable with
+    # BEN5K_EXPERIMENTAL_ENABLED=1 in the environment. Never frontend-controlled.
+    ben5k_experimental_enabled: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -140,6 +143,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     git_sha = env.get("APP_VERSION", "").strip() or "local"
     version = git_sha if git_sha == "local" else git_sha[:7]
 
+    ben5k_experimental_enabled = env.get("BEN5K_EXPERIMENTAL_ENABLED", "").strip().lower() in (
+        "1", "true", "yes"
+    )
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
@@ -150,4 +157,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_relay_import_upload_size_mb=max_relay_import_upload_size_mb,
         git_sha=git_sha,
         version=version,
+        ben5k_experimental_enabled=ben5k_experimental_enabled,
     )
