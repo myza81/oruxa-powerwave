@@ -42,6 +42,18 @@ SUBBEN_LAYOUT_SIGNATURE_OFFSET = 0x04
 SUBBEN_GENERATION_MARKER = b"\x06\xff"
 SUBBEN_GENERATION_MARKER_OFFSET = 0x0E
 
+# ── BEN5K (older BEN recorder) signatures ───────────────────────────────────
+#
+# Observed in recordings from BEN5K recorders (e.g. GPTH 275kV). The
+# configuration area uses a flat binary layout rather than the SubBen
+# typed-section chain. The sample payload uses the same big-endian u16 words.
+# Decoder lives in app.providers.ben.legacy_ben5k; no SubBen code is shared.
+
+#: Layout signature bytes 0x04-0x0B for the older BEN5K family.
+BEN5K_LAYOUT_SIGNATURE = b"\x28\xff\x03\x00\x6e\x00\xca\x00"
+#: Generation marker bytes 0x0E-0x0F for BEN5K.
+BEN5K_GENERATION_MARKER = b"\x05\x00"
+
 #: u16 -- recorder unit number (equals the COMTRADE ``rec_dev_id`` BEN32
 #: writes on CFG line 1, e.g. 1196, 1214).
 RECORDER_UNIT_ID_OFFSET = 0x0C

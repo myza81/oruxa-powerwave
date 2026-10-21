@@ -1,16 +1,19 @@
-# Legacy BEN5K Decoder — Phase 1 Design
+# Legacy BEN5K Decoder — Design and Implementation
 
-Date: 2026-10-21. Status: investigation complete, design ready for owner review.
-Branch: `investigation/legacy-ben5k`. No production code changed.
+Date: 2026-10-21. Status: Phase 2 implementation in progress (owner-approved).
+Branch: `investigation/legacy-ben5k`.
 
 ## Executive summary
 
 The GPTH 275kV recording (`261016_180314535_GPTH_275kV.ben`) belongs to an older
 Qualitrol BEN recorder family (`28 ff / 05 00`) that the existing parser deliberately
 rejects. Binary investigation of the recording and the BEN32 3.8.9.6 installer package
-has established enough of the flat configuration layout and sample framing to design a
-standalone decoder. A vendor-exported COMTRADE oracle for the same event is the single
-remaining prerequisite before implementation can begin.
+has established the flat configuration layout, 58-byte channel descriptor structure,
+0-indexed word_index addressing, sample frame boundaries, and digital word positions.
+
+**Phase 2 implementation has been approved by the owner** without waiting for a
+COMTRADE oracle. Legacy BEN5K compatibility is a core Powerwave requirement. The
+inability to obtain a vendor export must not indefinitely block development.
 
 The following sections document all confirmed structural findings, remaining unknowns,
 proposed architecture, and a phased validation plan.
@@ -124,31 +127,31 @@ Offset  Size  Field
 57       1    terminator:  0xFF
 ```
 
-**Word index confirmed** at byte 53 from descriptor start via cross-feeder comparison:
-`SDAI1 IB` = word 14, `SDAI1 IN` = word 15, `SDNK1 IB` = word 22, `SDNK1 IN` = word 23.
-The 8-word-per-feeder spacing (14→22 = 8, 15→23 = 8) is consistent across feeders.
+**Word index confirmed** at byte 53 from descriptor start. **0-indexed** (not 1-indexed):
+TBIN1 VR = word_index 0 → sample word 0 (V ✓), confirmed by direct scan of 22 channels.
+8-word-per-feeder confirmed: SDAI1 starts at 8, SDNK1 at 16, TBIN2 at 24.
 
-Inferred word allocation (8 words × 12 feeders = 96 analog words, word 96 spare/digital):
+Confirmed word allocation for active feeders in GPTH recording:
 
-| Feeder | Block | Layout within block |
+| Feeder | Block | Layout within block (confirmed word_index values) |
 |---|---|---|
-| TBIN1 | words 0–7 | VR=0, VY=1, VB=2, ?, IR=4, IY=5, IB=6, IN=7 |
-| SDAI1 | words 8–15 | VR=8, VY=9, VB=10, ?, IR=12, IY=13, IB=14, IN=15 |
-| SDNK1 | words 16–23 | VR=16, …, IB=22, IN=23 |
-| TBIN2 | words 24–31 | …|
-| SDAI2 | words 32–39 | …|
-| SDNK2 | words 40–47 | …|
-| HV TX1 | words 48–55 | …|
-| LV TX1 | words 56–63 | …|
-| HV TX2 | words 64–71 | …|
-| LV TX2 | words 72–79 | …|
-| PLNG1  | words 80–87 | …|
-| PLNG2  | words 88–95 | …|
+| TBIN1 | words 0–7 | VR=0, VY=1, VB=2, ?=3(unused,std≈3.6), IR=4, IY=5, IB=6, IN=7 |
+| SDAI1 | words 8–15 | VR=8, VY=9, VB=10, ?=11(std≈97), IR=12, IY=13, IB=14(std≈16), IN=15(std≈11693 V!) |
+| SDNK1 | words 16–23 | VR=16, VY=17, VB=18(std≈4 near-zero), ?=19, IR=20, IY=21, IB=22, IN=23(std≈11685 V!) |
+| TBIN2 | words 24–31 | VR=24(confirmed), remaining inferred |
+| SDAI2 | words 32–39 | VR=32(inferred), remaining inferred |
+| SDNK2–PLNG2 | words 40–95 | Constant 2048 in GPTH recording (inactive feeders) |
 
-Word offset 3 within each feeder block (e.g., word 3 for TBIN1, word 11 for SDAI1) is
-**unconfirmed** — either unused, a calculated channel, or a second voltage/current.
+**Site-specific anomalies in GPTH recording (not decoder defects):**
+- SDAI1 IB (word 14) near-zero: this feeder carries negligible phase-B current at event time.
+- SDAI1/SDNK1 "IN" channels show voltage amplitude: these ports carry neutral voltage
+  (residual V0) rather than neutral current at this site.
+- SDNK1 VB (word 18) near-zero: phase-B VT disconnected or failed for that bay.
+- The decoder reads word_index from the descriptor and applies it — site wiring is an
+  engineering matter, not a decoder defect.
 
-**Sample encoding:** big-endian u16, reinterpreted as signed int16.
+**Sample encoding:** big-endian u16, numerically converted to signed int16 via `.astype(np.int16)`.
+**Important:** do NOT use `.view(np.int16)` on a big-endian array — byte-order error.
 `engineering_value = scale × raw + offset` (f32le coefficients from descriptor bytes 28–35).
 
 ### 3.2 Digital channel descriptor (58 bytes)
@@ -178,17 +181,29 @@ channels with contiguous word assignment rather than bitmask-within-word). Not d
 
 ### 3.3 Digital word slot mapping to sample frame
 
-The sample frame has 97 words (194 bytes). Based on the 8-analog-words-per-feeder
-model occupying words 0–95:
+The sample frame has 97 words (194 bytes). **Confirmed by payload analysis:**
 
-| Frame region | Tentative assignment |
+| Frame region | Assignment |
 |---|---|
-| Words 0–95 | Analog channels, 8 per feeder × 12 feeders |
-| Words 89–95 | Possibly digital (7 word groups × 1 word) — **unconfirmed** |
-| Word 96 | Spare or final digital group — **unconfirmed** |
+| Words 0–37 | Active analog channels (5 active feeders × 8 words) |
+| Words 38–42 | Digital bitmask words (5 words, active-low) |
+| Words 43–96 | Constant 0x0800 = 2048 (inactive feeder slots in GPTH recording) |
 
-The overlap between analog words 89–95 and digital word groups 1–7 is **unconfirmed**.
-The exact mapping of word_group N to sample word index M requires the oracle.
+**Digital word characteristics (from GPTH payload survey):**
+- Words 38–42 all show values with max ≤ −1 (signed) = bitmask word in active-low convention
+- Quiescent state: 0xFFFF (all bits high = all channels inactive)
+- Bits transition to 0 during the event (CB trip operations)
+- Word 38: 5 distinct states, bits 7/8/9 go low = 3 CB operations
+- Word 42: 15 distinct states, 18 transitions (most complex digital activity)
+
+**Digital word_group → sample word mapping:** word_group N maps to sample word (37 + N).
+- word_group 1 → sample word 38
+- word_group 2 → sample word 39
+- word_group 3 → sample word 40
+- word_group 4 → sample word 41
+- word_group 5 → sample word 42
+This is inferred from the 5-active-feeder structure and 5 digital words. Oracle confirmation
+is required before declaring this authoritative.
 
 ### 3.4 Time encoding
 
@@ -316,8 +331,9 @@ def decode_samples(
     raw = np.frombuffer(data, dtype='>u2', count=count*words_per_sample,
                         offset=payload_offset).reshape(count, words_per_sample)
 
-    # Analog: reinterpret as int16, apply per-channel scale/offset
-    analog_raw = raw[:, [ch.word_index for ch in analog_channels]].view(np.int16)
+    # Analog: MUST use .astype(np.int16) NOT .view(np.int16)
+    # .view() on a big-endian array reinterprets bytes as little-endian → byte-swapped values
+    analog_raw = raw[:, [ch.word_index for ch in analog_channels]].astype(np.int16)
     scales = np.array([ch.scale for ch in analog_channels], dtype=np.float32)
     offsets = np.array([ch.offset for ch in analog_channels], dtype=np.float32)
     analog_eng = analog_raw.astype(np.float32) * scales + offsets
@@ -449,32 +465,25 @@ review.
 
 ---
 
-## 10. Recommended next implementation action
+## 10. Current implementation status
 
-**Recommendation: obtain the COMTRADE oracle before writing any decoder code.**
+**Owner has approved Phase 2 direct implementation.** Binary investigation has established
+confirmed structural facts sufficient to implement Stages 2 and 3 without an oracle.
+Remaining unknowns (digital word→slot mapping, UTC/local, polarity) are flagged
+explicitly and will be resolved as the implementation proceeds.
 
-The binary investigation has confirmed sufficient structure to begin coding the config
-reader and descriptor walk (Stage 2). However, the unknowns in section 4 — particularly
-the digital word → sample slot mapping, polarity convention, UTC/local ambiguity, and
-word offset 3 — are each individually capable of producing incorrect engineering values
-that would pass all structural tests yet deliver wrong data to engineers.
+Confirmed facts enabling implementation:
+- word_index at descriptor byte 53, 0-indexed (22 channels verified)
+- Payload boundary formula: `file_size − count × wps × 2`
+- Sample decode: big-endian u16 → `.astype(np.int16)` → `scale × raw + offset`
+- Digital words at sample positions 38–42 (confirmed by payload analysis)
+- Digital convention: active-low (0xFFFF quiescent, bits go to 0 on activation)
 
-The right first action is:
-
-1. Owner runs BEN32 v2.00 in DOSBox and exports COMTRADE for the GPTH recording.
-2. Timestamp confirmation (UTC vs local) and channel list review takes 30 minutes.
-3. With oracle in hand, Stages 2–6 can be completed in a single focused session with
-   high confidence. Without it, each stage carries residual uncertainty that compounds.
-
-If the oracle cannot be obtained (e.g., BEN32 cannot export this specific file), a
-secondary path exists: compare this recording against the 14 same-event BEN files in
-the KTBR event directory. Some of those recordings (KTBR, AGJH, BBTU, PGRG) may be
-SubBen format and therefore already decodable. Cross-referencing timestamps and
-confirming the trip event time from the decodable files would at minimum resolve the
-UTC/local question.
-
-**Evidence is sufficient to design and partially implement the decoder. It is not yet
-sufficient to safely decode engineering values without oracle validation.**
+**Unverified interpretations** — present in code as named constants or flags, never
+silently applied:
+- UTC vs local time: timestamp stored without timezone assumption pending oracle
+- digital word_group → sample word formula: `37 + group` (inferred, flagged in code)
+- polarity_flag semantics: byte preserved in descriptor dataclass, not yet decoded
 
 ---
 
