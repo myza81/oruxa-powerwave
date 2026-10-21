@@ -6,3 +6,7 @@ in isolation and shares only BenRecord and BenLayout with the parent.
 
 Entry point: parse_ben5k(data: bytes) -> BenRecord
 """
+
+from app.providers.ben.legacy_ben5k.normalize import parse_ben5k
+
+__all__ = ["parse_ben5k"]

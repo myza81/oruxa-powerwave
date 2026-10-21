@@ -724,3 +724,49 @@ def _duplicate_name_diagnostics(record: BenRecord) -> list[BenDiagnostic]:
             + (" ..." if len(duplicates) > 10 else ""),
         )
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Experimental dispatch — BEN5K legacy support (development / UAT only)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# parse_ben() above is the production path and MUST NOT be modified to handle
+# BEN5K files.  parse_ben_experimental() is the OPT-IN wrapper for UAT and
+# development testing.  Production callers (BenProvider.load_with_provenance,
+# parse_ben_file) use parse_ben() only.
+
+
+def parse_ben_experimental(
+    data: bytes,
+    *,
+    allow_legacy_ben5k: bool = False,
+) -> "BenRecord":
+    """Parse BEN bytes with optional legacy BEN5K support.
+
+    If *allow_legacy_ben5k* is ``False`` (the default), this is identical
+    to ``parse_ben()`` — production behaviour, no BEN5K files accepted.
+
+    If *allow_legacy_ben5k* is ``True`` and the file carries the BEN5K
+    signatures, the file is decoded by the legacy BEN5K decoder
+    (``app.providers.ben.legacy_ben5k``).  For all other layouts the
+    SubBen decoder (``parse_ben()``) is used as normal.
+
+    IMPORTANT: this wrapper is for UAT and development tooling only.
+    Do NOT call it from production ingestion paths.  Use ``parse_ben()``
+    instead, which always rejects BEN5K files with ``BenUnsupportedVariantError``.
+    """
+    if allow_legacy_ben5k and _is_ben5k(data):
+        from app.providers.ben.legacy_ben5k.normalize import parse_ben5k
+        return parse_ben5k(data)
+    return parse_ben(data)
+
+
+def _is_ben5k(data: bytes) -> bool:
+    """Return True if *data* carries the BEN5K layout and generation signatures."""
+    if len(data) < layout.HEADER_SIZE:
+        return False
+    sig = data[layout.SUBBEN_LAYOUT_SIGNATURE_OFFSET :
+                layout.SUBBEN_LAYOUT_SIGNATURE_OFFSET + len(layout.BEN5K_LAYOUT_SIGNATURE)]
+    gen = data[layout.SUBBEN_GENERATION_MARKER_OFFSET :
+                layout.SUBBEN_GENERATION_MARKER_OFFSET + len(layout.BEN5K_GENERATION_MARKER)]
+    return sig == layout.BEN5K_LAYOUT_SIGNATURE and gen == layout.BEN5K_GENERATION_MARKER
