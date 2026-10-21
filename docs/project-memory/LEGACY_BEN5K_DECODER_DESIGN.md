@@ -467,8 +467,9 @@ review.
 
 ## 10. Current implementation status
 
-**Stages 2–8 complete** (branch `investigation/legacy-ben5k`). Full browser UAT
+**Stages 2–9 complete** (branch `investigation/legacy-ben5k`). Full browser UAT
 against the real GPTH 275kV recording passed 10/10 Playwright tests on 2026-10-21.
+Engineering validation report at `docs/project-memory/BEN5K_ENGINEERING_VALIDATION.md`.
 No merge to `main` until owner approval.
 
 ### Implemented (Stages 2–7B)
@@ -534,10 +535,21 @@ All units kV/kA as expected for a 275 kV substation recording.
 **Digital channels (40):** All 40 in-bounds digital channels have real signal names —
 `TBIN1 CB_R OPEN`, `TBIN1 CB_Y OPEN`, `TBIN1 CB_B OPEN`, `TBIN1 11L/1`,
 `TBIN1 11L/2`, `TBIN1 11L_COMFL`, `TBIN1 BU_21Z_TOL`, `TBIN1 BU_21Z_Z2`, etc.
-**No channel triggered the `constant_placeholder_digital` classification** — all 40
-channels have non-constant values or values ≠ 0x0800 across the recording, confirming
-the 0x0800-specific guard is correctly scoped.
-Three channels named `SPARE`, `SPARE 1`, `SPARE_1` are present but carry real data.
+**120 channels triggered the `constant_placeholder_digital` classification** — word
+groups 6–40 (sample words 43–77) each hold the constant value 0x0800 across the entire
+recording. These 120 descriptors are correctly excluded from the API response.
+
+**The 40 verified digital channels** (word groups 1–5, sample words 38–42) hold 0xFFFF
+quiescent — which is ≠ 0x0800 and is non-constant where protection signals fired —
+and therefore remain in `verified_digital` as intended. This confirms the 0x0800-specific
+guard is correctly scoped to inactive-feeder placeholder slots, not to quiescent channels.
+
+**10 of the 40 verified digital channels have transitions** (protection signals). Three
+channels named `SPARE`, `SPARE 1`, and a `SPARE` in the SDNK1 word carry real data.
+
+*(Correction to the Stage 8 draft — the original draft incorrectly reported zero
+placeholder channels because the Stage 8 UAT did not inspect the raw sample words for
+words 43–77; the Stage 9 analysis confirmed the correct numbers.)*
 
 **Browser test results (spec `ben5k-gpth-uat.spec.js`, 10 tests):**
 
