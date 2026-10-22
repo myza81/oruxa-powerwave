@@ -24,6 +24,7 @@ class BenRecordClass(str, Enum):
 
     FAST = "Fast SubBen"
     SLOW = "Slow SubBen"
+    BEN5K_LEGACY = "BEN32 BEN5K Legacy"
 
 
 class BenChannelKind(str, Enum):

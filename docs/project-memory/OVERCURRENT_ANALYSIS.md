@@ -1465,13 +1465,12 @@ control reuses the EXACT SAME `.ww-oc-axis-toggle-group`/`-btn`/
 `--active` CSS classes the existing Pickup Multiple/Relay Current
 toggle already established (visual consistency, never a second toggle
 style). The Manual Input section (current value, unit A/kA, basis
-Primary/Secondary) never duplicates the Relay Settings controls; CT
-Primary/Secondary FIELD VISIBILITY becomes an OR of both modes' own
-current basis need (`wwOvercurrentCtFieldsNeeded()`) so switching
-Manual's own Basis to Primary never hides the CT inputs regardless of
-what the shared "Recording current basis" dropdown currently reads —
-the underlying CT VALUES themselves stay the one shared, authoritative
-pair either way. Every manual field recomputes on the native `change`
+Primary/Secondary) never duplicates the Relay Settings controls. CT
+Primary/Secondary FIELD VISIBILITY (`wwOvercurrentCtFieldsNeeded()`)
+was originally an OR of both modes' basis needs. Since 2026-10-16 it
+follows only the ACTIVE input source (see "Recording current basis and
+CT field visibility follow the active input source" below). The
+underlying CT VALUES stay the one shared, authoritative pair either way. Every manual field recomputes on the native `change`
 event (blur/Enter) — the SAME convention every other OC settings field
 already uses — a deliberate choice over a live per-keystroke listener
 or a new debounce timer.
@@ -1509,6 +1508,187 @@ channel, never touching original recording data. Reset to Recording/
 defaults only by `wwOvercurrentResetState()` (the same "Start New
 Workspace"/"Clear workspace" hook every other analyzer-local display
 preference already uses).
+
+## Equipment Loading input method (2026-10-15, `feat/oc-equipment-loading`)
+
+Status: **merged into `main` through PR #3** (merge commit `8febbbd`);
+**initial owner UAT passed** (owner-confirmed 2026-10-16). This was an
+owner-requested feature. The implementation choices below are not
+recorded as a DEC because none of them has been separately approved.
+
+**Product definition.** Manual Input has two input methods. Both
+evaluate one manual current against the SAME relay settings:
+
+- **Direct Current** (`direct_current`, the default): the existing
+  current value / unit / Primary-Secondary basis input. Unchanged.
+- **Equipment Loading** (`equipment_loading`): equipment rating (MVA),
+  loading (% of rating) and nominal line-to-line system voltage (kV).
+  This is an **input conversion only**: it produces an equivalent
+  primary current, and nothing else about the analysis changes.
+
+**Calculation** (balanced three-phase, line current magnitude):
+
+```text
+S_actual_MVA = S_rated_MVA x Loading_Percent / 100
+I_primary_A  = S_actual_MVA x 1000 / (sqrt(3) x V_LL_kV)       (MVA / kV = kA)
+I_secondary  = I_primary_A x CT_secondary / CT_primary         (existing convert_to_relay_secondary())
+```
+
+The reference case (owner): 141 MVA, 150 %, 132 kV, CT 800/1 A gives 211.5 MVA,
+925.07 A primary and 1.1563 A secondary. It is tested at the domain, service,
+HTTP and browser layers. Loading above 100 % is accepted, since overload is
+the point of the feature. Blank, NaN, Infinity, negative and zero values are
+rejected for all three inputs.
+
+**Architecture.**
+
+- `app/domain/equipment_loading.py` is a new pure module containing the
+  conversion only. It applies no CT ratio and evaluates no characteristic.
+  It is deliberately separate from
+  `current_group_config.equipment_rating_ibase_ka()`. That function uses the same
+  S/(√3·V) relation, but to derive a Per-Unit current *base*. A protection
+  what-if must not couple to Per-Unit base resolution, which has its own
+  governance in PER_UNIT_MEASUREMENT_MODEL.md.
+- `compute_overcurrent_equipment_loading_analysis()`
+  (`overcurrent_analysis_service.py`) validates the three loading inputs,
+  converts them, and then calls the existing
+  `compute_overcurrent_manual_analysis()` with `input_current=I_primary`,
+  unit `A`, basis `primary`. This is the identical call a Direct Current
+  primary entry makes. It never adds a second calculation path.
+  `EquipmentLoadingOvercurrentResult` pairs the conversion with the unchanged
+  `ManualOvercurrentAnalysisResult`. The conversion is still returned when the
+  relay evaluation needs configuration (e.g. no CT ratio yet), so the
+  engineer sees the primary current while finishing the settings. New reason
+  codes: `invalid_equipment_rating`, `invalid_loading_percent`,
+  `invalid_system_voltage`.
+- `GET /api/v1/workspaces/{workspace_id}/overcurrent-manual-loading`
+  `?characteristic_id&tms&pickup_current_secondary&equipment_rating_mva&loading_percent&system_voltage_kv(&ct_primary&ct_secondary)`
+  is workspace-scoped like `.../overcurrent-manual`. Its response
+  (`OvercurrentManualLoadingResultOut`) is the manual response plus
+  `equipment_loading` (inputs echoed, `actual_loading_mva`,
+  `primary_current_a`), and is `null` only for invalid loading inputs. A
+  sibling endpoint was chosen over optional parameters on
+  `.../overcurrent-manual`, so that endpoint's required-parameter contract
+  stays untouched.
+
+**Frontend.**
+
+- A "Direct Current | Equipment Loading" segmented control sits inside
+  `#wwOvercurrentManualInputSection`. It reuses the
+  `.ww-oc-axis-toggle-group` classes.
+- The loading fields reuse `.ww-manual-field-grid` (the shared compact
+  manual-card grid; `.ww-oc-settings-grid` stays unique to Relay Settings,
+  which existing browser locators rely on) / `.ww-oc-field-input-row`,
+  and the read-only results (Actual loading, Primary current, Secondary
+  current with the CT ratio used) reuse `.ww-oc-values-list`.
+- The CT ratio, pickup, TMS and characteristic controls are the existing
+  shared ones; nothing is duplicated.
+- `wwOvercurrentCtFieldsNeeded()` always shows the CT fields for Equipment
+  Loading, because the derived current is always primary.
+
+State, updates and validation:
+
+- `wwOvercurrentState.manual` holds `inputMethod` plus each method's own
+  values, so switching methods keeps what was typed.
+- `latestResult` belongs to the ACTIVE method only. A switch clears it and
+  bumps `manualRequestGeneration`.
+- The loading request bumps the generation *before* its pre-flight. It also
+  checks `inputMethod` on arrival, so neither a slow response nor an
+  invalid edit can surface a stale result.
+- Fields recompute on `change`, like every other OC field, so a half-typed
+  value never sends a request.
+- The client pre-flight rejects blank/≤0/non-finite values without any
+  request. It sets `aria-invalid` and shows a message in the card's own
+  `#wwOvercurrentLoadingStatus` row.
+- Settings changes (CT, pickup, TMS, curve) re-run the active method
+  through the existing `wwOvercurrentHandleSettingsChanged()`.
+- The read-only figures use the existing `wwPcFormat()`: one decimal from
+  100 up, 4 significant figures below (925.1 A, 1.156 A).
+- The shared live values and chart point are rendered by the unchanged
+  `wwOvercurrentRenderManualResult()`.
+
+**Defaults** `[PROPOSAL]`: 100 MVA, 100 %, 132 kV. These are placeholders like
+Direct Current's 30000 A. They are session-only and reset by
+`wwOvercurrentResetState()`.
+
+**Open items for the owner** `[OPEN]` (found while implementing; left
+unchanged, per change governance):
+
+1. In Manual mode the shared live-values rows (`wwFormatEngineeringValue()`,
+   1 decimal at ≥ 1) show the reference case as "1.2 A secondary / 1.2 ×",
+   while the loading card shows 1.156 A. Should OC live values use more
+   significant figures?
+2. Existing Direct Current mode writes its status/validation message to
+   `#wwOvercurrentStatusRow`. That row is inside the Recording-only section,
+   so it is hidden in Manual mode, and an invalid Direct Current value shows
+   no visible message. Phasor solved this with its own manual status row.
+3. Existing Direct Current mode does not bump `manualRequestGeneration` when
+   its pre-flight rejects a value. A valid request still in flight can
+   therefore repaint the previous result after the field was made invalid.
+   Equipment Loading does not have this race.
+
+## Recording current basis and CT field visibility follow the active input source (2026-10-16)
+
+Two owner-requested UI refinements on `main`. First, the Recording current
+basis visibility (commit `c66e6c7`). Then a correction to CT field
+visibility, below.
+
+**Recording current basis.** The **Recording current basis**
+field in the shared Settings grid describes recorded data only, so it is
+shown only while Recording is the Input Source:
+
+| Input Source | Input Method      | Recording current basis |
+|--------------|-------------------|-------------------------|
+| Recording    | —                 | Visible                 |
+| Manual       | Direct Current    | Hidden                  |
+| Manual       | Equipment Loading | Hidden                  |
+
+Direct Current has its own Primary/Secondary basis, and Equipment Loading
+always yields a primary current, so neither needs it.
+
+- The `<label id="wwOvercurrentBasisField">` (label and select together)
+  gets the `hidden` attribute from the existing
+  `wwOvercurrentUpdateRecordingSectionVisibility()`. That is the same
+  function that gates `#wwOvercurrentRecordingSection`, so it runs on
+  every input-source change, on reset and on init. No new CSS: the
+  existing `.ww-phasor-field[hidden]` rule applies.
+- The control is hidden, never removed. `settings.recordingBasis` and
+  the select's value are untouched, so the selection survives a Manual
+  round trip and Recording mode behaves exactly as before.
+- Pickup, TMS, the IEC curves, CT conversion, the operating time and
+  the chart are unchanged.
+
+**CT field visibility (owner-approved correction).** `wwOvercurrentCtFieldsNeeded()`
+used to OR in `settings.recordingBasis` in every mode. With Recording's
+basis set to Primary, the CT fields therefore stayed visible in Manual →
+Direct Current with a Secondary basis, with no visible reason once the
+Recording basis was hidden. They now depend only on the active input
+source and method:
+
+| Input Source | Input Method / Basis         | CT Primary / Secondary |
+|--------------|------------------------------|------------------------|
+| Recording    | Recording basis Primary      | Visible                |
+| Recording    | Recording basis Secondary    | Hidden                 |
+| Manual       | Direct Current, Primary      | Visible                |
+| Manual       | Direct Current, Secondary    | Hidden                 |
+| Manual       | Equipment Loading            | Always visible         |
+
+Only the fields' `hidden` attribute changes. `settings.ctPrimary/ctSecondary`
+and the input values are kept while hidden. Each request path already reads
+the CT pair from `settings`, never from the fields, and already sends it only
+when its own basis is primary. The CT conversion and every calculation are
+therefore unchanged.
+
+Tests:
+
+- Static: `test_recording_basis_field_follows_the_recording_input_source_gate`,
+  `test_ct_fields_needed_follows_only_the_active_input_source` and
+  `test_ct_field_visibility_only_toggles_hidden_never_clears_values`.
+- Browser: the "Recording current basis is shown only for the Recording
+  input source" block in `browser-tests/overcurrent_analysis.spec.js`. It
+  walks all five CT cases on one recording, checks that the CT 800/1 values
+  survive every hide, and checks the 141 MVA / 150 % / 132 kV reference case
+  (925.1 A primary, 1.156 A secondary).
 
 ## Not yet implemented (future slices)
 

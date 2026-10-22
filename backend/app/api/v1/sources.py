@@ -210,6 +210,7 @@ async def upload_comtrade_source(
                 max_total_bytes=settings.max_event_upload_size_bytes,
                 registry=registry,
                 nominal_frequency_hz=nominal_frequency_hz,
+                ben5k_experimental_enabled=settings.ben5k_experimental_enabled,
             )
         else:
             source = await import_comtrade_source(

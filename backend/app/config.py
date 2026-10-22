@@ -68,6 +68,9 @@ class Settings:
     # with a random per-process key (see app.services.relay_review_token.signer_from_settings).
     relay_review_signing_key: str | None = field(default=None, repr=False)
     relay_review_token_ttl_hours: int = DEFAULT_RELAY_REVIEW_TOKEN_TTL_HOURS
+    # Stage 7: legacy BEN5K experimental decoder. Off by default; enable with
+    # BEN5K_EXPERIMENTAL_ENABLED=1 in the environment. Never frontend-controlled.
+    ben5k_experimental_enabled: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -189,6 +192,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     else:
         relay_review_token_ttl_hours = DEFAULT_RELAY_REVIEW_TOKEN_TTL_HOURS
 
+    ben5k_experimental_enabled = env.get("BEN5K_EXPERIMENTAL_ENABLED", "").strip().lower() in (
+        "1", "true", "yes"
+    )
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
@@ -201,4 +208,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         version=version,
         relay_review_signing_key=signing_key,
         relay_review_token_ttl_hours=relay_review_token_ttl_hours,
+        ben5k_experimental_enabled=ben5k_experimental_enabled,
     )

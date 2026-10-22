@@ -275,8 +275,14 @@ See §7. Still open:
 
 - Local-time presentation of UTC sources is resolved by DEC-122; see §7.4.
 - `[OPEN]` **Bay/feeder and BEN channel ids in the UI.** See §7.5.
-- `[OPEN]` **Older BEN layout.** Support for `28 ff` files (BPHE, GPTH)
-  would need its own reverse-engineering and validation pair.
+- `[OPEN]` **Older BEN layout (BEN5K / `28 ff`).** Binary investigation of
+  `261016_180314535_GPTH_275kV.ben` completed 2026-10-21. Confirmed: flat
+  config layout, 58-byte channel descriptors, word-index field at descriptor
+  byte 53, f32le scale/offset, digital word-group addressing. Design and
+  architecture ready in
+  [LEGACY_BEN5K_DECODER_DESIGN.md](LEGACY_BEN5K_DECODER_DESIGN.md).
+  Remaining prerequisite: COMTRADE oracle from BEN32 v2.00 via DOSBox.
+  See also [BEN5K_COMPATIBILITY_INVESTIGATION.md](BEN5K_COMPATIBILITY_INVESTIGATION.md).
 
 ## 7. Import integration (DEC-120)
 

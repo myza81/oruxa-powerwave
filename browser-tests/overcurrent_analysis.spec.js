@@ -1570,3 +1570,381 @@ test.describe("Overcurrent Analysis v1 -- Manual mode is a standalone engineerin
     });
   }
 });
+
+test.describe("Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method", () => {
+  // Equipment Loading is an input conversion inside Manual Input:
+  // MVA rating x loading % at a line-to-line kV -> equivalent primary
+  // current (backend), evaluated through the same manual pipeline, CT
+  // ratio and relay settings as a Direct Current primary entry. Runs on a
+  // fresh, empty workspace (Manual is auto-selected).
+
+  async function openEmptyWorkspaceOvercurrent(page) {
+    await page.goto("/index.html");
+    await openAnalysisOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+  }
+
+  async function setField(page, selector, value) {
+    const input = page.locator(selector);
+    await input.fill(String(value));
+    await input.dispatchEvent("change");
+    await input.blur();
+  }
+
+  async function setRelaySettings(page, { ctPrimary = 800, ctSecondary = 1 } = {}) {
+    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_standard_inverse");
+    await setField(page, "#wwOvercurrentPickupInput", "1.0");
+    await setField(page, "#wwOvercurrentTmsInput", "0.1");
+    if (ctPrimary !== null) await setField(page, "#wwOvercurrentCtPrimaryInput", ctPrimary);
+    if (ctSecondary !== null) await setField(page, "#wwOvercurrentCtSecondaryInput", ctSecondary);
+  }
+
+  async function selectEquipmentLoading(page) {
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expect(page.locator("#wwOvercurrentInputMethodLoadingBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentManualLoadingFields")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentManualDirectFields")).toBeHidden();
+  }
+
+  async function enterLoading(page, { rating, loading, voltage }) {
+    if (rating !== undefined) await setField(page, "#wwOvercurrentLoadingRatingInput", rating);
+    if (loading !== undefined) await setField(page, "#wwOvercurrentLoadingPercentInput", loading);
+    if (voltage !== undefined) await setField(page, "#wwOvercurrentLoadingVoltageInput", voltage);
+  }
+
+  // Numeric value of one read-only conversion row ("Primary current" ...).
+  async function loadingRowValue(page, label) {
+    const row = page.locator("#wwOvercurrentLoadingResults .ww-oc-value-row", { hasText: label });
+    const text = await row.locator(".ww-oc-value-row-value").innerText();
+    return parseFloat(text.replace(/[^0-9.\-]/g, ""));
+  }
+
+  test("defaults to Direct Current; the method toggle sits inside Manual Input and reuses the shared CT/relay controls", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentInputMethodDirectBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentManualDirectFields")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentManualLoadingFields")).toBeHidden();
+    await expect(page.locator("#wwOvercurrentManualInputSection #wwOvercurrentInputMethodLoadingBtn")).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentPickupInput")).toHaveCount(1);
+  });
+
+  test("reference case: 141 MVA at 150 % on 132 kV through CT 800/1 -> 211.5 MVA, 925.1 A primary, 1.156 A secondary", async ({ page }) => {
+    let loadingRequests = 0;
+    const recordingRequestUrls = [];
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.includes("/overcurrent-manual-loading")) loadingRequests++;
+      if (url.includes("/overcurrent?")) recordingRequestUrls.push(url);
+    });
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page);
+    await selectEquipmentLoading(page);
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible();
+    await enterLoading(page, { rating: 141, loading: 150, voltage: 132 });
+
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("211.5 MVA");
+    const results = page.locator("#wwOvercurrentLoadingResults");
+    await expect(results).toContainText("925.1 A");
+    await expect(results).toContainText("1.156 A");
+    await expect(results).toContainText("CT 800/1 A");
+    await expect(page.locator("#wwOvercurrentLoadingStatus")).toBeHidden();
+
+    const values = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(values).toContain("Relay-equivalent current");
+    expect(values).toContain("Expected operating time");
+    expect(values).not.toContain("Not applicable");
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(1);
+    expect(loadingRequests).toBeGreaterThan(0);
+    expect(recordingRequestUrls).toEqual([]);
+  });
+
+  test("changes to loading, rating, voltage and CT ratio update the currents automatically", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page);
+    await selectEquipmentLoading(page);
+    await enterLoading(page, { rating: 141, loading: 150, voltage: 132 });
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("925.1 A");
+
+    await enterLoading(page, { loading: 300 });
+    await expect.poll(() => loadingRowValue(page, "Primary current")).toBeCloseTo(1850.1, 0);
+
+    await enterLoading(page, { rating: 70.5 });
+    await expect.poll(() => loadingRowValue(page, "Primary current")).toBeCloseTo(925.1, 0);
+
+    await enterLoading(page, { voltage: 264 });
+    await expect.poll(() => loadingRowValue(page, "Primary current")).toBeCloseTo(462.5, 0);
+
+    await setField(page, "#wwOvercurrentCtPrimaryInput", 400);
+    await expect.poll(() => loadingRowValue(page, "Secondary current")).toBeCloseTo(1.156, 2);
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("CT 400/1 A");
+  });
+
+  test("loading above 100 % is supported; a low loading reports below pickup", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page);
+    await selectEquipmentLoading(page);
+    await enterLoading(page, { rating: 141, loading: 250, voltage: 132 });
+    await expect.poll(() => loadingRowValue(page, "Actual loading")).toBeCloseTo(352.5, 1);
+    await expect(page.locator("#wwOvercurrentValuesList")).not.toContainText("Not applicable");
+
+    await enterLoading(page, { loading: 50 });
+    await expect.poll(() => loadingRowValue(page, "Secondary current")).toBeCloseTo(0.3854, 3);
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText("Not applicable / below pickup");
+  });
+
+  test("invalid, empty, negative and zero inputs are rejected before any request, with a visible message", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page);
+    await selectEquipmentLoading(page);
+    await enterLoading(page, { rating: 141, loading: 150, voltage: 132 });
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("925.1 A");
+
+    let loadingRequests = 0;
+    page.on("request", (req) => { if (req.url().includes("/overcurrent-manual-loading")) loadingRequests++; });
+
+    const status = page.locator("#wwOvercurrentLoadingStatus");
+    await enterLoading(page, { loading: 0 });
+    await expect(status).toBeVisible();
+    await expect(status).toContainText("loading percentage greater than zero");
+    await expect(page.locator("#wwOvercurrentLoadingPercentInput")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toBeEmpty();
+    await expect(page.locator("#wwOvercurrentValuesList")).toBeEmpty();
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(0);
+
+    // Every field invalid at once, then repaired one at a time: the first
+    // invalid field is reported and no request is sent until all are valid.
+    await enterLoading(page, { rating: -141 });
+    await expect(status).toContainText("equipment rating (MVA) greater than zero");
+    await enterLoading(page, { voltage: "" });
+    await expect(page.locator("#wwOvercurrentLoadingVoltageInput")).toHaveAttribute("aria-invalid", "true");
+    await enterLoading(page, { rating: 141 });
+    await expect(status).toContainText("loading percentage greater than zero");
+    await enterLoading(page, { loading: 150 });
+    await expect(status).toContainText("system voltage (kV) greater than zero");
+    expect(loadingRequests).toBe(0);
+
+    await enterLoading(page, { voltage: 132 });
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("925.1 A");
+    await expect(status).toBeHidden();
+    await expect(page.locator("#wwOvercurrentLoadingVoltageInput")).toHaveAttribute("aria-invalid", "false");
+  });
+
+  test("a missing CT ratio still shows the derived primary current and asks for the CT", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page, { ctPrimary: null, ctSecondary: null });
+    await selectEquipmentLoading(page);
+    await enterLoading(page, { rating: 141, loading: 150, voltage: 132 });
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("925.1 A");
+    await expect(page.locator("#wwOvercurrentLoadingStatus")).toContainText("CT primary and CT secondary");
+    const secondary = page.locator("#wwOvercurrentLoadingResults .ww-oc-value-row", { hasText: "Secondary current" });
+    await expect(secondary.locator(".ww-oc-value-row-value")).toHaveText("—");
+  });
+
+  test("switching methods preserves each method's values and never shows the other method's result", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page);
+    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
+    await setField(page, "#wwOvercurrentManualCurrentInput", "5");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/5\.0\s*A secondary/);
+
+    await selectEquipmentLoading(page);
+    await enterLoading(page, { rating: 141, loading: 150, voltage: 132 });
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("1.156 A");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/1\.2\s*A secondary/);
+    // The CT fields stay visible in Equipment Loading even though the
+    // (hidden) Direct basis is Secondary.
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible();
+
+    await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
+    await expect(page.locator("#wwOvercurrentManualLoadingFields")).toBeHidden();
+    await expect(page.locator("#wwOvercurrentManualCurrentInput")).toHaveValue("5");
+    await expect(page.locator("#wwOvercurrentManualBasisSelect")).toHaveValue("secondary");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/5\.0\s*A secondary/);
+
+    await selectEquipmentLoading(page);
+    await expect(page.locator("#wwOvercurrentLoadingRatingInput")).toHaveValue("141");
+    await expect(page.locator("#wwOvercurrentLoadingPercentInput")).toHaveValue("150");
+    await expect(page.locator("#wwOvercurrentLoadingVoltageInput")).toHaveValue("132");
+    await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("925.1 A");
+  });
+
+  test("a slow Equipment Loading response that lands after switching back to Direct Current is discarded", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page);
+    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
+    await setField(page, "#wwOvercurrentManualCurrentInput", "5");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/5\.0\s*A secondary/);
+
+    let delayed = 0;
+    await page.route("**/overcurrent-manual-loading?**", async (route) => {
+      delayed++;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expect.poll(() => delayed).toBeGreaterThan(0);
+    await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/5\.0\s*A secondary/);
+    await page.waitForTimeout(2000);
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/5\.0\s*A secondary/);
+    await expect(page.locator("#wwOvercurrentManualLoadingFields")).toBeHidden();
+  });
+
+  test("Direct Current mode is unchanged: golden 30000 A primary through CT 1200/1 -> 25 A secondary", async ({ page }) => {
+    let loadingRequests = 0;
+    page.on("request", (req) => { if (req.url().includes("/overcurrent-manual-loading")) loadingRequests++; });
+    await openEmptyWorkspaceOvercurrent(page);
+    await setRelaySettings(page, { ctPrimary: 1200, ctSecondary: 1 });
+    await setField(page, "#wwOvercurrentManualCurrentInput", "30000");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/25\.0\s*A secondary/);
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/25\.0\s*×/);
+    expect(loadingRequests).toBe(0);
+  });
+
+  for (const width of [1366, 1024]) {
+    test(`at ${width}px: the Equipment Loading block fits without horizontal overflow`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openEmptyWorkspaceOvercurrent(page);
+      await setRelaySettings(page);
+      await selectEquipmentLoading(page);
+      await enterLoading(page, { rating: 141, loading: 150, voltage: 132 });
+      await expect(page.locator("#wwOvercurrentLoadingResults")).toContainText("925.1 A");
+      const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflowX).toBeLessThanOrEqual(1);
+      const fits = await page.locator("#wwOvercurrentManualLoadingFields").evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+      expect(fits).toBe(true);
+    });
+  }
+});
+
+test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only for the Recording input source", () => {
+  // The field only describes recorded data: Manual -> Direct Current has
+  // its own Primary/Secondary basis and Manual -> Equipment Loading is
+  // always primary. Hidden as a whole (label + select), never removed;
+  // the selection survives a Manual round trip. The CT fields follow only
+  // the ACTIVE source (wwOvercurrentCtFieldsNeeded()), so the hidden
+  // Recording basis never shows them in Manual.
+
+  async function setField(page, selector, value) {
+    const input = page.locator(selector);
+    await input.fill(String(value));
+    await input.dispatchEvent("change");
+    await input.blur();
+  }
+
+  test("visible in Recording, hidden in both Manual methods, restored with the selected basis on return", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const field = page.locator("#wwOvercurrentBasisField");
+    const select = page.locator("#wwOvercurrentBasisSelect");
+    await expect(field).toBeVisible();
+    await expect(field).toContainText("Recording current basis");
+    await select.selectOption("primary");
+    await setField(page, "#wwOvercurrentCtPrimaryInput", "1000");
+    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
+    await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/40\.0\s*A primary/);
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentInputMethodDirectBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(field).toBeHidden();
+    await expect(select).toBeHidden();
+
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expect(page.locator("#wwOvercurrentManualLoadingFields")).toBeVisible();
+    await expect(field).toBeHidden();
+    await expect(select).toBeHidden();
+    await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
+    await expect(field).toBeHidden();
+
+    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
+    await expect(field).toBeVisible();
+    await expect(select).toHaveValue("primary");
+    expect(await page.evaluate(() => wwOvercurrentState.settings.recordingBasis)).toBe("primary");
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible();
+    // Recording-mode result is unchanged: 40 A primary through 1000:1.
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A primary/);
+      expect(text).toMatch(/0\.0(4|40)\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("CT fields follow only the active source in all five cases, and keep their values while hidden", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const ctPrimary = page.locator("#wwOvercurrentCtPrimaryField");
+    const ctSecondary = page.locator("#wwOvercurrentCtSecondaryField");
+    async function expectCt(visible) {
+      for (const field of [ctPrimary, ctSecondary]) {
+        if (visible) await expect(field).toBeVisible();
+        else await expect(field).toBeHidden();
+      }
+    }
+    async function expectCtValues() {
+      await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toHaveValue("800");
+      await expect(page.locator("#wwOvercurrentCtSecondaryInput")).toHaveValue("1");
+      expect(await page.evaluate(() => [wwOvercurrentState.settings.ctPrimary, wwOvercurrentState.settings.ctSecondary])).toEqual([800, 1]);
+    }
+
+    // 1. Recording + Secondary (default): hidden.
+    await expect(page.locator("#wwOvercurrentBasisSelect")).toHaveValue("secondary");
+    await expectCt(false);
+
+    // 2. Recording + Primary: shown.
+    await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
+    await expectCt(true);
+    await setField(page, "#wwOvercurrentCtPrimaryInput", "800");
+    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
+
+    // 3. Manual + Direct Current + Primary (default): shown.
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentManualBasisSelect")).toHaveValue("primary");
+    await expectCt(true);
+    await expectCtValues();
+
+    // 4. Manual + Direct Current + Secondary: hidden, even though the
+    //    (hidden) Recording basis is still Primary.
+    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
+    await expectCt(false);
+    await expectCtValues();
+
+    // 5. Manual + Equipment Loading: always shown; the preserved CT 800/1
+    //    still gives the reference case.
+    await page.locator("#wwOvercurrentInputMethodLoadingBtn").click();
+    await expectCt(true);
+    await expectCtValues();
+    await setField(page, "#wwOvercurrentLoadingRatingInput", 141);
+    await setField(page, "#wwOvercurrentLoadingPercentInput", 150);
+    await setField(page, "#wwOvercurrentLoadingVoltageInput", 132);
+    const results = page.locator("#wwOvercurrentLoadingResults");
+    await expect(results).toContainText("211.5 MVA");
+    await expect(results).toContainText("925.1 A");
+    await expect(results).toContainText("1.156 A");
+    await expect(results).toContainText("CT 800/1 A");
+
+    // Back to Direct Current (Secondary): hidden again.
+    await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
+    await expectCt(false);
+
+    // Back to Recording (Primary): shown, values intact, result unchanged
+    // (40 A primary through 800/1 -> 0.05 A secondary).
+    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
+    await expectCt(true);
+    await expectCtValues();
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A primary/);
+      expect(text).toMatch(/0\.050?\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+
+    // Recording + Secondary: hidden; values still kept.
+    await page.locator("#wwOvercurrentBasisSelect").selectOption("secondary");
+    await expectCt(false);
+    await expectCtValues();
+  });
+});

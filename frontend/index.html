@@ -8977,6 +8977,28 @@
             outline: none;
             border-color: var(--accent-dim);
         }
+        /* Manual Input's input method (Direct Current | Equipment
+           Loading) -- the shared segmented control, then the Equipment
+           Loading block, which reuses the settings grid/field-unit/values
+           list styling above (the grid is the shared `.ww-manual-field-grid`, so
+           `.ww-oc-settings-grid` stays unique to Relay Settings). `:is()` keeps these selectors from ending in
+           the text of the shared rules the static tests look up. */
+        :is(.ww-oc-input-method-row) {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        :is(.ww-oc-loading-grid) {
+            margin-bottom: 6px;
+        }
+        :is(.ww-oc-loading-results) {
+            margin-bottom: 6px;
+        }
+        :is(.ww-oc-loading-results):empty {
+            display: none;
+        }
         /* Impedance Locus v1 -- Manual Input's own two independent
            groups (Voltage/Current, each its own basis + VT/PT or CT
            ratio), mirroring Manual Phasor's own two-family layout.
@@ -11544,7 +11566,7 @@
                                             <span class="ww-phasor-field-label">TMS</span>
                                             <input type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">
                                         </label>
-                                        <label class="ww-phasor-field ww-oc-field-full">
+                                        <label class="ww-phasor-field ww-oc-field-full" id="wwOvercurrentBasisField">
                                             <span class="ww-phasor-field-label">Recording current basis</span>
                                             <select id="wwOvercurrentBasisSelect">
                                                 <option value="secondary" selected>Secondary</option>
@@ -11568,20 +11590,67 @@
                                          test current changes. -->
                                     <div class="ww-oc-manual-input-section" id="wwOvercurrentManualInputSection" hidden>
                                         <div class="ww-oc-manual-input-label">Manual Input</div>
-                                        <label class="ww-phasor-field ww-oc-field-full">
-                                            <span class="ww-phasor-field-label">Input current</span>
-                                            <span class="ww-oc-manual-input-row">
-                                                <input type="number" id="wwOvercurrentManualCurrentInput" min="0" step="1" value="30000" aria-label="Manual input current value">
-                                                <select id="wwOvercurrentManualUnitSelect" aria-label="Manual input current unit">
-                                                    <option value="A" selected>A</option>
-                                                    <option value="kA">kA</option>
-                                                </select>
-                                                <select id="wwOvercurrentManualBasisSelect" aria-label="Manual input current basis">
-                                                    <option value="primary" selected>Primary</option>
-                                                    <option value="secondary">Secondary</option>
-                                                </select>
+                                        <!-- Input method -- how the manual current is
+                                             obtained. Equipment Loading is an INPUT
+                                             CONVERSION only: the backend turns MVA
+                                             rating x loading % at a line-to-line kV
+                                             into an equivalent primary current and
+                                             evaluates it exactly like a Direct
+                                             Current primary entry. Same segmented-
+                                             control classes as Input Source. -->
+                                        <div class="ww-oc-input-method-row">
+                                            <span class="ww-oc-axis-toggle-group" role="group" aria-label="Manual input method">
+                                                <button type="button" id="wwOvercurrentInputMethodDirectBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-method="direct_current" aria-pressed="true">Direct Current</button>
+                                                <button type="button" id="wwOvercurrentInputMethodLoadingBtn" class="ww-oc-axis-toggle-btn" data-input-method="equipment_loading" aria-pressed="false">Equipment Loading</button>
                                             </span>
-                                        </label>
+                                        </div>
+                                        <div id="wwOvercurrentManualDirectFields">
+                                            <label class="ww-phasor-field ww-oc-field-full">
+                                                <span class="ww-phasor-field-label">Input current</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwOvercurrentManualCurrentInput" min="0" step="1" value="30000" aria-label="Manual input current value">
+                                                    <select id="wwOvercurrentManualUnitSelect" aria-label="Manual input current unit">
+                                                        <option value="A" selected>A</option>
+                                                        <option value="kA">kA</option>
+                                                    </select>
+                                                    <select id="wwOvercurrentManualBasisSelect" aria-label="Manual input current basis">
+                                                        <option value="primary" selected>Primary</option>
+                                                        <option value="secondary">Secondary</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                        </div>
+                                        <!-- Equipment Loading -- the CT ratio and relay
+                                             settings above are reused, never duplicated
+                                             here (the derived current is always primary,
+                                             so the CT fields are always shown). -->
+                                        <div id="wwOvercurrentManualLoadingFields" hidden>
+                                            <div class="ww-manual-field-grid ww-oc-loading-grid">
+                                                <label class="ww-phasor-field">
+                                                    <span class="ww-phasor-field-label">Equipment rating</span>
+                                                    <span class="ww-oc-field-input-row">
+                                                        <input type="number" id="wwOvercurrentLoadingRatingInput" min="0" step="0.1" value="100" aria-label="Equipment rating in MVA">
+                                                        <span class="ww-oc-field-unit">MVA</span>
+                                                    </span>
+                                                </label>
+                                                <label class="ww-phasor-field">
+                                                    <span class="ww-phasor-field-label">Loading</span>
+                                                    <span class="ww-oc-field-input-row">
+                                                        <input type="number" id="wwOvercurrentLoadingPercentInput" min="0" step="1" value="100" aria-label="Equipment loading in percent of rating">
+                                                        <span class="ww-oc-field-unit">%</span>
+                                                    </span>
+                                                </label>
+                                                <label class="ww-phasor-field ww-oc-field-full">
+                                                    <span class="ww-phasor-field-label">System voltage (line-to-line)</span>
+                                                    <span class="ww-oc-field-input-row">
+                                                        <input type="number" id="wwOvercurrentLoadingVoltageInput" min="0" step="0.1" value="132" aria-label="Nominal line-to-line system voltage in kV">
+                                                        <span class="ww-oc-field-unit">kV</span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div class="ww-oc-values-list ww-oc-loading-results" id="wwOvercurrentLoadingResults" aria-live="polite"></div>
+                                            <div class="ww-phasor-status-row" id="wwOvercurrentLoadingStatus" role="status" hidden></div>
+                                        </div>
                                     </div>
                                     <div class="ww-oc-values-list" id="wwOvercurrentValuesList"></div>
                                     <div class="ww-oc-alert" id="wwOvercurrentAlert" hidden></div>
@@ -47770,6 +47839,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_OC_XAXIS_PICKUP_MULTIPLE = "pickup_multiple";
         const WW_OC_XAXIS_RELAY_CURRENT = "relay_current";
 
+        // Manual Input's input method -- how the manual current is obtained.
+        // Overcurrent-specific (unlike WW_ANALYSIS_INPUT_SOURCE_*): Equipment
+        // Loading converts MVA rating x loading % at a line-to-line kV into
+        // an equivalent primary current on the backend.
+        const WW_OC_INPUT_METHOD_DIRECT = "direct_current";
+        const WW_OC_INPUT_METHOD_LOADING = "equipment_loading";
+
         const wwOvercurrentState = {
             contexts: [],
             selectedContextId: null,
@@ -47841,9 +47917,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             recordingAvailable: false,
             inputSourceAutoSelected: true,
             manual: {
+                // Each method keeps its own values, so switching between
+                // them never loses what was entered; `latestResult` is the
+                // ACTIVE method's result only (cleared on every switch).
+                inputMethod: WW_OC_INPUT_METHOD_DIRECT,
                 inputCurrent: 30000,
                 inputCurrentUnit: "A",
                 inputBasis: "primary",
+                equipmentRatingMva: 100,
+                loadingPercent: 100,
+                systemVoltageKv: 132,
                 latestResult: null,
             },
             manualRequestGeneration: 0,
@@ -47875,6 +47958,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwOvercurrentFetchManualAnalysis(workspaceId, params) {
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/overcurrent-manual?" + params.toString()
+            );
+        }
+
+        // Manual Input's Equipment Loading method -- same manual result
+        // fields plus `equipment_loading` (the conversion that produced the
+        // evaluated primary current).
+        function wwOvercurrentFetchManualLoadingAnalysis(workspaceId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/overcurrent-manual-loading?" + params.toString()
             );
         }
 
@@ -49347,17 +49439,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ---- Settings wiring helpers ----
 
         // CT Primary/Secondary are shared, never duplicated between
-        // Recording and Manual mode (task §5) -- their FIELDS become
-        // visible whenever EITHER mode's own current basis needs them
-        // (Recording's `settings.recordingBasis`, or Manual's own
-        // `manual.inputBasis` while Manual is active), so switching
-        // Manual's own Basis selector to "Primary" never hides the CT
-        // inputs a user would need to fill in, regardless of what the
-        // shared "Recording current basis" dropdown currently reads.
+        // Recording and Manual mode (task §5). Their FIELDS follow only
+        // the ACTIVE input source's own basis: Recording's
+        // `settings.recordingBasis`, or (Manual) `manual.inputBasis` for
+        // Direct Current -- Equipment Loading always yields a PRIMARY
+        // current, so it always needs the CT ratio. The hidden Recording
+        // basis never shows the CT fields in Manual (2026-10-16). Only
+        // visibility depends on this; the CT values stay in
+        // `settings` either way.
         function wwOvercurrentCtFieldsNeeded() {
-            const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
-            return wwOvercurrentState.settings.recordingBasis === "primary" ||
-                (isManual && wwOvercurrentState.manual.inputBasis === "primary");
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                return wwOvercurrentState.settings.recordingBasis === "primary";
+            }
+            return wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING ||
+                wwOvercurrentState.manual.inputBasis === "primary";
         }
 
         function wwOvercurrentUpdateCtFieldsVisibility() {
@@ -49457,9 +49552,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // state hid Manual's own controls too, since they used to live
         // INSIDE the now-recording-gated body). See
         // docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+        // The "Recording current basis" field sits in the shared Settings
+        // grid but only describes recorded data (Manual has its own basis,
+        // Equipment Loading is always primary), so it follows the same
+        // gate. Only the field is hidden: `settings.recordingBasis` and
+        // the select's value are kept, and CT visibility is unchanged
+        // (wwOvercurrentCtFieldsNeeded()).
         function wwOvercurrentUpdateRecordingSectionVisibility() {
+            const isRecording = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING;
             const section = document.getElementById("wwOvercurrentRecordingSection");
-            if (section) section.hidden = wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            if (section) section.hidden = !isRecording;
+            const basisField = document.getElementById("wwOvercurrentBasisField");
+            if (basisField) basisField.hidden = !isRecording;
         }
 
         // Recording is "available" once at least one Engineering Context
@@ -49523,6 +49627,145 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (currentInput) currentInput.value = String(m.inputCurrent);
             if (unitSelect) unitSelect.value = m.inputCurrentUnit;
             if (basisSelect) basisSelect.value = m.inputBasis;
+            [
+                ["wwOvercurrentLoadingRatingInput", m.equipmentRatingMva],
+                ["wwOvercurrentLoadingPercentInput", m.loadingPercent],
+                ["wwOvercurrentLoadingVoltageInput", m.systemVoltageKv],
+            ].forEach(([id, value]) => {
+                const input = document.getElementById(id);
+                if (input) input.value = String(value);
+            });
+            wwOvercurrentSyncInputMethodUi();
+        }
+
+        // ---- Manual Input method: Direct Current | Equipment Loading ----
+
+        function wwOvercurrentSyncInputMethodUi() {
+            const isLoading = wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING;
+            const directBtn = document.getElementById("wwOvercurrentInputMethodDirectBtn");
+            const loadingBtn = document.getElementById("wwOvercurrentInputMethodLoadingBtn");
+            if (directBtn) {
+                directBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isLoading);
+                directBtn.setAttribute("aria-pressed", String(!isLoading));
+            }
+            if (loadingBtn) {
+                loadingBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isLoading);
+                loadingBtn.setAttribute("aria-pressed", String(isLoading));
+            }
+            const directFields = document.getElementById("wwOvercurrentManualDirectFields");
+            const loadingFields = document.getElementById("wwOvercurrentManualLoadingFields");
+            if (directFields) directFields.hidden = isLoading;
+            if (loadingFields) loadingFields.hidden = !isLoading;
+        }
+
+        // Each method keeps its own entered values; only the result is
+        // dropped (and any in-flight response invalidated) so the other
+        // method's result can never be shown under this one.
+        function wwOvercurrentSetManualInputMethod(method) {
+            if (method !== WW_OC_INPUT_METHOD_DIRECT && method !== WW_OC_INPUT_METHOD_LOADING) return;
+            if (method === wwOvercurrentState.manual.inputMethod) return;
+            wwOvercurrentState.manual.inputMethod = method;
+            wwOvercurrentState.manual.latestResult = null;
+            wwOvercurrentState.manualRequestGeneration += 1;
+            wwOvercurrentSyncInputMethodUi();
+            wwOvercurrentUpdateCtFieldsVisibility();
+            wwOvercurrentRequestManualAnalysis();
+        }
+
+        // Cheap pre-flight only (blank/NaN/Infinity/negative/zero); the
+        // backend validates authoritatively. Loading above 100 % is valid.
+        const WW_OC_LOADING_FIELDS = [
+            { key: "equipmentRatingMva", inputId: "wwOvercurrentLoadingRatingInput", message: "Enter an equipment rating (MVA) greater than zero." },
+            { key: "loadingPercent", inputId: "wwOvercurrentLoadingPercentInput", message: "Enter a loading percentage greater than zero." },
+            { key: "systemVoltageKv", inputId: "wwOvercurrentLoadingVoltageInput", message: "Enter a line-to-line system voltage (kV) greater than zero." },
+        ];
+
+        function wwOvercurrentLoadingInputError() {
+            let firstError = null;
+            WW_OC_LOADING_FIELDS.forEach((field) => {
+                const value = wwOvercurrentState.manual[field.key];
+                const valid = Number.isFinite(value) && value > 0;
+                const input = document.getElementById(field.inputId);
+                if (input) input.setAttribute("aria-invalid", String(!valid));
+                if (!valid && !firstError) firstError = field.message;
+            });
+            return firstError;
+        }
+
+        function wwOvercurrentRequestManualLoadingAnalysis() {
+            // Bumped before the pre-flight, so an invalid edit also
+            // discards a response still in flight for the previous values.
+            const myGeneration = ++wwOvercurrentState.manualRequestGeneration;
+            const inputError = wwOvercurrentLoadingInputError();
+            if (inputError) {
+                wwOvercurrentState.manual.latestResult = null;
+                wwOvercurrentRenderManualLoadingResult(null, inputError);
+                return;
+            }
+            const s = wwOvercurrentState.settings;
+            const m = wwOvercurrentState.manual;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const params = new URLSearchParams({
+                characteristic_id: s.characteristicId, tms: String(s.tms),
+                pickup_current_secondary: String(s.pickupCurrentSecondary),
+                equipment_rating_mva: String(m.equipmentRatingMva),
+                loading_percent: String(m.loadingPercent),
+                system_voltage_kv: String(m.systemVoltageKv),
+            });
+            if (s.ctPrimary !== null && s.ctSecondary !== null) {
+                params.set("ct_primary", String(s.ctPrimary));
+                params.set("ct_secondary", String(s.ctSecondary));
+            }
+            const isCurrent = () => myGeneration === wwOvercurrentState.manualRequestGeneration &&
+                wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING;
+            wwOvercurrentFetchManualLoadingAnalysis(workspaceId, params).then(
+                (result) => {
+                    if (!isCurrent() || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                    wwOvercurrentState.manual.latestResult = result;
+                    wwOvercurrentRenderManualLoadingResult(result, null);
+                },
+                () => {
+                    if (!isCurrent()) return;
+                    wwOvercurrentState.manual.latestResult = null;
+                    wwOvercurrentRenderManualLoadingResult(null, "The equipment loading calculation could not be completed.");
+                }
+            );
+        }
+
+        // The conversion (read-only, inside the Equipment Loading block),
+        // then the SAME manual live values/chart point Direct Current uses.
+        // wwPcFormat(): four significant figures below 100 (1.156 A), one
+        // decimal from 100 up (925.1 A, 211.5 MVA).
+        function wwOvercurrentRenderManualLoadingResult(result, inputError) {
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            const resultsEl = document.getElementById("wwOvercurrentLoadingResults");
+            const statusEl = document.getElementById("wwOvercurrentLoadingStatus");
+            const conversion = result && result.equipment_loading;
+            if (resultsEl) {
+                if (conversion) {
+                    const computed = result.status === "computed";
+                    const s = wwOvercurrentState.settings;
+                    const ctLabel = computed ? " (CT " + wwPcFormat(s.ctPrimary, true) + "/" + wwPcFormat(s.ctSecondary, true) + " A)" : "";
+                    resultsEl.innerHTML = [
+                        wwOvercurrentValueRow("Actual loading", wwPcFormat(conversion.actual_loading_mva) + " MVA"),
+                        wwOvercurrentValueRow("Primary current", wwPcFormat(conversion.primary_current_a) + " A"),
+                        wwOvercurrentValueRow(
+                            "Secondary current" + ctLabel,
+                            computed ? wwPcFormat(result.relay_secondary_current) + " A" : "—",
+                        ),
+                    ].join("");
+                } else {
+                    resultsEl.innerHTML = "";
+                }
+            }
+            if (statusEl) {
+                const message = inputError || (result && result.status !== "computed" ? result.message : "");
+                statusEl.hidden = !message;
+                statusEl.textContent = message || "";
+                statusEl.className = "ww-phasor-status-row" + (message ? " ww-phasor-status--needs-configuration" : "");
+            }
+            wwOvercurrentRenderManualResult(result);
         }
 
         // Guardrails (task §14): blank/NaN/Infinity/negative/zero are all
@@ -49540,6 +49783,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwOvercurrentRequestManualAnalysis() {
             if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING) {
+                wwOvercurrentRequestManualLoadingAnalysis();
+                return;
+            }
             if (!wwOvercurrentManualInputIsValid()) {
                 wwOvercurrentState.manual.latestResult = null;
                 wwOvercurrentRenderManualResult(null);
@@ -49653,7 +49900,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
             wwOvercurrentState.recordingAvailable = false;
             wwOvercurrentState.inputSourceAutoSelected = true;
-            wwOvercurrentState.manual = { inputCurrent: 30000, inputCurrentUnit: "A", inputBasis: "primary", latestResult: null };
+            wwOvercurrentState.manual = {
+                inputMethod: WW_OC_INPUT_METHOD_DIRECT, inputCurrent: 30000, inputCurrentUnit: "A", inputBasis: "primary",
+                equipmentRatingMva: 100, loadingPercent: 100, systemVoltageKv: 132, latestResult: null,
+            };
             wwOvercurrentState.manualRequestGeneration += 1;
             wwOvercurrentSyncAxisModeButtons();
             wwOvercurrentSyncGridToggleCheckboxes();
@@ -62272,6 +62522,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.manual.inputBasis = event.target.value;
             wwOvercurrentUpdateCtFieldsVisibility();
             wwOvercurrentRequestManualAnalysis();
+        });
+        // Manual input method (Direct Current | Equipment Loading), and the
+        // Equipment Loading fields -- "change" only, like every other OC
+        // field, so a half-typed value never sends a request.
+        document.getElementById("wwOvercurrentInputMethodDirectBtn").addEventListener("click", () => wwOvercurrentSetManualInputMethod(WW_OC_INPUT_METHOD_DIRECT));
+        document.getElementById("wwOvercurrentInputMethodLoadingBtn").addEventListener("click", () => wwOvercurrentSetManualInputMethod(WW_OC_INPUT_METHOD_LOADING));
+        WW_OC_LOADING_FIELDS.forEach((field) => {
+            document.getElementById(field.inputId).addEventListener("change", (event) => {
+                wwOvercurrentState.manual[field.key] = parseFloat(event.target.value); // may be NaN -- the pre-flight rejects it
+                wwOvercurrentRequestManualAnalysis();
+            });
         });
         // Adjustable chart viewport (2026-09-12 UAT follow-up) -- display-
         // only: never touches `wwOvercurrentState.settings`, never

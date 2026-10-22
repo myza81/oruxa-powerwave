@@ -7,6 +7,57 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-22** (Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
 
+## Overcurrent Recording current basis and CT field visibility (2026-10-16, `main`)
+
+**What was built.** Two owner-requested UI refinements, made in the dedicated `main` worktree (`../oruxa-powerwave-main`). The Distance Protection work in the main checkout (`feature/remaining-relay-imports`) was not touched.
+
+1. **Commit `c66e6c7`.** The "Recording current basis" field (`#wwOvercurrentBasisField`, label + select) is visible only while Recording is the Input Source, via the existing `wwOvercurrentUpdateRecordingSectionVisibility()`. `settings.recordingBasis` and the select's value are kept, so the selection survives a Manual round trip.
+2. **CT field visibility correction.** `wwOvercurrentCtFieldsNeeded()` now follows only the active source:
+   - Recording: Recording basis Primary → shown, Secondary → hidden.
+   - Manual → Direct Current: its basis Primary → shown, Secondary → hidden.
+   - Manual → Equipment Loading: always shown.
+
+   The hidden Recording basis no longer shows the CT fields in Manual. CT values are kept while hidden.
+
+No new CSS. Pickup, TMS, the curves, CT conversion, the operating time, the chart and the input conversions are unchanged.
+
+**Tests (after the CT correction).**
+
+- Backend: the OC domain/service/API tests, Equipment Loading domain tests and all frontend static suites. 2,327 passed.
+- `overcurrent_analysis.spec.js`: 72 passed. The five-case CT scenario includes CT-value preservation and the 141 MVA / 150 % / 132 kV → 925.1 A / 1.156 A (CT 800/1) reference case.
+- Browser runs use isolated ports (backend :8200, frontend copy :8102) while another session holds :8000/:8101.
+
+**Open.**
+
+- Owner UAT of both refinements.
+- The three pre-existing Direct Current `[OPEN]` items under "Equipment Loading input method" in OVERCURRENT_ANALYSIS.md.
+- No manual deploy. Pushing to `main` triggers the automatic DEV deploy after CI (DEC-036).
+
+## Overcurrent Equipment Loading input method (2026-10-15, `feat/oc-equipment-loading`)
+
+**What was built.** An owner-requested feature, built in its own worktree (`../oruxa-powerwave-oc-loading`, branched from `main` at `b2d796a`) while Distance Protection work continues on `feature/remaining-relay-imports` in the main checkout. Overcurrent's Manual Input now has a **Direct Current | Equipment Loading** method toggle.
+
+- Equipment Loading takes the MVA rating, loading % and a line-to-line kV.
+- It is converted on the backend: `app/domain/equipment_loading.py`, service `compute_overcurrent_equipment_loading_analysis()`, endpoint `GET .../overcurrent-manual-loading`.
+- The resulting primary current goes through the unchanged `compute_overcurrent_manual_analysis()`, exactly like a Direct Current primary entry: shared CT ratio, pickup, TMS and IEC curve.
+- The reference case (141 MVA, 150 %, 132 kV, CT 800/1) gives 211.5 MVA, 925.1 A and 1.156 A, and is tested at every layer.
+- No new DEC was recorded. The implementation choices are described in OVERCURRENT_ANALYSIS.md ("Equipment Loading input method"), with the defaults marked `[PROPOSAL]`.
+
+**Tests.**
+
+- Backend full suite: 8,925 passed, 185 skipped, 0 failed. This includes 52 new tests.
+- `overcurrent_analysis.spec.js`: 70 scenarios, 11 of them new. All new ones pass.
+- "Minor X and Minor Y are OFF by default" failed once in a full-spec run and 1 of 3 in a group repeat. It passed 6/6 in isolation on both this branch and the `main` baseline. It is a Recording-mode test that reads the gridline count once with no retry, so it is classified as pre-existing timing sensitivity and left unchanged.
+- Ports 8000/8101 were held by another session, so the browser runs used isolated ports: backend :8200 and a frontend copy on :8102.
+
+**Status.** Merged into `main` through PR #3 (merge commit `8febbbd`). Initial owner UAT passed (owner-confirmed 2026-10-16).
+
+**Open.** The three `[OPEN]` items in OVERCURRENT_ANALYSIS.md, all pre-existing Direct Current behaviour that was left unchanged per governance:
+
+1. live-values precision;
+2. the Manual status row is hidden, so an invalid Direct Current value shows no validation message;
+3. a stale-response race on an invalid Direct Current value.
+
 ## Relay Scalability Phase 3A -- TripCapability: relay-neutral zone trip/pickup classification (2026-10-22, `feature/remaining-relay-imports`, DEC-199 Amendment 9)
 
 **A relay-neutral `TripCapability` field is now stored on every `DistanceZone`.** It records what the OEM documentation says about whether a zone issues a timed trip, is pickup-only, depends on an external scheme, or provides signalling only -- as distinct from whether a zone is enabled or from what any installed scheme actually does at a site. The field is excluded from `iter_sourced()` traversal (`iter_sourced_skip` metadata), so all existing counts, review items, `items_needing_confirmation()`, Apply eligibility, signed-review-token semantics and engine blocker logic are **unchanged**.

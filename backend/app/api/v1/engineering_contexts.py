@@ -88,12 +88,14 @@ from app.schemas.impedance_analysis import (
     ManualImpedanceResultOut,
 )
 from app.schemas.overcurrent_analysis import (
+    EquipmentLoadingConversionOut,
     OvercurrentAnalysisResultOut,
     OvercurrentCharacteristicOut,
     OvercurrentCharacteristicsOut,
     OvercurrentCurveOut,
     OvercurrentCurvePointOut,
     OvercurrentManualAnalysisResultOut,
+    OvercurrentManualLoadingResultOut,
 )
 from app.schemas.phasor_analysis import (
     PhasorAnalysisResultOut,
@@ -129,6 +131,7 @@ from app.services.overcurrent_analysis_service import (
     check_overcurrent_readiness,
     compute_idmt_curve,
     compute_overcurrent_analysis,
+    compute_overcurrent_equipment_loading_analysis,
     compute_overcurrent_manual_analysis,
     list_known_characteristics,
 )
@@ -750,6 +753,42 @@ def get_overcurrent_manual_analysis(
         ct_primary=ct_primary, ct_secondary=ct_secondary,
     )
     return _overcurrent_manual_result_to_out(result)
+
+
+@router.get("/overcurrent-manual-loading", response_model=OvercurrentManualLoadingResultOut)
+def get_overcurrent_manual_loading_analysis(
+    workspace_id: str,
+    characteristic_id: str,
+    tms: float,
+    pickup_current_secondary: float,
+    equipment_rating_mva: float,
+    loading_percent: float,
+    system_voltage_kv: float,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+) -> OvercurrentManualLoadingResultOut:
+    """Manual Input's Equipment Loading input method -- the sibling of
+    `.../overcurrent-manual` above, workspace-scoped for the same reason.
+    Converts the equipment rating/loading/line-to-line system voltage to
+    an equivalent PRIMARY current, then evaluates it through the same
+    manual pipeline as a directly-entered primary current, so the CT
+    ratio (`ct_primary`/`ct_secondary`, always required here) is always
+    applied. Loading above 100 % is accepted. Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    result = compute_overcurrent_equipment_loading_analysis(
+        characteristic_id=characteristic_id, tms=tms, pickup_current_secondary=pickup_current_secondary,
+        equipment_rating_mva=equipment_rating_mva, loading_percent=loading_percent,
+        system_voltage_kv=system_voltage_kv, ct_primary=ct_primary, ct_secondary=ct_secondary,
+    )
+    loading = result.loading
+    return OvercurrentManualLoadingResultOut(
+        **_overcurrent_manual_result_to_out(result.analysis).model_dump(),
+        equipment_loading=None if loading is None else EquipmentLoadingConversionOut(
+            equipment_rating_mva=loading.equipment_rating_mva, loading_percent=loading.loading_percent,
+            system_voltage_kv=loading.system_voltage_kv, actual_loading_mva=loading.actual_loading_mva,
+            primary_current_a=loading.primary_current_a,
+        ),
+    )
 
 
 def _overcurrent_result_to_out(result) -> OvercurrentAnalysisResultOut:

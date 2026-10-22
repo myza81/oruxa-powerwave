@@ -312,7 +312,12 @@ For Overcurrent specifically: `#wwOvercurrentRecordingSection` wraps
 the Bay/Context bar, `#wwOvercurrentPlaybackPanel`,
 `#wwOvercurrentRelatedWaveformsAnchor`, `#wwOvercurrentStatusRow`, and
 `#wwOvercurrentEmptyState`; `#wwOvercurrentBody` (Settings/Manual
-Input/Results/Chart) sits outside it as a sibling.
+Input/Results/Chart) sits outside it as a sibling. One Recording-only
+control lives in the Body's shared Settings grid: the "Recording current
+basis" field (`#wwOvercurrentBasisField`). It is hidden in Manual by the
+same function that gates the Recording section
+(`wwOvercurrentUpdateRecordingSectionVisibility()`), so visibility is
+still decided in one place (2026-10-16; see OVERCURRENT_ANALYSIS.md).
 `wwOvercurrentShowEmptyState()` — the callback every recording-lifecycle
 phase (`NO_SOURCES`/`NO_SUGGESTIONS`/`UNREACHABLE`/no context selected)
 funnels through — now touches only `#wwOvercurrentRecordingSection`'s
@@ -378,6 +383,17 @@ prior upload/context/source setup
 and in a real browser
 (`browser-tests/overcurrent_analysis.spec.js`'s own "golden example"
 scenario).
+
+**Input method within Manual (2026-10-15, Overcurrent only).** Inside
+Overcurrent's Manual source, an *input method* chooses how the manual
+current is obtained: Direct Current (the endpoint above) or Equipment
+Loading (`GET .../overcurrent-manual-loading`). Equipment Loading converts
+MVA × loading % at a line-to-line kV into a primary current, then calls
+the same manual service function. This is not a third Analysis Input
+Source. Input Source still answers *recording vs. manual*; input method is
+an Overcurrent-specific sub-choice of Manual (`WW_OC_INPUT_METHOD_*`). See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md), "Equipment Loading
+input method".
 
 ## What Phasor's own implementation looks like end to end
 

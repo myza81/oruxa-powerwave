@@ -83,7 +83,11 @@ _DAT_SUFFIXES = {".dat"}
 _BEN_SUFFIXES = {BEN_SUFFIX}
 
 
-def build_provider_manager(*, nominal_frequency_hz: float | None = None) -> ProviderManager:
+def build_provider_manager(
+    *,
+    nominal_frequency_hz: float | None = None,
+    ben5k_experimental_enabled: bool = False,
+) -> ProviderManager:
     """The providers source upload resolves against (DEC-120).
 
     One registration point: a staged file is routed to the provider whose
@@ -94,7 +98,12 @@ def build_provider_manager(*, nominal_frequency_hz: float | None = None) -> Prov
     """
     manager = ProviderManager()
     manager.register_provider(ComtradeProvider())
-    manager.register_provider(BenProvider(nominal_frequency_hz=nominal_frequency_hz))
+    manager.register_provider(
+        BenProvider(
+            nominal_frequency_hz=nominal_frequency_hz,
+            ben5k_experimental_enabled=ben5k_experimental_enabled,
+        )
+    )
     return manager
 
 
@@ -184,6 +193,7 @@ async def import_ben_source(
     max_total_bytes: int,
     registry: WorkspaceRegistry,
     nominal_frequency_hz: float | None = None,
+    ben5k_experimental_enabled: bool = False,
 ) -> SourceMetadata:
     """Validate, stage, and natively parse one BEN record (DEC-120).
 
@@ -214,7 +224,10 @@ async def import_ben_source(
         # becomes a filesystem path.
         ben_path = Path(tmp_dir) / "event.ben"
         ben_path.write_bytes(ben_bytes)
-        provider = build_provider_manager(nominal_frequency_hz=nominal_frequency_hz).find_provider(ben_path)
+        provider = build_provider_manager(
+            nominal_frequency_hz=nominal_frequency_hz,
+            ben5k_experimental_enabled=ben5k_experimental_enabled,
+        ).find_provider(ben_path)
         try:
             record, provenance = provider.load_with_provenance(ben_path)
         except ProviderLoadError as exc:

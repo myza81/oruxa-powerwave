@@ -38,18 +38,24 @@ from app.domain.channel_classification import (
     WAVEFORM_FORM_MAGNITUDE,
     WAVEFORM_FORM_RMS,
 )
+from app.domain.equipment_loading import equipment_loading_to_primary_current, positive_finite
 from app.domain.overcurrent import (
     KNOWN_RECORDING_BASES,
     OVERCURRENT_STATUS_COMPUTED,
     REASON_CHANNEL_UNAVAILABLE,
     REASON_INVALID_CT_VALUES,
+    REASON_INVALID_EQUIPMENT_RATING,
     REASON_INVALID_INPUT_CURRENT,
+    REASON_INVALID_LOADING_PERCENT,
     REASON_INVALID_PICKUP,
     REASON_INVALID_REFERENCE_FREQUENCY,
+    REASON_INVALID_SYSTEM_VOLTAGE,
     REASON_INVALID_TMS,
     REASON_UNKNOWN_CHARACTERISTIC,
     REASON_UNSUPPORTED_CURRENT_UNIT,
     REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
+    RECORDING_BASIS_PRIMARY,
+    EquipmentLoadingOvercurrentResult,
     ManualOvercurrentAnalysisResult,
     OvercurrentAnalysisResult,
     continuous_duration_above_pickup,
@@ -564,3 +570,49 @@ def compute_overcurrent_manual_analysis(
         expected_operating_time_seconds=expected_operating_time_seconds,
         message="Overcurrent evaluated for the manually entered input current.",
     )
+
+
+# Manual Input's Equipment Loading input method -- an INPUT CONVERSION
+# only. The loading inputs become an equivalent primary current in
+# amperes (`app.domain.equipment_loading`), which is then evaluated by
+# `compute_overcurrent_manual_analysis()` above EXACTLY as if the engineer
+# had typed that primary current directly (basis "primary", unit "A"), so
+# the CT ratio, pickup multiple and IEC IDMT operating time all come from
+# the one existing pipeline.
+
+
+def compute_overcurrent_equipment_loading_analysis(
+    *,
+    characteristic_id: str,
+    tms: float,
+    pickup_current_secondary: float,
+    equipment_rating_mva: float,
+    loading_percent: float,
+    system_voltage_kv: float,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+) -> EquipmentLoadingOvercurrentResult:
+    """Never raises. Invalid loading inputs short-circuit with their own
+    reason code and no conversion; every relay-setting/CT failure is the
+    delegated manual result's own, with the conversion still reported."""
+    for value, reason_code, message in (
+        (equipment_rating_mva, REASON_INVALID_EQUIPMENT_RATING, "Equipment rating (MVA) must be a finite number greater than zero."),
+        (loading_percent, REASON_INVALID_LOADING_PERCENT, "Equipment loading (%) must be a finite number greater than zero."),
+        (system_voltage_kv, REASON_INVALID_SYSTEM_VOLTAGE, "System voltage (kV, line-to-line) must be a finite number greater than zero."),
+    ):
+        if not positive_finite(value):
+            return EquipmentLoadingOvercurrentResult(
+                analysis=ManualOvercurrentAnalysisResult(
+                    status=STATUS_NEEDS_CONFIGURATION, reason_code=reason_code, message=message,
+                ),
+            )
+
+    loading = equipment_loading_to_primary_current(equipment_rating_mva, loading_percent, system_voltage_kv)
+    analysis = compute_overcurrent_manual_analysis(
+        characteristic_id=characteristic_id, tms=tms, pickup_current_secondary=pickup_current_secondary,
+        input_current=loading.primary_current_a, input_current_unit="A", input_basis=RECORDING_BASIS_PRIMARY,
+        ct_primary=ct_primary, ct_secondary=ct_secondary,
+    )
+    if analysis.status == OVERCURRENT_STATUS_COMPUTED:
+        analysis.message = "Overcurrent evaluated for the equivalent current of the entered equipment loading."
+    return EquipmentLoadingOvercurrentResult(analysis=analysis, loading=loading)
