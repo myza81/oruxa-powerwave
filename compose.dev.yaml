@@ -24,6 +24,8 @@ services:
       ENVIRONMENT: development
       CORS_ORIGINS: >-
         ${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8201},http://127.0.0.1:${FRONTEND_PORT:-8201}}
+      # BEN5K experimental decoder enabled for DEV only (BEN5K Stage 11 ready for owner UAT).
+      BEN5K_EXPERIMENTAL_ENABLED: "1"
 
     ports:
       - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8200}:8000"
