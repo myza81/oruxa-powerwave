@@ -30,6 +30,7 @@ from app.domain.parameter_catalog.catalog_model import (
     AUTHORITY_PRECEDENCE,
     VALUE_SOURCE_PRECEDENCE,
     BoundarySpec,
+    CapabilityRule,
     Catalog,
     ConstantValue,
     Family,
@@ -61,11 +62,15 @@ from app.domain.relay_import.canonical_distance import (
     ResidualCompensation,
     SourceNote,
     SourceNoteKind,
+    TripCapability,
     UnresolvedSetting,
 )
 from app.domain.relay_import.provenance import (
     DocumentReference,
     MappingAuthority,
+    MappingStatus,
+    Provenance,
+    ProvenanceOrigin,
     Sourced,
     SourceRef,
     UnresolvedCause,
@@ -1001,6 +1006,8 @@ class _Run:
         for p in sorted((p for p in self.reg.parameters if p.scope == "document" and (p.id, "") in self.results), key=lambda p: p.order):
             set_path(holder, p, self.results[(p.id, "")].result)
         zones = tuple(self._zone(z) for z in self.zone_vars)
+        if self.cat.capability_rules:
+            zones = tuple(self._apply_capability_rules(z) for z in zones)
         return CanonicalDistanceProtectionModel(
             metadata=holder["metadata"], transformers=holder["transformers"], line=holder["line"], zones=zones,
             unmapped_settings=self._leftovers(), interpretation_notes=(*self.cat.notes, *self.notes),
@@ -1024,6 +1031,52 @@ class _Run:
         if notes or kept:
             zone = replace(zone, source_notes=tuple(notes or ()), unresolved_settings=tuple((kept or {}).values()))
         return zone
+
+    def _apply_capability_rules(self, zone: DistanceZone) -> DistanceZone:
+        """DEC-199 Phase 3A: set trip_capability from the first matching capability rule."""
+        for rule in self.cat.capability_rules:
+            if zone.zone_id not in rule.zones:
+                continue
+            if rule.timer_condition is not None and not self._timer_condition_met(zone, rule.timer_condition):
+                continue
+            doc_refs = self._rule_references(rule)
+            capability = TripCapability(rule.capability)
+            cap_sourced = Sourced(
+                capability,
+                Provenance(
+                    MappingStatus.MAPPED,
+                    profile_id=self.cat.profile_id,
+                    profile_version=self.cat.profile_version,
+                    notes=(rule.note,) if rule.note else (),
+                    origin=ProvenanceOrigin.DEFAULT_ASSUMPTION,
+                    authority=MappingAuthority(rule.authority),
+                    catalog_id=self.cat.catalog_id,
+                    catalog_version=self.cat.version,
+                    canonical_id="distance.zone.trip_capability",
+                    references=doc_refs,
+                ),
+            )
+            return replace(zone, trip_capability=cap_sourced)
+        return zone
+
+    def _timer_condition_met(self, zone: DistanceZone, condition: str) -> bool:
+        timer_values = [zone.common_timer_s.value, zone.phase_timer_s.value, zone.earth_timer_s.value]
+        resolved = [t for t in timer_values if t is not None]
+        if not resolved:
+            return False
+        if condition == "finite":
+            return any(math.isfinite(t) for t in resolved)
+        if condition == "infinite":
+            return any(math.isinf(t) for t in resolved)
+        return False
+
+    def _rule_references(self, rule: CapabilityRule) -> tuple[DocumentReference, ...]:
+        out = []
+        for rid in rule.references:
+            ref = self.cat.reference(rid)
+            if ref is not None:
+                out.append(DocumentReference(ref.id, ref.title, ref.verification, ref.document, ref.section, ref.page, ref.scope))
+        return tuple(out)
 
     def _metadata(self) -> RelayMetadata:
         """Relay identity from the catalog's applicability, cited to the scheme / template field the

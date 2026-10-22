@@ -36,6 +36,7 @@ from app.domain.parameter_catalog.catalog_model import (
     VALUE_SOURCES,
     Applicability,
     BoundarySpec,
+    CapabilityRule,
     Catalog,
     ConditionalText,
     ConstantValue,
@@ -70,7 +71,9 @@ _FAMILY_VARS = {"n"}
 
 _TOP_KEYS = {"schema", "catalog_id", "version", "lifecycle", "description", "applicability", "profile_id",
              "identification", "zones", "distance_scope", "mappings", "registry_version", "interpretation_notes",
-             "source_notes", "zone_preserved", "references", "boundaries"}
+             "source_notes", "zone_preserved", "references", "boundaries", "capability_rules"}
+_CAPABILITY_RULE_KEYS = {"id", "zones", "capability", "authority", "verification", "references", "note", "timer_condition"}
+_TIMER_CONDITIONS = ("finite", "infinite")
 _NOTE_KEYS = {"pattern", "zone_id", "zone_ids", "subjects"}
 _NOTE_SUBJECT_KEYS = {"subject", "pattern", "value"}
 _NOTE_SUBJECTS = ("timer", "status")
@@ -181,6 +184,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
     preserved = _zone_preserved(v, data.get("zone_preserved"), zones)
     references = _references(v, data.get("references"))
     boundaries = _boundaries(v, data.get("boundaries"), zones, references)
+    capability_rules = _capability_rules(v, data.get("capability_rules"), zones, references)
 
     raw_mappings = data.get("mappings")
     mappings: list[Mapping] = []
@@ -202,7 +206,7 @@ def parse_catalog(data: Any, registry: CanonicalRegistry, source: str = "catalog
         mappings=tuple(_with_stage(m) for m in mappings), zones=zones, identification=identification,
         distance_scope=scope, description=str(data.get("description") or ""), notes=tuple(notes),
         source_notes=note_rules, zone_preserved=preserved, references=references, boundaries=boundaries,
-        registry_version=registry_version or registry.version,
+        capability_rules=capability_rules, registry_version=registry_version or registry.version,
         source_path=source_path,
     )
 
@@ -1343,3 +1347,78 @@ def _cross_checks(v: _Validator, mappings: list[Mapping], zones: ZoneModel | Non
                 check_ref(m, rule.canonical, "accepts a printed unit depending on")
             if s.family is not None and s.family.kind == "zone" and s.family.where_canonical:
                 check_ref(m, s.family.where_canonical, "selects zones by")
+
+
+def _capability_rules(v: _Validator, raw: Any, zones: ZoneModel | None,
+                      references: tuple[Reference, ...]) -> tuple[CapabilityRule, ...]:
+    """DEC-199 Phase 3A: documented zone trip-capability assertions backed by OEM evidence."""
+    from app.domain.relay_import.canonical_distance import TripCapability  # avoid circular import at module level
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        v.add("capability_rules", IssueCode.MALFORMED, "capability_rules must be a list")
+        return ()
+    known_refs = {r.id for r in references}
+    valid_zones = (
+        {z["id"] for z in zones.static}
+        if zones is not None and zones.static
+        else set()
+    )
+    valid_capabilities = {c.value for c in TripCapability}
+    out: list[CapabilityRule] = []
+    seen: set[str] = set()
+    for k, item in enumerate(raw):
+        path = f"capability_rules[{k}]"
+        if not isinstance(item, dict):
+            v.add(path, IssueCode.MALFORMED, "a capability rule must be an object")
+            continue
+        v.keys(item, _CAPABILITY_RULE_KEYS, path)
+        rid = item.get("id")
+        if not isinstance(rid, str) or not rid:
+            v.add(f"{path}.id", IssueCode.MALFORMED, "a capability rule needs a non-empty id")
+            continue
+        if rid in seen:
+            v.add(f"{path}.id", IssueCode.DUPLICATE, f"duplicate capability rule id {rid!r}")
+            continue
+        seen.add(rid)
+        raw_zones = item.get("zones")
+        if not isinstance(raw_zones, list) or not raw_zones or not all(isinstance(z, str) for z in raw_zones):
+            v.add(f"{path}.zones", IssueCode.MALFORMED, "zones must be a non-empty list of zone id strings")
+            continue
+        for zid in raw_zones:
+            if valid_zones and zid not in valid_zones:
+                v.add(f"{path}.zones", IssueCode.MALFORMED, f"zone {zid!r} is not defined in this catalog")
+        cap = item.get("capability")
+        if cap not in valid_capabilities:
+            v.add(f"{path}.capability", IssueCode.INVALID_ENUM,
+                  f"capability must be one of {sorted(valid_capabilities)}")
+            continue
+        auth = item.get("authority")
+        if auth not in AUTHORITIES:
+            v.add(f"{path}.authority", IssueCode.MALFORMED, f"authority must be one of {list(AUTHORITIES)}")
+        verif = item.get("verification", "verified")
+        if verif not in REFERENCE_VERIFICATIONS:
+            v.add(f"{path}.verification", IssueCode.MALFORMED,
+                  f"verification must be one of {list(REFERENCE_VERIFICATIONS)}")
+        raw_refs = item.get("references", [])
+        if not isinstance(raw_refs, list) or not all(isinstance(r, str) for r in raw_refs):
+            v.add(f"{path}.references", IssueCode.MALFORMED, "references must be a list of reference id strings")
+            raw_refs = []
+        for ref_id in raw_refs:
+            if ref_id not in known_refs:
+                v.add(f"{path}.references", IssueCode.UNKNOWN_CANONICAL, f"reference {ref_id!r} is not declared in this catalog")
+        tc = item.get("timer_condition")
+        if tc is not None and tc not in _TIMER_CONDITIONS:
+            v.add(f"{path}.timer_condition", IssueCode.MALFORMED,
+                  f"timer_condition must be one of {list(_TIMER_CONDITIONS)} or null")
+        note = item.get("note", "")
+        if not isinstance(note, str):
+            v.add(f"{path}.note", IssueCode.MALFORMED, "note must be a string")
+            note = ""
+        if not v.issues:
+            out.append(CapabilityRule(
+                id=rid, zones=tuple(raw_zones), capability=cap, authority=auth or "documented_derivation",
+                verification=verif, references=tuple(raw_refs), note=note,
+                timer_condition=tc,
+            ))
+    return tuple(out)

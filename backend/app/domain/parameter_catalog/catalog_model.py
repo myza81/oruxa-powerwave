@@ -402,6 +402,26 @@ class BoundarySpec:
 
 
 @dataclass(frozen=True)
+class CapabilityRule:
+    """DEC-199 Phase 3A: a zone trip-capability assertion backed by OEM documentation.
+
+    Evaluated after the main mapping phase; sets ``DistanceZone.trip_capability`` on zones
+    that match. Rules are evaluated in order; the first matching rule wins.
+    A ``timer_condition`` of ``"finite"`` / ``"infinite"`` checks whether any resolved timer
+    for the zone has a finite / infinite value before the rule is applied.
+    """
+
+    id: str
+    zones: tuple[str, ...]
+    capability: str            # TripCapability value
+    authority: str             # one of AUTHORITIES
+    verification: str = "verified"
+    references: tuple[str, ...] = ()
+    note: str = ""
+    timer_condition: str | None = None   # "finite" | "infinite" | None
+
+
+@dataclass(frozen=True)
 class Catalog:
     catalog_id: str
     version: str
@@ -424,6 +444,8 @@ class Catalog:
     references: tuple[Reference, ...] = ()
     #: DEC-199 Phase 2A: canonical boundaries evaluated in shadow mode only.
     boundaries: tuple[BoundarySpec, ...] = ()
+    #: DEC-199 Phase 3A: documented trip/pickup capability rules for zones (set trip_capability on the model).
+    capability_rules: tuple["CapabilityRule", ...] = ()
     #: The canonical registry version the catalog was validated against.
     registry_version: str = ""
     #: ``catalog_id@version`` -- what an import records as the interpretation's origin.
