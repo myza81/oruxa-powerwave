@@ -405,7 +405,7 @@ class TestBenProviderFeatureFlag:
         provider = BenProvider(ben5k_experimental_enabled=True)
         record, provenance = provider.load_with_provenance(p)
         assert provenance["layout_family"] == "BEN32 BEN5K Legacy"
-        assert provenance["time_basis"] == "UTC (unverified)"
+        assert provenance["time_basis"] == "unknown"
         assert provenance["record_class"] == BenRecordClass.BEN5K_LEGACY.value
 
     def test_ben5k_timing_reference_is_not_absolute(self, tmp_path):
@@ -447,7 +447,7 @@ class TestBenProviderFeatureFlag:
         record, provenance = provider.load_with_provenance(p)
         # BEN5K → relative_elapsed (not absolute)
         assert record.timing_info.timing_reference == "relative_elapsed"
-        assert provenance["time_basis"] == "UTC (unverified)"
+        assert provenance["time_basis"] == "unknown"
 
     def test_flag_enabled_subben_still_works(self, tmp_path):
         # A valid SubBen provider passes through unchanged when flag is True

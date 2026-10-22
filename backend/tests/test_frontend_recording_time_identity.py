@@ -82,13 +82,17 @@ class TestSharedPolicyBranches:
         source = _source()
         body = self._shared_body(source)
         assert "if (source.start_time) {" in body
-        assert 'source.start_time.replace("T", " ")' in body
+        assert 'wwFormatSourceTimestamp(source, "start_time", opts)' in body
 
     def test_compact_option_only_affects_absolute_truncation(self):
         source = _source()
-        body = self._shared_body(source)
-        assert "if (!opts.compact) return spaced;" in body
-        assert "spaced.slice(0, dotIndex + 5)" in body
+        body = _function_body(
+            source, "function wwFormatSourceTimestamp(source, field, opts)",
+            "function wwFormatRecordingTimeIdentity(source, opts)",
+        )
+        assert "opts.compact" in body
+        assert "text.slice(0, dotIndex + 5)" in body
+        assert body.index('source.time_basis === "unknown"') < body.index("opts.compact")
 
     def test_fallback_uses_the_shared_interpreter_label_map_not_a_dash_only(self):
         source = _source()

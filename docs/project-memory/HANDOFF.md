@@ -4,8 +4,89 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-22** - BEN5K unknown-timezone correction implemented locally; see correction section below. Previous handoff: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+
+## BEN5K unknown timezone correction (2026-10-22)
+
+[DECISION] Owner-approved implementation: BEN5K recorder-clock digits are not
+verified UTC. `TimingInformation` and `SourceMetadata` now carry the shared
+`TimeBasis` authority: `verified_utc`, `verified_local`, `source_timezone`
+(the existing DEC-121 naive-input policy), or `unknown`. An explicit unknown
+never inherits the default source timezone. This is metadata on the existing
+timestamp model, not a second timeline.
+
+[FACT] At baseline `3d16604`, GPTH bytes `7e 0a 10 12 03 0e 35 36 00`
+decode to `2026-10-16 18:03:14.535400`; KTBR SubBen bytes
+`7e 0a 10 0a 03 0e 35 4a 43` decode to `2026-10-16 10:03:14.537467`.
+The raw trigger difference is 28,799.997933 s (28,799,997.933 ms). Both have
+2,500 pre-trigger samples at 5,000 Hz (0.5 s). Independent header decoding
+matches parser clock components exactly. Similar voltage-dip envelopes
+support a same-disturbance comparison; they do not prove a recorder timezone.
+A hypothetical UTC+8 interpretation leaves GPTH 2.067 ms earlier than KTBR.
+This is evidence, not an approved eight-hour correction.
+
+[FACT] The defect was promoting an explicitly unverified BEN5K clock into
+UTC-aware normalized metadata and canonical API companions. DEC-122 then
+rendered GPTH as 17 October 02:03 rather than preserving 16 October 18:03.
+Normalization now retains naive clock components with explicit `unknown`,
+no claimed timezone, and the original nine trigger bytes in provenance.
+Source summary/timebase responses return null `start_time_utc` and
+`trigger_time_utc`. Recordings, sidebar and details show original digits
+with "timezone unverified", including all six fractional digits. Unknown
+clock metadata never becomes a waveform absolute-display anchor or a
+calculated-channel epoch. Relative samples, elapsed-only groups, manual
+offsets and t0 semantics are unchanged. Verified SubBen/COMTRADE display
+continues through the existing UTC-to-display-timezone formatter.
+
+[OPEN] GPTH's configured time standard and clock synchronization status are
+still unverified. Do not infer them from location, filename or layout alone.
+Future verified recorder metadata can supply a known offset/IANA timezone,
+set the corresponding time basis and enable canonical UTC normalization;
+this task adds no correction UI, fixed offset or automatic alignment.
+
+**Validation:** complete backend suite, all 280 test files across three isolated
+processes: **10,209 passed, 321 skipped, 0 failures**. Final affected backend/static
+suites, including the additional zero-fraction serialization case: **115 passed**.
+Relevant browser suites: **33 passed** (BEN import, unknown timezone in UTC / New
+York / Kuala Lumpur, verified display timezone, calculated-channel preview,
+Event Reconstruction time display, waveform/t0 toolbar and smoke). Actual GPTH,
+Permas Jaya and KTBR files were also read and checked; sample counts and elapsed
+spans are unchanged. Browser screenshots were visually checked. The zero-fraction
+serializer keeps all six fractional digits for unknown recorder clocks; verified
+serialization continues through the existing handler.
+
+Local implementation only; not pushed or deployed by this task. BEN documentation
+stash preserved at `2f39bdfbd7d2f3242825c42a9f9a20c5cb077c5a`.
+
+**Changed files (this correction):**
+
+```text
+backend/app/domain/source.py
+backend/app/domain/source_timezone.py
+backend/app/domain/timing.py
+backend/app/providers/ben/legacy_ben5k/normalize.py
+backend/app/providers/ben/normalize.py
+backend/app/providers/ben/provider.py
+backend/app/schemas/source.py
+backend/app/services/calculated_channel_service.py
+backend/app/services/import_service.py
+backend/app/services/preparation_conversion_service.py
+backend/tests/test_ben5k_api.py
+backend/tests/test_ben5k_normalize.py
+backend/tests/test_canonical_timestamps_api.py
+backend/tests/test_frontend_display_timezone.py
+backend/tests/test_frontend_recording_events_metadata.py
+backend/tests/test_frontend_recording_time_identity.py
+backend/tests/test_source_timezone.py
+browser-tests/ben5k-timezone.spec.js
+docs/project-memory/BEN5K_ENGINEERING_VALIDATION.md
+docs/project-memory/BEN_FORMAT.md
+docs/project-memory/CURRENT_STATE.md
+docs/project-memory/DECISIONS.md
+docs/project-memory/HANDOFF.md
+frontend/index.html
+```
 
 ## Consolidation and DEV deployment (2026-10-22)
 

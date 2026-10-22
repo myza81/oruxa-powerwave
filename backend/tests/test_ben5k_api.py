@@ -5,7 +5,7 @@ Tests verify:
   - BEN5K upload with flag ENABLED  → HTTP 201 with correct metadata
   - Flag-enabled source has:
       • provider_type "BEN"
-      • preparation_provenance.time_basis "UTC (unverified)"
+      • preparation_provenance.time_basis "unknown"
       • timing_reference NOT "absolute" (timestamp safety, Stage 7B §4)
   - SubBen upload is not affected by the flag (still returns 201)
 
@@ -209,3 +209,104 @@ class TestBen5kFlagEnabled:
             f"BEN5K must be in the elapsed-only time bucket (got timing_reference={timing_ref!r}). "
             "This prevents unverified UTC timestamps from driving auto-synchronization."
         )
+
+
+@pytest.mark.parametrize("raw_trigger, expected_trigger, expected_start", [
+    (bytes.fromhex("7e 0a 10 12 03 0e 35 36 00"), "2026-10-16T18:03:14.535400", "2026-10-16T18:03:14.035400"),
+    (bytes.fromhex("7e 0a 10 12 03 0e 00 00 00"), "2026-10-16T18:03:14.000000", "2026-10-16T18:03:13.500000"),
+    # The UTC+8 display rollover that previously moved GPTH to the next day.
+    (bytes.fromhex("7e 0a 10 17 3b 3b 63 63 63"), "2026-10-16T23:59:59.999999", "2026-10-16T23:59:59.499999"),
+])
+def test_unknown_clock_preserved_through_upload_list_channels_and_t0(
+    settings_flag_on, raw_trigger, expected_trigger, expected_start,
+):
+    from app.providers.ben.parser import parse_ben_experimental
+    data = bytearray(_make_ben5k_bytes(sample_count=3000))
+    data[0x64:0x6D] = raw_trigger
+    struct.pack_into("<I", data, 0x58, 2500)
+    original = bytes(data)
+    parsed = parse_ben_experimental(original, allow_legacy_ben5k=True)
+    assert parsed.header.trigger_time.fraction_digits == tuple(raw_trigger[6:])
+    np.testing.assert_array_equal(parsed.time_axis(), np.arange(3000) / 5000)
+    with TestClient(create_app(settings_flag_on)) as client:
+        response = _upload(client, original)
+        assert response.status_code == 201, response.text
+        body = response.json()
+        source_id = body["source_id"]
+        channels_url = f"{_URL}/{source_id}/channels"
+        payloads = [body, client.get(_URL).json()[0]]
+        channels = client.get(channels_url).json()
+        payloads += [channels["source"], channels["timebase"]]
+        for value in payloads:
+            assert value["time_basis"] == "unknown"
+            assert value["start_time"] == expected_start
+            assert value["trigger_time"] == expected_trigger
+            assert value["start_time_utc"] is None
+            assert value["trigger_time_utc"] is None
+            assert value["timing_reference"] == "relative_elapsed"
+        active = client.app.state.workspace_registry.get(_WS, source_id)
+        assert active.record.timing_info.timezone is None
+        assert active.record.metadata.timezone is None
+        assert active.metadata.preparation_provenance["trigger_timestamp_raw"] == raw_trigger.hex(" ")
+        np.testing.assert_array_equal(active.record.waveform_data["time"], parsed.time_axis())
+        np.testing.assert_array_equal(active.record.waveform_data["API VR"], parsed.engineering_values(parsed.value_channels[0]))
+        # Canonical Table remains a valid relative-time consumer without UTC.
+        table = client.get(f"{_URL}/{source_id}/table?limit=3")
+        assert table.status_code == 200, table.text
+        assert table.json()["row_native_times"] == [0, 0.0002, 0.0004]
+        sync = f"/api/v1/workspaces/{_WS}/synchronization"
+        before = client.get(f"{sync}/sources/{source_id}").json()
+        assert before["timestamp_placement_offset_s"] == 0
+        assert before["manual_alignment_offset_s"] == 0
+        changed = client.put(f"{sync}/t0", json={"source_id": source_id, "t0_workspace_time": 0.123456})
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["t0_workspace_time"] == 0.123456
+        assert client.get(f"{sync}/sources/{source_id}").json() == before
+        assert client.get(channels_url).json() == channels
+        assert bytes(data) == original
+
+
+
+def test_unknown_clock_supports_single_source_calculation_but_not_cross_source_alignment(settings_flag_on):
+    from app.services.calculated_channel_service import _source_start_epoch
+    with TestClient(create_app(settings_flag_on)) as client:
+        first = _upload(client, _make_ben5k_bytes()).json()
+        second = _upload(client, _make_ben5k_bytes(), "second.ben").json()
+        source_id = first["source_id"]
+        active = client.app.state.workspace_registry.get(_WS, source_id)
+        assert _source_start_epoch(active) is None
+        calc_url = f"/api/v1/workspaces/{_WS}/calculated-channels"
+        ref = {"kind": "source", "source_id": source_id, "channel_name": "API VR"}
+        result = client.post(calc_url, json={"name": "inverted", "operation": "reverse_polarity", "inputs": [ref]})
+        assert result.status_code == 201, result.text
+        cross = client.post(calc_url, json={
+            "name": "unproven", "operation": "addition", "inputs": [
+                ref, {"kind": "source", "source_id": second["source_id"], "channel_name": "API VR"},
+            ],
+        })
+        assert cross.status_code == 400, cross.text
+        assert first["start_time_utc"] is None
+
+
+
+def test_unknown_clock_upload_does_not_change_existing_manual_offset_or_t0(settings_flag_on, comtrade_fixtures_dir):
+    with TestClient(create_app(settings_flag_on)) as client:
+        for stem in ("synth_ascii", "synth_binary"):
+            files = {f"{ext}_file": (f"{stem}.{ext}", (comtrade_fixtures_dir / f"{stem}.{ext}").read_bytes(), "application/octet-stream") for ext in ("cfg", "dat")}
+            response = client.post(_URL, files=files)
+            assert response.status_code == 201, response.text
+        sync = f"/api/v1/workspaces/{_WS}/synchronization"
+        alignments = client.get(f"{sync}/sources").json()
+        source_id = next(row["source_id"] for row in alignments if not row["is_reference"])
+        response = client.put(f"{sync}/sources/{source_id}", json={"alignment_offset_s": -0.0185})
+        assert response.status_code == 200, response.text
+        response = client.put(f"{sync}/t0", json={"source_id": source_id, "t0_workspace_time": 0.123456})
+        assert response.status_code == 200, response.text
+        alignment = client.get(f"{sync}/sources/{source_id}").json()
+        t0 = client.get(f"{sync}/t0", params={"source_id": source_id}).json()
+        unknown = _upload(client, _make_ben5k_bytes()).json()
+        assert unknown["time_basis"] == "unknown"
+        assert client.get(f"{sync}/sources/{source_id}").json() == alignment
+        assert client.get(f"{sync}/t0", params={"source_id": source_id}).json() == t0
+        groups = client.get(f"{sync}/time-groups").json()
+        assert len(groups) == 2  # Known pair together; BEN5K remains a singleton.

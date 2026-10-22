@@ -47,8 +47,13 @@ def test_no_format_specific_display_branch():
 def test_recording_and_trigger_times_use_the_canonical_instant():
     source = _source()
     identity = _body(source, "function wwFormatRecordingTimeIdentity(source, opts)")
-    assert "wwFormatEngineeringTimestamp(source.start_time_utc)" in identity
-    assert "wwFormatEngineeringTimestamp(source.trigger_time_utc)" in source
+    assert 'wwFormatSourceTimestamp(source, "start_time", opts)' in identity
+    assert 'wwFormatSourceTimestamp(source, "trigger_time")' in source
+    shared = _body(source, "function wwFormatSourceTimestamp(source, field, opts)")
+    assert 'source.time_basis === "unknown"' in shared
+    assert 'timezone unverified' in shared
+    assert 'wwFormatEngineeringTimestamp(source[field + "_utc"])' in shared
+    assert shared.index('source.time_basis === "unknown"') < shared.index('wwFormatEngineeringTimestamp')
 
 
 def test_absolute_anchor_uses_the_display_wall_clock_everywhere():

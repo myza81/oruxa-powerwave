@@ -35,6 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.domain.source_timezone import TimeBasis
+
 
 @dataclass(slots=True)
 class SamplingInformation:
@@ -101,6 +103,9 @@ class TimingInformation:
     #: other `timing_reference` value (including every existing COMTRADE
     #: recording, which is completely unaffected by this field).
     time_of_day_reference_seconds: float | None = None
+    # Explicit UNKNOWN must never inherit the default naive-source timezone.
+    # None preserves the established interpretation of existing providers.
+    time_basis: TimeBasis | None = None
 
 
 @dataclass(slots=True)

@@ -596,6 +596,7 @@ def convert_preparation_source(
         recorder_name=recording_metadata.recorder_name,
         nominal_frequency=recording_metadata.nominal_frequency,
         timing_reference=timing_info.timing_reference,
+        time_basis=timing_info.time_basis,
         start_time=timing_info.start_time,
         trigger_time=timing_info.trigger_time,
         time_of_day_reference_seconds=timing_info.time_of_day_reference_seconds,

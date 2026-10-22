@@ -11,12 +11,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from dataclasses import replace
-
 from app.domain import DisturbanceRecord
 from app.domain.metadata import DEFAULT_NOMINAL_FREQUENCY_HZ
 from app.providers.base import BaseProvider
 from app.providers.ben.model import BenRecordClass
+from app.providers.ben import layout
 from app.providers.ben.normalize import channel_identities, to_disturbance_record
 from app.providers.ben.parser import parse_ben_experimental
 
@@ -71,19 +70,8 @@ class BenProvider(BaseProvider):
         header = record.header
         is_ben5k = header.record_class == BenRecordClass.BEN5K_LEGACY
         layout_family = _LAYOUT_FAMILY_BEN5K if is_ben5k else _LAYOUT_FAMILY_SUBBEN
-        time_basis = "UTC (unverified)" if is_ben5k else "UTC"
+        time_basis = "unknown" if is_ben5k else "UTC"
 
-        # BEN5K timestamp timezone is unconfirmed (UTC vs local time +8).
-        # Override timing_reference to "relative_elapsed" so this source
-        # lands in the TIME_REFERENCE_ELAPSED_ONLY bucket and is never
-        # automatically grouped with confirmed-UTC sources by timestamp.
-        # The timestamps themselves are retained in start_time/trigger_time
-        # for display but are not used as absolute synchronization anchors.
-        if is_ben5k:
-            normalized = replace(
-                normalized,
-                timing_info=replace(normalized.timing_info, timing_reference="relative_elapsed"),
-            )
         provenance: dict[str, Any] = {
             "source_format": SOURCE_FORMAT,
             "layout_family": layout_family,
@@ -99,4 +87,8 @@ class BenProvider(BaseProvider):
             ],
             "channels": channel_identities(record),
         }
+        if is_ben5k:
+            provenance["trigger_timestamp_raw"] = data[
+                layout.TRIGGER_TIME_OFFSET:layout.TRIGGER_FRACTION_OFFSET + layout.TRIGGER_FRACTION_DIGITS
+            ].hex(" ")
         return normalized, provenance

@@ -14,7 +14,8 @@ Three separate concerns, never conflated:
   instants are compared (``time_grouping.normalize_absolute_datetime``),
   never written back into the stored value.
 - **Display timezone** -- how the UI renders a timestamp. Not decided
-  here; today the frontend shows each stored value's own digits.
+  here; DEC-122 formats canonical instants in the display timezone. Unknown
+  recorder clocks retain their digits without conversion.
 
 ``DEFAULT_SOURCE_TIMEZONE`` is the one place to change the interpretation
 for this deployment (an IANA name). Malaysian recorders and BEN32 exports
@@ -25,11 +26,37 @@ as Asia/Kuala_Lumpur.
 from __future__ import annotations
 
 from datetime import datetime, timezone, tzinfo
+from enum import StrEnum
 from functools import cache
 from zoneinfo import ZoneInfo
 
 #: IANA zone a timezone-naive engineering timestamp is interpreted in.
 DEFAULT_SOURCE_TIMEZONE = "Asia/Kuala_Lumpur"
+
+
+class TimeBasis(StrEnum):
+    """Authority of recorder clock digits, independent of elapsed-time grouping.
+
+    SOURCE_TIMEZONE retains DEC-121's existing policy for offset-less inputs;
+    UNKNOWN explicitly opts out of that policy. Awareness alone is not evidence.
+    This describes the time standard, not the accuracy of the recorder clock.
+    """
+
+    VERIFIED_UTC = "verified_utc"
+    VERIFIED_LOCAL = "verified_local"
+    SOURCE_TIMEZONE = "source_timezone"
+    UNKNOWN = "unknown"
+
+
+def resolve_time_basis(value: datetime | None, explicit: TimeBasis | None = None) -> TimeBasis | None:
+    """Preserve explicit authority; infer only existing providers' timezone declarations."""
+    if explicit is not None:
+        return explicit
+    if value is None:
+        return None
+    if value.utcoffset() is None:
+        return TimeBasis.SOURCE_TIMEZONE
+    return TimeBasis.VERIFIED_UTC if value.utcoffset().total_seconds() == 0 else TimeBasis.VERIFIED_LOCAL
 
 
 @cache
@@ -45,6 +72,14 @@ def interpret_naive(value: datetime, timezone_name: str = DEFAULT_SOURCE_TIMEZON
     return value.replace(tzinfo=_zone(timezone_name))
 
 
-def canonical_utc(value: datetime, timezone_name: str = DEFAULT_SOURCE_TIMEZONE) -> datetime:
-    """The value's absolute instant, expressed in UTC."""
+def canonical_utc(
+    value: datetime, timezone_name: str = DEFAULT_SOURCE_TIMEZONE, *, time_basis: TimeBasis | None = None,
+) -> datetime | None:
+    """The canonical instant, or None when clock authority is explicitly unknown.
+
+    Never feed UNKNOWN through the naive-source policy, even if a legacy
+    intermediate value happens to carry tzinfo.
+    """
+    if time_basis == TimeBasis.UNKNOWN:
+        return None
     return interpret_naive(value, timezone_name).astimezone(timezone.utc)

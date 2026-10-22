@@ -419,62 +419,31 @@ The transition sequence is consistent with a teleprotection-initiated multi-feed
 
 ## 5. Timing Assessment
 
-### 5.1 Trigger timestamp bytes
+### 5.1 Timestamp investigation and correction (2026-10-22)
 
-Raw trigger bytes: `7e 0a 10 12 03 0e 35 36 00`
+This section supersedes the earlier speculative UTC/local interpretation.
+Raw GPTH trigger bytes are `7e 0a 10 12 03 0e 35 36 00`:
+`2026-10-16 18:03:14.535400`. The fractional digits are base-100:
+53 * 10,000 + 54 * 100 + 0 = 535,400 microseconds (not a 5 ms parser error).
+KTBR's raw trigger is `2026-10-16 10:03:14.537467`; the difference is
+28,799.997933 s. Similar disturbance envelopes support a same-event comparison.
+If GPTH were UTC+8, its trigger would be 2.067 ms earlier; this does not prove
+that configuration or authorize an automatic correction. No explicit timezone
+field or verified OEM time-standard directive was established.
 
-Interpreted using the SubBen encoding (confirmed shared with BEN5K):
+The previous UTC-aware normalized timestamp caused the standard display
+formatter to show GPTH on 17 October at 02:03. BEN5K now carries an explicit
+unknown time basis, original clock digits without tzinfo, no canonical UTC
+companions, and a "timezone unverified" label. Relative elapsed timing and
+elapsed-only grouping remain unchanged. The legacy parser's UTC-named internal
+decode container is not authoritative source UTC; shared normalization removes
+its placeholder timezone. Original trigger bytes are retained in provenance.
+See HANDOFF's correction section and DEC-122 amendment for details.
 
-| Byte | Value (hex) | Decoded |
-|---|---|---|
-| 0 | 0x7E = 126 | Year last two digits: 2026 |
-| 1 | 0x0A = 10 | Month: October |
-| 2 | 0x10 = 16 | Day: 16 |
-| 3 | 0x12 = 18 | Hour: 18 |
-| 4 | 0x03 = 3 | Minute: 03 |
-| 5 | 0x0E = 14 | Second: 14 |
-| 6 | 0x35 = 53 | Centiseconds: 53 (530 ms) |
-| 7 | 0x36 = 54 | ??? |
-| 8 | 0x00 = 0 | ??? |
-
-Decoded trigger timestamp: **2026-10-16 18:03:14** (UTC or local time +8 — unconfirmed).
-API-reported `trigger_time`: `2026-10-16T18:03:14.535400Z` (the `.535` vs byte 6 `0x35=530ms`
-differs by 5ms; byte 7 `0x36` may encode a 6ms sub-centisecond component → 530+5=535ms).
-
-The event date (16 October 2026) is consistent with the filename `261016_180314535` which
-encodes date `261016` and time `180314535` (18:03:14.535).
-
-### 5.2 UTC versus local time
-
-The time `18:03:14` could be:
-- UTC: 18:03:14 UTC (2:03 am Malaysian local, 16 October 2026)
-- Local (+8): 18:03:14 MYT = 10:03:14 UTC (16 October 2026)
-
-Malaysian substations typically operate on Malaysian time (UTC+8). TNB SCADA systems
-generally timestamp events in local time. A BEN recorder at a TNB substation likely
-stores local time.
-
-If 18:03:14 is local MYT: the event occurred at 10:03:14 UTC on 16 October 2026.
-If 18:03:14 is UTC: the event occurred at 02:03:14 local time (the middle of the night
-on 17 October 2026 local) — less consistent with typical disturbance investigation records
-which are named by local date.
-
-The filename prefix `261016` matches day **16 October** in local Malaysian date format
-(`YYMMDD`). This is consistent with the event occurring in the morning on 16 October 2026
-local time (18:03 local MYT), not at 02:03 local on the following day.
-
-**Plausible interpretation**: the timestamp is local Malaysian time (MYT = UTC+8).
-The UTC equivalent would be 10:03:14 UTC, 16 October 2026.
-
-This interpretation is **plausible but unconfirmed** — oracle comparison is required.
-
-### 5.3 Relative timing safeguard
-
-`timing_reference = "relative_elapsed"` is set on all BEN5K sources. Time-grouping
-places BEN5K in `TIME_REFERENCE_ELAPSED_ONLY`, preventing automatic cross-source UTC
-synchronization. This is the correct behaviour until the UTC/local question is resolved.
-The digital transition times (+252ms, +816ms, etc.) are relative to the trigger and do
-not depend on the absolute timestamp.
+Permas Jaya's raw trigger (`17:58:27.403050`) is 287.132350 s earlier than
+GPTH despite similar disturbance features. That is a separate unresolved clock
+question; the software does not correct it. Remaining recorder configuration
+and synchronization uncertainty must be resolved with independent evidence.
 
 ---
 

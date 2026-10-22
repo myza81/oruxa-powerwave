@@ -21597,8 +21597,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Falls back to the stored digits only when no canonical value is
         // available (pre-DEC-122 payloads).
         function wwRecordingDisplayStartTime(timebase) {
-            if (!timebase) return null;
+            if (!timebase || timebase.time_basis === "unknown") return null;
             return wwDisplayWallClockIso(timebase.start_time_utc) || timebase.start_time || null;
+        }
+
+        // Unknown recorder-clock metadata is never a canonical display anchor.
+        // Preserve its fraction even in the compact sidebar; no timezone guessing.
+        function wwFormatSourceTimestamp(source, field, opts) {
+            const raw = source[field];
+            if (!raw) return null;
+            if (source.time_basis === "unknown") {
+                return raw.replace("T", " ") + " (timezone unverified)";
+            }
+            const text = wwFormatEngineeringTimestamp(source[field + "_utc"]) || raw.replace("T", " ");
+            if (!(opts && opts.compact)) return text;
+            const dotIndex = text.indexOf(".");
+            return dotIndex === -1 ? text : text.slice(0, dotIndex + 5);
         }
 
         function wwFormatRecordingTimeIdentity(source, opts) {
@@ -21609,10 +21623,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : "—";
             }
             if (source.start_time) {
-                const spaced = wwFormatEngineeringTimestamp(source.start_time_utc) || source.start_time.replace("T", " ");
-                if (!opts.compact) return spaced;
-                const dotIndex = spaced.indexOf(".");
-                return dotIndex === -1 ? spaced : spaced.slice(0, dotIndex + 5);
+                return wwFormatSourceTimestamp(source, "start_time", opts);
             }
             return WW_DATA_PREP_INTERPRETER_LABELS[source.preparation_interpreter_id] || "—";
         }
@@ -21766,8 +21777,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // everywhere else in this app for that reason (never
             // `new Date(...)`, which would round microsecond precision
             // and apply a local timezone that was never really there).
-            const triggerTime = wwFormatEngineeringTimestamp(source.trigger_time_utc) ||
-                (source.trigger_time ? source.trigger_time.replace("T", " ") : "—");
+            const triggerTime = wwFormatSourceTimestamp(source, "trigger_time") || "—";
             // Imported Time: a DIFFERENT, session-level, timezone-AWARE
             // backend timestamp (when this browser session imported the
             // file) -- reuses formatImportedAt() unchanged, preserving
@@ -21903,7 +21913,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<td>' + formatFileSize(source.file_size_bytes) + '</td>' +
                     '<td>' + escapeHtml(formatRecordingStatus(source.status)) + '</td>' +
                     '<td class="recording-start-time-cell"' +
-                        (source.start_time_utc ? ' title="' + escapeHtml("Shown in " + wwDisplayTimezone()) + '"' : "") +
+                        (source.time_basis === "unknown" ? ' title="Recorder clock time; timezone unverified"' :
+                            source.start_time_utc ? ' title="' + escapeHtml("Shown in " + wwDisplayTimezone()) + '"' : "") +
                         '>' + formatRecordingStartTime(source) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +

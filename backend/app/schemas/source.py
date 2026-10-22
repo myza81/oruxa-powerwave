@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, computed_field, field_serializer
 
 from app.domain.channel_classification import UNDEFINED
 from app.domain.engineering_units import DisplayAxis, resolve_display_axis, resolve_per_unit_display_axis
 from app.domain.source import SourceMetadata
-from app.domain.source_timezone import canonical_utc
+from app.domain.source_timezone import TimeBasis, canonical_utc, resolve_time_basis
 
 
 class AnalogChannelOut(BaseModel):
@@ -116,17 +116,32 @@ class DigitalChannelOut(BaseModel):
 #: stay exactly as stored (naive for COMTRADE without time_code, aware for
 #: BEN/declared offsets); these companions resolve the source timezone
 #: (DEC-121, app.domain.source_timezone) so a display layer can convert
-#: every source to ONE display timezone without re-implementing that policy.
-def _canonical(value: datetime | None) -> datetime | None:
-    return canonical_utc(value) if value is not None else None
+#: verified instants to ONE display timezone without re-implementing that policy.
+#: Explicit UNKNOWN has no canonical companions, even if raw clock digits exist.
+def _canonical(value: datetime | None, time_basis: TimeBasis | None = None) -> datetime | None:
+    return canonical_utc(value, time_basis=time_basis) if value is not None else None
 
 
-class TimebaseOut(BaseModel):
+class _RecorderClockOut(BaseModel):
+    """Keep the normalized microsecond clock precision, including zero fractions.
+
+    Verified-source serialization and Python-mode model dumps are unchanged.
+    """
+
+    @field_serializer("start_time", "trigger_time", mode="wrap", check_fields=False)
+    def serialize_recorder_clock(self, value, handler, info):
+        if info.mode == "json" and self.time_basis == TimeBasis.UNKNOWN and value is not None:
+            return value.isoformat(timespec="microseconds")
+        return handler(value)
+
+
+class TimebaseOut(_RecorderClockOut):
     timing_reference: str
     start_time: datetime | None
     trigger_time: datetime | None
     start_time_utc: datetime | None = None
     trigger_time_utc: datetime | None = None
+    time_basis: TimeBasis | None = None
     sample_count: int
     duration_seconds: float
     elapsed_start_seconds: float
@@ -142,7 +157,7 @@ class TimebaseOut(BaseModel):
     time_of_day_reference_seconds: float | None = None
 
 
-class SourceSummaryOut(BaseModel):
+class SourceSummaryOut(_RecorderClockOut):
     """Identity/status summary -- the shape returned by upload, list, and get-one.
 
     Phase 3B: `duration_seconds`/`sample_count` were added here (purely
@@ -195,6 +210,7 @@ class SourceSummaryOut(BaseModel):
     # DEC-122 canonical companions -- see `_canonical()` above.
     start_time_utc: datetime | None = None
     trigger_time_utc: datetime | None = None
+    time_basis: TimeBasis | None = None
     sampling_rates: list[float]
     # Time of Day (Recording Events metadata display fix): mirrors
     # `SourceMetadata.time_of_day_reference_seconds` verbatim, same as
@@ -241,10 +257,11 @@ class SourceSummaryOut(BaseModel):
             elapsed_end_seconds=source.elapsed_end_seconds,
             sample_count=source.sample_count,
             timing_reference=source.timing_reference,
+            time_basis=resolve_time_basis(source.start_time or source.trigger_time, source.time_basis),
             start_time=source.start_time,
             trigger_time=source.trigger_time,
-            start_time_utc=_canonical(source.start_time),
-            trigger_time_utc=_canonical(source.trigger_time),
+            start_time_utc=_canonical(source.start_time, source.time_basis),
+            trigger_time_utc=_canonical(source.trigger_time, source.time_basis),
             sampling_rates=list(source.sampling_rates),
             time_of_day_reference_seconds=source.time_of_day_reference_seconds,
             preparation_interpreter_id=(
@@ -268,10 +285,11 @@ class SourceChannelsOut(BaseModel):
             source=SourceSummaryOut.from_domain(source),
             timebase=TimebaseOut(
                 timing_reference=source.timing_reference,
+                time_basis=resolve_time_basis(source.start_time or source.trigger_time, source.time_basis),
                 start_time=source.start_time,
                 trigger_time=source.trigger_time,
-                start_time_utc=_canonical(source.start_time),
-                trigger_time_utc=_canonical(source.trigger_time),
+                start_time_utc=_canonical(source.start_time, source.time_basis),
+                trigger_time_utc=_canonical(source.trigger_time, source.time_basis),
                 sample_count=source.sample_count,
                 duration_seconds=source.duration_seconds,
                 elapsed_start_seconds=source.elapsed_start_seconds,

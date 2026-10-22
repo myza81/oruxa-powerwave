@@ -115,3 +115,21 @@ def test_comtrade_without_a_declared_time_code_stays_naive(tmp_path, comtrade_fi
     record = _write_comtrade(tmp_path, rev=rev, tail=tail, fixture_dir=comtrade_fixtures_dir)
     assert record.timing_info.start_time.tzinfo is None
     assert record.timing_info.timezone is None
+
+
+@pytest.mark.parametrize("tz", [None, timezone.utc, timezone(timedelta(hours=8))])
+def test_explicit_unknown_never_uses_naive_policy_or_declared_placeholder(tz):
+    from app.domain.source_timezone import TimeBasis, resolve_time_basis
+    stamp = datetime(2026, 10, 16, 18, 3, 14, 535400, tzinfo=tz)
+    assert resolve_time_basis(stamp, TimeBasis.UNKNOWN) == TimeBasis.UNKNOWN
+    assert canonical_utc(stamp, time_basis=TimeBasis.UNKNOWN) is None
+
+
+def test_time_basis_distinguishes_verified_offsets_and_existing_naive_policy():
+    from app.domain.source_timezone import TimeBasis, resolve_time_basis
+    raw = datetime(2026, 10, 16, 18, 3, 14, 535400)
+    assert resolve_time_basis(raw) == TimeBasis.SOURCE_TIMEZONE
+    assert resolve_time_basis(raw.replace(tzinfo=timezone.utc)) == TimeBasis.VERIFIED_UTC
+    local = raw.replace(tzinfo=timezone(timedelta(hours=8)))
+    assert resolve_time_basis(local) == TimeBasis.VERIFIED_LOCAL
+    assert canonical_utc(local).isoformat() == "2026-10-16T10:03:14.535400+00:00"

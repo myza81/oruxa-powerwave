@@ -12,8 +12,9 @@ at offset 0x64 from the same GPTH recording).  Whether BEN5K stores UTC or
 local time has NOT been confirmed by an oracle (SubBen stores UTC, confirmed
 by COMTRADE comparison; no such COMTRADE exists for BEN5K).  A
 ``"time_basis_unconfirmed"`` diagnostic is always attached.  The returned
-``BenTriggerTime.utc_whole_second`` is labelled UTC by Python's type system
-but may actually be local time until oracle confirmation.
+``BenTriggerTime.utc_whole_second`` is a legacy internal decode container,
+not verified UTC authority. Shared normalization removes that placeholder
+tzinfo and explicitly marks the recorder clock time basis UNKNOWN.
 """
 
 from __future__ import annotations
@@ -255,9 +256,9 @@ def parse_ben5k(data: bytes) -> BenRecord:
         code="time_basis_unconfirmed",
         severity="warning",
         message=(
-            "BEN5K trigger timestamp decoded as UTC (same encoding as SubBen), "
-            "but no COMTRADE oracle exists to confirm UTC vs local time for this "
-            "recorder family. Do not synchronize cross-event timing from this value."
+            "BEN5K recorder clock timestamp has an unverified timezone. "
+            "Original clock digits are preserved without asserting UTC or local time. "
+            "Do not synchronize cross-event timing from this value."
         ),
     ))
     diagnostics.append(BenDiagnostic(

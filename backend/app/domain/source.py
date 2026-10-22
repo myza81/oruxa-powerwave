@@ -20,7 +20,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
 from typing import Any
+
+from app.domain.source_timezone import TimeBasis
 
 from app.domain.channel_classification import UNDEFINED, WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
@@ -141,6 +144,9 @@ class SourceMetadata:
     # for Time-of-Day-vs-Time-of-Day overlap; never combined with a real
     # calendar date.
     time_of_day_reference_seconds: float | None = None
+    # Explicit UNKNOWN must never inherit the default naive-source timezone.
+    # None preserves the established interpretation of existing providers.
+    time_basis: TimeBasis | None = None
 
 
 @dataclass(slots=True)

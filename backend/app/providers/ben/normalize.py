@@ -10,9 +10,9 @@ without changing that contract:
   established missing-sample representation (DEC-084), never a number.
 - Exported binary channels become ``DigitalChannel`` columns of states
   with 1 = active (BEN stores them active-low).
-- Times are BEN's own trigger instant and the start derived from the
-  pre-trigger count, as timezone-aware UTC datetimes (``timezone`` also
-  says ``"UTC"``). Presentation in a local timezone is never done here.
+- Times preserve the recorder trigger and start derived from pre-trigger
+  count. Validated SubBen uses verified UTC; BEN5K uses explicitly UNKNOWN
+  clock time with no tzinfo. Presentation in a local timezone is never done here.
 
 BEN does not declare the power-system nominal frequency anywhere that has
 been decoded, so the caller must supply it -- nothing here assumes 50 Hz.
@@ -41,7 +41,8 @@ from app.domain import (
     SamplingInformation,
     TimingInformation,
 )
-from app.providers.ben.model import BenRecord
+from app.providers.ben.model import BenRecord, BenRecordClass
+from app.domain.source_timezone import TimeBasis
 
 PROVIDER_TYPE = "BEN"
 TIMEZONE = "UTC"
@@ -68,6 +69,16 @@ def to_disturbance_record(
         raise ValueError(f"nominal_frequency_hz must be a positive number, got {nominal_frequency_hz!r}")
 
     header = record.header
+    unknown_time_basis = header.record_class == BenRecordClass.BEN5K_LEGACY
+    # Preserve recorder clock components; BEN5K has no verified timezone.
+    # Explicit authority prevents these naive values inheriting DEC-121's policy.
+    start_time = header.start_time_utc
+    trigger_time = header.trigger_time_utc
+    if unknown_time_basis:
+        start_time = start_time.replace(tzinfo=None)
+        trigger_time = trigger_time.replace(tzinfo=None)
+    time_basis = TimeBasis.UNKNOWN if unknown_time_basis else TimeBasis.VERIFIED_UTC
+    source_timezone = None if unknown_time_basis else TIMEZONE
     value_names, digital_names = normalized_names(record)
     columns: dict[str, object] = {"time": record.time_axis()}
 
@@ -100,7 +111,7 @@ def to_disturbance_record(
             source_file=source_file,
             provider_type=PROVIDER_TYPE,
             nominal_frequency=nominal_frequency_hz,
-            timezone=TIMEZONE,
+            timezone=source_timezone,
         ),
         waveform_data=pd.DataFrame(columns),
         analog_channels=analog_channels,
@@ -111,9 +122,11 @@ def to_disturbance_record(
             nominal_frequency=nominal_frequency_hz,
         ),
         timing_info=TimingInformation(
-            start_time=header.start_time_utc,
-            trigger_time=header.trigger_time_utc,
-            timezone=TIMEZONE,
+            start_time=start_time,
+            trigger_time=trigger_time,
+            time_basis=time_basis,
+            timing_reference="relative_elapsed" if unknown_time_basis else "absolute",
+            timezone=source_timezone,
         ),
         disturbance_info=None,
     )

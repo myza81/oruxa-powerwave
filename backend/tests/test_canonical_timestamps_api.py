@@ -44,6 +44,7 @@ def test_naive_comtrade_keeps_stored_digits_and_gains_a_canonical_utc_instant(cl
         (comtrade_fixtures_dir / "synth_ascii.cfg").read_bytes(),
         (comtrade_fixtures_dir / "synth_ascii.dat").read_bytes(),
     )
+    assert body["time_basis"] == "source_timezone"
     assert body["start_time"] == "2026-03-06T10:00:00"  # stored, unchanged
     assert body["start_time_utc"] == "2026-03-06T02:00:00Z"  # Asia/Kuala_Lumpur -> UTC
     assert body["trigger_time"] == "2026-03-06T10:00:00.005000"
@@ -55,6 +56,7 @@ def test_naive_comtrade_keeps_stored_digits_and_gains_a_canonical_utc_instant(cl
 
 def test_ben_canonical_instant_is_its_stored_utc(client):
     body = _ben(client, (BEN_FIXTURES / "synthetic_fast.ben").read_bytes())
+    assert body["time_basis"] == "verified_utc"
     assert body["start_time"] == body["start_time_utc"] == "2024-03-05T06:07:08.023456Z"
     assert body["trigger_time_utc"] == "2024-03-05T06:07:08.123456Z"
 
@@ -62,6 +64,7 @@ def test_ben_canonical_instant_is_its_stored_utc(client):
 def test_declared_offset_comtrade_resolves_to_utc(client, comtrade_fixtures_dir):
     cfg = (comtrade_fixtures_dir / "synth_ascii.cfg").read_text().replace(",1999", ",2013", 1) + "-5,-5\n"
     body = _comtrade(client, cfg.encode(), (comtrade_fixtures_dir / "synth_ascii.dat").read_bytes())
+    assert body["time_basis"] == "verified_local"
     assert body["start_time"] == "2026-03-06T10:00:00-05:00"
     assert body["start_time_utc"] == "2026-03-06T15:00:00Z"
 

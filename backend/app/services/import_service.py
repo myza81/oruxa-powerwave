@@ -339,6 +339,7 @@ def _build_source_metadata(
         recorder_name=record.metadata.recorder_name,
         nominal_frequency=record.metadata.nominal_frequency,
         timing_reference=record.timing_info.timing_reference,
+        time_basis=record.timing_info.time_basis,
         start_time=record.timing_info.start_time,
         trigger_time=record.timing_info.trigger_time,
         sample_count=record.sample_count(),

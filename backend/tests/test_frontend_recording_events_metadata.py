@@ -177,7 +177,7 @@ class TestStartTimeIsTimeDomainAware:
             "function wwFormatRecordingTimeIdentity(source, opts)",
             "function formatRecordingStartTime(source)",
         )
-        assert "source.start_time.replace(\"T\", \" \")" in body
+        assert 'wwFormatSourceTimestamp(source, "start_time", opts)' in body
 
     def test_non_absolute_non_time_of_day_falls_back_to_a_named_label_not_a_dash(self):
         # Time-identity consistency fix: the old unconditional "—"

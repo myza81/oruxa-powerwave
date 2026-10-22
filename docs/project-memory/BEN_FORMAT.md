@@ -388,3 +388,22 @@ logged server-side only.
 - `browser-tests/ben-import.spec.js`:
   - Fast and Slow upload → Recordings → Waveform trace;
   - the old-layout and renamed-file error messages.
+
+## BEN5K timestamp authority correction (2026-10-22)
+
+The UTC rules above apply to the validated SubBen family. BEN5K shares its
+nine-byte date/fraction encoding, but its timezone remains unverified.
+`TimeBasis.UNKNOWN` on the existing timing/source metadata distinguishes this
+from both verified offsets and DEC-121's established naive-source policy.
+Normalized BEN5K clock digits have no tzinfo or claimed timezone; original
+trigger bytes remain in provenance. `start_time_utc` and `trigger_time_utc`
+are null. Recordings, source sidebar and trigger details show the full clock
+digits with "timezone unverified"; unknown time never supplies a waveform
+absolute anchor or calculated-channel epoch. Relative samples, pre-trigger
+position and elapsed-only grouping are unchanged.
+
+GPTH/KTBR raw-byte evidence, the 28,799.997933 s trigger difference, and remaining
+recorder-configuration uncertainty are recorded in HANDOFF's correction section
+and BEN5K_ENGINEERING_VALIDATION.md section 5. The evidence does not authorize a
+fixed UTC+8 correction. A future verified source offset/timezone can enable
+canonical normalization through the existing shared timezone authority.

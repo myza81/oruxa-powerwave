@@ -20291,6 +20291,21 @@ what the user sees     "2026-01-16 13:54:22.729783" for BOTH
 
 ---
 
+### DEC-122 amendment - unknown recorder timezone (2026-10-22)
+
+Owner-approved: "BEN5K Unknown-Timezone Handling Fix". Explicit unknown time
+basis is distinct from DEC-121's existing naive-source policy. Recorder-clock
+digits must not be asserted as UTC or converted into a display timezone until
+the source time standard is verified. The additive shared `TimeBasis` metadata
+preserves that distinction through normalization, workspace metadata and source
+summary/timebase APIs. Unknown canonical UTC companions are null; the frontend
+shows original clock digits with "timezone unverified". BEN5K stays elapsed-only.
+No fixed UTC+8 correction, recorder-clock adjustment, manual-offset/t0 change,
+waveform decoding change or new alignment algorithm is authorized. Known UTC,
+known declared offsets and the established COMTRADE naive-time policy remain
+unchanged. GPTH/KTBR evidence and remaining uncertainty: HANDOFF correction
+section.
+
 ## DEC-123 — Event Reconstruction is a top-level function immediately after Waveform; Slice 0 is a frontend shell only
 
 Date: 2026-10-01
