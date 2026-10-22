@@ -37,6 +37,7 @@ from app.domain.relay_import.canonical_distance import (
     ExtraQuantity,
     GeometryMode,
     SettingBasis,
+    TripCapability,
     ZoneDirection,
     ZoneStatus,
 )
@@ -46,7 +47,7 @@ REGISTRY_SCHEMA = "oruxa.canonical-registry/1"
 #: Canonical enums a parameter may take values from (value strings are the enums' values).
 ENUM_TYPES: dict[str, type[Enum]] = {
     cls.__name__: cls
-    for cls in (ZoneStatus, ZoneDirection, CharacteristicType, GeometryMode, SettingBasis, CompensationKind)
+    for cls in (ZoneStatus, ZoneDirection, CharacteristicType, GeometryMode, SettingBasis, CompensationKind, TripCapability)
 }
 
 DATA_TYPES = frozenset({"number", "text", "boolean", "enum", "impedance"})

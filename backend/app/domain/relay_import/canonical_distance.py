@@ -82,6 +82,28 @@ class CompensationKind(StrEnum):
     OEM_SPECIFIC = "oem_specific"
 
 
+class TripCapability(StrEnum):
+    """DEC-199 Phase 3A: documented trip/pickup capability of a distance zone per OEM evidence.
+
+    Independent of zone enablement, impedance geometry, and site-specific trip authorisation.
+    The scheme that a SCHEME_DEPENDENT or SIGNALLING_ONLY zone participates in is not derivable
+    from relay settings alone; it must never be treated as implicit trip authorisation.
+    """
+
+    #: Zone issues a trip command after its configured operating delay elapses.
+    TIMED_TRIP = "timed_trip"
+    #: Zone generates a start/pickup signal only; tripping requires external teleprotection logic.
+    PICKUP_ONLY = "pickup_only"
+    #: Whether the zone trips depends on the site PLC/scheme programme; not determinable from settings.
+    SCHEME_DEPENDENT = "scheme_dependent"
+    #: Zone provides a signalling/command output only; never issues a self-initiated trip command.
+    SIGNALLING_ONLY = "signalling_only"
+    #: OEM documentation exists but does not clearly establish trip vs pickup behaviour.
+    UNVERIFIED = "unverified"
+    #: No OEM documentation has been applied to classify this zone.
+    UNKNOWN = "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Small value types
 # ---------------------------------------------------------------------------
@@ -337,6 +359,9 @@ class DistanceZone:
     x_reach_ohm: Sourced = _unresolved_field()
     #: Document notes about this zone (proposed requirements...). Never settings.
     source_notes: tuple[SourceNote, ...] = ()
+    #: DEC-199 Phase 3A: documented trip/pickup capability (`TripCapability`).
+    #: Excluded from iter_sourced() traversal so existing counts and review items are unchanged.
+    trip_capability: Sourced = field(default_factory=unresolved, metadata={"iter_sourced_skip": True})
 
     def __post_init__(self) -> None:
         if not self.zone_id:
@@ -405,4 +430,6 @@ def _walk(prefix: str, obj) -> Iterator[tuple[str, Sourced]]:
             yield from _walk(f"{prefix}[{item_label(item, i)}]", item)
     elif is_dataclass(obj) and not isinstance(obj, type):
         for f in fields(obj):
+            if f.metadata.get("iter_sourced_skip"):
+                continue
             yield from _walk(f"{prefix}.{f.name}" if prefix else f.name, getattr(obj, f.name))
