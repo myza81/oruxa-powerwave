@@ -1,10 +1,16 @@
 # BEN5K Engineering Validation Report
 
-**Recording:** `261016_180314535_GPTH_275kV.ben`  
-**SHA-256:** `55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88`  
-**Date of analysis:** 2026-10-21 (Stages 1–9); 2026-10-22 (Stage 10)  
-**Branch:** `investigation/legacy-ben5k` (commit `ebba404` → Stage 10B)  
+**Primary recording:** `261016_180314535_GPTH_275kV.ben` (SHA-256: `55bf6866…`)  
+**Second recording:** `261016_175827403_Permas_Jaya.ben` (SHA-256: `bc9f78ac…`)  
+**Date of analysis:** 2026-10-21 (Stages 1–9); 2026-10-22 (Stages 10–11)  
+**Branch:** `investigation/legacy-ben5k` (commit `91d81fb` → Stage 10B; Stage 11 adds Permas Jaya + UAT)  
 **Status:** Not merged to main — owner review required before production use.
+
+> **Stage 11 — Final UAT and Permas Jaya cross-validation (2026-10-22):** GPTH browser UAT
+> 10/10 Playwright tests pass. Permas Jaya (second BEN5K file, different station) decoded
+> independently: 27 analogue channels, one phantom at wi=15 (PLTG1 IN), 82 verified digital,
+> timing_reference=relative_elapsed. Browser UAT 7/7 pass. All 4 feeder voltage sets
+> balanced (<1.3%). See §10 and Appendix B.
 
 > **Stage 10B — phantom-channel correction applied and validated (2026-10-22):** Two
 > phantom descriptors (SDAI1 IN wi=15 and SGT2 VY_LV wi=27) had no physical recording
@@ -629,6 +635,7 @@ The following items must be resolved before BEN5K is enabled by default (flag re
 | No SubBen regression | 73 BEN5K unit tests pass (Stage 10B); full SubBen suite unaffected |
 | Browser display, zoom, cursors | 10/10 Playwright tests pass |
 | Phantom-channel detection and physical word mapping | 73 BEN5K unit tests pass; all 5 feeder voltage sets balanced (max_dev <1.3%); SDAI2 IB/IN recovered; three decoder bugs found and fixed |
+| Cross-station generalisation (Permas Jaya, 132 kV) | 27/27 channels decoded; 1 phantom (wi=15 PLTG1 IN) correctly detected; 4 feeder voltage sets balanced (max_dev <1.3%); 7/7 browser UAT pass |
 
 ### 8.3 Flag status
 
@@ -802,3 +809,253 @@ Bold `phys` = phantom-corrected (wi ≥ 16 shifted by −1; wi ≥ 28 shifted by
 Pre-RMS = last 100 samples before trigger (samples 2400–2500, 1 cycle at 50 Hz).
 Post-RMS = first 100 samples after trigger (samples 2500–2600).
 All values confirmed by Stage 10B analysis script (2026-10-22) against SHA-256 55bf6866…
+
+---
+
+## 10. Stage 11 — Permas Jaya Cross-Station Validation
+
+**Analysis date:** 2026-10-22  
+**File:** `261016_175827403_Permas_Jaya.ben` (SHA-256 `bc9f78ac3008b793…`, 941 793 bytes)  
+**Station:** Permas Jaya (132 kV; recorder unit 488)
+
+### 10.1 Recording metadata
+
+| Field | Value |
+|---|---|
+| Station name | Permas Jaya |
+| Recorder unit | 488 |
+| Nominal frequency | 50 Hz |
+| Sampling rate | 5000 Hz |
+| Sample count | 7719 |
+| Pre-trigger samples | 2500 |
+| Duration | 1.5436 s |
+| Timing reference | relative_elapsed (timestamp safeguard active) |
+
+### 10.2 Channel summary
+
+| Category | Count |
+|---|---|
+| Recorded analogue | 27 |
+| Inactive analogue (phantom) | 1 |
+| Inactive analogue (duplicate slot) | 10 |
+| Verified digital | 82 |
+| Constant-placeholder digital | 0 |
+| Inactive digital | 0 |
+
+### 10.3 Phantom channel
+
+One phantom detected at wi=15: **PLTG1 IN** (current descriptor, physical word 15, signed-int16 RMS = 11 421 — voltage-strength, >>5 000 threshold). KTBR1 IN is a duplicate descriptor also at wi=15 and is classified as inactive (duplicate slot). After phantom correction (correction=1 for all wi ≥ 16), KTBR2 VR (wi=16) correctly maps to physical word 15.
+
+This confirms the phantom-detection rule generalises to a different station with a different feeder layout — no station-specific exception required.
+
+### 10.4 Physical block structure
+
+| Block | Physical words | Content |
+|---|---|---|
+| PLTG2/PGPS2 shared | 0–7 (8 words) | PLTG2 VR/VY/VB (0–2), gap at phys 3 (no VN), PLTG2/PGPS2 currents IR/IY/IB/IN (4–7) |
+| PLTG1 | 8–14 (7 words) | VR/VY/VB (8–10), gap at phys 11 (no VN), IR/IY/IB (12–14; no IN — phantom at wi=15) |
+| KTBR2 | 15–22 (8 words) | VR/VY/VB (15–17), gap at phys 18 (no VN), IR/IY/IB/IN (19–22) |
+| PGPS1 | 23–30 (8 words) | VR/VY/VB (23–25), gap at phys 26 (no VN), IR/IY/IB/IN (27–30) |
+| PLTG2 bus voltages | 0–2 also recorded as separate bus measurement (same physical words as PLTG2/PGPS2 block) | |
+| Digital | 39–59 (21 words) | Bitmask words (groups 1–5 = verified; no constant-placeholder region) |
+
+*Physical words at 3, 11, 18, 26 have no descriptor (neutral-voltage gap — same pattern as GPTH's words 3, 18, 33).*
+
+### 10.5 Voltage balance (pre-trigger, last 100 samples)
+
+| Feeder | V_R (kV) | V_Y (kV) | V_B (kV) | Mean | Max deviation |
+|---|---|---|---|---|---|
+| PLTG2 | 1806.0 | 1766.2 | 1781.1 | 1784.4 | 1.2% |
+| PLTG1 | 1800.8 | 1778.8 | 1799.4 | 1793.0 | 0.8% |
+| KTBR2 | 1800.0 | 1770.3 | 1800.3 | 1790.2 | 1.1% |
+| PGPS1 | 1800.2 | 1768.3 | 1788.4 | 1785.6 | 1.0% |
+
+All 4 feeders balanced (<1.3%). Values are nominal 132 kV secondary (kV engineering-unit with kilo multiplier).
+
+### 10.6 Stage 11 browser UAT results
+
+| Test | Result |
+|---|---|
+| GPTH UAT (10 tests, GPTH 275 kV) | **10/10 PASS** |
+| Permas Jaya UAT (7 tests, 132 kV) | **7/7 PASS** |
+
+GPTH UAT run twice: first against the original (then-stale) port-8000 server (10/10 pass, 35 channels confirmed), and again after server restart with fresh code (10/10 pass). Permas Jaya UAT run against fresh code; one stale-server artefact (28 vs 27 channels) observed during investigation — root cause was old in-memory code loading. Corrected result from fresh server: 27.
+
+---
+
+## Appendix B — Permas Jaya Analogue Statistics
+
+*Stage 11 confirmed (2026-10-22): 27 channels decoded. Values in engineering units.  
+SHA-256 bc9f78ac3008b793… Permas Jaya recording.*
+
+| Name | wi | phys | Min | Max | Full-RMS | Pre-RMS | Post-RMS |
+|---|---|---|---|---|---|---|---|
+| PGPS2 IY | 5 | 5 | −20.371 | 20.101 | 9.875 | 6.834 | 8.743 |
+| PGPS2 IB | 6 | 6 | −22.541 | 22.481 | 10.480 | 7.171 | 5.083 |
+| PGPS2 IN | 7 | 7 | −6.256 | 4.999 | 1.732 | 0.788 | 3.647 |
+| PLTG1 VR | 8 | 8 | −2620.689 | 2616.121 | 1537.436 | 1800.827 | 1647.952 |
+| PLTG1 VY | 9 | 9 | −2588.443 | 2609.672 | 1491.768 | 1778.751 | 1335.908 |
+| PLTG1 VB | 10 | 10 | −2614.240 | 2618.271 | 1566.789 | 1799.395 | 1744.294 |
+| PLTG1 IR | 12 | 12 | −33.864 | 33.490 | 15.968 | 4.584 | 19.193 |
+| PLTG1 IY | 13 | 13 | −37.157 | 34.986 | 13.726 | 3.789 | 3.841 |
+| PLTG1 IB | 14 | 14 | −12.610 | 8.644 | 3.051 | 1.117 | 7.621 |
+| KTBR2 VR | 16 | **15** | −2635.738 | 2620.420 | 1534.480 | 1800.040 | 1644.880 |
+| KTBR2 VY | 17 | **16** | −2614.240 | 2626.870 | 1482.237 | 1770.336 | 1324.901 |
+| KTBR2 VB | 18 | **17** | −2622.839 | 2620.420 | 1569.590 | 1800.301 | 1749.988 |
+| KTBR2 IR | 20 | **19** | −40.502 | 34.934 | 17.388 | 10.024 | 10.299 |
+| KTBR2 IY | 21 | **20** | −37.149 | 36.850 | 18.492 | 11.174 | 21.570 |
+| KTBR2 IB | 22 | **21** | −39.065 | 39.484 | 17.138 | 11.035 | 8.159 |
+| KTBR2 IN | 23 | **22** | −20.625 | 27.510 | 6.829 | 2.558 | 16.450 |
+| PGPS1 VR | 24 | **23** | −2631.438 | 2611.822 | 1533.081 | 1800.206 | 1640.435 |
+| PGPS1 VY | 25 | **24** | −2622.839 | 2629.020 | 1480.941 | 1768.262 | 1325.009 |
+| PGPS1 VB | 26 | **25** | −2605.641 | 2605.372 | 1560.607 | 1788.438 | 1740.735 |
+| PGPS1 IR | 28 | **27** | −21.104 | 19.607 | 10.171 | 6.968 | 10.067 |
+| PGPS1 IY | 29 | **28** | −19.892 | 19.143 | 9.134 | 6.235 | 4.695 |
+| PGPS1 IB | 30 | **29** | −6.496 | 4.281 | 1.818 | 0.866 | 3.729 |
+| PGPS1 IN | 31 | **30** | −10.777 | 8.621 | 3.369 | 4.579 | 4.758 |
+| PLTG2 VR | 0 | 0 | −2644.336 | 2633.319 | 1537.520 | 1806.042 | 1647.031 |
+| PLTG2 VY | 1 | 1 | −2616.390 | 2635.469 | 1479.176 | 1766.244 | 1323.442 |
+| PLTG2 VB | 2 | 2 | −2594.892 | 2596.773 | 1554.688 | 1781.056 | 1734.534 |
+| PLTG2 IR | 4 | 4 | −25.164 | 24.528 | 12.372 | 8.185 | 9.674 |
+
+Bold `phys` = phantom-corrected (wi ≥ 16 shifted by −1; one phantom at wi=15).
+Pre-RMS = last 100 samples before trigger (samples 2400–2500).
+Post-RMS = first 100 samples after trigger (samples 2500–2600).
+All values confirmed by Stage 11 analysis (2026-10-22) against SHA-256 bc9f78ac…
+
+---
+
+## §11 Integration Readiness Report (Stage 11, 2026-10-22)
+
+**Prepared by:** Stage 11 UAT completion  
+**Branch:** `investigation/legacy-ben5k`  
+**Status: READY FOR OWNER REVIEW — do not merge without explicit approval.**
+
+### 11.1 Branch summary
+
+| Item | Detail |
+|---|---|
+| Commits ahead of `origin/main` | **12** |
+| Changed files vs `origin/main` | **22** (production) + **2** (Stage 11, uncommitted) = **24 total** |
+| Branch divergence from `origin/main` | Zero — linear history, no `origin/main` commits not already in this branch |
+| Branch worktree | `D:\Programming\oruxa-powerwave-ben5k` (isolated) |
+
+**12 commits (oldest → newest):**
+
+| SHA | Message |
+|---|---|
+| `ac365bd` | docs: add BEN5K legacy decoder Phase 1 design document |
+| `deb25e6` | docs: add BEN5K compatibility investigation baseline |
+| `0516a16` | docs: update BEN_FORMAT.md open items with BEN5K design status |
+| `9b1b083` | feat(ben5k): implement legacy BEN5K reader and decoder (Stage 2-3) |
+| `57c8248` | feat(ben5k): Stages 4-6 — channel classification, BenRecord normalizer, experimental dispatch |
+| `e12fad2` | feat: Stage 7 — BEN5K browser integration and feature flag |
+| `0259fdd` | feat(ben5k): Stage 7B — classification refinement, timestamp safety, API tests |
+| `7fd2324` | feat(ben5k): Stage 8 — real GPTH 275kV browser UAT (10/10 passed) |
+| `7f9d9a1` | docs: add Stage 9 BEN5K engineering validation report |
+| `ebba404` | feat(ben5k): Stage 10 — phantom-channel detection and physical word mapping |
+| `a61bb65` | docs: Stage 10 phantom-channel documentation |
+| `91d81fb` | fix(ben5k): Stage 10B — fix three decoder bugs in phantom-channel detection |
+
+**24 changed files (post-Stage-11 commit):**
+
+| Path | Category |
+|---|---|
+| `backend/app/config.py` | Feature flag (`ben5k_experimental_enabled`, default `False`) |
+| `backend/app/api/v1/sources.py` | Experimental dispatch hook |
+| `backend/app/providers/ben/layout.py` | BEN5K signature detection |
+| `backend/app/providers/ben/parser.py` | `parse_ben_experimental()` opt-in wrapper |
+| `backend/app/providers/ben/model.py` | `BenRecord` extensions |
+| `backend/app/providers/ben/provider.py` | Provider wiring |
+| `backend/app/services/import_service.py` | Import-service hook |
+| `backend/app/providers/ben/legacy_ben5k/__init__.py` | Package init |
+| `backend/app/providers/ben/legacy_ben5k/reader.py` | Header + descriptor reader |
+| `backend/app/providers/ben/legacy_ben5k/decoder.py` | Sample decoder |
+| `backend/app/providers/ben/legacy_ben5k/channel_map.py` | Phantom detection + classification |
+| `backend/app/providers/ben/legacy_ben5k/normalize.py` | BenRecord normalizer |
+| `backend/tests/test_ben5k_api.py` | API-level tests |
+| `backend/tests/test_ben5k_channel_map.py` | Channel classification unit tests |
+| `backend/tests/test_ben5k_decoder.py` | Decoder unit tests |
+| `backend/tests/test_ben5k_normalize.py` | Normalizer unit tests |
+| `backend/tests/test_ben5k_reader.py` | Reader unit tests |
+| `browser-tests/ben5k-gpth-uat.spec.js` | GPTH 275kV browser UAT (10 tests) |
+| `browser-tests/ben5k-permas-jaya-uat.spec.js` | Permas Jaya browser UAT (7 tests) — **Stage 11** |
+| `docs/project-memory/BEN_FORMAT.md` | BEN format notes (modified) |
+| `docs/project-memory/BEN5K_COMPATIBILITY_INVESTIGATION.md` | Investigation baseline |
+| `docs/project-memory/BEN5K_ENGINEERING_VALIDATION.md` | This report — **Stage 11** |
+| `docs/project-memory/LEGACY_BEN5K_DECODER_DESIGN.md` | Design document |
+| (+ one new BEN5K_COMPATIBILITY_INVESTIGATION.md untracked) | Investigation notes |
+
+### 11.2 SubBen preservation
+
+`parse_ben()` (production path, SubBen only) is **unchanged.** It was not modified on this branch.
+
+`parse_ben_experimental()` is a new opt-in wrapper:
+- If `BEN5K_EXPERIMENTAL_ENABLED` is False (the default) → delegates immediately to `parse_ben()`, byte-for-byte identical path.
+- If flag is True AND the file signature is BEN5K (`0x28 0xFF 0x03 0x00` at offset 0x04) → routes to `parse_ben5k()`.
+- All other files (SubBen, unknown) → `parse_ben()` regardless of flag.
+
+SubBen recordings are completely unaffected in all configurations.
+
+### 11.3 Feature flag status
+
+| Setting | Value |
+|---|---|
+| Python field | `ben5k_experimental_enabled: bool = False` |
+| Environment variable | `BEN5K_EXPERIMENTAL_ENABLED` |
+| Accepted truthy values | `1`, `true`, `yes` (case-insensitive) |
+| Default (no env var set) | **OFF** — production behaviour is unchanged |
+| Frontend control | None — never exposed to frontend |
+| File | `backend/app/config.py` |
+
+**Production deployments with no environment variable change are unaffected.**
+
+### 11.4 Test suite results
+
+| Suite | Result | Run date |
+|---|---|---|
+| Backend pytest (full suite) | **9070 passed, 185 skipped, 0 failed** | 2026-10-22 |
+| GPTH 275kV browser UAT | **10/10 passed** (run twice, fresh server) | 2026-10-22 |
+| Permas Jaya browser UAT | **7/7 passed** | 2026-10-22 |
+| **Total** | **9087 tests pass** | |
+
+Backend suite runtime: 738 s (12 min 18 s). 185 skipped tests are pre-existing skips unrelated to BEN5K (confirmed by examining skip markers).
+
+### 11.5 Merge conflict analysis (vs `feature/remaining-relay-imports`)
+
+The branch that `investigation/legacy-ben5k` will be merged against when both are ready is `main`. At the time of Stage 11, the active development branch is `feature/remaining-relay-imports` (12 commits ahead of `main` as of 2026-10-21). A prospective merge of the two branches was simulated using `git merge-tree`.
+
+| File | Status | Resolution |
+|---|---|---|
+| `backend/app/config.py` | CONFLICT (content) | **Additive, non-overlapping.** BEN5K adds `ben5k_experimental_enabled` (3 lines); relay branch adds signing-key and TTL fields at a different location. Keep both. Zero semantic conflict. |
+| `docs/project-memory/CURRENT_STATE.md` | CONFLICT (content) | Both branches appended to the history header. Take relay branch's current state (dated 2026-10-21); add a BEN5K entry for the experimental decoder at merge time. |
+| `docs/project-memory/HANDOFF.md` | CONFLICT (content) | Same pattern as CURRENT_STATE.md. Additive resolution. |
+| `frontend/index.html` | Auto-merged cleanly | No action required. |
+
+**All 4 conflicts are resolvable without semantic ambiguity.** No production logic conflicts exist. Merging `investigation/legacy-ben5k` into `main` (or alongside `feature/remaining-relay-imports`) can be completed by a merge integrator in a single pass.
+
+### 11.6 Readiness checklist
+
+| Check | Status |
+|---|---|
+| Feature flag defaults OFF | ✅ `ben5k_experimental_enabled: bool = False` |
+| SubBen path unchanged | ✅ `parse_ben()` not modified |
+| Experimental path is opt-in wrapper only | ✅ `parse_ben_experimental()` delegates to `parse_ben()` when flag is False |
+| Timestamp safety | ✅ Permas Jaya: `timing_reference=relative_elapsed` enforced |
+| No absolute wall-clock exposure for BEN5K | ✅ Confirmed by browser UAT test 7 |
+| Phantom channel detection | ✅ Cross-station generalisation confirmed (GPTH + Permas Jaya) |
+| Backend tests pass | ✅ 9070/9255 (185 pre-existing skips) |
+| Browser UAT (GPTH) | ✅ 10/10 |
+| Browser UAT (Permas Jaya) | ✅ 7/7 |
+| Merge conflicts with relay branch | ✅ Identified, all resolvable |
+| Documentation complete | ✅ This report + §10 + Appendix B |
+
+### 11.7 Recommended merge procedure
+
+1. **Owner approval** — review this report and the engineering validation in §§1–10 and Appendix A–B. No merge proceeds without explicit approval.
+2. **Merge `investigation/legacy-ben5k` into `main`** after `feature/remaining-relay-imports` is merged (or in parallel if approved).
+3. **Resolve 3 conflicts** manually:
+   - `config.py`: keep all additive lines from both branches.
+   - `CURRENT_STATE.md` / `HANDOFF.md`: take relay-branch history as base; prepend a BEN5K entry dated 2026-10-22.
+4. **Do not set `BEN5K_EXPERIMENTAL_ENABLED=1` in production** until separate owner UAT on a deployed build is completed.
+5. **Production enablement** is a separate decision — this integration makes the feature available behind the flag, not live.
