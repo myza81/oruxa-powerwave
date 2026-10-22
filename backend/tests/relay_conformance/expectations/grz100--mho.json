@@ -2,7 +2,7 @@
   "schema": "oruxa.relay-expectation/1",
   "description": "Mho selected: no X limit is stated and nothing is invented.",
   "sample": {"kind": "synthetic", "sheet": "grz100", "overrides": {"set": {"ZS-C": "Mho", "ZG-C": "Mho"}}},
-  "identity": {"identification_status": "identified", "manufacturer": "Toshiba", "relay_family": "GRZ100", "model": "GRZ100", "profile_id": "toshiba-grz100", "profile_version": "toshiba-grz100-catalog-v1.3.0", "catalog_id": "toshiba-grz100-catalog", "catalog_version": "1.3.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 9},
+  "identity": {"identification_status": "identified", "manufacturer": "Toshiba", "relay_family": "GRZ100", "model": "GRZ100", "profile_id": "toshiba-grz100", "profile_version": "toshiba-grz100-catalog-v1.4.0", "catalog_id": "toshiba-grz100-catalog", "catalog_version": "1.4.0", "confidence": "high", "interpretation_status": "interpreted", "zone_count": 9},
   "counts": {"mapped": 30, "documented": 29, "assumption": 2, "to_confirm": 2, "missing": 8, "conflict": 0, "unsupported": 82, "unverified": 8, "not_exposed": 2, "unreadable": 0, "approximate": 0, "blocking": 12, "not_required": 0},
   "readiness": {"initial": "not_ready", "reviewed": "not_ready"},
   "zones": {
@@ -314,7 +314,7 @@
   "approximations": [],
   "apply": {"status": 409},
   "not_interpreted_distance": ["PSB-Z1"],
-  "coverage": {"canonical_values_assumed": 2, "canonical_values_conflicting": 0, "canonical_values_mapped": 57, "canonical_values_missing": 14, "canonical_values_not_exposed": 2, "canonical_values_total": 120, "canonical_values_unreadable": 0, "canonical_values_unsupported": 37, "canonical_values_unverified": 8, "catalog_id": "toshiba-grz100-catalog", "catalog_mapped_settings": 35, "catalog_recognised_settings": 72, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 37, "catalog_version": "1.3.0", "extension_interpreted_settings": 0, "extracted_settings": 81, "not_interpreted_settings": 3, "outside_distance_settings": 6, "unmapped_settings": 9},
+  "coverage": {"canonical_values_assumed": 2, "canonical_values_conflicting": 0, "canonical_values_mapped": 57, "canonical_values_missing": 14, "canonical_values_not_exposed": 2, "canonical_values_total": 120, "canonical_values_unreadable": 0, "canonical_values_unsupported": 37, "canonical_values_unverified": 8, "catalog_id": "toshiba-grz100-catalog", "catalog_mapped_settings": 35, "catalog_recognised_settings": 72, "catalog_unresolved_settings": 0, "catalog_unsupported_settings": 37, "catalog_version": "1.4.0", "extension_interpreted_settings": 0, "extracted_settings": 81, "not_interpreted_settings": 3, "outside_distance_settings": 6, "unmapped_settings": 9},
   "catalog_sources_absent": [],
   "shadow_geometry": {"unresolved": [["grz100.boundary.right", "Z1", "ZS-C is 'Mho'"], ["grz100.boundary.right", "Z1X", "ZS-C is 'Mho'"], ["grz100.boundary.right", "Z2", "ZS-C is 'Mho'"], ["grz100.boundary.right", "ZF", "ZS-C is 'Mho'"], ["grz100.boundary.right", "Z3", "ZS-C is 'Mho'"], ["grz100.boundary.left", "Z1", "ZS-C is 'Mho'"], ["grz100.boundary.left", "Z1X", "ZS-C is 'Mho'"], ["grz100.boundary.left", "Z2", "ZS-C is 'Mho'"], ["grz100.boundary.left", "ZF", "ZS-C is 'Mho'"], ["grz100.boundary.left", "Z3", "ZS-C is 'Mho'"]], "zones": {}},
   "golden": {"engine": "distance_protection_v1", "tolerance_ohm": 1e-06, "not_drawn": [], "zones": []},

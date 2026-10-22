@@ -1,7 +1,7 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "toshiba-grz100-catalog",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "lifecycle": "active",
   "profile_id": "toshiba-grz100",
   "registry_version": "1.1.0",
@@ -496,6 +496,26 @@
       "canonical": "distance.zone.earth_delay",
       "zone": "Z4",
       "not_exposed": {"note": "Zone 4 has no timer: it detects reverse faults for command protection and does not trip on its own (6F2S0834-0, 2.4.1.1)."}
+    }
+  ],
+  "capability_rules": [
+    {
+      "id": "grz100.capability.signalling_only.z4",
+      "zones": ["Z4"],
+      "capability": "signalling_only",
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-elements"],
+      "note": "Zone 4 detects reverse faults for the command protection (signalling) scheme; it provides a command/signalling output only and does not issue a trip command. Documented in GRZ100 Technical Description 6F2S0834-0, section 2.4.1.1 (Zone Elements)."
+    },
+    {
+      "id": "grz100.capability.scheme_dependent",
+      "zones": ["Z1", "Z1X", "Z2", "ZF", "Z3", "ZR1", "ZR2", "ZND"],
+      "capability": "scheme_dependent",
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["toshiba-6f2s0834-0-distance"],
+      "note": "Trip authorisation is determined by the site PLC programme. Whether this zone issues a trip command depends on the installed scheme configuration and is not determinable from relay settings alone. Documented in GRZ100 Technical Description 6F2S0834-0 (Distance Protection Scheme)."
     }
   ]
 }

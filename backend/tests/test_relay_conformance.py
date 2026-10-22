@@ -155,7 +155,9 @@ class TestCatalogIntegrity:
 
     @pytest.mark.parametrize("catalog", CATALOGS, ids=lambda c: c.catalog_id)
     def test_every_reference_is_cited_and_says_where_it_applies(self, catalog):
-        cited = {r for m in catalog.mappings for r in m.references} | {r for b in catalog.boundaries for r in b.references}
+        cited = ({r for m in catalog.mappings for r in m.references}
+                 | {r for b in catalog.boundaries for r in b.references}
+                 | {r for cr in catalog.capability_rules for r in cr.references})
         known = set(FINDINGS["uncited_references"].get(catalog.catalog_id, {}).get("ids", []))
         assert {ref.id for ref in catalog.references if ref.id not in cited} == known
         for ref in catalog.references:

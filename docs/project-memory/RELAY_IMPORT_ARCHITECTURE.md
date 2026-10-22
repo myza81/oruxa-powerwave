@@ -2002,3 +2002,27 @@ used to stand in for a missing angle.
 `not_represented = ["lower"]`, `relay_behaviour_fidelity = "static_equivalent"` (max of right=documented,
 left=static_equivalent). ZBS directional, reverse-zone offsets, ZND and load encroachment remain unresolved and
 not represented.
+
+### Phase 3A: TripCapability relay-neutral zone classification (DEC-199 Amendment 9)
+
+**A relay-neutral `TripCapability` is stored on every `DistanceZone`** -- an OEM-documented assertion about whether a zone issues a timed trip, is pickup-only, depends on an external scheme, or provides signalling only. It is stored only; no production count, blocker, readiness, Apply eligibility or plot is changed.
+
+| Piece | Location | Role |
+|---|---|---|
+| `TripCapability` enum | `app/domain/relay_import/canonical_distance.py` | `StrEnum`: `timed_trip`, `pickup_only`, `scheme_dependent`, `signalling_only`, `unverified`, `unknown` |
+| `DistanceZone.trip_capability` | `app/domain/relay_import/canonical_distance.py` | `Sourced`, `iter_sourced_skip=True` -- excluded from all counts, confirmation lists and unresolved-path traversal |
+| `_walk()` skip | `app/domain/relay_import/canonical_distance.py` | `if f.metadata.get("iter_sourced_skip"): continue` -- the guard that keeps `trip_capability` out of every existing metric |
+| `TripCapability` in `_ENUMS` | `app/domain/relay_import/canonical_codec.py` | Decode fix: without this, encoding a resolved `trip_capability` produces a tag the decoder cannot look up → `SnapshotError` → HTTP 400 |
+| `TripCapability` in `ENUM_TYPES` | `app/domain/parameter_catalog/registry.py` | Allows catalog JSON `"enum_type": "TripCapability"` on the canonical distance.zone.trip_capability parameter |
+| `CapabilityRule` dataclass | `app/domain/parameter_catalog/catalog_model.py` | `id`, `zones`, `capability`, `authority`, `verification`, `references`, `note`, `timer_condition` |
+| `capability_rules` catalog field | `app/domain/parameter_catalog/catalog_model.py` | `Catalog.capability_rules: tuple[CapabilityRule, ...]` |
+| `capability_rules` validator | `app/domain/parameter_catalog/catalog_validation.py` | `_capability_rules()`: zone IDs checked against catalog static list; capability checked against `TripCapability`; timer_condition "finite"/"infinite"/None only; duplicate ids refused |
+| `capability_rules` digest | `app/domain/parameter_catalog/loader.py` | Conditional key in `semantics_digest()` (same as `boundaries`); absent from old catalogs → their digests unchanged |
+| `_apply_capability_rules()` | `app/domain/parameter_catalog/interpreter.py` | Applied after `_assemble()`; `_timer_condition_met()` checks resolved timers with `math.isfinite/isinf`; provenance `DEFAULT_ASSUMPTION` + OEM refs |
+
+**7SA613 (catalog 1.5.0).** Two `capability_rules`: (1) `zones=["Z1B"]`, `capability="pickup_only"`, `timer_condition="infinite"` -- listed first so Z1B with infinite timer matches before the TIMED_TRIP rule; (2) `zones=["Z1","Z2","Z3","Z5","Z1B"]`, `capability="timed_trip"`, `timer_condition="finite"` -- matches any of these zones when a finite delay is configured.
+
+**GRZ100 (catalog 1.4.0).** Two `capability_rules`: (1) `zones=["Z4"]`, `capability="signalling_only"` -- command protection only; (2) `zones=["Z1","Z1X","Z2","ZF","Z3","ZR1","ZR2","ZND"]`, `capability="scheme_dependent"` -- PLC-controlled, site scheme determines trip authority. GRZ100 stays PARTIALLY SUPPORTED / NOT_READY.
+
+**New test file:** `backend/tests/test_relay_trip_capability.py` (36 tests).
+**Production:** unchanged. Pickup-only plotting (Phase 3B), Apply-eligibility changes (Phase 3C+) not started.

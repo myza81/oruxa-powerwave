@@ -1,7 +1,7 @@
 {
   "schema": "oruxa.parameter-catalog/1",
   "catalog_id": "siemens-7sa613-catalog",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "lifecycle": "active",
   "profile_id": "siemens-7sa613",
   "registry_version": "1.1.0",
@@ -435,6 +435,28 @@
       "id": "7sa613.delay_z5", "canonical": "distance.zone.common_delay", "zone": "Z5",
       "source": {"name": "T5 DELAY", "type": "number", "unit": "s", "infinity": true},
       "note": "Zone 5's delay. 'Infinity' is a configured value: Siemens documents T5 = infinite as the way to keep the (non-directional final) stage from tripping. A blank cell is a missing source value."
+    }
+  ],
+  "capability_rules": [
+    {
+      "id": "7sa613.capability.pickup_only.z1b_infinite",
+      "zones": ["Z1B"],
+      "capability": "pickup_only",
+      "timer_condition": "infinite",
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-2-polygon"],
+      "note": "Z1B timer set to Infinity: the zone generates a distance start (pickup) signal and participates in a teleprotection scheme but does not issue a self-initiated trip on its operating timer. Documented in 7SA6 V4.2 manual (SIPROTEC 4 Distance Protection 7SA6, C53000-G1176-C156-2)."
+    },
+    {
+      "id": "7sa613.capability.timed_trip.finite",
+      "zones": ["Z1", "Z2", "Z3", "Z5", "Z1B"],
+      "capability": "timed_trip",
+      "timer_condition": "finite",
+      "authority": "documented_derivation",
+      "verification": "verified",
+      "references": ["siemens-c53000-g1176-c156-2-polygon", "siemens-c53000-g1176-c156-7-polygon"],
+      "note": "Active zone with a finite configured operating delay: the zone trips after its delay elapses. Standard SIPROTEC 4 7SA6 distance zone behaviour documented in both V4.2 and V4.70 manuals."
     }
   ]
 }

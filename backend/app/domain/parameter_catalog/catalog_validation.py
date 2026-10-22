@@ -1360,7 +1360,7 @@ def _capability_rules(v: _Validator, raw: Any, zones: ZoneModel | None,
         return ()
     known_refs = {r.id for r in references}
     valid_zones = (
-        {z["id"] for z in zones.static}
+        {zid for zid, _ in zones.static}
         if zones is not None and zones.static
         else set()
     )

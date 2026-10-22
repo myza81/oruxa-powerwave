@@ -46,6 +46,7 @@ from app.domain.relay_import.canonical_distance import (
     SettingBasis,
     SourceNote,
     SourceNoteKind,
+    TripCapability,
     UnresolvedSetting,
     ZoneDirection,
     ZoneStatus,
@@ -77,6 +78,7 @@ _ENUMS = {
     for cls in (
         ZoneStatus, ZoneDirection, CharacteristicType, SettingBasis, CompensationKind, SourceFormat,
         MappingStatus, ProvenanceOrigin, ReviewStatus, UnresolvedCause, GeometryMode, SourceNoteKind, MappingAuthority,
+        TripCapability,
     )
 }
 
