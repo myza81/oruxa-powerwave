@@ -81,8 +81,11 @@ _DIGITAL_NAME = 4           # 16 bytes NUL-padded ASCII
 #   - word_group ∈ {1..5} → sample words 38..42  ✓
 #   - word_group ≥ 6 → sample words ≥ 43 (constant 0x0800 inactive-feeder region;
 #     those 120 digital channels have no real digital data in this recording)
-# NOTE: SDAI2 IB (wi=38) and SDAI2 IN (wi=39) descriptors exist but their word
-# indices fall in the digital region — a recording limitation, not a decoder defect.
+# NOTE: SDAI2 IB (wi=38) and SDAI2 IN (wi=39) descriptors were previously excluded
+# because their logical word_index values appeared to fall in the digital region.
+# Stage 10 confirmed that two phantom descriptors shift their physical positions to
+# 36 and 37 respectively — both within the analog region.  classify_channels() now
+# correctly detects the phantoms and includes SDAI2 IB/IN in recorded_analog.
 _DIGITAL_WORD_GROUP_BASE = 37  # digital_sample_word = 37 + word_group  (CONFIRMED)
 
 # Valid type bytes for analog channels: 0x00=voltage, 0x04=current.
@@ -119,7 +122,7 @@ class Ben5kHeader:
 class Ben5kAnalogChannel:
     """One analog (sampled) channel from the flat config descriptors."""
     name: str
-    word_index: int         # 0-indexed sample word slot (CONFIRMED)
+    word_index: int         # 0-indexed logical slot from descriptor byte 53
     scale: float            # f32le from descriptor bytes 28-31
     offset: float           # f32le from descriptor bytes 32-35
     low_range: float
@@ -128,6 +131,18 @@ class Ben5kAnalogChannel:
     phase_seq: int          # 1=R, 2=Y, 3=B, 4=N
     class_code: int         # u16le channel-type template
     descriptor_offset: int  # byte offset of the descriptor start in the file
+    # Physical payload word index, set by classify_channels() when sample data
+    # is available for phantom detection.  Defaults to word_index (1:1 mapping)
+    # when classify_channels() is called without sample_words.
+    physical_word_index: int = 0  # 0 is a valid physical word; see below
+
+    def __post_init__(self) -> None:
+        # When the field is left at its dataclass default of 0 but word_index
+        # is non-zero, it means classify_channels has not yet been called.
+        # We cannot mutate a frozen dataclass, so callers must either set this
+        # field explicitly or rely on classify_channels to return corrected
+        # instances via dataclasses.replace().
+        pass
 
 
 @dataclass(frozen=True)
@@ -265,6 +280,7 @@ def read_channel_descriptors(
                 Ben5kAnalogChannel(
                     name=name,
                     word_index=word_index,
+                    physical_word_index=word_index,  # overridden by classify_channels
                     scale=scale,
                     offset=offset_val,
                     low_range=low_r,

@@ -58,12 +58,16 @@ def decode_samples(
 
     # ── Analog ────────────────────────────────────────────────────────────────
     if analog_channels:
-        indices = [ch.word_index for ch in analog_channels]
+        # Use physical_word_index (phantom-corrected by classify_channels) so
+        # that descriptor word_index values that were shifted by phantom channels
+        # do not read the wrong payload column.  physical_word_index defaults to
+        # word_index when classify_channels was called without sample data.
+        indices = [ch.physical_word_index for ch in analog_channels]
         max_wi = max(indices)
         if max_wi >= header.words_per_sample:
-            bad = [ch for ch in analog_channels if ch.word_index >= header.words_per_sample]
+            bad = [ch for ch in analog_channels if ch.physical_word_index >= header.words_per_sample]
             raise BenStructureError(
-                f"BEN5K analog channel word_index {max_wi} >= words_per_sample "
+                f"BEN5K analog channel physical_word_index {max_wi} >= words_per_sample "
                 f"({header.words_per_sample}); first offending: {bad[0].name!r} "
                 f"at descriptor offset 0x{bad[0].descriptor_offset:X}"
             )

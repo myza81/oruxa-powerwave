@@ -45,6 +45,7 @@ def _analog_ch(name: str, word_index: int, scale: float = 1.0, offset: float = 0
     return Ben5kAnalogChannel(
         name=name,
         word_index=word_index,
+        physical_word_index=word_index,  # decoder uses physical_word_index
         scale=scale,
         offset=offset,
         low_range=-100.0,
