@@ -4,12 +4,68 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-22** (Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+
+## Consolidation and DEV deployment (2026-10-22)
+
+**Status: MERGED TO MAIN AND PUSHED. DEV auto-deployment in progress via CI/GitHub Actions.**
+
+**Deployed commit: `781d1fa` (origin/main)**
+**DEV URL: https://dev.powerwave.oruxa.uk/**
+**Rollback commit: `324af93` (previous origin/main — Overcurrent CT field visibility fix)**
+
+**Merge strategy:** Fast-forward merge of `integration/ben5k-distance-protection` (`4c1cfd4`) into `main` (`324af93`). No conflicts — integration branch already contained all of `origin/main`.
+
+**Branches merged:**
+- `feature/remaining-relay-imports` at `a5cf78d` (Distance Protection Phase 3A, DEC-199)
+- `investigation/legacy-ben5k` at `b33b7af` (BEN5K Stage 11, Permas Jaya UAT)
+- `integration/ben5k-distance-protection` at `4c1cfd4` (integration docs + UAT checklist)
+- `origin/main` at `324af93` (Overcurrent CT fix, Equipment Loading, workspace-wide channels — already included via integration ancestry)
+
+**Additional commit on main post-merge:**
+- `781d1fa feat(dev): enable BEN5K experimental decoder in DEV overlay` — adds `BEN5K_EXPERIMENTAL_ENABLED=1` to `compose.dev.yaml`; documents variable in `.env.example`
+
+**Backend test results (local, main worktree, 2026-10-22):**
+- Full suite: exit code 0 (all tests passed; `RELAY_SAMPLE_PDF_DIR` not set → owner PDF tests skipped)
+- Pre-merge targeted tests (from integration branch HANDOFF): 10029 passed, 321 skipped, 0 failed
+
+**DEV deployment:** Automatic after CI passes on `main`. CI runs backend pytest + compose config validation. DEV VPS deploys via `deploy-dev.yml` workflow using SSH.
+
+**DEV configuration notes:**
+- `BEN5K_EXPERIMENTAL_ENABLED=1` now set in `compose.dev.yaml` (not the VPS `.env`)
+- `RELAY_REVIEW_SIGNING_KEY` must remain set in VPS DEV `.env` (already configured from prior deployments)
+- DEV ports: backend 8200, frontend 8201; accessible via reverse proxy at https://dev.powerwave.oruxa.uk/
+
+**Rollback procedure (if needed):**
+```bash
+# On DEV VPS: /srv/oruxa/apps/powerwave-dev
+git fetch origin
+git checkout --detach 324af93
+APP_VERSION=324af93 TARGET=dev ./scripts/deploy.sh
+```
+
+**Uncommitted docs (stashed in feature/remaining-relay-imports worktree):**
+The stash (`stash@{0}` in `D:\Programming\oruxa-powerwave`) contains `BEN_FORMAT.md` modification and `BEN5K_COMPATIBILITY_INVESTIGATION.md`. Both are already superseded/incorporated by the integration branch (the integration branch has a more complete BEN_FORMAT.md and the same GPTH compatibility investigation doc). The stash can be dropped.
+
+**Worktrees remaining:**
+- `D:\Programming\oruxa-powerwave-main` — main, `781d1fa`
+- `D:\Programming\oruxa-powerwave-integration` — integration/ben5k-distance-protection (can be removed after UAT)
+- `D:\Programming\oruxa-powerwave-ben5k` — investigation/legacy-ben5k (can be removed after UAT)
+- `D:\Programming\oruxa-powerwave` — feature/remaining-relay-imports (active development branch)
+
+**Next steps:**
+1. Monitor CI at https://github.com/myza81/oruxa-powerwave/actions — confirm CI passes.
+2. Monitor DEV auto-deployment — confirm `deploy-dev.yml` succeeds.
+3. Verify https://dev.powerwave.oruxa.uk/ is accessible and health endpoint responds.
+4. Owner UAT: see the checklist in the Integration branch section below.
+5. After UAT passes: remove integration and ben5k worktrees; update project memory.
+
+---
 
 ## Integration branch: BEN5K + Distance Protection (2026-10-22, `integration/ben5k-distance-protection`, merge `023984a`)
 
-**Status: TEMPORARY INTEGRATION BRANCH — not merged to either permanent branch. Awaiting owner UAT.**
+**Status: MERGED TO MAIN at `781d1fa`. Owner UAT in progress via DEV at https://dev.powerwave.oruxa.uk/**
 
 **Sources merged:**
 - Base: `feature/remaining-relay-imports` at `a5cf78d` (DEC-199 Phase 3A)
