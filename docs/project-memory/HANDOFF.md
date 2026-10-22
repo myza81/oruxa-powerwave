@@ -7,6 +7,86 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-22** (Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
 
+## Integration branch: BEN5K + Distance Protection (2026-10-22, `integration/ben5k-distance-protection`, merge `023984a`)
+
+**Status: TEMPORARY INTEGRATION BRANCH — not merged to either permanent branch. Awaiting owner UAT.**
+
+**Sources merged:**
+- Base: `feature/remaining-relay-imports` at `a5cf78d` (DEC-199 Phase 3A)
+- Merged: `investigation/legacy-ben5k` at `b33b7af` (BEN5K Stage 11, Permas Jaya UAT)
+- Merge base: `b2d796a` (workspace-wide channel presentation)
+
+**Worktree:** `../oruxa-powerwave-integration`
+
+**Also included** via BEN5K branch ancestry (not in Distance Protection branch): Overcurrent Recording current basis fix (`c66e6c7`) and Equipment Loading input method (`a41ed0e`, `8febbbd`). Both are already merged to `main` and documented in sections below.
+
+**Conflicts resolved (4 files):**
+1. `backend/app/config.py` — kept both `relay_review_signing_key` / `relay_review_token_ttl_hours` (DEC-198 Amendment 5) and `ben5k_experimental_enabled` (BEN5K Stage 7); additive, independent settings.
+2. `docs/project-memory/CURRENT_STATE.md` — kept HEAD (2026-10-22, Phase 3A, most current); BEN5K carried stale 2026-10-16 Overcurrent snapshot.
+3. `docs/project-memory/HANDOFF.md` — kept HEAD Last-updated header (2026-10-22); added BEN5K Overcurrent sections below it (documenting main-branch work absent from Distance Protection HANDOFF).
+4. `frontend/index.html` — auto-merged cleanly (no conflict markers).
+
+**Backend test results (targeted, integration worktree):**
+- BEN5K unit tests (reader, decoder, channel_map, normalize, api): 154 passed, 0 failed
+- Relay conformance + distance geometry (conformance, kernel, compat, boundaries, dynamic zones, apply, extraction, review token, config): 1063 passed, 119 skipped (PDF-gated owner sheets), 0 failed
+- Distance Protection frontend static: 165 passed, 0 failed
+- Config / main / sources API: 53 passed, 0 failed
+- Relay import / identification / catalog: 150 passed, 75 skipped (PDF-gated), 0 failed
+- All BEN-keyed tests: 211 passed, 49 skipped, 0 failed
+- Full backend suite (2 background runs): both exited 0
+
+**Browser tests:** Not run in this environment (requires live browser + ports). Requires owner UAT.
+
+**Architecture invariants verified:**
+- No persistent storage of uploaded waveform or relay files.
+- Backend-authoritative relay review and Apply unchanged.
+- Signed relay-review token validation intact (DEC-198 Amendment 5).
+- V1 production distance geometry unchanged; V2 shadow-only (DEC-199).
+- BEN5K experimental flag remains off by default (`BEN5K_EXPERIMENTAL_ENABLED=1` to enable).
+- Per-unit and measurement-group semantics unchanged.
+- No relay-import code removed; no BEN5K test reverted to satisfy old tests.
+
+**Uncommitted files in main worktree (preserved):**
+- `docs/project-memory/BEN_FORMAT.md` (modified, uncommitted)
+- `docs/project-memory/BEN5K_COMPATIBILITY_INVESTIGATION.md` (untracked)
+These are NOT in the integration worktree and are untouched.
+
+**How to resume after integration owner UAT:**
+1. Owner validates all UAT items below.
+2. Merge `integration/ben5k-distance-protection` into `main` (or into `feature/remaining-relay-imports` first then to `main`).
+3. Do NOT merge before the UAT checklist is cleared.
+4. After merge: remove the integration worktree (`git worktree remove ../oruxa-powerwave-integration`).
+
+## Integration branch: UAT checklist
+
+Items marked **[AUTO]** were verified by automated backend tests. Items marked **[UAT]** require owner hands-on testing.
+
+### BEN5K recording
+- **[UAT]** Open a BEN5K `.ben` file (Permas Jaya or GPTH samples). File is accepted, all channels displayed.
+- **[UAT]** BEN5K channel names and metadata are correct. No phantom channels present.
+- **[UAT]** Switching between a BEN5K source and a COMTRADE/CSV source does not corrupt analysis state.
+- **[UAT]** Waveform cursor and time-axis synchronisation work correctly on BEN5K data.
+- **[UAT]** Calculated channels (RMS, frequency, sequence) are available on BEN5K voltage/current channels.
+
+### Distance Protection with BEN5K recording
+- **[UAT]** Distance Protection Recording page can access voltage and current channels from a loaded BEN5K recording (where channel types are supported by the application).
+- **[UAT]** Relay PDF import/review remains independent of waveform source format — relay import works with a BEN5K recording open.
+- **[AUTO]** Relay import pipeline (upload → review → validate → apply) is unaffected by BEN5K integration (relay tests pass with 0 failures).
+
+### Normal COMTRADE/CSV regression
+- **[UAT]** Open a COMTRADE recording. Waveform, Impedance Locus, Distance Protection Manual, Distance Protection Recording all function normally.
+- **[UAT]** Relay PDF import and review work normally with a COMTRADE source.
+- **[AUTO]** All COMTRADE-related backend tests pass (sources API, comtrade parsers).
+
+### Overcurrent (already on `main`, UAT pending)
+- **[UAT]** Overcurrent Recording current basis field visibility follows the active input source.
+- **[UAT]** CT field visibility follows active source (Recording/Manual Direct Current/Equipment Loading).
+- **[UAT]** Equipment Loading input method: 141 MVA / 150 % / 132 kV → 925.1 A / 1.156 A (CT 800/1).
+
+### Performance
+- **[UAT]** Large BEN5K recordings (10+ channels, long duration) open without browser hang.
+- **[UAT]** Large COMTRADE recordings are unaffected (existing safeguards intact).
+
 ## Overcurrent Recording current basis and CT field visibility (2026-10-16, `main`)
 
 **What was built.** Two owner-requested UI refinements, made in the dedicated `main` worktree (`../oruxa-powerwave-main`). The Distance Protection work in the main checkout (`feature/remaining-relay-imports`) was not touched.
