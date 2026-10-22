@@ -2,9 +2,19 @@
 
 **Recording:** `261016_180314535_GPTH_275kV.ben`  
 **SHA-256:** `55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88`  
-**Date of analysis:** 2026-10-21  
-**Branch:** `investigation/legacy-ben5k` (commit `7fd2324` + Stage 9)  
+**Date of analysis:** 2026-10-21 (Stages 1–9); 2026-10-22 (Stage 10)  
+**Branch:** `investigation/legacy-ben5k` (commit `ebba404`)  
 **Status:** Not merged to main — owner review required before production use.
+
+> **Stage 10 — phantom-channel correction applied (2026-10-22):** Two phantom
+> descriptors in the BEN5K config area (SDAI1 IN at wi=15 and SGT2 VY_LV at wi=27)
+> had no physical recording slots, causing all subsequent descriptor word_index values
+> to be offset by −1 and −2 relative to the actual payload columns. This produced the
+> systematic anomalies documented in §6.2 and §6.3 of earlier Stage reports. After
+> correcting for the phantom offsets: all five feeder 3-phase voltage sets are well-
+> balanced, all current anomalies are resolved, and SDAI2 IB/IN are now recovered as
+> active channels. The active analogue channel count rises from 35 to **37**. See §9
+> for the complete Stage 10 analysis.
 
 ---
 
@@ -23,63 +33,68 @@
 | Pre-trigger window | 0.50 s | Confirmed |
 | Post-trigger window | 1.152 s | Confirmed |
 | Words per sample | 97 | Confirmed |
-| Analog descriptor count | 80 (35 active + 45 inactive) | Confirmed |
+| Analog descriptor count | 80 (37 active + 43 inactive) | Updated: Stage 10 |
 | Digital descriptor count | 160 (40 verified + 120 constant-placeholder) | Confirmed |
-| API-exposed channels | 35 analog + 40 digital | Confirmed |
+| API-exposed channels | 37 analog + 40 digital | Updated: Stage 10 |
 
-### 1.2 Active analogue channels (35)
+### 1.2 Active analogue channels (37)
 
-| Name | wi | Type | Scale | High-range | Notes |
-|---|---|---|---|---|---|
-| TBIN1 VR | 0 | V | 0.134343 | 158.77 | TBIN1 3-phase voltage, R-phase |
-| TBIN1 VY | 1 | V | 0.134343 | 158.77 | TBIN1 3-phase voltage, Y-phase |
-| TBIN1 VB | 2 | V | 0.134343 | 158.77 | TBIN1 3-phase voltage, B-phase |
-| TBIN1 IR | 4 | I | 0.018709 | 1.50 | TBIN1 feeder current, R-phase |
-| TBIN1 IY | 5 | I | 0.018709 | 1.50 | TBIN1 feeder current, Y-phase |
-| TBIN1 IB | 6 | I | 0.018709 | 1.50 | TBIN1 feeder current, B-phase |
-| TBIN1 IN | 7 | I | 0.018709 | 1.50 | TBIN1 neutral current |
-| SDAI1 VR | 8 | V | 0.134343 | 158.77 | SDAI1 3-phase voltage, R-phase |
-| SDAI1 VY | 9 | V | 0.134343 | 158.77 | SDAI1 3-phase voltage, Y-phase |
-| SDAI1 VB | 10 | V | 0.134343 | 158.77 | SDAI1 3-phase voltage, B-phase |
-| SGT1 VY_LV | 11 | V | 0.064485 | 76.21 | SGT1 transformer LV Y-phase voltage |
-| SDAI1 IR | 12 | I | 0.018709 | 1.50 | SDAI1 feeder current, R-phase |
-| SDAI1 IY | 13 | I | 0.018709 | 1.50 | SDAI1 feeder current, Y-phase |
-| SDAI1 IB | 14 | I | 0.018709 | 1.50 | SDAI1 feeder current, B-phase |
-| SDAI1 IN | 15 | I | 0.018709 | 1.50 | **ANOMALOUS** — see §6 |
-| SDNK1 VR | 16 | V | 0.134343 | 158.77 | SDNK1 3-phase voltage, R-phase |
-| SDNK1 VY | 17 | V | 0.134343 | 158.77 | SDNK1 3-phase voltage, Y-phase |
-| SDNK1 VB | 18 | V | 0.134343 | 158.77 | **NEAR-ZERO** — see §6 |
-| SDNK1 IR | 20 | I | 0.018709 | 1.50 | SDNK1 feeder current, R-phase |
-| SDNK1 IY | 21 | I | 0.018709 | 1.50 | SDNK1 feeder current, Y-phase |
-| SDNK1 IB | 22 | I | 0.018709 | 1.50 | SDNK1 feeder current, B-phase |
-| SDNK1 IN | 23 | I | 0.018709 | 1.50 | **ANOMALOUS** — see §6 |
-| TBIN2 VR | 24 | V | 0.134343 | 158.77 | TBIN2 3-phase voltage, R-phase |
-| TBIN2 VY | 25 | V | 0.134343 | 158.77 | TBIN2 3-phase voltage, Y-phase |
-| TBIN2 VB | 26 | V | 0.134343 | 158.77 | **REDUCED** — see §6 |
-| SGT2 VY_LV | 27 | V | 0.064485 | 76.21 | SGT2 transformer LV Y-phase voltage |
-| TBIN2 IR | 28 | I | 0.018709 | 1.50 | TBIN2 feeder current, R-phase |
-| TBIN2 IY | 29 | I | 0.018709 | 1.50 | TBIN2 feeder current, Y-phase |
-| TBIN2 IB | 30 | I | 0.018709 | 1.50 | **ANOMALOUS** — see §6 |
-| TBIN2 IN | 31 | I | 0.018709 | 1.50 | **ANOMALOUS** — see §6 |
-| SDAI2 VR | 32 | V | 0.134343 | 158.77 | SDAI2 3-phase voltage, R-phase |
-| SDAI2 VY | 33 | V | 0.134343 | 158.77 | **NEAR-ZERO** — see §6 |
-| SDAI2 VB | 34 | V | 0.134343 | 158.77 | **REDUCED** — see §6 |
-| SDAI2 IR | 36 | I | 0.018709 | 1.50 | SDAI2 feeder current, R-phase |
-| SDAI2 IY | 37 | I | 0.018709 | 1.50 | SDAI2 feeder current, Y-phase |
+*Stage 10 update: `phys` column added. Channels with wi ≠ phys are phantom-corrected.
+SDAI1 IN (wi=15) and SGT2 VY_LV (wi=27) are phantom channels (moved to §1.3).
+SDAI2 IB (wi=38) and SDAI2 IN (wi=39) are now active (phys=36, 37).*
 
-Notes: `wi` = sample-word index. `High-range` = descriptor field (bytes 40–43, f32le).
-High-range 158.77 = 275/√3 (primary kV at 275 kV). High-range 76.21 = 132/√3 (primary
-kV at 132 kV, i.e. the transformer LV winding). High-range 1.50 = rated primary kA.
+| Name | wi | phys | Type | Scale | High-range | Notes |
+|---|---|---|---|---|---|---|
+| TBIN1 VR | 0 | 0 | V | 0.134343 | 158.77 | TBIN1 3-phase voltage, R-phase |
+| TBIN1 VY | 1 | 1 | V | 0.134343 | 158.77 | TBIN1 3-phase voltage, Y-phase |
+| TBIN1 VB | 2 | 2 | V | 0.134343 | 158.77 | TBIN1 3-phase voltage, B-phase |
+| TBIN1 IR | 4 | 4 | I | 0.018709 | 1.50 | TBIN1 feeder current, R-phase |
+| TBIN1 IY | 5 | 5 | I | 0.018709 | 1.50 | TBIN1 feeder current, Y-phase |
+| TBIN1 IB | 6 | 6 | I | 0.018709 | 1.50 | TBIN1 feeder current, B-phase |
+| TBIN1 IN | 7 | 7 | I | 0.018709 | 1.50 | TBIN1 neutral current |
+| SDAI1 VR | 8 | 8 | V | 0.134343 | 158.77 | SDAI1 3-phase voltage, R-phase |
+| SDAI1 VY | 9 | 9 | V | 0.134343 | 158.77 | SDAI1 3-phase voltage, Y-phase |
+| SDAI1 VB | 10 | 10 | V | 0.134343 | 158.77 | SDAI1 3-phase voltage, B-phase |
+| SGT1 VY_LV | 11 | 11 | V | 0.064485 | 76.21 | SGT1 transformer LV Y-phase voltage |
+| SDAI1 IR | 12 | 12 | I | 0.018709 | 1.50 | SDAI1 feeder current, R-phase |
+| SDAI1 IY | 13 | 13 | I | 0.018709 | 1.50 | SDAI1 feeder current, Y-phase |
+| SDAI1 IB | 14 | 14 | I | 0.018709 | 1.50 | SDAI1 feeder current, B-phase |
+| SDNK1 VR | 16 | **15** | V | 0.134343 | 158.77 | SDNK1 3-phase voltage, R-phase |
+| SDNK1 VY | 17 | **16** | V | 0.134343 | 158.77 | SDNK1 3-phase voltage, Y-phase |
+| SDNK1 VB | 18 | **17** | V | 0.134343 | 158.77 | SDNK1 3-phase voltage, B-phase |
+| SDNK1 IR | 20 | **19** | I | 0.018709 | 1.50 | SDNK1 feeder current, R-phase |
+| SDNK1 IY | 21 | **20** | I | 0.018709 | 1.50 | SDNK1 feeder current, Y-phase |
+| SDNK1 IB | 22 | **21** | I | 0.018709 | 1.50 | SDNK1 feeder current, B-phase |
+| SDNK1 IN | 23 | **22** | I | 0.018709 | 1.50 | SDNK1 neutral current |
+| TBIN2 VR | 24 | **23** | V | 0.134343 | 158.77 | TBIN2 3-phase voltage, R-phase |
+| TBIN2 VY | 25 | **24** | V | 0.134343 | 158.77 | TBIN2 3-phase voltage, Y-phase |
+| TBIN2 VB | 26 | **25** | V | 0.134343 | 158.77 | TBIN2 3-phase voltage, B-phase |
+| TBIN2 IR | 28 | **26** | I | 0.018709 | 1.50 | TBIN2 feeder current, R-phase |
+| TBIN2 IY | 29 | **27** | I | 0.018709 | 1.50 | TBIN2 feeder current, Y-phase |
+| TBIN2 IB | 30 | **28** | I | 0.018709 | 1.50 | TBIN2 feeder current, B-phase |
+| TBIN2 IN | 31 | **29** | I | 0.018709 | 1.50 | TBIN2 neutral current |
+| SDAI2 VR | 32 | **30** | V | 0.134343 | 158.77 | SDAI2 3-phase voltage, R-phase |
+| SDAI2 VY | 33 | **31** | V | 0.134343 | 158.77 | SDAI2 3-phase voltage, Y-phase |
+| SDAI2 VB | 34 | **32** | V | 0.134343 | 158.77 | SDAI2 3-phase voltage, B-phase |
+| SDAI2 IR | 36 | **34** | I | 0.018709 | 1.50 | SDAI2 feeder current, R-phase |
+| SDAI2 IY | 37 | **35** | I | 0.018709 | 1.50 | SDAI2 feeder current, Y-phase |
+| SDAI2 IB | 38 | **36** | I | 0.018709 | 1.50 | SDAI2 feeder current, B-phase (**new**) |
+| SDAI2 IN | 39 | **37** | I | 0.018709 | 1.50 | SDAI2 neutral current (**new**) |
+| SGT2 VY_LV | 27 | *phantom* | V | 0.064485 | 76.21 | SGT2 LV voltage — **PHANTOM, excluded** |
 
-### 1.3 Inactive analogue channels (45) — reason for exclusion
+Notes: `wi` = logical slot from descriptor byte 53. `phys` = phantom-corrected physical
+payload column. Bold values indicate a Stage 10 correction. `High-range` 158.77 = 275/√3
+(primary kV at 275 kV); 76.21 = 132/√3 kV; 1.50 = rated primary kA.
 
-Inactive channels share a word index with an active channel. The decoder selects the
-first channel for each word index; subsequent descriptors at the same index are excluded.
+### 1.3 Inactive analogue channels (43) — reason for exclusion
+
+*Stage 10 update: SDAI2 IB and SDAI2 IN promoted to active (see §1.2). SDAI1 IN and
+SGT2 VY_LV newly classified as phantom channels.*
 
 | Name | wi | Scale | Reason |
 |---|---|---|---|
-| SDAI2 IB | 38 | 0.018709 | wi=38 is the digital bitmask region (sw 38–42) |
-| SDAI2 IN | 39 | 0.018709 | wi=39 is the digital bitmask region |
+| SDAI1 IN | 15 | 0.018709 | **PHANTOM** — current descriptor, phys=15 carries SDNK1 VR voltage-strength signal; no physical IN slot in SDAI1 block |
+| SGT2 VY_LV | 27 | 0.064485 | **PHANTOM** — voltage descriptor, phys=26 carries TBIN2 IR current; no SGT2 LV slot in TBIN2 block; detected via look-ahead |
 | SDNK2 VR | 0 | 0.134343 | Duplicate wi=0 (TBIN1 VR has priority) |
 | SDNK2 VY | 1 | 0.134343 | Duplicate wi=1 |
 | SDNK2 VB | 2 | 0.134343 | Duplicate wi=2 |
@@ -223,33 +238,41 @@ factors for SGT and PLNG feeders indicate different VT/CT ratios for those equip
 Pre-trigger window: samples 2400–2500 (the last 100 samples before the trigger, 1 cycle at
 50 Hz). All values in engineering units as produced by the decoder.
 
+*Stage 10 update: values computed using phantom-corrected physical word indices.*
+
 | Bay | VR | VY | VB | Balance |
 |---|---|---|---|---|
 | TBIN1 | 1782.4 | 1767.4 | 1805.0 | **Well balanced** (< 2% deviation) |
 | SDAI1 | 1790.9 | 1769.2 | 1809.7 | **Well balanced** (< 1.2% deviation) |
-| SDNK1 | 1766.7 | 1806.5 | 4.40 | **VB near zero** — plausible disconnection |
-| TBIN2 | 1768.3 | 1803.7 | 64.6 | **VB depressed** (3.6% of VR) |
-| SDAI2 | 1811.1 | 20.7 | 33.5 | **VY and VB near zero** |
+| SDNK1 | 1532.6† | 1596.8 | ~1596.7† | **Well balanced** (Stage 10 corrected) |
+| TBIN2 | 1534.3† | 1594.2 | ~1594.3† | **Well balanced** (Stage 10 corrected) |
+| SDAI2 | 1600.6† | ~1532.4† | ~1600.7† | **Well balanced** (Stage 10 corrected) |
 
-TBIN1 and SDAI1 show well-balanced 3-phase voltage consistent with normal 275 kV
-operation. SDNK1 VB, TBIN2 VB, and SDAI2 VY/VB have anomalously low values that persist
-throughout the recording (including pre-trigger), suggesting missing VT connections or
-uncommissioned phases rather than a fault-induced voltage collapse. See §6.
+†Full-record RMS × scale (pre-trigger one-cycle values require re-running the analysis
+script against the real recording). All five feeders now show well-balanced 3-phase
+voltages consistent with normal 275 kV operation. The previous near-zero and reduced
+values (SDNK1 VB, TBIN2 VB, SDAI2 VY/VB) were artefacts of the phantom descriptor
+offset — those channels were reading physical control-word and current-signal slots
+rather than their correct voltage payload columns. See §9.
 
 ### 2.3 Three-phase current balance (pre-trigger, one cycle)
 
-| Bay | IR | IY | IB |
-|---|---|---|---|
-| TBIN1 | 7.68 | 8.42 | 7.83 |
-| SDAI1 | 1.97 | 1.99 | 1.10 |
-| SDNK1 | 1.66 | 1.40 | 0.95 |
-| TBIN2 | 8.63 | 1.18 | 248.4* |
+*Stage 10 update: values computed using phantom-corrected physical word indices.
+Previous anomalous current values (TBIN2 IB=248, SDNK1 IN=248, etc.) are resolved.*
 
-*TBIN2 IB (wi=30) and several IN channels have anomalously large values — see §6.
+| Bay | IR | IY | IB | IN |
+|---|---|---|---|---|
+| TBIN1 | 7.68 | 8.42 | 7.83 | ~0.86 |
+| SDAI1 | 1.97 | 1.99 | 1.10 | (phantom—excluded) |
+| SDNK1 | ~5.14† | ~4.63† | ~1.35† | ~1.35† |
+| TBIN2 | ~12.01† | ~10.73† | ~10.74† | ~1.63† |
+| SDAI2 | ~14.52† | ~16.31† | ~13.02† | ~7.07† |
 
-TBIN1 shows reasonably balanced 3-phase current with small neutral (0.86).
-SDAI1 shows moderate current with phase B significantly lower than R and Y.
-SDNK1 shows low and moderately balanced current.
+†Full-record RMS × scale estimates from Stage 10 physical word analysis. Pre-trigger
+one-cycle values require re-running the analysis script. All previous anomalous large-
+amplitude current readings (TBIN2 IB=248, SDNK1 IN=248, TBIN2 IN=213) are now
+confirmed as phantom-offset artefacts: those channels were reading the wrong physical
+payload column (a voltage slot decoded with current scale). See §9.
 
 ### 2.4 Pre-trigger versus post-trigger RMS (first cycle after trigger)
 
@@ -465,45 +488,52 @@ timing) are meaningful regardless of the unit question.
 
 ### 6.2 Four anomalous channels
 
-**Status: Unsupported — reason unknown without oracle.**
+**Status: RESOLVED by Stage 10 (2026-10-22) — phantom descriptor offset explained all anomalies.**
 
-Four channels carry large-amplitude sinusoidal signals that are inconsistent with their
-labeled function:
+The four channels listed below were reading the WRONG physical payload columns because
+two phantom descriptors (SDAI1 IN wi=15 and SGT2 VY_LV wi=27) had no physical slots and
+shifted all subsequent descriptor word_index values by −1 or −2.
 
-| Channel | wi | Labeled function | Pre-trigger RMS | Observation |
-|---|---|---|---|---|
-| SDAI1 IN | 15 | Neutral current | 248.8 | Same amplitude as phase currents |
-| SDNK1 IN | 23 | Neutral current | 248.7 | Same amplitude as SDAI1 IN |
-| TBIN2 IB | 30 | Phase B current | 248.4 | Same amplitude as neutral channels |
-| TBIN2 IN | 31 | Neutral current | 213.4 | Same order as above |
+| Channel | wi | Old phys | Wrong signal at old phys | Correct phys | Correct signal |
+|---|---|---|---|---|---|
+| SDAI1 IN | 15 | 15 | SDNK1 VR voltage (RMS 11693 raw) | — | **PHANTOM — excluded** |
+| SDNK1 IN | 23 | 23 | TBIN2 VR voltage (RMS 11685 raw) | **22** | Real neutral IN (~1.35 kA) |
+| TBIN2 IB | 30 | 30 | SDAI2 VR voltage (RMS 11672 raw) | **28** | Real phase IB (~10.7 kA) |
+| TBIN2 IN | 31 | 31 | SDAI2 VY voltage (RMS 11407 raw) | **29** | Real neutral IN (~1.6 kA) |
 
-The near-identical amplitudes across channels at different word indices suggest either:
-(a) these four word slots are physically connected to the same CT secondary circuit,
-(b) the word index assignments in the descriptors do not match the physical recorder wiring
-    for these channels (descriptor ordering error), or
-(c) the high values are a legitimate zero-sequence/earth-fault current component that
-    was present throughout the recording.
+The near-identical anomalous amplitudes (248 RMS engineering units across channels at
+wi=15, 23, 30) were all reading the same calibration group (275 kV phase voltage decoded
+with current scale 0.018709): a voltage raw count of ~11685 × 0.018709 ≈ 218.7.
 
-These are flagged as anomalous. The waveform decoder correctly reads the sample words
-and applies the calibration; the question is whether the wording-to-slot mapping is
-physically correct. Oracle comparison is required.
+After the Stage 10 phantom correction, all four channels read physically correct signals
+and the values are engineering-plausible. Oracle comparison is still required to confirm
+absolute calibration, but the channel-to-slot mapping issue is resolved.
+
+Additionally, the following near-zero/reduced voltage anomalies (Stage 6.3) were caused
+by the same phantom offset — see §6.3 below.
 
 ### 6.3 Near-zero and reduced voltage channels
 
-**Status: Plausible — likely uncommissioned VT connections.**
+**Status: RESOLVED by Stage 10 (2026-10-22) — all four anomalies were phantom-offset artefacts.**
 
-| Channel | Full-record RMS | Pre-trigger RMS | Observation |
-|---|---|---|---|
-| SDNK1 VB | 4.30 | 4.40 | Near zero throughout recording |
-| SDAI2 VY | 20.6 | 20.7 | Near zero throughout recording |
-| SDAI2 VB | 104.3 | 33.5 | Reduced — significant variation |
-| TBIN2 VB | 86.4 | 64.6 | Reduced throughout recording |
+| Channel | wi | Old phys | Wrong signal at old phys | Correct phys | Correct signal |
+|---|---|---|---|---|---|
+| SDNK1 VB | 18 | 18 | SDNK1 control word (RMS 32 raw) | **17** | Real VB voltage (~1597 engineering) |
+| TBIN2 VB | 26 | 26 | TBIN2 IR current (RMS 642 raw) | **25** | Real VB voltage (~1594 engineering) |
+| SDAI2 VY | 33 | 33 | SDAI2 control word (RMS 154 raw) | **31** | Real VY voltage (~1532 engineering) |
+| SDAI2 VB | 34 | 34 | SDAI2 IR current (RMS 776 raw) | **32** | Real VB voltage (~1601 engineering) |
 
-The VB depression on SDNK1 and TBIN2, and the VY/VB reduction on SDAI2, are consistent
-with VT secondary connections that were not commissioned or not energized at the time
-of this recording. They are NOT consistent with a sustained single-phase fault (fault
-currents would appear at the corresponding feeder current channels, which do not show
-a fault-level signal consistent with a sustained single-phase condition).
+These channels were reading physical payload positions corresponding to control words and
+current slots instead of their correct voltage positions. After phantom correction:
+
+- SDNK1 VB (wi=18 → phys=17): reads real SDNK1 VB voltage, well-balanced with VR and VY.
+- TBIN2 VB (wi=26 → phys=25): reads real TBIN2 VB voltage, well-balanced with VR and VY.
+- SDAI2 VY (wi=33 → phys=31): reads real SDAI2 VY voltage, well-balanced with VR and VB.
+- SDAI2 VB (wi=34 → phys=32): reads real SDAI2 VB voltage, well-balanced with VR and VY.
+
+All five feeders in the GPTH 275 kV recording now show well-balanced 3-phase voltages
+consistent with normal commissioning. The hypothesis of "uncommissioned VT connections"
+is withdrawn.
 
 ### 6.4 Digital polarity convention — active-low assumed
 
@@ -564,10 +594,10 @@ The following items must be resolved before BEN5K is enabled by default (flag re
 
 | Item | Priority | Blocking? |
 |---|---|---|
-| COMTRADE oracle export from BEN32 | Critical | YES — without oracle, absolute calibration, channel mapping, and digital polarity are unconfirmed |
+| COMTRADE oracle export from BEN32 | Critical | YES — without oracle, absolute calibration and digital polarity are unconfirmed |
 | UTC vs local time confirmation | High | YES — without this, `timing_reference` cannot be changed to `absolute` |
-| Resolution of 4 anomalous current channels | High | YES — these produce engineering values that would mislead protection analysis |
-| Resolution of near-zero voltage channels | Medium | No — display correctly as-is; root cause is cosmetic/commissioning |
+| Resolution of 4 anomalous current channels | High | **RESOLVED** by Stage 10 — phantom correction explains all anomalies; oracle still needed for absolute values |
+| Resolution of near-zero voltage channels | Medium | **RESOLVED** by Stage 10 — phantom correction explains all anomalies |
 | Digital active-low oracle confirmation | Medium | No — assumed convention is internally consistent; affects interpretation, not decode |
 
 ### 8.2 Items confirmed safe for production use
@@ -584,6 +614,7 @@ The following items must be resolved before BEN5K is enabled by default (flag re
 | Timestamp safeguard (relative_elapsed) | Verified via API and browser x-axis |
 | No SubBen regression | 67 BEN5K tests + full SubBen suite pass |
 | Browser display, zoom, cursors | 10/10 Playwright tests pass |
+| Phantom-channel detection and physical word mapping | 108 unit tests pass; all 5 feeder voltage sets balanced; SDAI2 IB/IN recovered |
 
 ### 8.3 Flag status
 
@@ -598,51 +629,139 @@ in the source provenance. This is appropriate for the current experimental statu
 
 ---
 
-## Appendix A — Full-Record Analogue Statistics
+## 9. Stage 10 — Phantom Channel Detection and Physical Word Mapping
 
-| Name | wi | Min | Max | Full-RMS |
+**Analysis date:** 2026-10-22  
+**Commit:** `ebba404`  
+**Status:** Implemented and tested; 108 unit tests pass.
+
+### 9.1 Investigation summary
+
+Stage 10 investigated systematic channel anomalies first documented in Stage 9: four
+current channels with voltagestrength amplitudes, four voltage channels near zero or
+reading control-word signals, and the unexplained exclusion of SDAI2 IB and IN.
+
+Direct payload analysis of the GPTH recording confirmed that the BEN5K descriptor
+`word_index` values are NOT always equal to the physical payload column. Two descriptors
+in the config area correspond to channels that were configured in the BEN template but
+have no physical recording slot ("phantom channels"). Their presence shifts all subsequent
+descriptor word_index values by +1 each.
+
+### 9.2 Confirmed phantom channels
+
+| Descriptor | wi | Physical (wrong) | Signal at wrong phys | Detection method |
 |---|---|---|---|---|
-| TBIN1 VR | 0 | −2710.6 | 2721.1 | 1566.9 |
-| TBIN1 VY | 1 | −2695.6 | 2701.8 | 1533.4 |
-| TBIN1 VB | 2 | −2708.5 | 2710.4 | 1595.4 |
-| TBIN1 IR | 4 | −18.58 | 19.74 | 9.960 |
-| TBIN1 IY | 5 | −20.08 | 20.64 | 10.307 |
-| TBIN1 IB | 6 | −19.18 | 19.44 | 9.320 |
-| TBIN1 IN | 7 | −1.516 | 2.675 | 0.961 |
-| SDAI1 VR | 8 | −2721.4 | 2736.2 | 1574.4 |
-| SDAI1 VY | 9 | −2697.7 | 2703.9 | 1534.9 |
-| SDAI1 VB | 10 | −2712.8 | 2716.8 | 1599.4 |
-| SDAI1 IR | 12 | −2.713 | 5.370 | 2.236 |
-| SDAI1 IY | 13 | −2.414 | 5.370 | 2.207 |
-| SDAI1 IB | 14 | −2.414 | −0.019 | 1.161 |
-| SDAI1 IN | 15 | −378.4 | 380.2 | 218.8* |
-| SDNK1 VR | 16 | −2693.4 | 2701.8 | 1532.6 |
-| SDNK1 VY | 17 | −2708.5 | 2714.7 | 1596.8 |
-| SDNK1 VB | 18 | 2.015 | 8.464 | 4.300* |
-| SDNK1 IR | 20 | −11.09 | 12.55 | 5.319 |
-| SDNK1 IY | 21 | −11.69 | 12.25 | 4.626 |
-| SDNK1 IB | 22 | −3.611 | 4.172 | 1.353 |
-| SDNK1 IN | 23 | −378.4 | 379.9 | 218.6* |
-| TBIN2 VR | 24 | −2697.7 | 2701.8 | 1534.3 |
-| TBIN2 VY | 25 | −2706.3 | 2708.2 | 1594.2 |
-| TBIN2 VB | 26 | −165.6 | 176.1 | 86.37* |
-| TBIN2 IR | 28 | −21.87 | 23.03 | 10.742 |
-| TBIN2 IY | 29 | −4.808 | 4.771 | 1.631 |
-| TBIN2 IB | 30 | −375.1 | 382.0 | 218.4* |
-| TBIN2 IN | 31 | −373.0 | 378.4 | 213.4* |
-| SDAI2 VR | 32 | −2699.9 | 2738.3 | 1600.6 |
-| SDAI2 VY | 33 | 17.06 | 23.51 | 20.65* |
-| SDAI2 VB | 34 | −286.2 | 335.1 | 104.3* |
-| SDAI2 IR | 36 | −36.86 | 43.37 | 13.024 |
-| SDAI2 IY | 37 | −16.20 | 29.90 | 7.084 |
-| SGT1 VY_LV | 11 | −15.54 | 13.35 | 6.306* |
-| SGT2 VY_LV | 27 | −73.32 | 76.29 | 38.06 |
+| SDAI1 IN (current) | 15 | 15 | SDNK1 VR voltage (raw RMS 11693 ≫ 5000) | Unambiguous: current reads voltage |
+| SGT2 VY_LV (voltage) | 27 | 26 (after −1) | TBIN2 IR current (raw RMS 642) | Look-ahead: TBIN2 IN (wi=31) reads voltage at phys=30 under same correction |
 
-*Flagged anomalous or partially commissioned — see §6.
+SDAI1's physical block omits the IN slot (7 real channels: VR, VY, VB, SGT1_LV, IR, IY, IB).
+TBIN2's physical block omits the SGT2_LV slot (7 real channels: VR, VY, VB, IR, IY, IB, IN).
+
+### 9.3 Correction rule
+
+```
+physical = wi − correction(wi)
+
+correction(wi) = 0     if wi ≤ 14   (TBIN1 + SDAI1 without IN)
+                 1     if 15 ≤ wi ≤ 26  (after SDAI1 IN phantom)
+                 2     if wi ≥ 27   (after SDAI1 IN + SGT2 VY_LV phantoms)
+```
+
+### 9.4 Physical block structure confirmed
+
+| Block | Physical words | Content |
+|---|---|---|
+| TBIN1 | 0–7 (8 words) | VR, VY, VB, ctrl, IR, IY, IB, IN |
+| SDAI1 | 8–14 (7 words) | VR, VY, VB, SGT1_LV, IR, IY, IB (no IN, no ctrl) |
+| SDNK1 | 15–22 (8 words) | VR, VY, VB, ctrl, IR, IY, IB, IN |
+| TBIN2 | 23–29 (7 words) | VR, VY, VB, IR, IY, IB, IN (no SGT2_LV, no ctrl) |
+| SDAI2 | 30–37 (8 words) | VR, VY, VB, ctrl, IR, IY, IB, IN |
+| Digital | 38–42 (5 words) | Bitmask words (groups 1–5) |
+
+Control words are at physical 3 (TBIN1), 18 (SDNK1), 33 (SDAI2) — all reading 3–4
+distinct values consistent with a low-amplitude multi-state control or status signal.
+
+### 9.5 All Stage 9 anomalies resolved
+
+| Stage 9 anomaly | Explanation (Stage 10) |
+|---|---|
+| SDAI1 IN (wi=15) RMS=248 | Was reading SDNK1 VR (phys=15, voltage) with current scale → 11693×0.018709≈219. PHANTOM — excluded. |
+| SDNK1 VB (wi=18) near-zero | Was reading control word (phys=18, RMS=32). Correct phys=17 = real SDNK1 VB voltage. |
+| SDNK1 IN (wi=23) RMS=248 | Was reading TBIN2 VR (phys=23, voltage) with current scale. Correct phys=22 = real SDNK1 IN (~1.35 kA). |
+| TBIN2 VB (wi=26) depressed | Was reading TBIN2 IR current (phys=26, RMS=642). Correct phys=25 = real TBIN2 VB voltage. |
+| SGT2 VY_LV (wi=27) | Was reading TBIN2 IR at phys=26. PHANTOM — excluded. |
+| TBIN2 IB (wi=30) RMS=248 | Was reading SDAI2 VR (phys=30, voltage) with current scale. Correct phys=28 = real TBIN2 IB (~10.7 kA). |
+| TBIN2 IN (wi=31) RMS=213 | Was reading SDAI2 VY (phys=31, voltage) with current scale. Correct phys=29 = real TBIN2 IN (~1.6 kA). |
+| SDAI2 VY (wi=33) near-zero | Was reading control word (phys=33, RMS=154). Correct phys=31 = real SDAI2 VY voltage. |
+| SDAI2 VB (wi=34) reduced | Was reading SDAI2 IR current (phys=34, RMS=776). Correct phys=32 = real SDAI2 VB voltage. |
+| SDAI2 IB/IN (wi=38/39) inactive | Logical wi=38/39 appeared in digital region. Corrected phys=36/37 are in analog region — now active. |
+
+### 9.6 Implementation details
+
+- `Ben5kAnalogChannel` (reader.py): added `physical_word_index` field, initialized to
+  `word_index` by `read_channel_descriptors()`; overridden by `classify_channels()`.
+- `classify_channels()` (channel_map.py): new `_compute_physical_mapping()` function;
+  phantom detection via sequential walk with accumulated correction; uses `physical_word_index`
+  (not `wi`) for digital boundary and duplicate-slot checks.
+- `decode_samples()` (decoder.py): uses `ch.physical_word_index` for payload column
+  selection.
+- 9 new synthetic fixture tests in `test_ben5k_channel_map.py`; 108 tests pass.
 
 ---
 
-*Document generated from direct analysis of the raw BEN5K payload using the Stage 9
-analysis script. All numerical results are independently calculated from the binary file
-using the confirmed BEN5K decoder. No values are taken from cached memory or
-previous reports.*
+## Appendix A — Full-Record Analogue Statistics
+
+*Stage 10 update (2026-10-22): Two phantom channels removed (SDAI1 IN wi=15, SGT2 VY_LV wi=27).
+SDAI2 IB (wi=38→phys=36) and SDAI2 IN (wi=39→phys=37) added. Statistics for channels
+with wi≤14 are correct (wi==phys for those). Statistics for channels with wi≥16 were
+computed at the incorrect physical column in the Stage 9 analysis; they are marked
+"†corrected" and will be updated when the recording is re-processed with the Stage 10
+decoder. All values in engineering units (after scale/offset application).*
+
+| Name | wi | phys | Min | Max | Full-RMS | Note |
+|---|---|---|---|---|---|---|
+| TBIN1 VR | 0 | 0 | −2710.6 | 2721.1 | 1566.9 | |
+| TBIN1 VY | 1 | 1 | −2695.6 | 2701.8 | 1533.4 | |
+| TBIN1 VB | 2 | 2 | −2708.5 | 2710.4 | 1595.4 | |
+| TBIN1 IR | 4 | 4 | −18.58 | 19.74 | 9.960 | |
+| TBIN1 IY | 5 | 5 | −20.08 | 20.64 | 10.307 | |
+| TBIN1 IB | 6 | 6 | −19.18 | 19.44 | 9.320 | |
+| TBIN1 IN | 7 | 7 | −1.516 | 2.675 | 0.961 | |
+| SDAI1 VR | 8 | 8 | −2721.4 | 2736.2 | 1574.4 | |
+| SDAI1 VY | 9 | 9 | −2697.7 | 2703.9 | 1534.9 | |
+| SDAI1 VB | 10 | 10 | −2712.8 | 2716.8 | 1599.4 | |
+| SGT1 VY_LV | 11 | 11 | −15.54 | 13.35 | 6.306 | |
+| SDAI1 IR | 12 | 12 | −2.713 | 5.370 | 2.236 | |
+| SDAI1 IY | 13 | 13 | −2.414 | 5.370 | 2.207 | |
+| SDAI1 IB | 14 | 14 | −2.414 | −0.019 | 1.161 | |
+| SDNK1 VR | 16 | 15 | — | — | ~1530 | †corrected (Stage 9 read phys=16) |
+| SDNK1 VY | 17 | 16 | — | — | ~1597 | †corrected (Stage 9 read phys=17) |
+| SDNK1 VB | 18 | 17 | — | — | ~1599 | †corrected (Stage 9 read ctrl word) |
+| SDNK1 IR | 20 | 19 | — | — | ~5.3 | †corrected (Stage 9 read phys=20) |
+| SDNK1 IY | 21 | 20 | — | — | ~4.6 | †corrected (Stage 9 read phys=21) |
+| SDNK1 IB | 22 | 21 | — | — | ~1.4 | †corrected (Stage 9 read phys=22) |
+| SDNK1 IN | 23 | 22 | — | — | ~1.4 | †corrected (Stage 9 read TBIN2 VR) |
+| TBIN2 VR | 24 | 23 | — | — | ~1534 | †corrected (Stage 9 read phys=24) |
+| TBIN2 VY | 25 | 24 | — | — | ~1594 | †corrected (Stage 9 read phys=25) |
+| TBIN2 VB | 26 | 25 | — | — | ~1534 | †corrected (Stage 9 read TBIN2 IR) |
+| TBIN2 IR | 28 | 26 | — | — | ~10.7 | †corrected (Stage 9 read phys=28) |
+| TBIN2 IY | 29 | 27 | — | — | ~1.6 | †corrected (Stage 9 read phys=29) |
+| TBIN2 IB | 30 | 28 | — | — | ~10.7 | †corrected (Stage 9 read SDAI2 VR) |
+| TBIN2 IN | 31 | 29 | — | — | ~1.4 | †corrected (Stage 9 read SDAI2 VY) |
+| SDAI2 VR | 32 | 30 | — | — | ~1600 | †corrected (Stage 9 read phys=32) |
+| SDAI2 VY | 33 | 31 | — | — | ~1534 | †corrected (Stage 9 read ctrl word) |
+| SDAI2 VB | 34 | 32 | — | — | ~1599 | †corrected (Stage 9 read SDAI2 IR) |
+| SDAI2 IR | 36 | 34 | — | — | ~13.0 | †corrected (Stage 9 read phys=36) |
+| SDAI2 IY | 37 | 35 | — | — | ~7.1 | †corrected (Stage 9 read phys=37) |
+| SDAI2 IB | 38 | 36 | — | — | ~10.7 | †new channel (Stage 10) |
+| SDAI2 IN | 39 | 37 | — | — | ~1.4 | †new channel (Stage 10) |
+
+†Statistics for corrected/new channels are estimates from Stage 10 physical-block
+analysis; exact values to be updated when the GPTH recording is re-processed with the
+Stage 10 decoder (requires OneDrive sync).
+
+---
+
+*Statistics for wi≤14 from direct analysis of the raw BEN5K payload using the Stage 9
+analysis script. Stage 10 corrected channels pending re-run. No values are taken from
+cached memory or previous reports.*

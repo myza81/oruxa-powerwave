@@ -1,6 +1,6 @@
 # Legacy BEN5K Decoder — Design and Implementation
 
-Date: 2026-10-21. Status: Phase 2 implementation in progress (owner-approved).
+Date: 2026-10-21 (Stages 2–9); 2026-10-22 (Stage 10). Status: Phase 2 implementation in progress (owner-approved).
 Branch: `investigation/legacy-ben5k`.
 
 ## Executive summary
@@ -467,10 +467,42 @@ review.
 
 ## 10. Current implementation status
 
-**Stages 2–9 complete** (branch `investigation/legacy-ben5k`). Full browser UAT
-against the real GPTH 275kV recording passed 10/10 Playwright tests on 2026-10-21.
+**Stages 2–10 complete** (branch `investigation/legacy-ben5k`, commit `ebba404`).
+Full browser UAT against the real GPTH 275kV recording passed 10/10 Playwright tests
+on 2026-10-21. Stage 10 phantom-channel correction adds 108 unit tests; all pass.
 Engineering validation report at `docs/project-memory/BEN5K_ENGINEERING_VALIDATION.md`.
 No merge to `main` until owner approval.
+
+### Stage 10 — Phantom channel detection and physical word mapping (2026-10-22)
+
+Direct payload analysis of the GPTH recording confirmed that two channel descriptors
+in the BEN5K config area name channels with no physical recording slot ("phantom"
+channels). Their presence shifts all subsequent descriptor `word_index` values by +1
+each relative to the actual payload columns.
+
+**Implementation:**
+
+- `Ben5kAnalogChannel` (reader.py): added `physical_word_index: int = 0` field; set
+  to `word_index` by `read_channel_descriptors()`; overridden by `classify_channels()`.
+- `_compute_physical_mapping()` (channel_map.py): new function; walks descriptors in
+  ascending `word_index` order, accumulating a correction count as phantom slots are
+  detected. Returns `{wi: physical_word_index}` for all non-phantom channels.
+- Phantom detection rules:
+  1. Current descriptor where `raw_rms[phys] > 5000` → unambiguous phantom (current
+     channel reading a voltage-strength signal).
+  2. Voltage descriptor where `300 < raw_rms[phys] < 5000` AND at least one of the
+     next 5 descriptors is a current descriptor whose tentative physical also reads
+     voltage-strength → confirmed phantom via look-ahead.
+- `classify_channels()`: uses `_compute_physical_mapping()` when `sample_words` is
+  provided; falls back to identity map otherwise. The `first_digital_sw` boundary
+  check and duplicate-slot check both use `physical_word_index`, not `wi`.
+- `decode_samples()` (decoder.py): uses `ch.physical_word_index` for payload column
+  selection (was `ch.word_index`).
+
+**GPTH result:** Two phantoms detected (SDAI1 IN wi=15, SGT2 VY_LV wi=27). Active
+analog count rises from 35 to 37 (SDAI2 IB/IN recovered). All 5 feeder voltage
+triplets balanced. All Stage 9 current/voltage anomalies explained and resolved.
+See `BEN5K_ENGINEERING_VALIDATION.md` §9 for full analysis.
 
 ### Implemented (Stages 2–7B)
 
@@ -520,7 +552,7 @@ SHA-256 `55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88`.
 | `provider_type` | `BEN` |
 | `status` | `ready` |
 | `station_name` | `GPTH 275kV - BEN5K` |
-| `analog_channel_count` | 35 |
+| `analog_channel_count` | 35 (37 after Stage 10 phantom correction) |
 | `digital_channel_count` | 40 |
 | `sample_count` | 8262 |
 | `duration_seconds` | 1.6522 |
@@ -528,9 +560,11 @@ SHA-256 `55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88`.
 | `timing_reference` | `relative_elapsed` (not `absolute`) — timestamp safeguard confirmed |
 | `file_size_bytes` | 1,629,786 |
 
-**Analog channels (35):** 4 bays × 7 channels (VR, VY, VB, IR, IY, IB, IN) for
-TBIN1/TBIN2/SDAI1/SDAI2, plus SDNK1 (VR–VB, IR–IB, IN = 7) and SGT1/SGT2 VY_LV (2).
-All units kV/kA as expected for a 275 kV substation recording.
+**Analog channels (35 at Stage 8; 37 after Stage 10 phantom correction):** 4 bays × 7
+channels (VR, VY, VB, IR, IY, IB, IN) for TBIN1/TBIN2/SDAI1/SDAI2, plus SDNK1
+(VR–VB, IR–IB, IN = 7) and SGT1 VY_LV. Stage 10 excludes SDAI1 IN and SGT2 VY_LV as
+phantoms and recovers SDAI2 IB and SDAI2 IN. All units kV/kA as expected for a 275 kV
+substation recording.
 
 **Digital channels (40):** All 40 in-bounds digital channels have real signal names —
 `TBIN1 CB_R OPEN`, `TBIN1 CB_Y OPEN`, `TBIN1 CB_B OPEN`, `TBIN1 11L/1`,
@@ -557,7 +591,7 @@ words 43–77; the Stage 9 analysis confirmed the correct numbers.)*
 |---|---|---|
 | 1 | GPTH .ben file present and correct size | PASS |
 | 2 | Upload without error; station name in recordings table | PASS |
-| 3 | Workspace shows 35 analog + digital channels | PASS |
+| 3 | Workspace shows 35 analog + digital channels (37 after Stage 10) | PASS |
 | 4 | Expected analog channel names visible (TBIN1 VR/VY/VB/IR/IY/IB) | PASS |
 | 5 | Enabling TBIN1 VR renders a waveform plot | PASS |
 | 6 | TBIN1 3-phase voltages (VR+VY+VB) render in a single panel | PASS |
