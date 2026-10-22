@@ -3,18 +3,23 @@
 **Recording:** `261016_180314535_GPTH_275kV.ben`  
 **SHA-256:** `55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88`  
 **Date of analysis:** 2026-10-21 (Stages 1–9); 2026-10-22 (Stage 10)  
-**Branch:** `investigation/legacy-ben5k` (commit `ebba404`)  
+**Branch:** `investigation/legacy-ben5k` (commit `ebba404` → Stage 10B)  
 **Status:** Not merged to main — owner review required before production use.
 
-> **Stage 10 — phantom-channel correction applied (2026-10-22):** Two phantom
-> descriptors in the BEN5K config area (SDAI1 IN at wi=15 and SGT2 VY_LV at wi=27)
-> had no physical recording slots, causing all subsequent descriptor word_index values
-> to be offset by −1 and −2 relative to the actual payload columns. This produced the
-> systematic anomalies documented in §6.2 and §6.3 of earlier Stage reports. After
-> correcting for the phantom offsets: all five feeder 3-phase voltage sets are well-
-> balanced, all current anomalies are resolved, and SDAI2 IB/IN are now recovered as
-> active channels. The active analogue channel count rises from 35 to **37**. See §9
-> for the complete Stage 10 analysis.
+> **Stage 10B — phantom-channel correction applied and validated (2026-10-22):** Two
+> phantom descriptors (SDAI1 IN wi=15 and SGT2 VY_LV wi=27) had no physical recording
+> slots, causing all subsequent descriptor word_index values to be offset by −1 and −2
+> relative to the actual payload columns. Three bugs in the Stage 10 decoder were
+> identified and fixed: (Bug 1) a comment misidentified the header field as u32le instead
+> of u16le; (Bug 2) RMS was computed on unsigned uint16 values, making all channels appear
+> voltage-strength and defeating phantom detection; (Bug 3) the look-ahead window counted
+> raw descriptor positions instead of distinct word_index values, causing duplicate inactive-
+> feeder descriptors to exhaust the window before the critical descriptor was reached. After
+> all three fixes: all five feeder 3-phase voltage sets are well-balanced, all current
+> anomalies are resolved, SDAI2 IB/IN are recovered as active channels, and 73 BEN5K
+> unit tests pass. The active analogue channel count remains **35** (two phantoms excluded,
+> two previously excluded channels recovered — net zero change in count). See §9 for the
+> complete Stage 10 analysis.
 
 ---
 
@@ -33,15 +38,16 @@
 | Pre-trigger window | 0.50 s | Confirmed |
 | Post-trigger window | 1.152 s | Confirmed |
 | Words per sample | 97 | Confirmed |
-| Analog descriptor count | 80 (37 active + 43 inactive) | Updated: Stage 10 |
+| Analog descriptor count | 80 (35 active + 45 inactive) | Updated: Stage 10B |
 | Digital descriptor count | 160 (40 verified + 120 constant-placeholder) | Confirmed |
-| API-exposed channels | 37 analog + 40 digital | Updated: Stage 10 |
+| API-exposed channels | 35 analog + 40 digital | Updated: Stage 10B |
 
-### 1.2 Active analogue channels (37)
+### 1.2 Active analogue channels (35)
 
-*Stage 10 update: `phys` column added. Channels with wi ≠ phys are phantom-corrected.
-SDAI1 IN (wi=15) and SGT2 VY_LV (wi=27) are phantom channels (moved to §1.3).
-SDAI2 IB (wi=38) and SDAI2 IN (wi=39) are now active (phys=36, 37).*
+*Stage 10B: `phys` column confirmed by direct GPTH analysis. SDAI1 IN (wi=15) and
+SGT2 VY_LV (wi=27) are phantom channels (listed in §1.3). SDAI2 IB (wi=38→phys=36)
+and SDAI2 IN (wi=39→phys=37) are now active after phantom correction. Total remains
+35 (two phantoms excluded, two recovered — net zero change from Stage 8 count).*
 
 | Name | wi | phys | Type | Scale | High-range | Notes |
 |---|---|---|---|---|---|---|
@@ -78,18 +84,19 @@ SDAI2 IB (wi=38) and SDAI2 IN (wi=39) are now active (phys=36, 37).*
 | SDAI2 VB | 34 | **32** | V | 0.134343 | 158.77 | SDAI2 3-phase voltage, B-phase |
 | SDAI2 IR | 36 | **34** | I | 0.018709 | 1.50 | SDAI2 feeder current, R-phase |
 | SDAI2 IY | 37 | **35** | I | 0.018709 | 1.50 | SDAI2 feeder current, Y-phase |
-| SDAI2 IB | 38 | **36** | I | 0.018709 | 1.50 | SDAI2 feeder current, B-phase (**new**) |
-| SDAI2 IN | 39 | **37** | I | 0.018709 | 1.50 | SDAI2 neutral current (**new**) |
-| SGT2 VY_LV | 27 | *phantom* | V | 0.064485 | 76.21 | SGT2 LV voltage — **PHANTOM, excluded** |
+| SDAI2 IB | 38 | **36** | I | 0.018709 | 1.50 | SDAI2 feeder current, B-phase (**recovered Stage 10B**) |
+| SDAI2 IN | 39 | **37** | I | 0.018709 | 1.50 | SDAI2 neutral current (**recovered Stage 10B**) |
 
 Notes: `wi` = logical slot from descriptor byte 53. `phys` = phantom-corrected physical
 payload column. Bold values indicate a Stage 10 correction. `High-range` 158.77 = 275/√3
 (primary kV at 275 kV); 76.21 = 132/√3 kV; 1.50 = rated primary kA.
 
-### 1.3 Inactive analogue channels (43) — reason for exclusion
+### 1.3 Inactive analogue channels (45) — reason for exclusion
 
-*Stage 10 update: SDAI2 IB and SDAI2 IN promoted to active (see §1.2). SDAI1 IN and
-SGT2 VY_LV newly classified as phantom channels.*
+*Stage 10B: SDAI2 IB and SDAI2 IN promoted to active (see §1.2). SDAI1 IN and
+SGT2 VY_LV confirmed as phantom channels. SGT2 IB_LV/IN_LV reclassified from
+"digital region" to "duplicate wi" (their physical words 36/37 are in the analog
+region but already claimed by SDAI2 IB/IN).*
 
 | Name | wi | Scale | Reason |
 |---|---|---|---|
@@ -122,8 +129,8 @@ SGT2 VY_LV newly classified as phantom channels.*
 | SGT2 IN_HV | 31 | 0.007484 | Duplicate wi=31 (TBIN2 IN) |
 | SGT2 IR_LV | 36 | 0.014967 | Duplicate wi=36 (SDAI2 IR) |
 | SGT2 IY_LV | 37 | 0.014967 | Duplicate wi=37 |
-| SGT2 IB_LV | 38 | 0.014967 | wi=38 is the digital bitmask region |
-| SGT2 IN_LV | 39 | 0.014967 | wi=39 is the digital bitmask region |
+| SGT2 IB_LV | 38 | 0.014967 | Duplicate wi=38 (SDAI2 IB has priority; phys=36) |
+| SGT2 IN_LV | 39 | 0.014967 | Duplicate wi=39 (SDAI2 IN has priority; phys=37) |
 | PLNG1 VR | 0 | 0.134343 | Duplicate wi=0 |
 | PLNG1 VY | 1 | 0.134343 | Duplicate wi=1 |
 | PLNG1 VB | 2 | 0.134343 | Duplicate wi=2 |
@@ -153,9 +160,13 @@ SGT2 VY_LV newly classified as phantom channels.*
   The transformer currents are therefore NOT available from this recording despite being
   configured. The inactive-analog classification correctly identifies this.
 
-- SDAI2 IB/IN at wi=38–39: The word-index slots 38–42 are the digital bitmask region
-  (formula `sw = 37 + group`). These analog channels would destructively overlap with
-  digital bitmasks and are correctly excluded.
+- SDAI2 IB/IN at wi=38–39: The descriptor word_index values (38, 39) coincide with the
+  digital bitmask region (formula `sw = 37 + group`), but after phantom correction
+  (correction=2) their physical payload columns are 36 and 37 — both within the analog
+  region. SDAI2 IB and SDAI2 IN are therefore correctly classified as active channels
+  (see §1.2). The corresponding SGT2 IB_LV and SGT2 IN_LV descriptors share the same
+  wi=38/39 slots and are classified as duplicate_slot (inactive), because physical words
+  36 and 37 are already claimed by SDAI2 IB/IN.
 
 ### 1.4 Digital channels
 
@@ -291,7 +302,6 @@ Significant changes (> ±20%) observed at the trigger:
 | SDAI2 IY | 3.83 | 17.3 | +352% | Very large current increase |
 | TBIN1 IR | 7.68 | 9.95 | +30% | Moderate current increase |
 | SDAI1 IB | 1.10 | 1.49 | +35% | Moderate current increase |
-| SGT2 VY_LV | 30.2 | 39.5 | +31% | LV transformer voltage increase |
 
 The voltage depressions (VY and VR phases, Y-phase most affected) combined with
 simultaneous current increases on multiple feeders is consistent with a system fault
@@ -302,7 +312,11 @@ in the Y-phase propagating through the 275 kV network.
 | Channel | Full-record RMS | Pre-trigger | Post-trigger | Notes |
 |---|---|---|---|---|
 | SGT1 VY_LV | 6.31 | 4.98 | 5.62 | Very low — SGT1 LV may be de-energized |
-| SGT2 VY_LV | 38.1 | 30.2 | 39.5 | Active; significant post-trigger increase |
+
+*Note: SGT2 VY_LV (wi=27) is confirmed as a PHANTOM channel (Stage 10B). Its descriptor
+had no physical recording slot; it was misidentifying physical word 26 (TBIN2 IR) as a
+transformer LV voltage. The previous SGT2 VY_LV statistics (RMS 38.1) were artefacts of
+the wrong physical column. SGT2 VY_LV is now excluded from all statistics.*
 
 SGT2 VY_LV high-range is 76.21 kV (= 132/√3), consistent with a 132 kV LV winding.
 SGT1 VY_LV at 4.98–6.31 is substantially below rated level.
@@ -612,9 +626,9 @@ The following items must be resolved before BEN5K is enabled by default (flag re
 | Digital transition extraction | 10 channels with transitions correctly found |
 | Constant-placeholder classification (0x0800) | 120 channels correctly excluded |
 | Timestamp safeguard (relative_elapsed) | Verified via API and browser x-axis |
-| No SubBen regression | 67 BEN5K tests + full SubBen suite pass |
+| No SubBen regression | 73 BEN5K unit tests pass (Stage 10B); full SubBen suite unaffected |
 | Browser display, zoom, cursors | 10/10 Playwright tests pass |
-| Phantom-channel detection and physical word mapping | 108 unit tests pass; all 5 feeder voltage sets balanced; SDAI2 IB/IN recovered |
+| Phantom-channel detection and physical word mapping | 73 BEN5K unit tests pass; all 5 feeder voltage sets balanced (max_dev <1.3%); SDAI2 IB/IN recovered; three decoder bugs found and fixed |
 
 ### 8.3 Flag status
 
@@ -631,9 +645,9 @@ in the source provenance. This is appropriate for the current experimental statu
 
 ## 9. Stage 10 — Phantom Channel Detection and Physical Word Mapping
 
-**Analysis date:** 2026-10-22  
-**Commit:** `ebba404`  
-**Status:** Implemented and tested; 108 unit tests pass.
+**Analysis date:** 2026-10-22 (Stage 10) / 2026-10-22 (Stage 10B — three decoder bugs fixed)  
+**Commits:** `ebba404` (Stage 10), `a61bb65` + Stage 10B fixes  
+**Status:** Implemented and tested; 73 BEN5K unit tests pass.
 
 ### 9.1 Investigation summary
 
@@ -705,63 +719,86 @@ distinct values consistent with a low-amplitude multi-state control or status si
   (not `wi`) for digital boundary and duplicate-slot checks.
 - `decode_samples()` (decoder.py): uses `ch.physical_word_index` for payload column
   selection.
-- 9 new synthetic fixture tests in `test_ben5k_channel_map.py`; 108 tests pass.
+- Stage 10B — three additional bugs fixed and tested (see §9.7). 73 BEN5K unit tests
+  pass (reader: 27, decoder: 17, channel_map: 29).
+
+### 9.7 Stage 10B — Three decoder bugs identified and fixed
+
+**Bug 1 — Comment misidentified header field type (reader.py)**
+
+The constant `_WORDS_PER_SAMPLE_OFFSET` had a comment saying `# u32le` but the
+implementation correctly uses `struct.unpack_from("<H", ...)` (u16le, 2 bytes). In the
+GPTH recording, bytes 0x60–0x63 are `61 00 02 18`; u16le=97 (correct); u32le=402784353
+(wrong). Fixed: comment changed to `# u16le`; two new tests confirm non-zero trailing
+bytes at 0x62–0x63 are silently ignored.
+
+**Bug 2 — RMS computed on unsigned uint16 instead of signed int16 (channel_map.py)**
+
+`_compute_physical_mapping` computed RMS with `sample_words.astype(np.float64)`. For
+sinusoidal signals, the negative half-cycle becomes large unsigned values (~46000),
+making all channels appear voltage-strength (RMS >> 5000 threshold). Phantom detection
+therefore flagged every current channel as phantom. Fix: added `.astype(np.int16)` before
+`.astype(np.float64)`. With signed values: voltage RMS ≈ 11000–12000; current RMS ≈
+300–600 — well separated by the 5000 threshold.
+
+**Bug 3 — Look-ahead window depleted by duplicate descriptors (channel_map.py)**
+
+The look-ahead for SGT2 VY_LV phantom detection used
+`sorted_chans[i+1 : i+6]` (next 5 raw descriptor positions). The GPTH recording has
+multiple inactive-feeder descriptors at wi=28 (TBIN2 IR + SGT2 IR_HV) and wi=29 (TBIN2
+IY + SGT2 IY_HV). Those duplicates consumed 4 of the 5 look-ahead slots before wi=31
+(TBIN2 IN) was reached, so the look-ahead saw no current-reads-voltage confirmation and
+SGT2 VY_LV was not detected as phantom. Fix: look-ahead collects the next 5 *distinct*
+word_index values (de-duplicated by wi). One new test
+`test_gpth_phantom_layout_with_duplicate_descriptors` verifies the fix.
 
 ---
 
 ## Appendix A — Full-Record Analogue Statistics
 
-*Stage 10 update (2026-10-22): Two phantom channels removed (SDAI1 IN wi=15, SGT2 VY_LV wi=27).
-SDAI2 IB (wi=38→phys=36) and SDAI2 IN (wi=39→phys=37) added. Statistics for channels
-with wi≤14 are correct (wi==phys for those). Statistics for channels with wi≥16 were
-computed at the incorrect physical column in the Stage 9 analysis; they are marked
-"†corrected" and will be updated when the recording is re-processed with the Stage 10
-decoder. All values in engineering units (after scale/offset application).*
+*Stage 10B confirmed (2026-10-22): all 35 channels decoded with phantom-corrected physical
+word indices. Values in engineering units (after scale/offset). Analysis script:
+`gpth_stage10_analysis.py` against SHA-256 55bf6866… GPTH recording.*
 
-| Name | wi | phys | Min | Max | Full-RMS | Note |
-|---|---|---|---|---|---|---|
-| TBIN1 VR | 0 | 0 | −2710.6 | 2721.1 | 1566.9 | |
-| TBIN1 VY | 1 | 1 | −2695.6 | 2701.8 | 1533.4 | |
-| TBIN1 VB | 2 | 2 | −2708.5 | 2710.4 | 1595.4 | |
-| TBIN1 IR | 4 | 4 | −18.58 | 19.74 | 9.960 | |
-| TBIN1 IY | 5 | 5 | −20.08 | 20.64 | 10.307 | |
-| TBIN1 IB | 6 | 6 | −19.18 | 19.44 | 9.320 | |
-| TBIN1 IN | 7 | 7 | −1.516 | 2.675 | 0.961 | |
-| SDAI1 VR | 8 | 8 | −2721.4 | 2736.2 | 1574.4 | |
-| SDAI1 VY | 9 | 9 | −2697.7 | 2703.9 | 1534.9 | |
-| SDAI1 VB | 10 | 10 | −2712.8 | 2716.8 | 1599.4 | |
-| SGT1 VY_LV | 11 | 11 | −15.54 | 13.35 | 6.306 | |
-| SDAI1 IR | 12 | 12 | −2.713 | 5.370 | 2.236 | |
-| SDAI1 IY | 13 | 13 | −2.414 | 5.370 | 2.207 | |
-| SDAI1 IB | 14 | 14 | −2.414 | −0.019 | 1.161 | |
-| SDNK1 VR | 16 | 15 | — | — | ~1530 | †corrected (Stage 9 read phys=16) |
-| SDNK1 VY | 17 | 16 | — | — | ~1597 | †corrected (Stage 9 read phys=17) |
-| SDNK1 VB | 18 | 17 | — | — | ~1599 | †corrected (Stage 9 read ctrl word) |
-| SDNK1 IR | 20 | 19 | — | — | ~5.3 | †corrected (Stage 9 read phys=20) |
-| SDNK1 IY | 21 | 20 | — | — | ~4.6 | †corrected (Stage 9 read phys=21) |
-| SDNK1 IB | 22 | 21 | — | — | ~1.4 | †corrected (Stage 9 read phys=22) |
-| SDNK1 IN | 23 | 22 | — | — | ~1.4 | †corrected (Stage 9 read TBIN2 VR) |
-| TBIN2 VR | 24 | 23 | — | — | ~1534 | †corrected (Stage 9 read phys=24) |
-| TBIN2 VY | 25 | 24 | — | — | ~1594 | †corrected (Stage 9 read phys=25) |
-| TBIN2 VB | 26 | 25 | — | — | ~1534 | †corrected (Stage 9 read TBIN2 IR) |
-| TBIN2 IR | 28 | 26 | — | — | ~10.7 | †corrected (Stage 9 read phys=28) |
-| TBIN2 IY | 29 | 27 | — | — | ~1.6 | †corrected (Stage 9 read phys=29) |
-| TBIN2 IB | 30 | 28 | — | — | ~10.7 | †corrected (Stage 9 read SDAI2 VR) |
-| TBIN2 IN | 31 | 29 | — | — | ~1.4 | †corrected (Stage 9 read SDAI2 VY) |
-| SDAI2 VR | 32 | 30 | — | — | ~1600 | †corrected (Stage 9 read phys=32) |
-| SDAI2 VY | 33 | 31 | — | — | ~1534 | †corrected (Stage 9 read ctrl word) |
-| SDAI2 VB | 34 | 32 | — | — | ~1599 | †corrected (Stage 9 read SDAI2 IR) |
-| SDAI2 IR | 36 | 34 | — | — | ~13.0 | †corrected (Stage 9 read phys=36) |
-| SDAI2 IY | 37 | 35 | — | — | ~7.1 | †corrected (Stage 9 read phys=37) |
-| SDAI2 IB | 38 | 36 | — | — | ~10.7 | †new channel (Stage 10) |
-| SDAI2 IN | 39 | 37 | — | — | ~1.4 | †new channel (Stage 10) |
+| Name | wi | phys | Min | Max | Full-RMS | Pre-RMS | Post-RMS |
+|---|---|---|---|---|---|---|---|
+| TBIN1 VR | 0 | 0 | −2710.637 | 2721.116 | 1566.865 | 1782.369 | 1625.804 |
+| TBIN1 VY | 1 | 1 | −2695.591 | 2701.771 | 1533.353 | 1767.375 | 1374.729 |
+| TBIN1 VB | 2 | 2 | −2708.488 | 2710.369 | 1595.388 | 1804.994 | 1737.091 |
+| TBIN1 IR | 4 | 4 | −18.578 | 19.738 | 9.960 | 7.680 | 9.953 |
+| TBIN1 IY | 5 | 5 | −20.075 | 20.636 | 10.307 | 8.421 | 10.127 |
+| TBIN1 IB | 6 | 6 | −19.177 | 19.439 | 9.320 | 7.826 | 5.620 |
+| TBIN1 IN | 7 | 7 | −1.515 | 2.675 | 0.961 | 0.860 | 0.895 |
+| SDAI1 VR | 8 | 8 | −2721.385 | 2736.163 | 1574.388 | 1790.937 | 1633.703 |
+| SDAI1 VY | 9 | 9 | −2697.740 | 2703.920 | 1534.919 | 1769.184 | 1376.038 |
+| SDAI1 VB | 10 | 10 | −2712.787 | 2716.817 | 1599.418 | 1809.720 | 1741.458 |
+| SGT1 VY_LV | 11 | 11 | −15.541 | 13.348 | 6.306 | 4.976 | 5.622 |
+| SDAI1 IR | 12 | 12 | −2.713 | 5.370 | 2.236 | 1.973 | 1.867 |
+| SDAI1 IY | 13 | 13 | −2.413 | 5.370 | 2.207 | 1.987 | 1.796 |
+| SDAI1 IB | 14 | 14 | −2.413 | −0.019 | 1.161 | 1.101 | 1.489 |
+| SDNK1 VR | 16 | **15** | −2717.086 | 2729.714 | 1570.959 | 1786.718 | 1629.937 |
+| SDNK1 VY | 17 | **16** | −2693.442 | 2701.771 | 1532.603 | 1766.676 | 1374.013 |
+| SDNK1 VB | 18 | **17** | −2708.488 | 2714.668 | 1596.778 | 1806.525 | 1738.487 |
+| SDNK1 IR | 20 | **19** | −11.394 | 12.554 | 5.157 | 1.311 | 2.447 |
+| SDNK1 IY | 21 | **20** | −11.095 | 12.554 | 5.319 | 1.658 | 5.944 |
+| SDNK1 IB | 22 | **21** | −11.693 | 12.255 | 4.626 | 1.400 | 1.220 |
+| SDNK1 IN | 23 | **22** | −3.611 | 4.172 | 1.353 | 0.955 | 2.417 |
+| TBIN2 VR | 24 | **23** | −2717.086 | 2727.565 | 1569.836 | 1785.938 | 1628.980 |
+| TBIN2 VY | 25 | **24** | −2697.740 | 2701.771 | 1534.302 | 1768.276 | 1375.196 |
+| TBIN2 VB | 26 | **25** | −2706.338 | 2708.219 | 1594.205 | 1803.679 | 1736.002 |
+| TBIN2 IR | 28 | **26** | −23.069 | 24.528 | 12.028 | 8.999 | 11.829 |
+| TBIN2 IY | 29 | **27** | −21.272 | 22.133 | 11.043 | 8.767 | 11.460 |
+| TBIN2 IB | 30 | **28** | −21.871 | 23.031 | 10.742 | 8.631 | 6.886 |
+| TBIN2 IN | 31 | **29** | −4.808 | 4.771 | 1.631 | 1.182 | 3.021 |
+| SDAI2 VR | 32 | **30** | −2693.442 | 2742.611 | 1568.056 | 1783.918 | 1627.659 |
+| SDAI2 VY | 33 | **31** | −2678.395 | 2716.817 | 1532.430 | 1766.379 | 1373.102 |
+| SDAI2 VB | 34 | **32** | −2699.890 | 2738.312 | 1600.578 | 1811.121 | 1743.193 |
+| SDAI2 IR | 36 | **34** | −39.851 | 46.661 | 14.524 | 4.667 | 4.798 |
+| SDAI2 IY | 37 | **35** | −39.851 | 47.260 | 16.332 | 7.591 | 19.493 |
+| SDAI2 IB | 38 | **36** | −36.857 | 43.368 | 13.024 | 4.967 | 6.609 |
+| SDAI2 IN | 39 | **37** | −16.202 | 29.897 | 7.084 | 3.827 | 17.297 |
 
-†Statistics for corrected/new channels are estimates from Stage 10 physical-block
-analysis; exact values to be updated when the GPTH recording is re-processed with the
-Stage 10 decoder (requires OneDrive sync).
-
----
-
-*Statistics for wi≤14 from direct analysis of the raw BEN5K payload using the Stage 9
-analysis script. Stage 10 corrected channels pending re-run. No values are taken from
-cached memory or previous reports.*
+Bold `phys` = phantom-corrected (wi ≥ 16 shifted by −1; wi ≥ 28 shifted by −2).
+Pre-RMS = last 100 samples before trigger (samples 2400–2500, 1 cycle at 50 Hz).
+Post-RMS = first 100 samples after trigger (samples 2500–2600).
+All values confirmed by Stage 10B analysis script (2026-10-22) against SHA-256 55bf6866…

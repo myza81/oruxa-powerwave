@@ -34,10 +34,13 @@ columns have confirmed variance (i.e. verified_digital words only).
 In the GPTH 275 kV recording (sample_words provided):
   verified_digital             groups 1-5  →  sample words 38-42 (varying)
   constant_placeholder_digital groups 6-40 →  sample words 43-77 (constant 0x0800)
-  recorded_analog              phys 0-37   →  TBIN1/SDAI1/SDNK1/TBIN2/SDAI2 channels
-                                              (wi 0-39; two phantoms shift wi≥16 by −1
-                                               and wi≥28 by −2; SDAI2 IB/IN now included)
-  inactive_analog (phantom)    wi 15,27    →  SDAI1 IN (current/voltage phantoms)
+  recorded_analog              35 channels →  TBIN1/SDAI1/SDNK1/TBIN2/SDAI2 + SGT1 VY_LV
+                                              (physical words 0-37 used; words 3, 18, 33 have
+                                               no descriptor — no neutral-voltage slot there;
+                                               two phantoms shift wi≥16 by −1 and wi≥28 by −2;
+                                               SDAI2 IB wi=38→phys=36 and IN wi=39→phys=37
+                                               are correctly included after phantom correction)
+  inactive_analog (phantom)    wi 15,27    →  SDAI1 IN + SGT2 VY_LV
   inactive_analog (duplicate)  wi 0-7 ×3   →  SDNK2/SGT1-2/PLNG1-2 (duplicate wi)
 """
 
@@ -161,7 +164,15 @@ def _compute_physical_mapping(
          incremented.
     """
     n_words = sample_words.shape[1]
-    raw_rms = np.sqrt(np.mean(sample_words.astype(np.float64) ** 2, axis=0))
+    # Must interpret as SIGNED int16 before computing RMS.  The raw payload is
+    # big-endian uint16, but each word encodes a signed ADC sample.  Computing
+    # RMS on the unsigned representation gives ~46 000 for every channel
+    # (negative values wrap to large uint16; the 65536^2/2 term dominates),
+    # making the phantom threshold meaningless.  With signed int16:
+    #   voltage RMS ≈ 11 000–12 000  (amplitude ~16 000)
+    #   current RMS ≈ 300–600        (amplitude ~500–800)
+    # These are well separated by the 5 000-count threshold.
+    raw_rms = np.sqrt(np.mean(sample_words.astype(np.int16).astype(np.float64) ** 2, axis=0))
 
     sorted_chans = sorted(analog, key=lambda c: c.word_index)
     correction = 0
@@ -190,9 +201,24 @@ def _compute_physical_mapping(
         ):
             # Voltage descriptor with current-like amplitude.  Confirm phantom
             # by checking if a following current descriptor in this feeder block
-            # (next 5 channels) would also read a voltage-strength signal under
-            # the current (unincremented) correction.
-            look_ahead = sorted_chans[i + 1 : i + 6]
+            # would also read a voltage-strength signal under the current
+            # (unincremented) correction.
+            #
+            # The look-ahead MUST be de-duplicated by word_index: real recordings
+            # contain many inactive-feeder descriptors that share the same wi as
+            # active-channel descriptors.  Those duplicates consume the raw
+            # sorted_chans window before the relevant distinct-wi descriptor is
+            # reached.  Collecting the next 5 DISTINCT word_index values (taking
+            # the first descriptor encountered per wi) gives the correct result
+            # regardless of how many inactive feeders share each slot.
+            look_ahead: list = []
+            seen_wi: set[int] = set()
+            for ch2 in sorted_chans[i + 1 :]:
+                if ch2.word_index not in seen_wi:
+                    seen_wi.add(ch2.word_index)
+                    look_ahead.append(ch2)
+                if len(look_ahead) == 5:
+                    break
             future_mismatch = any(
                 ch2.type_byte != 0x00
                 and 0 <= (ch2.word_index - correction) < n_words

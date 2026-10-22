@@ -336,8 +336,9 @@ def test_gpth_like_with_variance_detection():
 def _make_sw(n_samples: int, wps: int, **col_rms_vals: float) -> np.ndarray:
     """Build sample_words where each named column has approximately the given RMS.
 
-    Uses a constant value equal to floor(rms_val) for each column so that
-    raw_rms ≈ rms_val (for constant signals, rms = the constant value).
+    Uses a constant value equal to floor(rms_val) for each column.  All values
+    must be in [0, 32767] so that the uint16 and int16 representations are
+    identical, giving raw_rms(int16) == rms_val for constant columns.
     """
     sw = np.zeros((n_samples, wps), dtype=">u2")
     for col_str, rms_val in col_rms_vals.items():
@@ -554,3 +555,72 @@ def test_gpth_phantom_layout():
     # SDAI2_V_32 (wi=32) must be at physical 30 (after -2 correction)
     sdai2_vr = next(ch for ch in cm.recorded_analog if ch.name == "SDAI2_V_32")
     assert sdai2_vr.physical_word_index == 30
+
+
+def test_gpth_phantom_layout_with_duplicate_descriptors():
+    """Same as test_gpth_phantom_layout but adds inactive-feeder duplicate
+    descriptors at each wi, mirroring the real GPTH recording.
+
+    The look-ahead for the SGT2_VY_LV voltage phantom must still find the
+    future mismatch at wi=31 (current reading voltage-strength at phys=30),
+    even though wi=28 and wi=29 each have TWO descriptors that would otherwise
+    consume 4 of the 5 look-ahead slots before wi=31 is reached.
+
+    This test was added after discovering that the raw look-ahead window
+    (sorted_chans[i+1:i+6]) failed on real recordings because duplicates
+    exhausted the window.  The fix collects the next 5 DISTINCT word_index
+    values instead.
+    """
+    # Base descriptors (same as test_gpth_phantom_layout)
+    base = (
+        [_analog(f"TBIN1_SDAI1_{i}", i) for i in range(15)]
+        + [_current("SDAI1_IN", 15)]
+        + [_analog(f"SDNK1_TBIN2_V_{i}", i) for i in range(16, 27)]
+        + [_analog("SGT2_VY_LV", 27)]
+        + [_current(f"TBIN2_IR_{i}", i) for i in range(28, 32)]
+        + [_analog(f"SDAI2_V_{i}", i) for i in range(32, 38)]
+        + [_current("SDAI2_IB", 38)]
+        + [_current("SDAI2_IN", 39)]
+    )
+    # Add inactive-feeder duplicates at wi=28 and wi=29 (like SGT2 IR_HV / IY_HV
+    # in the real recording), which occupy the first two look-ahead slots.
+    duplicates = (
+        [_current(f"DUP_28_{k}", 28) for k in range(2)]  # 2 extra at wi=28
+        + [_current(f"DUP_29_{k}", 29) for k in range(2)]  # 2 extra at wi=29
+    )
+    analog = base + duplicates
+    digital = [_digital("CB_OPEN", 1)]
+
+    wps = 97
+    n_samples = 20
+    sw = np.zeros((n_samples, wps), dtype=">u2")
+    for col in list(range(15)) + [15, 16, 17, 23, 24, 25, 30, 31, 32]:
+        sw[:, col] = 11000
+    for col in list(range(19, 23)) + list(range(26, 30)) + list(range(34, 38)):
+        sw[:, col] = 500
+    sw[:, 18] = 30
+    sw[:, 33] = 30
+    for i in range(n_samples):
+        sw[i, 38] = i % 2
+
+    cm = classify_channels(analog, digital, words_per_sample=wps, sample_words=sw)
+    recorded_names = {ch.name for ch in cm.recorded_analog}
+    inactive_names = {ch.name for ch in cm.inactive_analog}
+
+    # Both phantoms must be excluded despite the duplicates crowding the look-ahead
+    assert "SDAI1_IN" in inactive_names
+    assert "SGT2_VY_LV" in inactive_names
+
+    # SDAI2 IB and IN must be recovered (phys=36, 37 after -2 correction)
+    assert "SDAI2_IB" in recorded_names
+    assert "SDAI2_IN" in recorded_names
+    sdai2_ib = next(ch for ch in cm.recorded_analog if ch.name == "SDAI2_IB")
+    assert sdai2_ib.physical_word_index == 36
+
+    # TBIN2_IR_28 must land at physical 26 (-2 correction), not 27 (-1 only)
+    tbin2_ir = next(ch for ch in cm.recorded_analog if ch.name == "TBIN2_IR_28")
+    assert tbin2_ir.physical_word_index == 26
+
+    # TBIN2_IR_31 (TBIN2 IN) must be recorded at physical 29, not classified phantom
+    tbin2_in = next(ch for ch in cm.recorded_analog if ch.name == "TBIN2_IR_31")
+    assert tbin2_in.physical_word_index == 29

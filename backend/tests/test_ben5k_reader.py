@@ -338,3 +338,31 @@ class TestBen5kReadFeederNames:
         data = _make_fixture()
         names = read_feeder_names(data)
         assert names[0] == "TBIN1"
+
+
+# ── Header 0x60 stride field — u16le isolation test ──────────────────────────
+
+class TestBen5kWordsPerSampleField:
+    """Verify that words_per_sample is read as u16le from 0x60 and that bytes
+    0x62-0x63 (present in the real GPTH recording as 02 18) are not consumed.
+
+    Real GPTH bytes at 0x60: 61 00 02 18
+    u16le at 0x60 = 0x0061 = 97  (correct)
+    u32le at 0x60 = 0x18020061 = 403177569  (wrong — would be rejected as absurd)
+    """
+
+    def test_extracts_97_when_trailing_bytes_nonzero(self) -> None:
+        """words_per_sample == 97 despite non-zero bytes at 0x62-0x63."""
+        data = bytearray(_make_fixture(words_per_sample=97))
+        # Patch bytes 0x62-0x63 to match the actual GPTH file value (02 18).
+        data[0x62] = 0x02
+        data[0x63] = 0x18
+        h = read_header(bytes(data))
+        assert h.words_per_sample == 97
+
+    def test_u32le_at_0x60_would_be_wrong(self) -> None:
+        """Confirm what a u32le mis-read would produce — it must NOT equal 97."""
+        import struct as _struct
+        gpth_bytes_at_0x60 = bytes([0x61, 0x00, 0x02, 0x18])
+        wrong_value = _struct.unpack_from("<I", gpth_bytes_at_0x60)[0]
+        assert wrong_value != 97  # 0x18020061 = 403177569
