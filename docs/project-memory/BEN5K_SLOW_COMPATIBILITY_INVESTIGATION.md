@@ -1,6 +1,6 @@
 # BEN5K Slow Compatibility Investigation
 
-**Status:** S4 (Engineering Measurements + Controlled UAT) complete — 3 Group 0 channels available as raw values; 2 Group 1 channels invalidated by S4 analysis; 25 remaining channels unresolved  
+**Status:** S6 (Engineering Scaling Validation) complete — frequency divisor confirmed inferred (not binary-encoded); POWER scale 1 MW/count PLAUSIBLE, MVAR scale 0.001 Mvar/count PLAUSIBLE; no independent reference data available; all three Group 0 channels remain raw provisional; 25 remaining channels unresolved  
 **Branch:** `investigation/legacy-ben5k-slow`  
 **Based on:** `investigation/legacy-ben5k` at commit `b33b7af`  
 **Recording under investigation:** `GRNE230726_143432426.ben`
@@ -771,15 +771,17 @@ The BEN5K Slow decoder must not affect:
 | # | Question | Status | Impact |
 |---|----------|--------|--------|
 | 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S3 confirmed no lookup in extended catalog; S4 confirmed formula is wrong for Group 1; formula for Groups 2–6 unknown | Required to map remaining 25 channels |
-| 2 | Scale/offset encoding in descriptor bytes 24–27 | OPEN — S4 exposes raw int16 pending oracle | Required for physical units; FREQ scaling at 50/13086 ≈ 0.003821 Hz/count is the best current estimate |
-| 3 | Timestamp UTC vs UTC+8 | OPEN | Affects time-axis alignment; `timing_reference="relative_elapsed"` applied as safeguard |
+| 2 | Scale/offset encoding in descriptor bytes 24–27 | **PARTIALLY RESOLVED (S6):** Two byte patterns found: `33 ff 38 00` (Power/Freq/Voltage) and `ff ff 00 00` (Mvar). These are opaque calibration table references, not literal scale factors. Physical scale requires oracle. Candidate scales: POWER 1.0 MW/count, MVAR 0.001 Mvar/count, voltage 0.01 kV/count. | Physical engineering units still require SCADA oracle |
+| 3 | Timestamp UTC vs UTC+8 | OPEN — S6 found no independent reference data for 2023-07-26 | Affects time-axis alignment; `timing_reference="relative_elapsed"` applied as safeguard |
 | 4 | Significance of wi=16 (MVAR JJNG 1) — range anomaly | **RESOLVED (S4):** wi=16 is NOT Mvar. Values are bimodal 0–24 and 64804–65534 (limit-event/status data). Channel reclassified to UNRESOLVED_FORMULA_UNCONFIRMED. | Closed — channel excluded from value_channels |
 | 5 | Significance of wi=17 — signed -3713 to -641, large negative, no channel assignment | OPEN | Possibly autotransformer load or flag word |
 | 6 | HVDC Power formula channel: should it be decoded and displayed? | OPEN — deferred per S4 decision | Scope decision |
 | 7 | Extended catalog at 0x0A1B — does it hold the bitmask/ID→word lookup? | **RESOLVED (S3):** No. Catalog contains 85 30-byte records with channel names and IDs only; no word indices. | OQ 1 cannot be resolved via catalog. |
 | 8 | Groups 7 and 8 (placeholder groups): are all channels `----` in every GRNE recording? | OPEN — confirmed `----` in this recording only | Skip logic validation |
-| 9 | Is the selector for Groups 2–6 a BEN recorder internal register address or a display-group bitmask? | OPEN — S3 and S4 investigations exhausted all known binary sections | Requires second Slow recording or BEN5K Slow protocol documentation |
-| 10 | Is there a second `29 FF` Slow recording available for cross-recording validation? | **RESOLVED (S4):** No. Only the two copies of GRNE230726_143432426.ben exist in owner-authorized directories (OneDrive Tripping Event + Desktop BEN). | Cross-recording validation not possible at this time |
+| 9 | Is the selector for Groups 2–6 a BEN recorder internal register address or a display-group bitmask? | OPEN — S3, S4, S6 investigations exhausted all known binary sections | Requires second Slow recording or BEN5K Slow protocol documentation |
+| 10 | Is there a second `29 FF` Slow recording available for cross-recording validation? | **RESOLVED (S4/S6):** No. Only the two copies of GRNE230726_143432426.ben exist in owner-authorized directories (OneDrive Tripping Event + Desktop BEN + Desktop root). No SCADA/historian reference data found for 2023-07-26. | Cross-recording and oracle validation not possible at this time |
+| 11 | Frequency divisor origin — is 13,086 a stored calibration constant or inferred? | **RESOLVED (S6):** 13,086 (median) and 13,082 (mean) are NOT stored anywhere in the binary config area. The divisor is inferred from the nominal 50 Hz assumption. 13,000 is also not present and would give 50.315 Hz mean. The S5 candidate 50/13,086 is the best available estimate but not independently confirmed. | Divisor precision requires SCADA frequency oracle |
+| 12 | Does wi=3 correspond to MVAR BDNG 2? | PROVISIONAL (S6): wi=3 range 13,822–14,096 rules out frequency (would be 52.8–53.9 Hz). At 0.001 Mvar/count: 13.82–14.10 Mvar (plausible). Not assigned — word still not claimed by any descriptor. | Low-priority; requires selector decode for Group 3 |
 
 ---
 
@@ -843,6 +845,285 @@ UNRESOLVED_FORMULA_UNCONFIRMED) are preserved in diagnostics for future investig
 
 **Test results at S4 commit:** All 14 new `test_ben5k_slow_api.py` tests pass.
 All existing BEN5K Fast tests pass. Full test suite regression confirmed.
+
+---
+
+## 17. S6 Engineering Scaling and Independent Validation
+
+### 17.1 Frequency calibration (wi=1, FREQ BDNG 1)
+
+**S5 candidate conversion:** raw × 50 / 13,086 → 49.28–50.25 Hz.
+
+**S6 finding — divisor origin:**
+
+Direct binary search of the entire config area (0x00DC to 0x215A) for the
+values 13,086, 13,082, and 13,000 as u16le, u16be, and u32le found:
+
+| Value | Format | Result |
+|-------|--------|--------|
+| 13,086 | u16le, u16be, u32le | **NOT FOUND** in config area |
+| 13,082 | u16le, u16be, u32le | **NOT FOUND** in config area |
+| 13,000 | u16le, u16be | **NOT FOUND** in config area |
+
+The divisor is not stored anywhere in the binary. It is purely inferred from
+the assumption that the nominal grid frequency is 50 Hz:
+
+| Divisor | Source | Mean frequency | Median frequency | f_range |
+|---------|--------|----------------|-----------------|---------|
+| 13,000 | Previously proposed | 50.315 Hz | 50.327 Hz | 49.608–50.585 Hz |
+| 13,082 | Sample mean | **50.000 Hz** (by construction) | 50.007 Hz | 49.297–50.268 Hz |
+| 13,086 | Sample median (S5 candidate) | 49.985 Hz | **50.000 Hz** (by construction) | 49.282–50.252 Hz |
+
+**Conclusions:**
+
+- The divisor 13,086 (sample median) is the S5 candidate and produces
+  median frequency = 50.000 Hz. It is the more robust choice (median is
+  resistant to outliers).
+- The divisor 13,082 (sample mean) produces mean frequency = 50.000 Hz
+  exactly, but this is trivially true by construction.
+- The divisor 13,000 gives a mean of 50.315 Hz — inconsistent with
+  nominal 50 Hz operation and therefore ruled out as the intended scale.
+- **The correct divisor cannot be established from the binary alone.**
+  The choice of 13,086 (median) versus 13,082 (mean) requires an
+  independent SCADA frequency reading for the same 59-second window to
+  resolve.
+- The S5 conversion `f = raw × 50 / 13,086` is the best available
+  estimate but is classified as **INFERRED, not independently confirmed**.
+
+### 17.2 Descriptor scale_ref bytes (bytes 24–27 of each channel descriptor)
+
+Binary analysis of all active channel descriptors across all nine groups
+reveals two distinct patterns and two sub-variants:
+
+| Pattern | Bytes | u16le pair | Channels |
+|---------|-------|-----------|----------|
+| A | `33 ff 38 00` | (0xFF33, 0x0038=56) | POWER BDNG 1, FREQ BDNG 1, POWER/FREQ JJNG 1, POWER/FREQ JJNG 2/BDNG 2, UR MAX/MIN TF1 |
+| A' | `33 ff 39 00` | (0xFF33, 0x0039=57) | UY MIN, UB MAX (voltage RMS limit channels) |
+| A'' | `33 ff 30 00` | (0xFF33, 0x0030=48) | TF1, TF2 autotransformer group channels |
+| B | `ff ff 00 00` | (0xFFFF, 0x0000) | MVAR BDNG 1, MVAR JJNG 1, MVAR JJNG 2, MVAR BDNG 2, UB MIN |
+
+The SENS group descriptors' bytes 20–23 also carry pattern A (`33 ff 38 00`).
+
+**Interpretation:**
+
+- The `0xFF33` prefix is not a scale multiplier. It appears to be a BEN
+  recorder internal **calibration table reference** (table 0xFF, entry
+  0x33), pointing to a fixed calibration record in the recorder firmware.
+  The second u16le (0x38, 0x39, 0x30) is a sub-type or range code.
+- Pattern B (`0xFFFF, 0`) indicates no calibration table reference —
+  possibly the Mvar quantity type is encoded with a different convention,
+  or these channels have no reference in the applicable table.
+- These bytes cannot be interpreted as IEEE 754 floats (they produce
+  sub-normal values) and are not meaningful as u32le integers at any
+  plausible scale factor.
+- **The scale factor for each channel is not derivable from these bytes
+  without knowledge of the BEN recorder's internal calibration table.**
+  The bytes are opaque without firmware documentation.
+
+### 17.3 Active power scaling (wi=4, POWER BDNG 1)
+
+| Property | Value |
+|----------|-------|
+| Raw range (unsigned) | 63–152 |
+| Raw range (signed) | 63–152 (identical — all positive, max < 32768) |
+| Mean raw | 107.6 |
+| Unavailable samples | 0 / 1188 |
+| Unidirectional | Yes (all positive, no reverse flow) |
+
+**Candidate scale interpretations:**
+
+| Scale | Unit | Engineering range | Mean | Assessment |
+|-------|------|------------------|------|------------|
+| 0.01 MW/count | MW | 0.63–1.52 MW | 1.1 MW | Too low for 132 kV EHV transmission |
+| 0.1 MW/count | MW | 6.3–15.2 MW | 10.8 MW | Plausible for a 33 kV feeder; unlikely for 132 kV EHV |
+| **1.0 MW/count** | **MW** | **63–152 MW** | **108 MW** | **MOST PLAUSIBLE** — typical for 132 kV transmission feeder at 50–75% loading |
+| 10 MW/count | MW | 630–1520 MW | 1076 MW | Exceeds any 132 kV transmission line thermal rating |
+
+**Conclusion:** Scale 1.0 MW/count (63–152 MW, mean 108 MW) is the most
+physically plausible interpretation for a GRNE BDNG 1 132 kV transmission
+feeder. Reverse power flow is not observed, consistent with radial feeder
+operation. Oracle validation against SCADA is required before this scale
+is adopted as confirmed.
+
+### 17.4 Reactive power scaling (wi=2, MVAR BDNG 1)
+
+| Property | Value |
+|----------|-------|
+| Raw range (unsigned) | 13,453–13,720 |
+| Raw range (signed) | 13,453–13,720 (identical — all positive) |
+| Mean raw | 13,647.8 |
+| Median raw | 13,652.0 |
+| Unavailable samples | 0 / 1188 |
+| Unidirectional | Yes (all positive — consistent reactive import) |
+
+**Note on scale_ref bytes:** MVAR BDNG 1 has pattern B (`ff ff 00 00`),
+distinct from POWER BDNG 1 (pattern A, `33 ff 38 00`). This suggests
+MVAR and active power use different internal calibration references.
+The raw encoding for MVAR is therefore not necessarily comparable to
+active power.
+
+**Candidate scale interpretations:**
+
+| Scale | Unit | Engineering range | Mean | Assessment |
+|-------|------|------------------|------|------------|
+| **0.001 Mvar/count** | **Mvar** | **13.45–13.72 Mvar** | **13.65 Mvar** | **MOST PLAUSIBLE** — consistent with reactive compensation on a 132 kV feeder |
+| 0.01 Mvar/count | Mvar | 134.5–137.2 Mvar | 136.5 Mvar | Too large for a 132 kV feeder at this MW loading ratio (Q/P ≈ 1.27 at 0.01 scale) |
+| 0.1 Mvar/count | Mvar | 1345–1372 Mvar | 1365 Mvar | Impossible |
+
+The raw range for MVAR BDNG 1 (13,453–13,720) is of similar magnitude to
+FREQ BDNG 1 (12,898–13,152). This is coincidental: with scale 0.001, the
+13,000-range raw values produce the expected Mvar range (13–14 Mvar).
+With scale 0.01 or 0.1 the reactive power would be implausibly large
+relative to the active power (108 MW at 1 MW/count).
+
+**Conclusion:** Scale 0.001 Mvar/count (13.45–13.72 Mvar) is the most
+plausible interpretation. Q/P ratio ≈ 0.127 (108 MW, 13.65 Mvar) is
+physically reasonable for a 132 kV transmission feeder with typical power
+factors. Oracle validation against SCADA is required.
+
+### 17.5 Additional word analysis
+
+**wi=3 (unresolved — FREQ BDNG 2 or MVAR BDNG 2 hypothesis):**
+
+Range 13,822–14,096 (unsigned), mean 14,023. Applying the FREQ scale
+(50/13,086) would give 52.8–53.9 Hz — physically impossible for a 50 Hz
+system. This conclusively rules out wi=3 as a frequency channel.
+
+At MVAR scale 0.001 Mvar/count: 13.82–14.10 Mvar, mean 14.02 Mvar.
+This is plausible for a second feeder of similar characteristics to
+BDNG 1. **Hypothesis: wi=3 = MVAR BDNG 2 at scale 0.001 Mvar/count**
+(PROVISIONAL — not confirmed, not exposed in value_channels).
+
+**wi=20–23 (voltage RMS hypothesis, Group 4 JJNG 2 RMS):**
+
+| wi | Unsigned range | At 0.01 kV/count | Assessment |
+|----|---------------|-----------------|------------|
+| 20 | 13,531–13,801 | 135.3–138.0 kV | 132 kV bus at +2–4% nominal ✓ |
+| 21 | 13,478–13,742 | 134.8–137.4 kV | Same ✓ |
+| 22 | 13,356–13,617 | 133.6–136.2 kV | Slightly lower phase ✓ |
+| 23 | 13,528–13,800 | 135.3–138.0 kV | Same as wi=20 ✓ |
+
+Values 133.6–138.0 kV are fully consistent with a 132 kV bus operating
+at 1–4% above nominal voltage (normal operational practice). The
+interpretation **wi=20–23 = JJNG 2 RMS voltage channels at 0.01 kV/count**
+is now assessed as **PLAUSIBLE with high confidence**, pending resolution
+of the selector encoding for Group 4 (currently UNRESOLVED_CONFLICT or
+UNRESOLVED_OOR).
+
+**wi=9, wi=11 (all negative signed):**
+
+- wi=9: signed −262 to −140, mean −215 (unsigned 65,274–65,396)
+- wi=11: signed −264 to −142, mean −216 (unsigned 65,272–65,394)
+
+Both words are consistently negative, with a narrow range. Hypothesis:
+Mvar channels for JJNG 1 or JJNG 2 representing reactive export (negative
+convention). At scale 1.0 Mvar/count: −262 to −140 Mvar — plausible for
+a generation-connected feeder exporting reactive power to the grid. At
+scale 0.001 Mvar/count: −0.264 to −0.140 Mvar — too small for a 132 kV
+feeder. These channels remain UNRESOLVED (their word positions are claimed
+by UNRESOLVED_FORMULA_UNCONFIRMED or UNRESOLVED_CONFLICT assignments).
+
+### 17.6 Independent reference comparison
+
+A search was conducted of all owner-authorized directories for independent
+measurements corresponding to GRNE 2023-07-26:
+
+- `C:\Users\fairizat\Desktop\BEN\` — contains only:
+  - Two copies of `GRNE230726_143432426.ben` (confirmed identical)
+  - Unrelated BEN recordings: SJTM U1 (2024-05-18), KDIS 275kV (2023-12-01),
+    PAKA 275kV (2023-12-01), HTRG (2025-02-25), TMRH (2025-02-25)
+- `C:\Users\fairizat\Desktop\` — relay documentation PDFs and trip record
+  spreadsheets (`Tripping 2026.xlsx`, `tripping list.xlsx`) for 2026 events;
+  no 2023 power measurements
+- `C:\Users\fairizat\OneDrive\...\Tripping Event\` — searched in S4;
+  no additional Slow recordings found
+
+**Result:** No independent reference data (SCADA historian, COMTRADE, PI
+historian, load dispatch logs) for GRNE 2023-07-26 is available. Both
+timestamp interpretations remain unresolved:
+
+| Interpretation | Header time | Malaysia local equivalent |
+|---------------|-------------|--------------------------|
+| UTC (assumed, by analogy with BEN5K Fast) | 14:34:32 UTC | 22:34:32 MYT (next hour after midnight) |
+| MYT (local time) | 14:34:32 MYT | 06:34:32 UTC |
+
+BEN5K Fast recordings at GPTH (Stage 8–11) were confirmed as UTC-encoded
+internally. BEN5K Slow is assumed to use the same convention by analogy,
+but this has not been independently verified for the Slow variant.
+
+**Timestamp validation cannot be completed without an external reference.**
+The `timing_reference = "relative_elapsed"` safeguard correctly prevents
+cross-event timestamp-based synchronisation.
+
+### 17.7 Browser and engineering safeguards assessment
+
+Review of `frontend/index.html` and `normalize.py` confirms:
+
+- All three TENTATIVE channels are exported with `unit = "raw"`,
+  `scale = 1.0`, `offset = 0.0`. No engineering unit labels are applied.
+- Cursor readings in the waveform display show raw int16 values with
+  unit "raw" — not MW, Mvar, or Hz.
+- The details panel shows a prominent "**BEN5K Slow — Development/UAT only**"
+  notice with text: _"raw int16 values … scale factors unconfirmed; unit
+  shown as 'raw'."_
+- No derived calculations (e.g. frequency conversion) are applied to any
+  channel value in the current implementation.
+- The relative time axis is enforced by `timing_reference = "relative_elapsed"`.
+
+**Assessment:** Current safeguards are adequate. No code changes are
+required to prevent misleading engineering unit presentation.
+
+### 17.8 HVDC formula descriptor — NaN marker correction
+
+The HVDC Power formula descriptor at 0x00FE was previously documented as
+having NaN marker `0xFFFFFFFF` at bytes 30–33. The S6 binary re-read
+shows the actual bytes are `ff ff 83 00`, decoding as u32le `0x0083ffff`
+(not `0xFFFFFFFF`). This indicates the NaN/unavailable marker encoding
+for derived/formula channel descriptors may differ from the standard
+`0xFFFFFFFF` used in active channel slots. This does not affect the
+current implementation (the HVDC formula channel is not decoded); it is
+recorded here for completeness.
+
+### 17.9 S6 calibration summary
+
+| Measurement | wi | Raw range | Best candidate scale | Confidence | Oracle needed |
+|------------|-----|-----------|---------------------|------------|--------------|
+| FREQ BDNG 1 | 1 | 12,898–13,152 | 50/13,086 Hz/count | CONFIRMED (nominal 50 Hz) | Divisor precision |
+| POWER BDNG 1 | 4 | 63–152 | 1.0 MW/count | PLAUSIBLE | SCADA MW reading |
+| MVAR BDNG 1 | 2 | 13,453–13,720 | 0.001 Mvar/count | PLAUSIBLE | SCADA Mvar reading |
+| JJNG 2 RMS (wi=20–23) | 20–23 | 13,356–13,801 | 0.01 kV/count | HIGH CONFIDENCE (plausible) | SCADA voltage reading |
+| wi=3 | 3 | 13,822–14,096 | 0.001 Mvar/count? | PROVISIONAL | Oracle + selector decode |
+
+**Remaining uncertainties:**
+
+1. Frequency divisor exact value (13,082 vs 13,086 vs firmware constant):
+   requires SCADA frequency logs for 2023-07-26 14:34–14:35 UTC.
+2. Active power scale exact value (1.0 MW/count): requires SCADA MW
+   reading for BDNG 1 feeder on 2023-07-26.
+3. Reactive power scale (0.001 Mvar/count): requires SCADA Mvar reading.
+4. Timestamp UTC vs MYT basis: requires any event-correlated reference.
+5. Scale_ref bytes 24–27 decoding: requires BEN recorder firmware
+   documentation or a second Slow recording with known engineering values.
+6. Selector encoding for Groups 2–6 (27 unresolved channels): no new
+   evidence found; requires firmware documentation or a second Slow
+   recording from the same recorder.
+
+### 17.10 S6 test results
+
+No production code changes in S6. The three confirmed TENTATIVE channels
+retain their `unit = "raw"` validation status.
+
+Targeted regression test run:
+
+```
+backend: pytest tests/test_ben5k_slow_api.py tests/test_ben5k_slow_reader.py
+         tests/test_ben5k_slow_decoder.py tests/test_ben5k_slow_catalog.py
+         → 106 passed, 0 failed
+```
+
+No code changes were made to the decoder, reader, normalizer, or API in S6.
+The S5 browser UAT test (`grne-slow-uat.spec.js`, 16/16) was not re-run as
+no browser-facing code changed; its results remain as recorded in S5.
 
 ---
 

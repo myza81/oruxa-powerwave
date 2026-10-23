@@ -4,8 +4,39 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-23** (BEN5K Slow S5 browser UAT, `investigation/legacy-ben5k-slow`; earlier **2026-10-16** (Overcurrent: Recording current basis and CT field visibility follow the active input source, `main`; earlier **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-23** (BEN5K Slow S6 engineering scaling validation, `investigation/legacy-ben5k-slow`; earlier S5 browser UAT; earlier **2026-10-16** (Overcurrent: Recording current basis and CT field visibility follow the active input source, `main`; earlier **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))))
+
+## BEN5K Slow S6 — Engineering Scaling and Independent Validation (2026-10-23, `investigation/legacy-ben5k-slow`)
+
+**What was done.** Documentation-only investigation — no production code changes. Continues from S5 commit `2f1e7bb`.
+
+**Frequency calibration (wi=1, FREQ BDNG 1):**
+Binary search of the full config area (0xDC–0x215B) for values 13,086, 13,082 and 13,000 as u16le/u16be/u32le found **none of these appear in the binary**. The divisor is inferred, not stored. Mean raw = 13,082.0 (gives mean exactly 50.000 Hz by construction); median raw = 13,086.0 (gives median = 50.000 Hz). The S5 candidate `50/13,086` is the better estimate (robust to outliers) but cannot be independently confirmed without SCADA frequency oracle. Divisor 13,000 rules itself out: gives mean 50.315 Hz.
+
+**Descriptor scale_ref bytes (bytes 24–27):**
+Two patterns across all active channels: `33 ff 38 00` (Power/Freq/Voltage) and `ff ff 00 00` (Mvar). These are opaque BEN calibration table references, not literal scale factors. The `0xFF33` prefix is an internal table pointer; second u16le (56, 57, 48) is a type/range code. Cannot decode without firmware documentation.
+
+**Active power (wi=4):** Scale 1.0 MW/count gives 63–152 MW, mean 108 MW — most plausible for a 132 kV EHV feeder. All values positive (unidirectional). Oracle validation needed.
+
+**Reactive power (wi=2):** Scale 0.001 Mvar/count gives 13.45–13.72 Mvar, mean 13.65 Mvar — most plausible. Q/P ≈ 0.127 is physically reasonable. All values positive (reactive import). Oracle needed.
+
+**wi=20–23 (voltage RMS):** At 0.01 kV/count: 133.6–138.0 kV — fully consistent with 132 kV bus at +1–4% nominal. High confidence, pending selector decode for Group 4.
+
+**Independent reference data:** Desktop BEN folder and OneDrive Tripping Event searched. No SCADA, historian, COMTRADE or equivalent reference data found for GRNE 2023-07-26. Both UTC and MYT timestamp interpretations remain unresolved.
+
+**Browser safeguards:** Confirmed adequate — unit="raw", scale=1.0, "Development/UAT only" notice in details panel. No code changes needed.
+
+**Test results:** 106 passed, 0 failed (`test_ben5k_slow_api`, `test_ben5k_slow_reader`, `test_ben5k_slow_decoder`, `test_ben5k_slow_catalog`). No production code was modified.
+
+**S6 completion criteria met:** Three Group 0 measurements have an evidence-based calibration assessment; independent reference comparison performed (negative result — no data available). Investigation document updated.
+
+**Open items for future work (unchanged from S5):**
+- Owner UAT of the three Group 0 channels in a live browser session.
+- Oracle validation (SCADA or COMTRADE reference) to confirm POWER scale (1 MW/count) and MVAR scale (0.001 Mvar/count).
+- UTC/local timestamp basis — unconfirmed.
+- No merge into main. Feature flag (`BEN5K_SLOW_EXPERIMENTAL_ENABLED`) stays off by default.
+- 27 unresolved channels (selector encoding for Groups 2–6) — deferred.
 
 ## BEN5K Slow S5 — GRNE Browser UAT (2026-10-23, `investigation/legacy-ben5k-slow`)
 
