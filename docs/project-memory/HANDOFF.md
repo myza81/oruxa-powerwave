@@ -4,8 +4,49 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-16** (Overcurrent: Recording current basis and CT field visibility follow the active input source, `main`; earlier **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-23** (BEN5K Slow S5 browser UAT, `investigation/legacy-ben5k-slow`; earlier **2026-10-16** (Overcurrent: Recording current basis and CT field visibility follow the active input source, `main`; earlier **2026-10-15** (Overcurrent Manual Input: Equipment Loading input method, `feat/oc-equipment-loading`; earlier **2026-10-13** (workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))))
+
+## BEN5K Slow S5 — GRNE Browser UAT (2026-10-23, `investigation/legacy-ben5k-slow`)
+
+**What was built.** Commit `69f0606`. Stage S5 real-file browser UAT for the GRNE BEN5K Slow recording, continuing from S4 (`84a41f2`). One new file only — no production code changed.
+
+- **`browser-tests/grne-slow-uat.spec.js`** — 16 Playwright tests covering all S5 objectives: upload success, `ready` status, `layout_family = "BEN32 BEN5K Slow Legacy"`, `timing_reference = relative_elapsed`, 3 analog channels (Group 0 tentative), 0 digital channels, FREQ/POWER/MVAR BDNG 1 each render individually and together, relative time axis, experimental notice visible in the details panel, invalidated JJNG channels absent, API channels endpoint, zoom/pan interaction.
+
+**Run instructions.** From `browser-tests/`:
+```
+BEN5K_SLOW_EXPERIMENTAL_ENABLED=1 PW_PYTHON=<backend venv python> npx playwright test grne-slow-uat.spec.js
+```
+The env var must be set in the calling shell so Playwright merges it into the spawned backend process. `GRNE_BEN_PATH` defaults to `C:\Users\fairizat\Desktop\BEN\GRNE230726_143432426.ben`.
+
+**Test results.**
+- Backend: 106 passed (`test_ben5k_slow_api + reader + decoder + catalog`)
+- Browser: 16/16 passed (43 s)
+
+**Engineering measurement validation (direct analysis of GRNE230726_143432426.ben, 70315 bytes).**
+
+| Channel | wi | Raw min | Raw max | Raw mean | Eng result | Confidence |
+|---|---|---|---|---|---|---|
+| FREQ BDNG 1 | 1 | 12898 | 13152 | 13082.0 | 49.28–50.25 Hz, mean 49.98 Hz (scale 50/13086) | CONFIRMED — 50 Hz Malaysian grid |
+| POWER BDNG 1 | 4 | 63 | 152 | 107.6 | MW raw; oracle scale needed | PLAUSIBLE |
+| MVAR BDNG 1 | 2 | 13453 | 13720 | 13647.8 | Mvar raw; oracle scale needed | PLAUSIBLE |
+
+Recording timing: station=GRNE, 20 Hz, 1188 samples, pre-trigger 400 (20 s), total 59.40 s, relative range −20 s to +39.35 s. Trigger timestamp 2023-07-26 14:34:32 (UTC basis unconfirmed).
+
+**Unresolved channel inventory (27 total):**
+- 2 FORMULA_UNCONFIRMED (FREQ JJNG 1 wi=8, MVAR JJNG 1 wi=16) — S4 confirmed these hold limit-event/status data
+- 6 OOR (wi ≥ 26, e.g. POWER JJNG 1 wi=32)
+- 12 ZERO-INDEX (low-byte selectors, wi=0 ambiguous)
+- 7 CONFLICT (word index already claimed by earlier channel)
+- HVDC Power formula channel — decoding deferred
+- None of the above exposed in browser
+
+**Open items.**
+- Owner UAT of the three Group 0 channels in a live browser session.
+- Oracle validation (SCADA or COMTRADE reference) to confirm POWER and MVAR scaling.
+- UTC/local timestamp basis for GRNE recorder — unconfirmed.
+- Slow flag independence (Fast flag does not enable Slow and vice versa) — tested in `test_ben5k_slow_api.py`.
+- No merge into main. Feature flag (`BEN5K_SLOW_EXPERIMENTAL_ENABLED`) stays off by default.
 
 ## Overcurrent Recording current basis and CT field visibility (2026-10-16, `main`)
 
