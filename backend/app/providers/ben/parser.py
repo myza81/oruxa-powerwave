@@ -740,21 +740,33 @@ def parse_ben_experimental(
     data: bytes,
     *,
     allow_legacy_ben5k: bool = False,
+    allow_legacy_ben5k_slow: bool = False,
 ) -> "BenRecord":
     """Parse BEN bytes with optional legacy BEN5K support.
 
-    If *allow_legacy_ben5k* is ``False`` (the default), this is identical
-    to ``parse_ben()`` — production behaviour, no BEN5K files accepted.
+    If both flags are ``False`` (the default), this is identical to
+    ``parse_ben()`` — production behaviour, no BEN5K files accepted.
 
-    If *allow_legacy_ben5k* is ``True`` and the file carries the BEN5K
-    signatures, the file is decoded by the legacy BEN5K decoder
-    (``app.providers.ben.legacy_ben5k``).  For all other layouts the
-    SubBen decoder (``parse_ben()``) is used as normal.
+    If *allow_legacy_ben5k* is ``True`` and the file carries the BEN5K Fast
+    signatures (0x28 ff), the file is decoded by the legacy BEN5K Fast
+    decoder (``app.providers.ben.legacy_ben5k``).
+
+    If *allow_legacy_ben5k_slow* is ``True`` and the file carries the BEN5K
+    Slow signatures (0x29 ff / gen 05 00 / class flag 0x01), the file is
+    decoded by the BEN5K Slow decoder (``app.providers.ben.legacy_ben5k_slow``).
+
+    BEN5K Slow dispatch is checked BEFORE BEN5K Fast dispatch: both share
+    the same generation marker (05 00) but differ in the layout byte.
+
+    For all other layouts the SubBen decoder (``parse_ben()``) is used.
 
     IMPORTANT: this wrapper is for UAT and development tooling only.
     Do NOT call it from production ingestion paths.  Use ``parse_ben()``
     instead, which always rejects BEN5K files with ``BenUnsupportedVariantError``.
     """
+    if allow_legacy_ben5k_slow and _is_ben5k_slow(data):
+        from app.providers.ben.legacy_ben5k_slow.normalize import parse_ben5k_slow
+        return parse_ben5k_slow(data)
     if allow_legacy_ben5k and _is_ben5k(data):
         from app.providers.ben.legacy_ben5k.normalize import parse_ben5k
         return parse_ben5k(data)
@@ -762,7 +774,7 @@ def parse_ben_experimental(
 
 
 def _is_ben5k(data: bytes) -> bool:
-    """Return True if *data* carries the BEN5K layout and generation signatures."""
+    """Return True if *data* carries the BEN5K Fast layout and generation signatures."""
     if len(data) < layout.HEADER_SIZE:
         return False
     sig = data[layout.SUBBEN_LAYOUT_SIGNATURE_OFFSET :
@@ -770,3 +782,14 @@ def _is_ben5k(data: bytes) -> bool:
     gen = data[layout.SUBBEN_GENERATION_MARKER_OFFSET :
                 layout.SUBBEN_GENERATION_MARKER_OFFSET + len(layout.BEN5K_GENERATION_MARKER)]
     return sig == layout.BEN5K_LAYOUT_SIGNATURE and gen == layout.BEN5K_GENERATION_MARKER
+
+
+def _is_ben5k_slow(data: bytes) -> bool:
+    """Return True if *data* carries the BEN5K Slow layout and generation signatures."""
+    if len(data) < layout.HEADER_SIZE:
+        return False
+    sig = data[layout.SUBBEN_LAYOUT_SIGNATURE_OFFSET :
+                layout.SUBBEN_LAYOUT_SIGNATURE_OFFSET + len(layout.BEN5K_SLOW_LAYOUT_SIGNATURE)]
+    gen = data[layout.SUBBEN_GENERATION_MARKER_OFFSET :
+                layout.SUBBEN_GENERATION_MARKER_OFFSET + len(layout.BEN5K_GENERATION_MARKER)]
+    return sig == layout.BEN5K_SLOW_LAYOUT_SIGNATURE and gen == layout.BEN5K_GENERATION_MARKER

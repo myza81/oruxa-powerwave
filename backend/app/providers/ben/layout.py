@@ -49,10 +49,15 @@ SUBBEN_GENERATION_MARKER_OFFSET = 0x0E
 # typed-section chain. The sample payload uses the same big-endian u16 words.
 # Decoder lives in app.providers.ben.legacy_ben5k; no SubBen code is shared.
 
-#: Layout signature bytes 0x04-0x0B for the older BEN5K family.
+#: Layout signature bytes 0x04-0x0B for the older BEN5K Fast family.
 BEN5K_LAYOUT_SIGNATURE = b"\x28\xff\x03\x00\x6e\x00\xca\x00"
-#: Generation marker bytes 0x0E-0x0F for BEN5K.
+#: Generation marker bytes 0x0E-0x0F for BEN5K (shared by Fast and Slow).
 BEN5K_GENERATION_MARKER = b"\x05\x00"
+
+#: Layout signature bytes 0x04-0x0B for the BEN5K Slow family.
+#: Byte 4 is 0x29 (vs 0x28 for Fast); class flag at 0x3C is 0x01 (Slow).
+#: Confirmed by binary analysis of GRNE230726_143432426.ben.
+BEN5K_SLOW_LAYOUT_SIGNATURE = b"\x29\xff\x03\x00\x6e\x00\xca\x00"
 
 #: u16 -- recorder unit number (equals the COMTRADE ``rec_dev_id`` BEN32
 #: writes on CFG line 1, e.g. 1196, 1214).

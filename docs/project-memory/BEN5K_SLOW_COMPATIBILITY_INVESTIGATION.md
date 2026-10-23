@@ -1,6 +1,6 @@
 # BEN5K Slow Compatibility Investigation
 
-**Status:** Investigation complete — architecture design phase  
+**Status:** S2 (Structural Reader and Channel Mapping) implemented — oracle validation phase  
 **Branch:** `investigation/legacy-ben5k-slow`  
 **Based on:** `investigation/legacy-ben5k` at commit `b33b7af`  
 **Recording under investigation:** `GRNE230726_143432426.ben`
@@ -170,7 +170,7 @@ recording.
 
 ### 6.4 Channel group internal layout (252 bytes)
 
-Each 252-byte group contains:
+Each 252-byte group contains (**8** channel slots confirmed by S2 implementation):
 
 ```
 [0  – 23]  SENS descriptor       24 bytes   (group status/sensitivity)
@@ -181,8 +181,15 @@ Each 252-byte group contains:
 [136–163]  Channel 5 descriptor  28 bytes
 [164–191]  Channel 6 descriptor  28 bytes
 [192–219]  Channel 7 descriptor  28 bytes
-[220–223]  Group separator       4 bytes    ff ff ff ff
+[220–247]  Channel 8 descriptor  28 bytes
+[248–251]  Group separator       4 bytes    ff ff ff ff
 ```
+
+> **Correction from initial investigation** — the preliminary analysis assumed 7
+> channel slots (224 bytes), making the group total 252 bytes with 28 bytes of
+> unknown padding. S2 binary analysis confirmed the padding is actually an 8th
+> channel descriptor slot; groups 4–6 use slots 4–8 for additional limit channels.
+> Arithmetic: 24 + 8 × 28 + 4 = **252** ✓
 
 **SENS descriptor (24 bytes):**
 
@@ -284,37 +291,72 @@ complete decoding of the extended config sections.
 
 ### 7.3 Word column analysis
 
-26-word per-sample frame statistics (1,188 samples):
+26-word per-sample frame statistics (1,188 samples, from S2 inventory run
+against `GRNE230726_143432426.ben`). Channel assignment column reflects the
+S2 TENTATIVE mapping only; cells with `—` have no mapped channel yet.
 
 ```
-Word  Unsigned range    Signed range      Interpretation (hypothesis)
- 0    0 – 65535        -40 – 24           Status flags / counter (17 samples at 0xFFFF)
- 1    12898 – 13152    12898 – 13152      FREQ BDNG 1: 49.6–50.6 Hz CONFIRMED
- 2    13453 – 13720    13453 – 13720      MVAR BDNG 1: ~13.5–13.7 Mvar (plausible)
- 3    13822 – 14096    13822 – 14096      Voltage-range quantity (FREQ/MVAR BDNG 2?)
- 4    63 – 152         63 – 152           POWER BDNG 1: ~100 MW PLAUSIBLE
- 5    0 – 65535        -732 – 24          Variable — dips to -732 (limit event?)
- 6    0 – 65535        -732 – 24          Same pattern as word 5
- 7    24 – 89          24 – 89            Low-range positive quantity
- 8    0 – 27           0 – 27             Near-zero / small counter
- 9    65274 – 65396    -262 – -140        All-negative: -26.2 to -14.0 Mvar (plausible)
-10    34 – 84          34 – 84            Low-range positive (~Mvar or small power)
-11    65272 – 65394    -264 – -142        All-negative: similar pattern to word 9
-12    4095 – 65535     4095 / -16385      Mixed marker: 999 samples 0xFFFF, 188 at 0x0FFF
-13    65535 – 65535    -1 – -1            CONSTANT 0xFFFF = UNAVAILABLE/INACTIVE
-14    0 – 65535        -732 – 24          Dip pattern (same as 5/6)
-15    61 – 149         61 – 149           ~100 MW plausible (POWER JJNG 2?)
-16    0 – 65535        -3713 – -641       Large negative range (flag-word or autotransformer MW?)
-17    0 – 65535        -732 – 24          Dip pattern
-18    0 – 65535        -732 – 24          Dip pattern
-19    0 – 65535        -732 – 24          Dip pattern
-20    13356 – 13620    13356 – 13620      Voltage RMS ~133.6–136.2 kV (scale 0.01 kV)
-21    13402 – 13680    13402 – 13680      Voltage RMS ~134.0–136.8 kV
-22    13344 – 13616    13344 – 13616      Voltage RMS ~133.4–136.2 kV
-23    13432 – 13700    13432 – 13700      Voltage RMS ~134.3–137.0 kV
-24    289 – 2377       289 – 2377         Large positive — computed aggregate (HVDC MW?)
-25    288 – 2380       288 – 2380         Same as word 24
+wi  Unsigned range    Signed range      Unavail  Assigned channel        Interpretation (hypothesis)
+ 0  0 – 65535        -40 – 24            17      —                       Status flags / counter
+ 1  12898 – 13152    12898 – 13152        0      FREQ BDNG 1 (TENTATIVE)  49.6–50.6 Hz CONFIRMED
+ 2  13453 – 13720    13453 – 13720        0      MVAR BDNG 1 (TENTATIVE)  ~13.5–13.7 Mvar plausible
+ 3  13822 – 14096    13822 – 14096        0      —                       FREQ/MVAR BDNG 2 (UNRESOLVED)
+ 4  63 – 152         63 – 152             0      POWER BDNG 1 (TENTATIVE) ~100 MW plausible
+ 5  0 – 65535        -732 – 24            2      —                       Variable (limit events)
+ 6  0 – 65535        -732 – 24            3      —                       Same pattern as wi=5
+ 7  24 – 89          24 – 89              0      —                       Low-range positive
+ 8  1 – 65535        -36 – 27             4      FREQ JJNG 1 (TENTATIVE)  Near-nominal Hz range
+ 9  65274 – 65396    -262 – -140          0      —                       All-negative: reactive power?
+10  34 – 84          34 – 84              0      —                       Low-range positive
+11  65272 – 65394    -264 – -142          0      —                       All-negative: similar to wi=9
+12  4095 – 65535     -16385 – 4095      999      —                       Mixed: 999 × 0xFFFF, rest 0x0FFF
+13  65535 – 65535    -1 – -1           1188      —                       CONSTANT 0xFFFF = INACTIVE slot
+14  0 – 65535        -732 – 23            2      —                       Dip pattern (limit events)
+15  61 – 149         61 – 149             0      —                       ~100 MW plausible
+16  0 – 65535        -732 – 24            2      MVAR JJNG 1 (TENTATIVE)  Range anomaly — needs oracle
+17  61823 – 64895    -3713 – -641         0      —                       Large negative — auto TRF?
+18  0 – 65535        -732 – 24            3      —                       Dip pattern
+19  0 – 65535        -732 – 24            2      —                       Dip pattern
+20  13531 – 13801    13531 – 13801        0      —                       Voltage RMS ~135.3–138.0 kV
+21  13478 – 13742    13478 – 13742        0      —                       Voltage RMS ~134.8–137.4 kV
+22  13356 – 13617    13356 – 13617        0      —                       Voltage RMS ~133.6–136.2 kV
+23  13528 – 13800    13528 – 13800        0      —                       Voltage RMS ~135.3–138.0 kV
+24  289 – 2377       289 – 2377           0      —                       Large positive — HVDC aggregate?
+25  288 – 2380       288 – 2380           0      —                       Same as wi=24
 ```
+
+**Key observations from the inventory:**
+
+- **wi=1 (FREQ BDNG 1):** 12,898–13,152, no unavailable samples, 142 unique values.
+  The 49.6–50.6 Hz encoding is consistent with scale ≈ 50/13,000 ≈ 0.003846 Hz/count.
+  Pending SCADA oracle.
+
+- **wi=4 (POWER BDNG 1):** 63–152, 75 unique values, always positive, no
+  unavailable samples. Plausible for ~100 MW at 1.0 MW/count.
+
+- **wi=8 (FREQ JJNG 1):** 4 unavailable samples; minimum value = 1 (not 0) in the
+  1–65535 range is ambiguous. The S2 mapping formula (selector=0x0800, wi=8) is
+  confirmed by the selector encoding, but the value range needs oracle validation.
+
+- **wi=16 (MVAR JJNG 1):** Mapped as TENTATIVE, but the range 0–65535 with
+  signed -732 to +24 is anomalous for a reactive power channel. The large
+  negative signed excursion (-732) may indicate a limit-crossing event or may
+  be a different quantity. Oracle validation required.
+
+- **wi=13:** Constant 0xFFFF across all 1,188 samples — an inactive or padding slot.
+
+- **wi=17:** 61,823–64,895 (signed -3,713 to -641) — large negative quantity
+  possibly autotransformer load flow or a calculated flag.
+
+- **wi=20–23:** Unsigned range 13,356–13,801, consistent with 132 kV bus voltage
+  at scale 0.01 kV → 133.6–138.0 kV. Likely JJNG 2 phase voltage RMS (UR, UY,
+  UB max/min). These words correspond to the SENS JJNG 2 RMS group channels
+  (UR MAX, UR MIN, UY MAX, UY MIN) whose selectors are UNRESOLVED (CONFLICT or
+  OOR) under the current formula.
+
+- **wi=3, 7, 9–12, 15:** Unmapped words with real non-trivial data — correspond
+  to JJNG 2, BDNG 2, and autotransformer channels whose selectors are in the
+  UNRESOLVED_ZERO or UNRESOLVED_CONFLICT categories.
 
 Words 20–23 in the range 13,300–14,000 (unsigned) with near-constant spread
 consistent with a 132 kV bus voltage (scale 0.01 kV gives 133–140 kV), matching
@@ -368,9 +410,105 @@ accounting — not for relay protection review.
 
 ---
 
-## 10. Proposed Decoder Architecture
+## 10. S2 Implementation Status
 
-### 10.1 New layout constant
+### 10.1 What was implemented
+
+S2 ("Structural Reader and Channel Mapping") was implemented in the
+`investigation/legacy-ben5k-slow` worktree on branch of the same name.
+No production code was modified; all new code is isolated behind the
+`allow_legacy_ben5k_slow=True` opt-in flag on `parse_ben_experimental()`.
+
+**New package:** `backend/app/providers/ben/legacy_ben5k_slow/`
+
+| Module | Purpose |
+|--------|---------|
+| `reader.py` | Reads fixed header, config header, HVDC formula, and all 9 channel groups; classifies each channel as TENTATIVE / INACTIVE / UNRESOLVED_OOR / UNRESOLVED_ZERO / UNRESOLVED_CONFLICT |
+| `decoder.py` | Extracts raw sample matrix and per-channel int16 columns; produces per-word diagnostic inventory |
+| `normalize.py` | Builds a canonical `BenRecord` from TENTATIVE channels; attaches all diagnostics |
+| `__init__.py` | Exports `parse_ben5k_slow` |
+
+**Modified files:**
+
+| File | Change |
+|------|--------|
+| `layout.py` | Added `BEN5K_SLOW_LAYOUT_SIGNATURE = b"\x29\xff\x03\x00\x6e\x00\xca\x00"` |
+| `model.py` | Added `BenRecordClass.BEN5K_SLOW_LEGACY = "BEN32 BEN5K Slow Legacy"` |
+| `parser.py` | Extended `parse_ben_experimental()` to accept `allow_legacy_ben5k_slow` flag; added `_is_ben5k_slow()` helper |
+
+**New tests:**
+
+| File | Tests | All pass |
+|------|-------|---------|
+| `tests/test_ben5k_slow_reader.py` | 36 tests: header, config header, HVDC formula, group reading, channel classification, dispatch | ✓ |
+| `tests/test_ben5k_slow_decoder.py` | 42 tests: raw matrix extraction, signed column extraction, word inventory, end-to-end BenRecord | ✓ |
+
+BEN5K Fast regression: `tests/test_ben5k_reader.py` (27 tests) — all pass, no regression.
+
+### 10.2 Channel classification result (GRNE230726_143432426.ben)
+
+```
+INACTIVE             : 42   (groups 7–8 entirely; unused slots in groups 0–6)
+TENTATIVE            :  5   (available for decoding)
+UNRESOLVED_ZERO      : 12   (low-byte selector; formula gives wi=0)
+UNRESOLVED_OOR       :  6   (wi >= 26; selector >> 8 is out of frame range)
+UNRESOLVED_CONFLICT  :  7   (groups 4–5 claim words already held by groups 0–1)
+```
+
+The 5 TENTATIVE channels with their confirmed word indices:
+
+| Channel | Group | selector | wi |
+|---------|-------|----------|----|
+| POWER BDNG 1 | SENS BDNG 1 | 0x0400 | 4 |
+| FREQ BDNG 1  | SENS BDNG 1 | 0x0100 | 1 |
+| MVAR BDNG 1  | SENS BDNG 1 | 0x0200 | 2 |
+| FREQ JJNG 1  | SENS JJNG 1 | 0x0800 | 8 |
+| MVAR JJNG 1  | SENS JJNG 1 | 0x1000 | 16 |
+
+POWER JJNG 1 (selector 0x2000 → wi=32) remains UNRESOLVED_OOR as expected.
+
+### 10.3 Root cause of unresolved channels
+
+Groups 2–6 use selectors that differ fundamentally from the Groups 0–1 encoding:
+
+- **Groups 2–3 (JJNG 2, BDNG 2):** All selectors are single-bit values with only
+  the low byte set (0x0004, 0x0008, 0x0010, etc.). The `selector >> 8` formula
+  gives 0 for all of these → UNRESOLVED_ZERO. These bits may represent a
+  per-channel bitmask where the bit position encodes a global channel index, not
+  a word index.
+
+- **Groups 4–5 (JJNG 2 RMS, AUTO TRF 1):** Some selectors produce wi=1, 2, 4, 8,
+  16 which are the same words claimed by Groups 0–1. This cannot mean "same word
+  as FREQ BDNG 1" for a different physical quantity → UNRESOLVED_CONFLICT. The
+  selector encoding is different for these groups.
+
+- **Group 6 (AUTO TRF 2):** Mix of low-byte-only (ZERO) and large-value (0x4000,
+  0x8000 → wi=64, wi=128) OOR selectors.
+
+**Working hypothesis:** The `selector >> 8` formula is specific to groups using a
+"direct word-index" selector encoding (high byte = index). Groups 2–6 use an
+alternative encoding (bitmask or global ID). The 30-byte extended descriptor
+section at 0x0A1B likely contains the lookup table mapping these channel IDs to
+word indices, but that section is not decoded in S2.
+
+### 10.4 Diagnostics always attached to every BenRecord
+
+```
+time_basis_unconfirmed          [WARNING]  Timestamp decoded as UTC; local vs UTC unconfirmed
+layout_ben5k_slow_legacy        [INFO]     Layout type, tentative/unresolved counts
+ben5k_slow_mapping_tentative    [WARNING]  word_index formula confirmed for Group 0 only
+ben5k_slow_tentative_channels   [INFO]     Names and word indices of TENTATIVE channels
+ben5k_slow_oor_channels         [INFO]     Count and first example of OOR channels
+ben5k_slow_zero_index_channels  [INFO]     Count and first example of ZERO channels
+ben5k_slow_conflict_channels    [INFO]     Count and first example of CONFLICT channels
+ben5k_slow_hvdc_formula         [INFO]     HVDC formula name noted; decoding deferred
+```
+
+---
+
+## 11. Proposed Decoder Architecture (original section, retained)
+
+### 11.1 New layout constant
 
 In `backend/app/providers/ben/layout.py`, add:
 
@@ -381,7 +519,7 @@ BEN5K_SLOW_LAYOUT_SIGNATURE = bytes.fromhex('29ff0300' + '6e00ca00')
 The existing `BEN5K_GENERATION_MARKER = bytes.fromhex('0500')` is shared with
 BEN5K Fast and needs no duplication.
 
-### 10.2 Dispatcher extension
+### 11.2 Dispatcher extension
 
 In `_check_signatures()`, add a branch:
 
@@ -393,7 +531,7 @@ elif layout_sig == BEN5K_SLOW_LAYOUT_SIGNATURE and gen_marker == BEN5K_GENERATIO
 The dispatch must remain gated behind the same `BEN5K_EXPERIMENTAL_ENABLED`
 feature flag used for BEN5K Fast, since this variant is also experimental.
 
-### 10.3 New parse_ben5k_slow() function
+### 11.3 New parse_ben5k_slow() function
 
 A dedicated function in `backend/app/providers/ben/parser.py` (or a new
 `slow.py` module alongside `fast.py`). Required stages:
@@ -422,7 +560,7 @@ A dedicated function in `backend/app/providers/ben/parser.py` (or a new
 8. **Timing** — use timing_reference="relative_elapsed" (same as BEN5K Fast)
    until timestamp UTC offset is verified.
 
-### 10.4 Channel type model
+### 11.4 Channel type model
 
 BEN5K Slow channels are engineering measurements, not waveform channels. The
 existing channel type taxonomy may need extension:
@@ -440,7 +578,7 @@ Alternatively, treat all as generic analogue channels with a descriptive unit
 string and let the UI infer rendering from the name prefix or unit. This is
 simpler for an initial implementation.
 
-### 10.5 Phantom channel handling
+### 11.5 Phantom channel handling
 
 BEN5K Fast required a Stage 10 phantom-channel correction for descriptors with
 no physical sample slot. BEN5K Slow groups 7 and 8 are all-inactive placeholder
@@ -450,7 +588,7 @@ expected for Slow, but this should be verified during implementation.
 
 ---
 
-## 11. Validation Strategy
+## 12. Validation Strategy
 
 Before any production merge, the following oracle validation steps are required:
 
@@ -477,7 +615,7 @@ Before any production merge, the following oracle validation steps are required:
 
 ---
 
-## 12. Regression Requirements
+## 13. Regression Requirements
 
 The BEN5K Slow decoder must not affect:
 
@@ -493,21 +631,22 @@ The BEN5K Slow decoder must not affect:
 
 ---
 
-## 13. Open Questions
+## 14. Open Questions
 
-| # | Question | Impact |
-|---|----------|--------|
-| 1 | Exact word_index encoding for groups 1+ (JJNG 1 POWER at word 32 is out of range) | Required for correct channel extraction |
-| 2 | Scale/offset encoding in descriptor bytes 24–27 | Required for physical units; workaround: expose raw values |
-| 3 | Timestamp UTC vs UTC+8 | Affects time-axis alignment |
-| 4 | Significance of word 16 large-negative values (-3713 to -641) | Possibly autotransformer load flow; may be a flag word |
-| 5 | HVDC Power formula channel: should it be decoded and displayed? | Scope decision |
-| 6 | Extended config sections (0x0A1B onwards) fully decoded? | Not required for basic decode |
-| 7 | Groups 7 and 8 (placeholder groups): confirm all channels are `----` in other GRNE recordings | Skip logic validation |
+| # | Question | Status | Impact |
+|---|----------|--------|--------|
+| 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S2 classified as UNRESOLVED; formula confirmed for Group 0 and Group 1 only | Required to map remaining ~20 channels |
+| 2 | Scale/offset encoding in descriptor bytes 24–27 | OPEN — S2 exposes raw int16 pending oracle | Required for physical units |
+| 3 | Timestamp UTC vs UTC+8 | OPEN | Affects time-axis alignment with other event data |
+| 4 | Significance of wi=16 (MVAR JJNG 1 TENTATIVE) — range 0–65535 signed -732 to 24 is anomalous for Mvar | OPEN | TENTATIVE label may be wrong; oracle needed |
+| 5 | Significance of wi=17 — signed -3713 to -641, large negative, no channel assignment | OPEN | Possibly autotransformer load or flag word |
+| 6 | HVDC Power formula channel: should it be decoded and displayed? | OPEN — deferred | Scope decision |
+| 7 | Extended config sections (0x0A1B onwards) — do they hold the bitmask/ID→word lookup? | OPEN | Required to resolve OQ 1 |
+| 8 | Groups 7 and 8 (placeholder groups): are all channels `----` in every GRNE recording? | OPEN — confirmed `----` in this recording only | Skip logic validation |
 
 ---
 
-## 14. Decision Required
+## 15. Decision Required
 
 Before implementation begins, obtain owner approval on:
 
