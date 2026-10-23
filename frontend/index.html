@@ -18371,8 +18371,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const key = wwErPerUnitKey(channel.kind, channel.sourceId, channel.channelName);
                 if (pu.requested[key] === generation) continue;
                 pu.requested[key] = generation;
+                const timingAtStart = wwDisplayTimingFingerprint(channel.sourceId);
                 wwErFetchPerUnitResolution(channel.kind, channel.sourceId, channel.channelName).then((resolution) => {
-                    if (pu.requested[key] !== generation) return; // superseded
+                    if (pu.requested[key] !== generation || timingAtStart !== wwDisplayTimingFingerprint(channel.sourceId)) return; // superseded
                     const next = resolution || { status: "unresolved" };
                     if (JSON.stringify(pu.resolutions[key]) === JSON.stringify(next)) return;
                     pu.resolutions[key] = next;
@@ -19601,7 +19602,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!panel || !panel.plotlyReady || !viewport || !timing || trace.removed) return;
             const pointBudget = wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl));
             const request = wwErFetchRequestFor(trace, timing, viewport, pointBudget);
-            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? "range" : "skip", trace.unitKey].join("|");
+            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? "range" : "skip", trace.unitKey, wwDisplayTimingFingerprint(trace.sourceId)].join("|");
             const served = !request || trace.representation === "full_resolution" || trace.loadedBudget >= pointBudget;
             if (loadKey === trace.loadedKey && served) return;
             trace.error = null;
@@ -21928,29 +21929,158 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwUpdateAllCursorOverlays();
         }
 
-        function wwInvalidateAnalysisTiming(sourceId) {
-            // Results and pending requests are tied to the old timing generation.
-            // Keep settings/context selections; the existing page-load path refetches them.
-            wwOvercurrentState.requestGeneration += 1;
-            wwOvercurrentState.latestResult = null;
-            wwOvercurrentState.curveCache = null;
-            wwOvercurrentState.lastLoadedContextId = null;
-            wwOvercurrentLastPlaybackSignature = null;
-            wwOvercurrentPlaybackFetchedTime = null;
-            wwPhasorState.requestGeneration += 1;
-            wwPhasorState.latestDiagram = null;
-            wwPhasorState.lastLoadedContextId = null;
-            wwPhasorLastPlaybackSignature = null;
-            wwPhasorPlaybackFetchedTime = null;
-            wwDistanceState.requestGeneration += 1;
-            wwDistanceState.locusRequestGeneration += 1;
-            wwDistanceState.latestResult = null;
-            wwDistanceState.lastLoadedContextId = null;
-            wwDistanceLastPlaybackSignature = null;
-            wwDistancePlaybackFetchedTime = null;
-            wwDistanceInvalidateLocus();
-            wwAnalysisResetRelatedWaveformsState();
-            wwSignalCataloguePublish({ type: "updated", origin: "raw", keys: wwSignalCatalogueRawKeysForSource(sourceId) });
+        // Cache generations are local to this page. Authority remains in the backend.
+        const wwTimingGenerations = new Map();
+        let wwTimingCatalogueGeneration = 0;
+        let wwCalculatedListRequestGeneration = 0;
+
+        function wwTimingSourcesForRef(ref, seen = new Set()) {
+            if (!ref) return [];
+            if (ref.kind === "source") return ref.source_id ? [ref.source_id] : [];
+            const id = ref.calculated_channel_id;
+            if (!id || seen.has(id)) return [];
+            seen.add(id);
+            const calc = ww.calculatedChannels.get(id);
+            if (!calc) return [];
+            return Array.from(new Set((calc.inputs || []).flatMap(input => wwTimingSourcesForRef(input, seen))));
+        }
+
+        function wwTimingSourcesForDisplay(sourceId) {
+            return wwIsCalculatedSourceId(sourceId)
+                ? wwTimingSourcesForRef({ kind: "calculated", calculated_channel_id: sourceId }) : [sourceId];
+        }
+
+        function wwRecordingTimingFingerprint(sourceId) {
+            const source = (ww.sourceChannelsData.get(sourceId) || {}).source || {};
+            return JSON.stringify([sourceId, wwTimingGenerations.get(sourceId) || 0,
+                source.time_basis, source.effective_timing_reference, source.start_time_utc,
+                source.trigger_time_utc, source.time_reference_revision || 0]);
+        }
+
+        function wwDisplayTimingFingerprint(sourceId) {
+            const calc = ww.calculatedChannels.get(sourceId);
+            return JSON.stringify([calc && calc.timing_fingerprint,
+                wwTimingSourcesForDisplay(sourceId).sort().map(wwRecordingTimingFingerprint)]);
+        }
+
+        function wwAnalyserTimingSources(state) {
+            const context = (state.contexts || []).find(c => c.id === state.selectedContextId);
+            const ids = (context && context.members || []).flatMap(m => wwTimingSourcesForRef(m.channel_ref));
+            if (state.anchorDisplaySourceId) ids.push(...wwTimingSourcesForDisplay(state.anchorDisplaySourceId));
+            return Array.from(new Set(ids));
+        }
+
+        function wwAnalyserTimingFingerprint(state) {
+            return JSON.stringify(wwAnalyserTimingSources(state).sort().map(id => [
+                wwRecordingTimingFingerprint(id), wwTimeGroupIdForDisplaySourceId(id), wwAlignmentOffsetForSource(id),
+            ]));
+        }
+
+        function wwReleaseAnalysisTransport(state, generation, release) {
+            // An obsolete request may release only the transport slot it still owns.
+            // Result and playback-time writes have their separate generation guard.
+            if (state.playbackTransportGeneration !== generation) return;
+            state.playbackTransportGeneration = null;
+            release();
+        }
+
+        function wwInvalidateAnalysisTiming(sourceIds) {
+            const ids = new Set(typeof sourceIds === "string" ? [sourceIds] : sourceIds);
+            const touches = sourceId => wwTimingSourcesForDisplay(sourceId).some(id => ids.has(id));
+            // Recording caches remain dependent even while the manual-input tab is active.
+            // The separate manual results/request generations are never invalidated here.
+            const affects = state => wwAnalyserTimingSources(state).some(id => ids.has(id));
+            for (const id of ids) wwTimingGenerations.set(id, (wwTimingGenerations.get(id) || 0) + 1);
+            wwTimingCatalogueGeneration += 1;
+            if (Array.from(ww.calculatedChannels.keys()).some(touches)) {
+                wwCcPreview.generation += 1;
+                for (const panel of wwCcPreview.panelsByType.values()) {
+                    if (!panel.ready) continue;
+                    (panel.chartEl.data || []).forEach((trace, index) => {
+                        if (touches(trace.uid)) Plotly.restyle(panel.chartEl, { x: [[]], y: [[]] }, [index]);
+                    });
+                }
+            }
+            // Each consumer's existing generation guard rejects its obsolete responses.
+            // Unrelated contexts retain their results, caches and request generations.
+            for (const state of [wwOvercurrentState, wwPhasorState, wwDistanceState, wwImpedanceState, wwSequenceState]) {
+                if (!affects(state)) continue;
+                state.requestGeneration += 1;
+                state.lastLoadedContextId = null;
+                if ("latestResult" in state) state.latestResult = null;
+                if ("latestDiagram" in state) state.latestDiagram = null;
+                if ("locusRequestGeneration" in state) state.locusRequestGeneration += 1;
+                if ("locusPoints" in state) { state.locusPoints = []; state.locusSignature = null; }
+                if (state === wwOvercurrentState) {
+                    state.curveCache = null;
+                    wwOvercurrentPlaybackFetchInFlight = false;
+                    wwOvercurrentLastPlaybackSignature = null; wwOvercurrentPlaybackFetchedTime = null;
+                } else if (state === wwPhasorState) {
+                    wwPhasorDiagramFetchAbortController.abort();
+                    wwPhasorDiagramFetchAbortController = new AbortController();
+                    wwPhasorPlaybackFetchInFlight = false;
+                    wwPhasorLastPlaybackSignature = null; wwPhasorPlaybackFetchedTime = null;
+                } else if (state === wwDistanceState) {
+                    wwDistancePlaybackFetchInFlight = false;
+                    wwDistanceLastPlaybackSignature = null; wwDistancePlaybackFetchedTime = null;
+                } else if (state === wwImpedanceState) {
+                    wwImpedancePlaybackFetchInFlight = false;
+                    wwImpedanceLastPlaybackSignature = null; wwImpedancePlaybackFetchedTime = null;
+                } else if (state === wwSequenceState) {
+                    state.frozenVoltageScale = null; state.frozenCurrentScale = null;
+                    wwSequencePlaybackFetchInFlight = false;
+                    wwSequenceLastPlaybackSignature = null; wwSequencePlaybackFetchedTime = null;
+                }
+            }
+            const compliance = wwComplianceState;
+            const measurement = compliance.groups.find(group => group.id === compliance.selectedGroupId);
+            const complianceCalculatedIds = new Set(((compliance.readiness || {}).references || [])
+                .flatMap(reference => reference.members || []).map(member => member.calculated_channel_id).filter(Boolean));
+            // Include possible reused calculations while readiness itself is still in flight.
+            if (measurement) for (const calc of ww.calculatedChannels.values()) {
+                if (calc.reference_source_id === measurement.source_id) complianceCalculatedIds.add(calc.id);
+            }
+            if ((measurement && ids.has(measurement.source_id)) || Array.from(complianceCalculatedIds).some(touches)) {
+                compliance.requestSeq += 1; compliance.tracesSeq += 1;
+                compliance.readiness = null; compliance.traces = null; compliance.alignSelected = null;
+                // Compliance's independent committed event origin is preserved.
+                wwRefRenderChart();
+            }
+            const related = wwAnalysisRelatedWaveformsState;
+            if ((related.roles || []).some(role => wwTimingSourcesForRef(role.channelRef).some(id => ids.has(id)))) {
+                related.requestGeneration += 1; related.channelCache.clear(); related.lastSignature = null;
+            }
+            const displays = new Set([...ids, ...Array.from(ww.calculatedChannels.keys()).filter(touches)]);
+            for (const id of displays) {
+                wwCursorValuesGeneration.set(id, (wwCursorValuesGeneration.get(id) || 0) + 1);
+                wwPeakValuesGeneration.set(id, (wwPeakValuesGeneration.get(id) || 0) + 1);
+                wwClearCursorValuesForChannels(id, wwDisplayedAnalogChannelNamesForSource(id));
+            }
+            for (const { panel, channel } of ww.displayed.values()) {
+                if (!touches(channel.sourceId)) continue;
+                if (channel.abortController) channel.abortController.abort();
+                channel.requestSeq += 1; channel.time = []; channel.values = [];
+                const index = panel.channels.indexOf(channel);
+                if (index >= 0 && panel.plotlyReady) Plotly.restyle(panel.chartEl, { x: [[]], y: [[]], customdata: [[]] }, [index]);
+            }
+            let reconstructionAffected = false;
+            for (const panel of wwErState.plot.panels) for (const trace of panel.traces) {
+                if (!touches(trace.sourceId)) continue;
+                reconstructionAffected = true;
+                if (trace.abortController) trace.abortController.abort();
+                trace.requestSeq += 1; trace.loadedKey = null; trace.unitCache = {};
+                trace.reconstructionTime = []; trace.values = []; trace.cursorValues = null; trace.loading = false;
+                if (panel.plotlyReady) wwErSetTraceData(trace);
+            }
+            if (reconstructionAffected) wwErState.loadSeq += 1;
+            for (const key of Object.keys(wwErState.perUnit.requested)) {
+                if (!displays.has(key.split("|")[1])) continue;
+                delete wwErState.perUnit.requested[key]; delete wwErState.perUnit.resolutions[key];
+            }
+            if (ids.has(wwTable.sourceId)) wwTable.requestSeq += 1;
+            wwSignalCataloguePublish({ type: "updated", origin: "raw", keys: Array.from(ids).flatMap(wwSignalCatalogueRawKeysForSource) });
+            const calculatedKeys = Array.from(ww.calculatedChannels.keys()).filter(touches).map(id => "calculated:" + id);
+            if (calculatedKeys.length) wwSignalCataloguePublish({ type: "updated", origin: "calculated", keys: calculatedKeys });
         }
 
         document.addEventListener("change", async (event) => {
@@ -21971,10 +22101,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 // Existing Time Groups consume the effective source timebase automatically.
                 // Raw samples are unchanged; cached placement/results must be refreshed.
-                ww.epoch += 1;
+                const oldGroup = before.groups.find(group => group.sourceIds.includes(sourceId));
+                const invalidated = new Set(oldGroup ? oldGroup.sourceIds : [sourceId]);
+                wwInvalidateAnalysisTiming(invalidated);
                 ww.sourceChannelsData.delete(sourceId);
                 delete wwErState.channelsBySource[sourceId];
                 await refreshAllSourceViews();
+                const newGroup = Array.from(ww.timeGroups.values()).find(group => group.sourceIds.includes(sourceId));
+                const additional = new Set((newGroup ? newGroup.sourceIds : []).filter(id => !invalidated.has(id)));
+                if (additional.size) wwInvalidateAnalysisTiming(additional);
+                for (const id of additional) invalidated.add(id);
+                await wwFetchCalculatedChannels();
                 for (const entry of ww.displayed.values()) {
                     const timingSourceId = wwTimingSourceIdForDisplaySourceId(entry.channel.sourceId);
                     if (timingSourceId === sourceId) Object.assign(entry.channel, wwSourceTimingAuthority(sourceId));
@@ -21986,10 +22123,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRebuildLayout();
                 wwSyncTimeGroupCanvases();
                 wwRestoreTimeReferenceCursors(before);
-                await wwRefetchAllChannelsAcrossGroups();
+                await wwRefetchAllChannelsAcrossGroups(invalidated);
                 wwUpdateTimeModeControlAvailability();
                 wwSetTimeMode(ww.timeMode, true);
-                wwInvalidateAnalysisTiming(sourceId);
+                if (invalidated.has(wwTable.sourceId)) wwTableFetchPage();
                 wwErNotifyWorkspaceChanged();
             } catch (error) {
                 select.value = previous ? String(previous.offset_minutes) : "raw";
@@ -27791,6 +27928,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // decision).
         async function wwEnsureSourceChannelsFetched(sourceId) {
             if (ww.sourceChannelsData.has(sourceId)) return false;
+            const timingAtStart = wwTimingGenerations.get(sourceId) || 0;
             let response;
             try {
                 response = await fetch(
@@ -27802,6 +27940,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (!response.ok) return false;
             const data = await response.json();
+            if (timingAtStart !== (wwTimingGenerations.get(sourceId) || 0)) return false;
             ww.sourceChannelsData.set(sourceId, data);
             // Phase 5A-UAT3 (DEC-047 clarification): the SAME cache this
             // source's complete analog-channel inventory step
@@ -32911,6 +33050,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // response is reported as `{ superseded: true }`.
         async function wwFetchWaveformRange(request) {
             const { requestState, sourceId, channelName, isCalculated, nativeStart, nativeEnd, pointBudget, unitMode, timeOffsetS } = request;
+            const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             if (requestState.abortController) requestState.abortController.abort();
             const controller = new AbortController();
             requestState.abortController = controller;
@@ -32941,10 +33081,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             url.searchParams.set("unit_mode", unitMode);
 
             const response = await fetch(url.toString(), { signal: controller.signal });
-            if (seq !== requestState.requestSeq) return { superseded: true };
+            if (seq !== requestState.requestSeq || timingAtStart !== wwDisplayTimingFingerprint(sourceId)) return { superseded: true };
 
             const bodyText = await response.text();
-            if (seq !== requestState.requestSeq) return { superseded: true };
+            if (seq !== requestState.requestSeq || timingAtStart !== wwDisplayTimingFingerprint(sourceId)) return { superseded: true };
 
             let body = null;
             try { body = JSON.parse(bodyText); } catch (error) { /* handled by !response.ok / null body below */ }
@@ -34031,10 +34171,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // first zoom/pan/Reset -- the primary group's own bounds before
         // this task, and every group's own bounds right after Reset Time
         // View, which seeds every group's entry).
-        async function wwRefetchAllChannelsAcrossGroups() {
+        async function wwRefetchAllChannelsAcrossGroups(sourceIds = null) {
             const jobs = [];
             for (const panel of ww.panels) {
                 for (const channel of panel.channels) {
+                    if (sourceIds && !wwTimingSourcesForDisplay(channel.sourceId).some(id => sourceIds.has(id))) continue;
                     const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
                     const range = ww.timeGroupViewports.get(groupId) || ww.viewport;
                     const startTime = range ? range.start : null;
@@ -36504,6 +36645,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwResolveCalloutAnchorMove(id, sourceId, channelName, approximateElapsedSeconds) {
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
+            const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             const entry = ww.displayed.get(wwChannelKey(sourceId, channelName));
             const panel = entry ? entry.panel : null;
 
@@ -36547,11 +36689,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // have changed, OR this specific Callout was deleted, while
             // the request was in flight. Never resurrect/update a stale
             // or deleted annotation.
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
 
             let body = null;
             try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
 
             if (!response.ok || !body) {
                 // Section 10: never leave the Callout at the approximate
@@ -37236,6 +37378,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
             const sourceId = channel.sourceId;
+            const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             const channelName = channel.channelName;
 
             // Phase 5A (section 56): a calculated channel's own anchor
@@ -37274,11 +37417,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // have changed (Start New Workspace / this source removed)
             // while the request was in flight. Never create a Callout in
             // the wrong workspace.
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
             let body = null;
             try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
             if (!response.ok || !body) {
                 // Section 66: never create a partial/approximate Callout
@@ -37339,12 +37482,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // wwPlacementSessionStale() below.
             const placementGenerationAtStart = ww.annotationPlacementGeneration;
             const sourceId = channel.sourceId;
+            const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             const channelName = channel.channelName;
             const startTime = clickRange.start;
             const endTime = clickRange.end;
 
             function wwPlacementSessionStale() {
-                return epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId ||
+                return timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId ||
                     ww.annotationPlacementGeneration !== placementGenerationAtStart;
             }
 
@@ -37485,6 +37629,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
+            const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             const generation = (wwPeakValuesGeneration.get(sourceId) || 0) + 1;
             wwPeakValuesGeneration.set(sourceId, generation);
 
@@ -37522,12 +37667,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             if (wwPeakValuesGeneration.get(sourceId) !== generation) return; // superseded while in flight
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
             let body = null;
             try { body = await response.json(); } catch (error) { /* handled below */ }
             if (wwPeakValuesGeneration.get(sourceId) !== generation) return; // re-checked after the second await
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             if (!response.ok || !body || !Array.isArray(body.results)) return;
 
             // Section 33's own alignment contract: `results[i]` corresponds
@@ -40463,7 +40608,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const calc of channels) {
                 const isVisible = wwIsAnalogChannelVisible(calc.id, calc.name);
                 const color = wwColorForChannel(calc.id, calc.name);
-                const error = wwCcListErrors.get(calc.id);
+                const error = wwCcListErrors.get(calc.id) || (calc.timing_status === "incompatible" ? calc.timing_error : null);
                 const meta = WW_CC_OPERATIONS[calc.operation];
                 const inputNamesHtml = calc.inputs.map(wwCcInputDisplayNameHtml).join(", ");
                 const selected = calc.id === wwCcSelectedCalculatedChannelId;
@@ -41269,7 +41414,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 referenceSourceId: calc.reference_source_id,
                 calculatedChannelId: calc.id,
                 name: calc.name, unit: calc.unit || "", engineeringType: calc.engineering_type,
-                revision: calc.id + "@" + calc.created_at + "@time:" + (((ww.sourceChannelsData.get(calc.reference_source_id) || {}).source || {}).time_reference_revision || 0),
+                revision: calc.id + "@" + calc.created_at + "@time:" + wwDisplayTimingFingerprint(calc.id),
                 definition: calc,
             };
         }
@@ -41289,7 +41434,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         referenceSourceId: sourceId, calculatedChannelId: null,
                         name: channel.name, unit: channel.unit || "",
                         engineeringType: signalType === "analog" ? channel.engineering_type : "Digital",
-                        revision: key + "@time:" + (data.source.time_reference_revision || 0),
+                        revision: key + "@time:" + wwRecordingTimingFingerprint(sourceId),
                         definition: channel,
                     });
                 }
@@ -41364,6 +41509,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         async function wwFetchCalculatedChannels() {
+            const generation = ++wwCalculatedListRequestGeneration;
+            const timing = wwTimingCatalogueGeneration;
             let response;
             try {
                 response = await fetch(
@@ -41375,7 +41522,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!response.ok) return;
             let body = null;
             try { body = await response.json(); } catch (error) { return; }
-            if (!Array.isArray(body)) return;
+            if (generation !== wwCalculatedListRequestGeneration || timing !== wwTimingCatalogueGeneration || !Array.isArray(body)) return;
             wwCalculatedChannelsReplaceAll(body);
             wwRenderCalculatedChannelsSidebarSection();
             wwRenderCalculatedChannelsPage();
@@ -48542,26 +48689,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 params.set("ct_secondary", String(s.ctSecondary));
             }
 
+            wwOvercurrentState.playbackTransportGeneration = myGeneration;
             wwOvercurrentPlaybackFetchInFlight = true;
             wwOvercurrentSetUpdatingIndicator(true);
             let result;
             try {
                 result = await wwOvercurrentFetchAnalysis(workspaceId, contextId, params);
             } catch (error) {
-                wwOvercurrentPlaybackFetchInFlight = false;
+                wwReleaseAnalysisTransport(wwOvercurrentState, myGeneration, () => { wwOvercurrentPlaybackFetchInFlight = false; });
+                if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwOvercurrentPlaybackLastFetchAtMs = performance.now();
                 wwOvercurrentPlaybackFetchedTime = desiredTime;
-                if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwOvercurrentSetUpdatingIndicator(false);
                 wwOvercurrentState.latestResult = null;
                 wwOvercurrentRenderResult(null);
                 wwOvercurrentMaybeFetchForPlayback();
                 return;
             }
-            wwOvercurrentPlaybackFetchInFlight = false;
+            wwReleaseAnalysisTransport(wwOvercurrentState, myGeneration, () => { wwOvercurrentPlaybackFetchInFlight = false; });
+            if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwOvercurrentPlaybackLastFetchAtMs = performance.now();
             wwOvercurrentPlaybackFetchedTime = desiredTime;
-            if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwOvercurrentSetUpdatingIndicator(false);
             wwOvercurrentState.latestResult = result;
             wwOvercurrentRenderResult(result);
@@ -50491,26 +50639,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwImpedanceBasisParams(s)
             ));
 
+            wwImpedanceState.playbackTransportGeneration = myGeneration;
             wwImpedancePlaybackFetchInFlight = true;
             wwImpedanceSetUpdatingIndicator(true);
             let result;
             try {
                 result = await wwImpedanceFetchAnalysis(workspaceId, contextId, params);
             } catch (error) {
-                wwImpedancePlaybackFetchInFlight = false;
+                wwReleaseAnalysisTransport(wwImpedanceState, myGeneration, () => { wwImpedancePlaybackFetchInFlight = false; });
+                if (myGeneration !== wwImpedanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwImpedancePlaybackLastFetchAtMs = performance.now();
                 wwImpedancePlaybackFetchedTime = desiredTime;
-                if (myGeneration !== wwImpedanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwImpedanceSetUpdatingIndicator(false);
                 wwImpedanceState.latestResult = null;
                 wwImpedanceRenderResult(null);
                 wwImpedanceMaybeFetchForPlayback();
                 return;
             }
-            wwImpedancePlaybackFetchInFlight = false;
+            wwReleaseAnalysisTransport(wwImpedanceState, myGeneration, () => { wwImpedancePlaybackFetchInFlight = false; });
+            if (myGeneration !== wwImpedanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwImpedancePlaybackLastFetchAtMs = performance.now();
             wwImpedancePlaybackFetchedTime = desiredTime;
-            if (myGeneration !== wwImpedanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwImpedanceSetUpdatingIndicator(false);
             wwImpedanceState.latestResult = result;
             wwImpedanceRenderResult(result);
@@ -50526,6 +50675,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const s = wwImpedanceState.settings;
             return [
                 wwImpedanceState.selectedContextId, wwImpedanceState.activeTimeGroupId, wwImpedanceState.phase,
+                wwAnalyserTimingFingerprint(wwImpedanceState),
                 s.recordingBasis, s.outputBasis, s.vtPrimary, s.vtSecondary, s.ctPrimary, s.ctSecondary,
             ].join("|");
         }
@@ -53247,6 +53397,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
                 : desiredTime;
 
+            wwPhasorState.playbackTransportGeneration = myGeneration;
             wwPhasorPlaybackFetchInFlight = true;
             wwPhasorSetUpdatingIndicator(true);
             const mySignal = wwPhasorDiagramAbortSignal();
@@ -53254,7 +53405,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             try {
                 diagram = await wwPhasorFetchDiagram(workspaceId, contextId, analysisTimeForApi, mySignal);
             } catch (error) {
-                wwPhasorPlaybackFetchInFlight = false;
+                wwReleaseAnalysisTransport(wwPhasorState, myGeneration, () => { wwPhasorPlaybackFetchInFlight = false; });
+                if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwPhasorPlaybackLastFetchAtMs = performance.now();
                 wwPhasorPlaybackFetchedTime = desiredTime;
                 // DEC-113: a superseded fetch (wwPhasorRequestExactPlaybackFetch()
@@ -53270,17 +53422,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwPhasorMaybeFetchForPlayback();
                     return;
                 }
-                if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwPhasorSetUpdatingIndicator(false);
                 wwPhasorState.latestDiagram = null;
                 wwPhasorRenderDiagramResult(null);
                 wwPhasorMaybeFetchForPlayback();
                 return;
             }
-            wwPhasorPlaybackFetchInFlight = false;
+            wwReleaseAnalysisTransport(wwPhasorState, myGeneration, () => { wwPhasorPlaybackFetchInFlight = false; });
+            if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwPhasorPlaybackLastFetchAtMs = performance.now();
             wwPhasorPlaybackFetchedTime = desiredTime;
-            if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwPhasorSetUpdatingIndicator(false);
 
             wwPhasorState.latestDiagram = diagram;
@@ -54452,26 +54603,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
                 : desiredTime;
 
+            wwSequenceState.playbackTransportGeneration = myGeneration;
             wwSequencePlaybackFetchInFlight = true;
             wwSequenceSetUpdatingIndicator(true);
             let result;
             try {
                 result = await wwSequenceFetchAnalysis(workspaceId, contextId, analysisTimeForApi);
             } catch (error) {
-                wwSequencePlaybackFetchInFlight = false;
+                wwReleaseAnalysisTransport(wwSequenceState, myGeneration, () => { wwSequencePlaybackFetchInFlight = false; });
+                if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwSequencePlaybackLastFetchAtMs = performance.now();
                 wwSequencePlaybackFetchedTime = desiredTime;
-                if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwSequenceSetUpdatingIndicator(false);
                 wwSequenceState.latestResult = null;
                 wwSequenceRenderResult(null);
                 wwSequenceMaybeFetchForPlayback();
                 return;
             }
-            wwSequencePlaybackFetchInFlight = false;
+            wwReleaseAnalysisTransport(wwSequenceState, myGeneration, () => { wwSequencePlaybackFetchInFlight = false; });
+            if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwSequencePlaybackLastFetchAtMs = performance.now();
             wwSequencePlaybackFetchedTime = desiredTime;
-            if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwSequenceSetUpdatingIndicator(false);
 
             wwSequenceState.latestResult = result;
@@ -55382,26 +55534,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwDistanceBasisParams(s), wwDistanceZoneParams()
             ));
 
+            wwDistanceState.playbackTransportGeneration = myGeneration;
             wwDistancePlaybackFetchInFlight = true;
             wwDistanceSetUpdatingIndicator(true);
             let result;
             try {
                 result = await wwDistanceFetchAnalysis(workspaceId, contextId, params);
             } catch (error) {
-                wwDistancePlaybackFetchInFlight = false;
+                wwReleaseAnalysisTransport(wwDistanceState, myGeneration, () => { wwDistancePlaybackFetchInFlight = false; });
+                if (myGeneration !== wwDistanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwDistancePlaybackLastFetchAtMs = performance.now();
                 wwDistancePlaybackFetchedTime = desiredTime;
-                if (myGeneration !== wwDistanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwDistanceSetUpdatingIndicator(false);
                 wwDistanceState.latestResult = null;
                 wwDistanceRenderResult(null);
                 wwDistanceMaybeFetchForPlayback();
                 return;
             }
-            wwDistancePlaybackFetchInFlight = false;
+            wwReleaseAnalysisTransport(wwDistanceState, myGeneration, () => { wwDistancePlaybackFetchInFlight = false; });
+            if (myGeneration !== wwDistanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwDistancePlaybackLastFetchAtMs = performance.now();
             wwDistancePlaybackFetchedTime = desiredTime;
-            if (myGeneration !== wwDistanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwDistanceSetUpdatingIndicator(false);
             wwDistanceState.latestResult = result;
             wwDistanceRenderResult(result);
@@ -55421,6 +55574,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const s = wwDistanceState.settings;
             return [
                 wwDistanceState.selectedContextId, wwDistanceState.activeTimeGroupId, wwDistanceState.loop,
+                wwAnalyserTimingFingerprint(wwDistanceState),
                 s.recordingBasis, s.outputBasis, s.vtPrimary, s.vtSecondary, s.ctPrimary, s.ctSecondary,
             ].join("|");
         }

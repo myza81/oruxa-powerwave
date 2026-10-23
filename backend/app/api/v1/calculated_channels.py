@@ -39,6 +39,7 @@ from app.schemas.calculated_channel import (
 )
 from app.schemas.per_unit import PerUnitResolutionOut
 from app.schemas.source import ErrorOut
+from app.services.calculated_timing_service import get_calculated_result, calculated_timing_metadata
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
     check_rms_eligibility,
@@ -173,10 +174,22 @@ def _http_error(exc: ImportServiceError) -> HTTPException:
     return HTTPException(status_code=status_code, detail=ErrorOut(code=exc.code, message=exc.message).model_dump())
 
 
+def _validated_result(registry, sources, workspace_id, cid):
+    try:
+        return get_calculated_result(workspace_id, cid, source_registry=sources, calc_registry=registry)
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+
+
+def _channel_out(channel, sources, registry):
+    return CalculatedChannelOut.from_domain(channel, calculated_timing_metadata(
+        channel, source_registry=sources, calc_registry=registry))
+
+
 def _get_channel_or_404(
-    registry: CalculatedChannelRegistry, workspace_id: str, calculated_channel_id: str
+    registry: CalculatedChannelRegistry, workspace_id: str, calculated_channel_id: str, source_registry: WorkspaceRegistry
 ):
-    channel = registry.get(workspace_id, calculated_channel_id)
+    channel = _validated_result(registry, source_registry, workspace_id, calculated_channel_id)
     if channel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -220,7 +233,7 @@ def create_channel(
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
         raise _http_error(exc) from exc
-    return CalculatedChannelOut.from_domain(channel)
+    return _channel_out(channel, source_registry, calc_registry)
 
 
 @router.get("/line-to-line-voltage/readiness", response_model=list[LineToLineContextReadinessOut])
@@ -277,18 +290,19 @@ def create_line_to_line_channels(
         raise _http_error(exc) from exc
     return LineToLineCreateResponse(
         creation_batch_id=channels[0].creation_batch_id if channels else None,
-        channels=[CalculatedChannelOut.from_domain(c) for c in channels],
+        channels=[_channel_out(c, source_registry, calc_registry) for c in channels],
     )
 
 
 @router.get("", response_model=list[CalculatedChannelOut])
 def list_channels(
     workspace_id: str,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
 ) -> list[CalculatedChannelOut]:
     workspace_id = _validate_workspace_id(workspace_id)
     channels = calc_registry.list_for_workspace(workspace_id)
-    return [CalculatedChannelOut.from_domain(c) for c in channels]
+    return [_channel_out(c, source_registry, calc_registry) for c in channels]
 
 
 @router.delete("/{calculated_channel_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -332,7 +346,7 @@ def get_channel_waveform(
     (see extract_calculated_waveform_range's own new params) before
     falling back to the DEC-049 profile resolved below."""
     workspace_id = _validate_workspace_id(workspace_id)
-    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id)
+    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id, source_registry)
     per_unit_profile = (
         _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, calculated_channel_id)
         if unit_mode == "per_unit"
@@ -367,7 +381,7 @@ def get_channel_per_unit_resolution(
     here). Read-only channel metadata, fetched lazily on explicit
     engineer request only."""
     workspace_id = _validate_workspace_id(workspace_id)
-    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id)
+    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id, source_registry)
     per_unit_profile = _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, calculated_channel_id)
     provenance = build_calculated_channel_provenance(
         workspace_id=workspace_id,
@@ -433,7 +447,7 @@ def get_cursor_values(
     must never blank out the rest of the batch)."""
     workspace_id = _validate_workspace_id(workspace_id)
     channels = [
-        c for c in (calc_registry.get(workspace_id, cid) for cid in body.calculated_channel_ids) if c is not None
+        c for c in (_validated_result(calc_registry, source_registry, workspace_id, cid) for cid in body.calculated_channel_ids) if c is not None
     ]
     per_unit_profiles = None
     voltage_channel_names_by_id = None
@@ -481,7 +495,7 @@ def get_peak_values(
         )
     results: list[CalculatedPeakResultOut] = []
     for item in body.requests:
-        channel = calc_registry.get(workspace_id, item.calculated_channel_id)
+        channel = _validated_result(calc_registry, source_registry, workspace_id, item.calculated_channel_id)
         if channel is None:
             results.append(
                 CalculatedPeakResultOut(
@@ -524,7 +538,7 @@ def resolve_annotation_anchor(
     channels (DEC-045), just resolved against a calculated channel's own
     retained full-resolution arrays instead of an ActiveSource."""
     workspace_id = _validate_workspace_id(workspace_id)
-    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id)
+    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id, source_registry)
     per_unit_profile = (
         _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, calculated_channel_id)
         if body.unit_mode == "per_unit"

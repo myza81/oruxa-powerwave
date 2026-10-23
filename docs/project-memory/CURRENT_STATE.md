@@ -9,6 +9,55 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Release hardening Slice A (2026-10-23)
+
+[FACT] Calculated results now validate all original/transitive inputs against the
+requesting page session on every array access. Unknown/incompatible source timing
+returns `incompatible_time_base`; another session cannot inherit timing authority.
+Definitions remain available, single-source elapsed calculations remain valid,
+and compatible restoration re-enables unchanged eager arrays after revalidation.
+Live catalogue validity/fingerprints are additive metadata, not authorization.
+
+[FACT] Interpretation changes invalidate dependent Impedance/Sequence results,
+Impedance/Distance locus signatures, shared calculated catalogue revisions,
+Waveform/preview/related-waveform, Compliance and Event Reconstruction caches. Existing
+request generations plus source fingerprints reject obsolete responses before
+result/playback-cache writes. Unaffected contexts and reconstruction resolutions
+retain caches. Raw bytes, sample arrays, microseconds, manual offsets, global t0,
+cursors and approved session-only interpretation semantics are unchanged.
+
+[OPEN] Slice A does not authorize release: the earlier audit's unrelated GRZ100
+real-PDF conformance snapshot mismatch and browser stability findings remain
+separate. No Slice B work, push, deployment or VPS change is authorized.
+The owner explicitly approved a focused local commit with known baseline failures
+documented, provided Slice A regressions pass. The unrelated BEN documentation stash
+is preserved. See
+[TIME_REFERENCE_INTERPRETATION.md](TIME_REFERENCE_INTERPRETATION.md) for the corrected
+contract and shared dependency model.
+
+[VALIDATION] Final backend timing/alignment plus ALL frontend static guards:
+**2,080 passed, 17 POSIX-platform skips**. New backend timing-authority cases:
+**16 passed**. Final focused browser run: **15 passed, 0 skipped** (12 Slice A
+cases plus GPTH/KTBR in three browser timezones).
+
+[VALIDATION] Full backend run with owner PDFs: **10,399 passed, 167 skipped,
+3 failed**; two structural assertions were corrected and pass in the final
+all-static run above. The remaining failure is the unchanged GRZ100 real-PDF
+snapshot mismatch, reproduced in the prior audit on untouched `3d16604`.
+The full run collected 11 new Slice A cases; the final checks include all 16.
+No PDF-availability skips; exact skip reasons are in the design document.
+
+[VALIDATION] Full relevant browser run: **691 passed, 11 assertion failures,
+11 timeouts, 0 skipped (713 total, four workers, no retries)**. All 12 Slice A
+cases and all three GPTH/KTBR cases passed. Each unsuccessful case subsequently
+passed serially: **11/11 assertion cases and 11/11 timeout cases**. The parallel
+run remains unclean; serial success does not prove every failure pre-existed.
+No reproducible Slice A regression remained. No Slice B stability fixes were made.
+
+[STATUS] Focused local commit approved by the owner with these limitations
+explicitly documented. No push, deployment or VPS change. BEN stash hash remains
+`2f39bdfbd7d2f3242825c42a9f9a20c5cb077c5a`.
+
 ## Time Reference Interpretation (2026-10-23)
 
 [DECISION] Final owner rules: recording-specific and session-scoped; interpret once,

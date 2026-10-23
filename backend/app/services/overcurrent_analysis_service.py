@@ -75,6 +75,7 @@ from app.domain.overcurrent import (
 )
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
+from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.workspace_registry import WorkspaceRegistry
@@ -126,7 +127,7 @@ def _fetch_current_candidate(
             unit=matching.unit, waveform_form=matching.waveform_form,
             start_epoch=_source_start_epoch(active), nominal_frequency=active.metadata.nominal_frequency,
         )
-    calculated = calculated_channel_registry.get(workspace_id, channel_ref.calculated_channel_id)
+    calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id, source_registry=source_registry, calc_registry=calculated_channel_registry)
     if calculated is None:
         return None
     reference_source = source_registry.get(workspace_id, calculated.reference_source_id)

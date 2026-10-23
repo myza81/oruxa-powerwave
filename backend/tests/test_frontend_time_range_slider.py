@@ -309,7 +309,7 @@ class TestGroupScopedRefetchNeverUsesAnotherGroupsRange:
 
     def test_refetch_across_groups_resolves_each_channels_own_current_viewport(self):
         source = _source()
-        fn_idx = source.index("async function wwRefetchAllChannelsAcrossGroups()")
+        fn_idx = source.index("async function wwRefetchAllChannelsAcrossGroups(sourceIds = null)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);" in fn_body
         assert "ww.timeGroupViewports.get(groupId) || ww.viewport" in fn_body

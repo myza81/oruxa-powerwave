@@ -20328,6 +20328,25 @@ reversibly. Verified SubBen/COMTRADE policies and cross-source sample-alignment
 engineering guardrails remain unchanged. Full design and UAT acceptance examples:
 [TIME_REFERENCE_INTERPRETATION.md](TIME_REFERENCE_INTERPRETATION.md).
 
+### DEC-122 amendment - timing authority and derived-result invalidation (2026-10-23)
+
+[DECISION] Owner-approved Release Hardening Slice A: retained calculated results
+must validate the requesting session's effective timing for every original input,
+including transitive calculated dependencies, at result access. A revision counter
+alone cannot authorize another session. Keep definitions and valid single-source
+calculations; compatible restoration may reuse immutable eager arrays after the
+existing sample-alignment proof succeeds. Do not resample or weaken compatibility.
+
+[FACT] One shared service gate protects calculation/analyser input readers and
+result APIs. Live catalogue status and fingerprints cover all original sources.
+Frontend invalidation follows affected dependencies and Time Group placement,
+including Impedance and Sequence, locus timing signatures and stale in-flight
+responses. Unaffected caches remain usable. The approved interpretation scope,
+raw timestamps, original waveforms, manual offsets and t0/cursor semantics are
+unchanged. No second timing engine or synchronization action is introduced.
+Details and regression evidence:
+[TIME_REFERENCE_INTERPRETATION.md](TIME_REFERENCE_INTERPRETATION.md).
+
 ## DEC-123 — Event Reconstruction is a top-level function immediately after Waveform; Slice 0 is a frontend shell only
 
 Date: 2026-10-01

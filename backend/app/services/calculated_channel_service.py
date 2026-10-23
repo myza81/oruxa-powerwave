@@ -102,6 +102,7 @@ from app.domain.rms_detector import (
 )
 from app.domain.source import ActiveSource
 from app.domain.time_reference import source_start_epoch
+from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_group_aware_per_unit import (
     resolve_calculated_group_aware_per_unit,
@@ -283,7 +284,7 @@ def _resolve_input(
             engineering_type=engineering_type, waveform_form=waveform_form,
         )
 
-    calc = calc_registry.get(workspace_id, ref.calculated_channel_id)
+    calc = get_calculated_result(workspace_id, ref.calculated_channel_id, source_registry=source_registry, calc_registry=calc_registry)
     if calc is None:
         raise CalculatedChannelNotFoundError(f"No calculated channel '{ref.calculated_channel_id}' in this workspace.")
     # A calculated channel's own start_epoch is derived from whichever

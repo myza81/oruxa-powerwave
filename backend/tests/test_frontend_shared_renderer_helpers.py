@@ -94,7 +94,7 @@ def test_fetch_core_keeps_the_existing_request_contract():
         'url.searchParams.set("end_time", nativeEnd);',
         'url.searchParams.set("point_budget", String(pointBudget));',
         "if (requestState.abortController) requestState.abortController.abort();",
-        "if (seq !== requestState.requestSeq) return { superseded: true };",
+        "if (seq !== requestState.requestSeq || timingAtStart !== wwDisplayTimingFingerprint(sourceId)) return { superseded: true };",
         '"/calculated-channels/" + encodeURIComponent(sourceId) + "/waveform"',
         '"/sources/" + encodeURIComponent(sourceId) + "/waveform"',
     ):

@@ -30,6 +30,7 @@ from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import UNDEFINED
 from app.domain.per_unit import STATUS_CONFIGURED, apply_per_unit_to_array
 from app.domain.reference_profile import UNIT_KILOVOLT, UNIT_PER_UNIT, UNIT_VOLT
+from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import _resolve_effective_per_unit_for_calculated_channel
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
@@ -79,7 +80,7 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
     the shared array behind `ref`, or `None` when it no longer exists.
     `resolve()` returns the per-unit resolution for that array."""
     if ref.kind == "calculated":
-        channel = reg.calc.get(workspace_id, ref.calculated_channel_id)
+        channel = get_calculated_result(workspace_id, ref.calculated_channel_id, source_registry=reg.source, calc_registry=reg.calc)
         if channel is None:
             return None
         profile_source = reg.per_unit.profile_for_calculated_channel(workspace_id, channel.id)

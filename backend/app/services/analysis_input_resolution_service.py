@@ -45,6 +45,8 @@ from app.domain.analysis_input_resolution import (
 )
 from app.domain.analysis_requirements import get_requirement
 from app.domain.calculated_channel import ChannelRef, timebases_aligned
+from app.services.calculated_timing_service import get_calculated_result
+from app.services.errors import IncompatibleTimeBaseError
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError, UnknownAnalysisRequirementError
@@ -104,7 +106,11 @@ def _timebase_identity(
             return None
         elapsed = active.record.waveform_data["time"].to_numpy()
         return channel_ref.source_id, elapsed, _source_start_epoch(active)
-    calculated = calculated_channel_registry.get(workspace_id, channel_ref.calculated_channel_id)
+    try:
+        calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id,
+            source_registry=source_registry, calc_registry=calculated_channel_registry)
+    except IncompatibleTimeBaseError:
+        return None
     if calculated is None:
         return None
     reference_source = source_registry.get(workspace_id, calculated.reference_source_id)
@@ -132,7 +138,7 @@ def _apply_timebase_check(
     `reason_code="timebase_incompatible"` on any incompatibility --
     never resamples, never interpolates, never silently drops a role."""
     refs = list(result.resolved_roles.values())
-    if len(refs) <= 1:
+    if not refs:
         return result
 
     identities = []

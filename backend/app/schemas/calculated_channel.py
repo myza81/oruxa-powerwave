@@ -200,6 +200,10 @@ class CalculatedChannelOut(BaseModel):
     voltage_representation: str | None = None
     phase_member: str | None = None
     creation_batch_id: str | None = None
+    timing_status: str = "valid"
+    timing_error: str | None = None
+    timing_source_ids: list[str] = []
+    timing_fingerprint: str = ""
 
     def _display_axis(self) -> DisplayAxis:
         # A calculated channel carries a broad engineering_type and a
@@ -251,8 +255,9 @@ class CalculatedChannelOut(BaseModel):
         return self._per_unit_display_axis().unit
 
     @classmethod
-    def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":
+    def from_domain(cls, channel: CalculatedChannel, timing: dict | None = None) -> "CalculatedChannelOut":
         return cls(
+            **(timing or {}),
             id=channel.id,
             workspace_id=channel.workspace_id,
             name=channel.name,
