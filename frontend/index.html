@@ -16267,18 +16267,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const method = options.method || (input instanceof Request ? input.method : "GET");
                 if (String(method).toUpperCase() === "GET") {
                     const workspaceId = decodeURIComponent(url.pathname.split("/")[4]);
-                    const controller = new AbortController();
-                    const signals = [powerwaveWorkspaceReadController(workspaceId).signal,
-                        options.signal || (input instanceof Request ? input.signal : null)].filter(Boolean);
-                    const abort = event => controller.abort(event.target.reason);
-                    for (const signal of signals) {
-                        if (signal.aborted) controller.abort(signal.reason);
-                        else signal.addEventListener("abort", abort, { once: true });
-                    }
-                    options.signal = controller.signal;
-                    return powerwaveNativeFetch(input, options).finally(() => {
-                        signals.forEach(signal => signal.removeEventListener("abort", abort));
-                    });
+                    const callerSignal = Object.prototype.hasOwnProperty.call(options, "signal")
+                        ? options.signal : (input instanceof Request ? input.signal : null);
+                    const signals = [powerwaveWorkspaceReadController(workspaceId).signal, callerSignal].filter(Boolean);
+                    // Native composition retains cancellation through body consumption
+                    // without holding one listener per completed read on the workspace.
+                    options.signal = AbortSignal.any(signals);
+                    return powerwaveNativeFetch(input, options);
                 }
                 return powerwaveNativeFetch(input, options);
             }
@@ -27997,7 +27992,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return false;
             }
             if (!response.ok) return false;
-            const data = await response.json();
+            let data;
+            try { data = await response.json(); }
+            catch (error) {
+                if (error.name === "AbortError") return false;
+                throw error;
+            }
             if (workspaceAtStart !== currentWorkspaceId() || epochAtStart !== ww.epoch || wwRemovedSourceIds.has(sourceId) ||
                 timingAtStart !== (wwTimingGenerations.get(sourceId) || 0)) return false;
             ww.sourceChannelsData.set(sourceId, data);
@@ -53333,9 +53333,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Aborts as soon as EITHER the shared controller (workspace
         // teardown, see wwClearWorkspace()'s own comment) OR the
-        // dedicated one above fires -- a manual combine (no
-        // AbortSignal.any() dependency; not otherwise used in this
-        // codebase yet) so a superseded diagram fetch still also honors
+        // dedicated one above fires -- this diagram's existing manual
+        // combination makes a superseded diagram fetch still honor
         // workspace-teardown exactly as every other Analysis fetch does.
         function wwPhasorDiagramAbortSignal() {
             const dedicated = wwPhasorDiagramFetchAbortController;

@@ -121,3 +121,13 @@ cancellation. All lifecycle/cancellation cases including the previous flaky clea
 while playing pass three repeats with four workers: **24 passed**. Final lifecycle + Slice A timing/interpretation: **22 passed**, four
 workers. Full backend and isolated full four-worker browser results are pending. Release
 remains NO-GO until final evidence is reviewed.
+
+
+Native `AbortSignal.any` composes caller and workspace cancellation through response
+body consumption, including cancellation after headers. Expected metadata body
+`AbortError` means no cache update; other parsing errors still propagate. Regression
+coverage explicitly checks both pre-request and post-header caller cancellation.
+The final cancellation/timing browser target passes **22/22**. Every frontend guard
+plus backend timing/authority tests was rechecked after this final wrapper change:
+**2,080 passed, 17 POSIX-shell skips**, 201.88 seconds. Full backend completion and
+the isolated complete browser run remain pending.

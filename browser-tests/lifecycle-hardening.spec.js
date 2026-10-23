@@ -131,13 +131,19 @@ test("workspace deletion cancels a pending recording metadata request before the
   expect(await page.evaluate(sid => ww.sourceChannelsData.has(sid), sid)).toBe(false);
 });
 
-test("a workspace read continues to honor the caller's AbortSignal", async ({ page }) => {
+test("a workspace read honors caller cancellation before fetch and after response headers", async ({ page }) => {
   await page.goto("/index.html");
   expect(await page.evaluate(async () => {
-    const caller = new AbortController(); caller.abort();
-    try {
-      await fetch(apiBaseUrl() + "/api/v1/workspaces/" + currentWorkspaceId() + "/sources", { signal: caller.signal });
-      return "unexpected success";
-    } catch (error) { return error.name; }
-  })).toBe("AbortError");
+    const url = apiBaseUrl() + "/api/v1/workspaces/" + currentWorkspaceId() + "/sources";
+    const before = new AbortController(); before.abort();
+    let beforeResult, afterResult;
+    try { await fetch(url, { signal: before.signal }); beforeResult = "unexpected success"; }
+    catch (error) { beforeResult = error.name; }
+    const after = new AbortController();
+    const response = await fetch(url, { signal: after.signal });
+    after.abort();
+    try { await response.json(); afterResult = "unexpected success"; }
+    catch (error) { afterResult = error.name; }
+    return { before: beforeResult, after: afterResult };
+  })).toEqual({ before: "AbortError", after: "AbortError" });
 });
