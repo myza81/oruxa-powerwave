@@ -39,7 +39,7 @@ def test_source_timing_comes_from_backend_absolute_timebase_metadata():
     assert "const recordingStartTime = wwRecordingDisplayStartTime(timebase);" in source
     assert "wwDisplayWallClockIso(timebase.start_time_utc) || timebase.start_time || null" in source
     assert "recordingStartMs: wwParseNaiveTimestamp(recordingStartTime)" in source
-    assert "timingReference: timebase.timing_reference || null" in source
+    assert "timingReference: timebase.effective_timing_reference || timebase.timing_reference || null" in source
     assert "wwRememberSourceTimingFromChannelsData(data)" in source
 
 

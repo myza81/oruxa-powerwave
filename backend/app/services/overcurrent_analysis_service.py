@@ -21,6 +21,8 @@ precedent.
 
 from __future__ import annotations
 
+from app.domain.time_reference import source_start_epoch
+
 from app.domain.analysis_input_resolution import (
     STATUS_AMBIGUOUS,
     STATUS_NEEDS_CONFIGURATION,
@@ -72,7 +74,6 @@ from app.domain.overcurrent import (
     tms_valid,
 )
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
-from app.domain.time_grouping import normalize_absolute_datetime
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -85,13 +86,8 @@ _ROLE_KEY_BY_PHASE = {"A": "Ia", "B": "Ib", "C": "Ic"}
 
 
 def _source_start_epoch(active) -> float | None:
-    """Locally-owned copy of the same naive-datetime-ambiguity fix every
-    other analysis service module in this codebase re-declares rather
-    than imports (see `app.domain.engineering_context_detection`'s own
-    docstring for the established reasoning)."""
-    if active.metadata.start_time is None:
-        return None
-    return normalize_absolute_datetime(active.metadata.start_time).timestamp()
+    """The shared recording-level effective UTC epoch, or None for unknown time."""
+    return source_start_epoch(active.metadata)
 
 
 class _CurrentCandidate:

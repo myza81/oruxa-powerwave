@@ -23,7 +23,7 @@ function secondsToClock(t) {
   return `${hh}:${mm}:${ss}`;
 }
 
-function syntheticComtrade({ station, date = "06/03/2026", startClock, rateHz, durationS, channels }) {
+function syntheticComtrade({ station, date = "06/03/2026", startClock, triggerClock = startClock, rateHz, durationS, channels }) {
   const sampleCount = Math.round(rateHz * durationS) + 1;
   const scale = channels.map((c) => (c.amplitude || 1) / 30000);
   const cfgLines = [
@@ -35,7 +35,7 @@ function syntheticComtrade({ station, date = "06/03/2026", startClock, rateHz, d
     "1",
     `${rateHz},${sampleCount}`,
     `${date},${startClock}`,
-    `${date},${startClock}`,
+    `${date},${triggerClock}`,
     "ASCII",
     "1.0",
   ];

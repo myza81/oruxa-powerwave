@@ -9,6 +9,39 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Time Reference Interpretation (2026-10-23)
+
+[DECISION] Final owner rules: recording-specific and session-scoped; interpret once,
+use the shared effective timebase automatically everywhere. Raw timestamps, precision,
+source authority, original record and waveform samples stay immutable. Preserve Raw
+Time restores original authority (unknown BEN5K: no canonical UTC, elapsed-only).
+No browser/server/database/file persistence and no separate synchronization action.
+A reload/new page requires a new selection, even when workspace sources survive.
+
+[FACT] Implemented with page-local metadata projections in WorkspaceRegistry and the
+existing UTC resolver / overlap-based Time Groups. UTC-12:00 to UTC+14:00 offsets in
+15-minute increments. Shared epoch consumers, table timing, Waveform and Event
+Reconstruction consume effective timestamps. Timing revisions invalidate dependent
+results/caches. Manual offsets remain independent/applied once; t0 and Cursor A/B
+rebase through native source coordinates when groups merge/split. Conflicting t0
+origins reject the change atomically rather than silently dropping an origin.
+
+[FACT] Automatic GPTH/KTBR placement and reset passed local API tests using the actual
+files: +0.002067 s KTBR relative to GPTH; raw file hashes unchanged. Browser tests
+passed in UTC, New York and Kuala Lumpur, including plotted placement, Cursor A/t0,
+reset to raw and reload requiring a new selection.
+
+[VALIDATION] Full backend: 10,236 passed, 321 skipped; final affected backend/static
+checks: 87 passed. Full parallel browser run: 1,115 passed, 10 assertion failures
+and 2 timeouts (1,127 total). All 12 unsuccessful cases subsequently passed serially.
+An overlapping trace-add race exposed by request timing was corrected using existing
+stable trace identity; the unchanged six-test presentation suite passed afterward.
+Final browser run: both timeout cases plus the three timezone-specific GPTH/KTBR
+alignment/reset/reload cases passed (5/5). The original parallel run was not clean.
+No push or DEV deployment in this implementation task. BEN documentation stash intact.
+
+Design/API/lifecycle/UAT: [TIME_REFERENCE_INTERPRETATION.md](TIME_REFERENCE_INTERPRETATION.md).
+
 **BEN5K unknown-timezone handling (2026-10-22):** implemented locally on main
 from baseline `3d16604`; pending push/deployment. BEN5K preserves recorder
 clock digits with explicit `time_basis="unknown"`, null canonical UTC fields,

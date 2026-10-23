@@ -39,11 +39,13 @@ class ReconstructionRecordOut(BaseModel):
     end_time_utc: datetime | None
     duration_s: float
     in_reconstruction: bool
+    time_reference_provenance: str | None = None
 
     @classmethod
     def from_view(cls, view: RecordEligibilityView) -> "ReconstructionRecordOut":
         return cls(
             record_id=view.record_id,
+            time_reference_provenance=view.time_reference_provenance,
             source_ids=list(view.source_ids),
             time_reference_type=view.time_reference_type,
             eligible=view.eligible,
@@ -101,11 +103,13 @@ class ReconstructionMemberOut(BaseModel):
     # `null` whenever placements are unavailable (stale member or stale
     # reference) -- never a mapping for stale state.
     source_timings: list[ReconstructionSourceTimingOut] | None
+    time_reference_provenance: str | None = None
 
     @classmethod
     def from_view(cls, view: ReconstructionMemberView) -> "ReconstructionMemberOut":
         return cls(
             record_id=view.record_id,
+            time_reference_provenance=view.time_reference_provenance,
             source_ids=list(view.source_ids),
             status=view.status,
             stale_reason=view.stale_reason,

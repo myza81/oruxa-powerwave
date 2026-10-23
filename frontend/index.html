@@ -9582,7 +9582,8 @@
             accent-color: var(--accent);
             cursor: pointer;
         }
-    </style>
+            .recording-time-reference { width: auto; max-width: 100%; min-width: 180px; }
+</style>
 </head>
 <body>
     <!-- ==================================================================
@@ -16242,6 +16243,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // process-global on the backend; the frontend's part of that is
         // simply not reusing one hard-coded id for every visitor).
         // ------------------------------------------------------------------
+        // A fresh page nonce scopes temporary clock interpretations. Never save it in
+        // localStorage/sessionStorage, a recording, or an exported document.
+        const powerwavePageSessionId = crypto.randomUUID();
+        const powerwaveNativeFetch = window.fetch.bind(window);
+        window.fetch = function(input, init) {
+            const url = new URL(input instanceof Request ? input.url : input, window.location.href);
+            if (url.origin === new URL(apiBaseUrl(), window.location.href).origin && url.pathname.startsWith("/api/v1/workspaces/")) {
+                const options = Object.assign({}, init);
+                const headers = new Headers(input instanceof Request ? input.headers : undefined);
+                new Headers(options.headers).forEach((value, key) => headers.set(key, value));
+                headers.set("X-Powerwave-Session", powerwavePageSessionId);
+                options.headers = headers;
+                return powerwaveNativeFetch(input, options);
+            }
+            return powerwaveNativeFetch(input, init);
+        };
+
+        window.addEventListener("pagehide", () => {
+            // Best-effort release. A new nonce already prevents reuse even if the
+            // browser cannot deliver this request (offline/tab/process termination).
+            fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/sources/time-reference/session", {
+                method: "DELETE", keepalive: true,
+            }).catch(() => {});
+        });
+        window.addEventListener("pageshow", (event) => {
+            if (event.persisted) window.location.reload();
+        });
+
         const WORKSPACE_STORAGE_KEY = "powerwave.workspaceId";
 
         function currentWorkspaceId() {
@@ -17420,10 +17449,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const stale = wwErStaleMembers();
             if (reference && reference.status !== "current") {
                 html += wwErNoticeHtml("error", "Reference needs to be chosen again", current.length
-                    ? "<span>The reference record was removed, so no placement can be shown. Choose a current member as reference.</span>"
+                    ? (reference.stale_reason === "time_reference_unavailable"
+                        ? "<span>The reference time interpretation is unavailable. Restore it or choose a current reference.</span>"
+                        : "<span>The reference record was removed, so no placement can be shown. Choose a current member as reference.</span>")
                     : "<span>None of the selected records exists any more. Clear the reconstruction and select records again.</span>");
             }
-            if (stale.length) {
+            const unavailable = stale.filter((m) => m.stale_reason === "time_reference_unavailable");
+            if (unavailable.length) {
+                html += wwErNoticeHtml("warn", "Time reference unavailable", "<span>Restore the interpretation or remove the member. Corrections are kept and unapplied.</span>");
+            }
+            if (stale.some((m) => m.stale_reason !== "time_reference_unavailable")) {
                 const canRemove = reference && reference.status === "current";
                 html += wwErNoticeHtml("warn", stale.length === 1 ? "1 member was removed" : stale.length + " members were removed",
                     "<span>A removed record's correction is kept but not applied, and is never moved to another record.</span>" +
@@ -21250,7 +21285,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const meta = record
                 ? wwErFormatStart(record.start_time_utc) + " · " + wwFormatCompactDuration(record.duration_s) +
                   (member.reconstruction_offset_s !== null && !member.is_reference ? " · " + wwErFormatSignedSeconds(member.reconstruction_offset_s) + " from reference" : "")
-                : "Its recording was removed.";
+                : member.stale_reason === "time_reference_unavailable" ? "Its absolute time reference is unavailable." : "Its recording was removed.";
             let body;
             if (isCurrent) {
                 body = "<span>Correction <span class=\"ww-er-correction-value\" title=\"" + escapeHtml(member.correction_s + " s") + '">' +
@@ -21274,7 +21309,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // No channel tree: a stale member's channels must never look
                 // selectable as if it were current.
                 body = "<span>Correction " + escapeHtml(wwErFormatCorrection(member.correction_s)) + " (kept, not applied)</span>" +
-                    "<span>Channel selection is unavailable for a removed record.</span>";
+                    (member.stale_reason === "time_reference_unavailable"
+                        ? "<span>Restore a time interpretation to make this record available again.</span>"
+                        : "<span>Channel selection is unavailable for a removed record.</span>");
             }
             // The header of a current member selects the active navigation
             // record (wwErSetActiveRecord()); it holds no other control.
@@ -21290,7 +21327,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<span class="source-recording-name">' +
                             '<span class="ww-er-active-marker" title="Active record — the target of Fit Record"' + (active ? "" : " hidden") + "></span>" +
                             escapeHtml(wwErSourceNames(member.source_ids)) + "</span>" +
-                        '<span class="source-recording-meta">' + escapeHtml(meta) + "</span>" +
+                        '<span class="source-recording-meta">' + escapeHtml(meta + ((record && record.time_reference_provenance === "user_assigned") ? " (user-assigned time reference)" : "")) + "</span>" +
                     "</span>" +
                     '<span class="ww-er-badges">' + badges + "</span>" +
                 "</div>" +
@@ -21325,7 +21362,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 '<div class="ww-er-source-row-header">' +
                     '<span class="source-recording-header-text">' +
                         '<span class="source-recording-name">' + escapeHtml(wwErSourceNames(record.source_ids)) + "</span>" +
-                        '<span class="source-recording-meta">' + escapeHtml(meta) + "</span>" +
+                        '<span class="source-recording-meta">' + escapeHtml(meta + ((record && record.time_reference_provenance === "user_assigned") ? " (user-assigned time reference)" : "")) + "</span>" +
                         status +
                     "</span>" +
                     '<span class="ww-er-badges">' + badges + "</span>" +
@@ -21597,7 +21634,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Falls back to the stored digits only when no canonical value is
         // available (pre-DEC-122 payloads).
         function wwRecordingDisplayStartTime(timebase) {
-            if (!timebase || timebase.time_basis === "unknown") return null;
+            if (!timebase || (timebase.time_basis === "unknown" && !timebase.time_reference_interpretation)) return null;
             return wwDisplayWallClockIso(timebase.start_time_utc) || timebase.start_time || null;
         }
 
@@ -21607,7 +21644,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const raw = source[field];
             if (!raw) return null;
             if (source.time_basis === "unknown") {
-                return raw.replace("T", " ") + " (timezone unverified)";
+                const interpretation = source.time_reference_interpretation;
+                return raw.replace("T", " ") + (interpretation
+                    ? " (" + wwTimeReferenceOffsetLabel(interpretation.offset_minutes) + "; user assigned)"
+                    : " (timezone unverified)");
             }
             const text = wwFormatEngineeringTimestamp(source[field + "_utc"]) || raw.replace("T", " ");
             if (!(opts && opts.compact)) return text;
@@ -21819,6 +21859,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<div class="recording-details-timing">';
             html += timingRow("Trigger", triggerTime);
             html += timingRow("Imported", importedTime);
+            if (source.time_basis === "unknown" && (source.start_time || source.trigger_time)) html += wwTimeReferenceControl(source);
             html += '</div>';
 
             if (cfgName || datName) {
@@ -21837,6 +21878,130 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return html;
         }
+
+        function wwTimeReferenceOffsetLabel(minutes) {
+            if (minutes === 0) return "UTC";
+            const value = Math.abs(minutes);
+            return "UTC" + (minutes < 0 ? "-" : "+") + String(Math.floor(value / 60)).padStart(2, "0") + ":" + String(value % 60).padStart(2, "0");
+        }
+
+        function wwTimeReferenceControl(source) {
+            const interpretation = source.time_reference_interpretation;
+            const selected = interpretation ? String(interpretation.offset_minutes) : "raw";
+            let html = '<label>Time Reference Interpretation <select class="recording-time-reference" data-source-id="' + escapeHtml(source.source_id) + '">';
+            html += '<option value="raw"' + (selected === "raw" ? ' selected' : '') + '>Preserve Raw Time</option>';
+            for (let minutes = -720; minutes <= 840; minutes += 15) {
+                html += '<option value="' + minutes + '"' + (selected === String(minutes) ? ' selected' : '') + '>' + wwTimeReferenceOffsetLabel(minutes) + '</option>';
+            }
+            html += '</select></label><span class="hint">Session only. Effective time updates automatically; recorder time remains unverified.</span>';
+            if (interpretation) {
+                for (const field of ["start_time", "trigger_time"]) {
+                    if (source[field + "_utc"]) html += '<div>' + (field === "start_time" ? 'Derived UTC start: ' : 'Derived UTC trigger: ') + escapeHtml(source[field + "_utc"]) + ' (user assigned)</div>';
+                }
+            }
+            return html;
+        }
+
+        function wwCaptureTimeReferenceState() {
+            return {
+                offsets: new Map(ww.alignmentOffsets),
+                groups: Array.from(ww.timeGroups, ([id, group]) => ({
+                    id, sourceIds: group.sourceIds.slice(), originSourceId: group.originSourceId,
+                    cursors: structuredClone(wwTimeGroupCursorState(id)),
+                })),
+            };
+        }
+
+        function wwRestoreTimeReferenceCursors(before) {
+            for (const [id, group] of ww.timeGroups) {
+                const overlapping = before.groups.filter(old => old.sourceIds.some(sid => group.sourceIds.includes(sid)));
+                const old = overlapping.find(old => old.sourceIds.includes(group.originSourceId) && old.cursors.enabled)
+                    || overlapping.find(old => old.cursors.enabled) || overlapping[0];
+                if (!old) continue;
+                const common = old.sourceIds.includes(group.originSourceId) ? group.originSourceId
+                    : old.sourceIds.find(sid => group.sourceIds.includes(sid));
+                const delta = wwAlignmentOffsetForSource(common) - (before.offsets.get(common) || 0);
+                const state = structuredClone(old.cursors);
+                for (const key of ["a", "b"]) if (Number.isFinite(state[key].time)) state[key].time += delta;
+                ww.timeGroupCursorState.set(id, state);
+            }
+            wwUpdateAllCursorOverlays();
+        }
+
+        function wwInvalidateAnalysisTiming(sourceId) {
+            // Results and pending requests are tied to the old timing generation.
+            // Keep settings/context selections; the existing page-load path refetches them.
+            wwOvercurrentState.requestGeneration += 1;
+            wwOvercurrentState.latestResult = null;
+            wwOvercurrentState.curveCache = null;
+            wwOvercurrentState.lastLoadedContextId = null;
+            wwOvercurrentLastPlaybackSignature = null;
+            wwOvercurrentPlaybackFetchedTime = null;
+            wwPhasorState.requestGeneration += 1;
+            wwPhasorState.latestDiagram = null;
+            wwPhasorState.lastLoadedContextId = null;
+            wwPhasorLastPlaybackSignature = null;
+            wwPhasorPlaybackFetchedTime = null;
+            wwDistanceState.requestGeneration += 1;
+            wwDistanceState.locusRequestGeneration += 1;
+            wwDistanceState.latestResult = null;
+            wwDistanceState.lastLoadedContextId = null;
+            wwDistanceLastPlaybackSignature = null;
+            wwDistancePlaybackFetchedTime = null;
+            wwDistanceInvalidateLocus();
+            wwAnalysisResetRelatedWaveformsState();
+            wwSignalCataloguePublish({ type: "updated", origin: "raw", keys: wwSignalCatalogueRawKeysForSource(sourceId) });
+        }
+
+        document.addEventListener("change", async (event) => {
+            const select = event.target.closest(".recording-time-reference");
+            if (!select) return;
+            const sourceId = select.dataset.sourceId;
+            const before = wwCaptureTimeReferenceState();
+            const previous = ((ww.sourceChannelsData.get(sourceId) || {}).source || {}).time_reference_interpretation;
+            select.disabled = true;
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/sources/" + encodeURIComponent(sourceId) + "/time-reference", {
+                    method: "PUT", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ offset_minutes: select.value === "raw" ? null : Number(select.value) }),
+                });
+                if (!response.ok) {
+                    const body = await response.json();
+                    throw new Error(body.detail && body.detail.message || "Unable to update time reference.");
+                }
+                // Existing Time Groups consume the effective source timebase automatically.
+                // Raw samples are unchanged; cached placement/results must be refreshed.
+                ww.epoch += 1;
+                ww.sourceChannelsData.delete(sourceId);
+                delete wwErState.channelsBySource[sourceId];
+                await refreshAllSourceViews();
+                for (const entry of ww.displayed.values()) {
+                    const timingSourceId = wwTimingSourceIdForDisplaySourceId(entry.channel.sourceId);
+                    if (timingSourceId === sourceId) Object.assign(entry.channel, wwSourceTimingAuthority(sourceId));
+                }
+                for (const entry of ww.digitalDisplayed.values()) {
+                    if (entry.sourceId === sourceId) Object.assign(entry, wwSourceTimingAuthority(sourceId));
+                }
+                await wwRefreshWorkspaceBounds({ resetViewport: false });
+                wwRebuildLayout();
+                wwSyncTimeGroupCanvases();
+                wwRestoreTimeReferenceCursors(before);
+                await wwRefetchAllChannelsAcrossGroups();
+                wwUpdateTimeModeControlAvailability();
+                wwSetTimeMode(ww.timeMode, true);
+                wwInvalidateAnalysisTiming(sourceId);
+                wwErNotifyWorkspaceChanged();
+            } catch (error) {
+                select.value = previous ? String(previous.offset_minutes) : "raw";
+                // Keep errors local to the existing metadata workflow.
+                const message = document.createElement("span");
+                message.setAttribute("role", "alert");
+                message.textContent = error.message;
+                select.parentElement.appendChild(message);
+            } finally {
+                select.disabled = false;
+            }
+        });
 
         function renderRecordingsTable(sources) {
             const wrapEl = document.querySelector(".recordings-table-wrap");
@@ -21913,7 +22078,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<td>' + formatFileSize(source.file_size_bytes) + '</td>' +
                     '<td>' + escapeHtml(formatRecordingStatus(source.status)) + '</td>' +
                     '<td class="recording-start-time-cell"' +
-                        (source.time_basis === "unknown" ? ' title="Recorder clock time; timezone unverified"' :
+                        (source.time_basis === "unknown" ? ' title="Recorder clock time; ' + (source.time_reference_interpretation ? 'user-assigned interpretation' : 'timezone unverified') + '"' :
                             source.start_time_utc ? ' title="' + escapeHtml("Shown in " + wwDisplayTimezone()) + '"' : "") +
                         '>' + formatRecordingStartTime(source) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
@@ -28569,7 +28734,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // existing "Undefined" fallback convention above.
                 ' data-engineering-quantity="' + escapeHtml(channel.engineering_quantity || "Undefined") + '"' +
                 ' data-recording-start-time="' + escapeHtml(wwRecordingDisplayStartTime(timebase) || "") + '"' +
-                ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
+                ' data-timing-reference="' + escapeHtml((timebase && (timebase.effective_timing_reference || timebase.timing_reference)) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
 
@@ -28619,7 +28784,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ' data-channel-index="' + escapeHtml(String(channel.index)) + '"' +
                 ' data-classification="' + escapeHtml(channel.classification || "never_triggered") + '"' +
                 ' data-recording-start-time="' + escapeHtml(wwRecordingDisplayStartTime(timebase) || "") + '"' +
-                ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
+                ' data-timing-reference="' + escapeHtml((timebase && (timebase.effective_timing_reference || timebase.timing_reference)) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
 
@@ -29824,7 +29989,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             ww.sourceTiming.set(data.source.source_id, {
                 recordingStartTime,
                 recordingStartMs: wwParseNaiveTimestamp(recordingStartTime),
-                timingReference: timebase.timing_reference || null,
+                timingReference: timebase.effective_timing_reference || timebase.timing_reference || null,
                 // Time of Day (additive): the date-neutral seconds-since-
                 // midnight clock reference for a `timing_reference ===
                 // "time_of_day"` source (TimebaseOut.time_of_day_reference_
@@ -33636,7 +33801,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Plotly.addTraces, no full re-render of the panel's existing
         // traces.
         function wwAddTraceToPanel(panel, channelEntry) {
-            Plotly.addTraces(panel.chartEl, wwBuildTrace(channelEntry, panel));
+            const trace = wwBuildTrace(channelEntry, panel);
+            // Another pending add batch can have included this channel in newPlot.
+            // Stable meta identity owns one trace; update its now-loaded samples once.
+            const existingIndex = (panel.chartEl.data || []).findIndex(existing => existing.meta === trace.meta);
+            if (existingIndex === -1) {
+                Plotly.addTraces(panel.chartEl, trace);
+            } else {
+                Plotly.restyle(panel.chartEl, {
+                    x: [trace.x], y: [trace.y], customdata: [trace.customdata],
+                    hovertemplate: trace.hovertemplate, name: trace.name, "line.color": trace.line.color,
+                }, [existingIndex]);
+            }
             // Angle-axis enhancement (DEC-078): this new channel may
             // change whether the panel NEEDS a secondary axis at all (a
             // previously angle-only or previously angle-free panel just
@@ -41093,7 +41269,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 referenceSourceId: calc.reference_source_id,
                 calculatedChannelId: calc.id,
                 name: calc.name, unit: calc.unit || "", engineeringType: calc.engineering_type,
-                revision: calc.id + "@" + calc.created_at,
+                revision: calc.id + "@" + calc.created_at + "@time:" + (((ww.sourceChannelsData.get(calc.reference_source_id) || {}).source || {}).time_reference_revision || 0),
                 definition: calc,
             };
         }
@@ -41113,7 +41289,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         referenceSourceId: sourceId, calculatedChannelId: null,
                         name: channel.name, unit: channel.unit || "",
                         engineeringType: signalType === "analog" ? channel.engineering_type : "Digital",
-                        revision: key,
+                        revision: key + "@time:" + (data.source.time_reference_revision || 0),
                         definition: channel,
                     });
                 }
@@ -45434,9 +45610,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // waveform refetch), and never touches ww.viewport (section 7) --
         // the exact same physical event window stays visible, just
         // relabeled.
-        function wwSetTimeMode(mode) {
+        function wwSetTimeMode(mode, refreshPresentation = false) {
             if (mode !== "absolute" && mode !== "elapsed") return;
-            if (mode === ww.timeMode) return;
+            if (mode === ww.timeMode && !refreshPresentation) return;
             if (wwAvailableTimeModes().indexOf(mode) === -1) return;
 
             ww.timeMode = mode;

@@ -78,7 +78,7 @@ def test_time_mode_switch_does_not_rewrite_trace_geometry():
     source = _source()
     body = _function_body(
         source,
-        "function wwSetTimeMode(mode)",
+        "function wwSetTimeMode(mode, refreshPresentation = false)",
         "function wwAnySourceIdForTimeGroup(groupId)",
     )
 

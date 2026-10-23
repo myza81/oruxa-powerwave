@@ -63,6 +63,7 @@ import numpy as np
 
 from app.domain.event_detection import VALID_SENSITIVITIES, EventDetectionResult, detect_event_onset
 from app.domain.source import SourceMetadata
+from app.domain.time_reference import effective_timing_reference, source_timestamp_utc
 from app.domain.synchronization import alignment_offset_valid, source_time_to_workspace_time
 from app.domain.time_grouping import (
     TIME_REFERENCE_TIME_OF_DAY,
@@ -97,7 +98,7 @@ def list_time_groups(*, workspace_id: str, source_registry: WorkspaceRegistry) -
 
 
 def _metadata_tuple(metadata: SourceMetadata) -> tuple[str, str, object, float, float]:
-    return (metadata.source_id, metadata.timing_reference, metadata.start_time, metadata.elapsed_start_seconds, metadata.elapsed_end_seconds)
+    return (metadata.source_id, effective_timing_reference(metadata), source_timestamp_utc(metadata, "start_time"), metadata.elapsed_start_seconds, metadata.elapsed_end_seconds)
 
 
 def _time_of_day_reference_seconds(metadata_iter) -> dict[str, float]:
@@ -166,7 +167,7 @@ def _view_for_source(
             origin_reference_seconds=origin_metadata.time_of_day_reference_seconds,
         )
     else:
-        placement = timestamp_placement_offset_s(source_start_time=own_metadata.start_time, origin_start_time=origin_metadata.start_time)
+        placement = timestamp_placement_offset_s(source_start_time=source_timestamp_utc(own_metadata, "start_time"), origin_start_time=source_timestamp_utc(origin_metadata, "start_time"))
     manual = registry.get_offset(workspace_id, source_id)
     return SourceAlignmentView(
         source_id=source_id,
@@ -528,3 +529,48 @@ def detect_event_candidate(
         nominal_frequency_hz=active.metadata.nominal_frequency,
         effective_alignment_offset_s=view.effective_alignment_offset_s,
     )
+
+
+def rebase_time_reference_state(*, workspace_id, before, after, registry: SynchronizationRegistry) -> None:
+    """Reconcile the existing derived Time Groups after a source-clock interpretation.
+
+    Map an old group's t0 through a common source's native elapsed coordinates,
+    applying the old/new placement delta once. Contradictory origins cannot be
+    silently merged: validation rejects the interpretation without changing state.
+    """
+    def topology(actives):
+        metadata = {s.metadata.source_id: s.metadata for s in actives}
+        groups = derive_time_groups(
+            [_metadata_tuple(m) for m in metadata.values()],
+            time_of_day_reference_seconds=_time_of_day_reference_seconds(metadata.values()),
+        )
+        return groups, metadata
+
+    old_groups, old_metadata = topology(before)
+    new_groups, new_metadata = topology(after)
+
+    def calculate(manual, origins):
+        def placement(group, sid, metadata):
+            own, anchor = metadata[sid], metadata[group.origin_source_id]
+            if group.time_reference_type == TIME_REFERENCE_TIME_OF_DAY:
+                value = time_of_day_placement_offset_s(source_reference_seconds=own.time_of_day_reference_seconds, origin_reference_seconds=anchor.time_of_day_reference_seconds)
+            else:
+                value = timestamp_placement_offset_s(source_start_time=source_timestamp_utc(own, "start_time"), origin_start_time=source_timestamp_utc(anchor, "start_time"))
+            return value + manual.get(sid, 0.0)
+
+        updated = dict(origins)
+        for new in new_groups:
+            candidates = []
+            for old in old_groups:
+                common = set(new.source_ids).intersection(old.source_ids)
+                if not common or old.group_id not in origins:
+                    continue
+                sid = old.origin_source_id if old.origin_source_id in common else min(common)
+                candidates.append(origins[old.group_id] - placement(old, sid, old_metadata) + placement(new, sid, new_metadata))
+            if candidates:
+                if any(abs(value - candidates[0]) > 1e-9 for value in candidates[1:]):
+                    raise ValueError("These Time Groups have conflicting t0 origins. Clear or reconcile their existing t0 values before changing the time interpretation.")
+                updated[new.group_id] = candidates[0]
+        return updated
+
+    registry.transition_time_reference(workspace_id, calculate)

@@ -45,7 +45,8 @@ from app.domain.event_reconstruction import (
     recorded_placement_s,
     total_reconstruction_offset_s,
 )
-from app.domain.time_grouping import normalize_absolute_datetime, time_reference_type_for_source
+from app.domain.time_grouping import time_reference_type_for_source
+from app.domain.time_reference import effective_timing_reference, source_timestamp_utc
 from app.services.errors import (
     DuplicateReconstructionMemberError,
     InvalidReconstructionAnnotationError,
@@ -98,6 +99,7 @@ class _RecordTiming:
     extent_start_s: float
     extent_end_s: float
     sources: list[_SourceTiming]
+    time_reference_provenance: str | None = None
 
 
 def _record_timings(*, workspace_id: str, source_registry: WorkspaceRegistry) -> list[_RecordTiming]:
@@ -106,11 +108,14 @@ def _record_timings(*, workspace_id: str, source_registry: WorkspaceRegistry) ->
     timings: list[_RecordTiming] = []
     for active in source_registry.list_for_workspace(workspace_id):
         metadata = active.metadata
-        time_reference_type = time_reference_type_for_source(metadata.timing_reference)
+        # The same effective source timebase drives all consumers and Time Groups.
+        # Event Reconstruction membership remains the engineer's own selection.
+        canonical_start = source_timestamp_utc(metadata, "start_time")
+        time_reference_type = time_reference_type_for_source(effective_timing_reference(metadata))
         eligibility = reconstruction_eligibility(time_reference_type)
         origin_start = None
         if eligibility.eligible:
-            if metadata.start_time is None:
+            if canonical_start is None:
                 # Never fabricate an anchor for an "absolute" record
                 # without a recorded start.
                 eligibility = ReconstructionEligibility(
@@ -118,13 +123,14 @@ def _record_timings(*, workspace_id: str, source_registry: WorkspaceRegistry) ->
                     reason_message="This record has no recorded absolute start.",
                 )
             else:
-                origin_start = normalize_absolute_datetime(metadata.start_time)
+                origin_start = canonical_start
         source = _SourceTiming(
             source_id=metadata.source_id, within_record_offset_s=0.0,
             elapsed_start_s=metadata.elapsed_start_seconds, elapsed_end_s=metadata.elapsed_end_seconds,
         )
         timings.append(
             _RecordTiming(
+                time_reference_provenance="user_assigned" if metadata.time_reference_interpretation else None,
                 record_id=metadata.source_id,
                 source_ids=[metadata.source_id],
                 time_reference_type=time_reference_type,
@@ -165,6 +171,7 @@ class RecordEligibilityView:
     end_time_utc: datetime | None
     duration_s: float
     in_reconstruction: bool
+    time_reference_provenance: str | None = None
 
 
 @dataclass(slots=True)
@@ -215,6 +222,7 @@ class ReconstructionMemberView:
     recorded_start_time_utc: datetime | None
     recorded_end_time_utc: datetime | None
     source_timings: list[ReconstructionSourceTimingView] | None
+    time_reference_provenance: str | None = None
 
 
 @dataclass(slots=True)
@@ -279,7 +287,9 @@ def _build_view(
     for member in definition.members:
         timing = by_record.get(member.record_id)
         status = MEMBER_STATUS_CURRENT if timing is not None else MEMBER_STATUS_STALE
-        stale_reason = None if timing is not None else STALE_REASON_RECORD_REMOVED
+        stale_reason = None if timing is not None else (
+            "time_reference_unavailable" if any(t.record_id == member.record_id for t in timings) else STALE_REASON_RECORD_REMOVED
+        )
 
         placement = offset = start = end = source_timings = None
         if timing is not None and placements_available:
@@ -306,6 +316,7 @@ def _build_view(
         member_views.append(
             ReconstructionMemberView(
                 record_id=member.record_id,
+                time_reference_provenance=timing.time_reference_provenance if timing else None,
                 source_ids=list(member.source_ids),
                 status=status,
                 stale_reason=stale_reason,
@@ -405,6 +416,7 @@ def list_reconstruction_records(
                 end_time_utc=_utc(timing.origin_start, timing.extent_end_s) if absolute else None,
                 duration_s=timing.extent_end_s - timing.extent_start_s,
                 in_reconstruction=timing.record_id in member_ids,
+                time_reference_provenance=timing.time_reference_provenance,
             )
         )
     return views

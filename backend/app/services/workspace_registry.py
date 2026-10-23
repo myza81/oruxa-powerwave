@@ -43,8 +43,12 @@ management" is deferred):
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
+from collections.abc import Callable
+from app.services.workspace_session import page_session_id
 
 from app.domain.source import ActiveSource
+from app.domain.time_reference import TimeReferenceInterpretation, validate_interpretation
 
 
 class WorkspaceRegistry:
@@ -68,6 +72,9 @@ class WorkspaceRegistry:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._sources: dict[tuple[str, str], ActiveSource] = {}
+        # Page-local metadata overlays on immutable source records; no disk/browser persistence.
+        self._time_references: dict[tuple[str, str, str], TimeReferenceInterpretation] = {}
+        self._time_revisions: dict[tuple[str, str, str], int] = {}
 
     def add(self, source: ActiveSource) -> None:
         with self._lock:
@@ -75,12 +82,59 @@ class WorkspaceRegistry:
 
     def get(self, workspace_id: str, source_id: str) -> ActiveSource | None:
         with self._lock:
-            return self._sources.get((workspace_id, source_id))
+            source = self._sources.get((workspace_id, source_id))
+            return self._session_view(source) if source is not None else None
+
+    def _session_view(self, source: ActiveSource) -> ActiveSource:
+        key = (source.metadata.workspace_id, source.metadata.source_id, page_session_id.get())
+        if key not in self._time_revisions:
+            return source
+        return ActiveSource(metadata=replace(
+            source.metadata, time_reference_interpretation=self._time_references.get(key),
+            time_reference_revision=self._time_revisions[key],
+        ), record=source.record)
+
+    def set_time_reference_interpretation(
+        self, workspace_id: str, source_id: str, interpretation: TimeReferenceInterpretation | None,
+        transition: Callable[[list[ActiveSource], list[ActiveSource]], None] | None = None,
+    ) -> ActiveSource | None:
+        """Validate and publish a page-local timebase, retaining original record and arrays.
+
+        The transition callback validates/rebases existing synchronization state before
+        publication. A rejected transition leaves metadata and its revision unchanged.
+        """
+        with self._lock:
+            current = self._sources.get((workspace_id, source_id))
+            if current is None:
+                return None
+            validate_interpretation(current.metadata, interpretation)
+            before = [self._session_view(s) for (wid, _), s in self._sources.items() if wid == workspace_id]
+            key = (workspace_id, source_id, page_session_id.get())
+            revision = self._time_revisions.get(key, 0) + 1
+            updated = ActiveSource(metadata=replace(
+                current.metadata, time_reference_interpretation=interpretation, time_reference_revision=revision,
+            ), record=current.record)
+            after = [updated if s.metadata.source_id == source_id else s for s in before]
+            if transition is not None:
+                transition(before, after)
+            if interpretation is None:
+                self._time_references.pop(key, None)
+            else:
+                self._time_references[key] = interpretation
+            self._time_revisions[key] = revision
+            return updated
+
+    def clear_time_reference_session(self, workspace_id: str) -> None:
+        """Release only this page's overlays, retaining uploaded records and other pages."""
+        with self._lock:
+            for store in (self._time_references, self._time_revisions):
+                for key in [k for k in store if k[0] == workspace_id and k[2] == page_session_id.get()]:
+                    del store[key]
 
     def list_for_workspace(self, workspace_id: str) -> list[ActiveSource]:
         with self._lock:
             return [
-                source
+                self._session_view(source)
                 for (wid, _sid), source in self._sources.items()
                 if wid == workspace_id
             ]
@@ -88,6 +142,9 @@ class WorkspaceRegistry:
     def remove(self, workspace_id: str, source_id: str) -> bool:
         """Release a source (metadata + its authoritative record). Returns True if it existed."""
         with self._lock:
+            for store in (self._time_references, self._time_revisions):
+                for key in [k for k in store if k[:2] == (workspace_id, source_id)]:
+                    del store[key]
             return self._sources.pop((workspace_id, source_id), None) is not None
 
     def remove_workspace(self, workspace_id: str) -> int:
@@ -114,6 +171,9 @@ class WorkspaceRegistry:
             keys = [key for key in self._sources if key[0] == workspace_id]
             for key in keys:
                 del self._sources[key]
+            for store in (self._time_references, self._time_revisions):
+                for key in [k for k in store if k[0] == workspace_id]:
+                    del store[key]
             return len(keys)
 
     def count(self) -> int:

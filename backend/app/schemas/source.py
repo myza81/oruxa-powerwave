@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, computed_field, field_serializer
+from pydantic import BaseModel, ConfigDict, computed_field, field_serializer, Field
 
+from app.domain.time_reference import source_timestamp_utc, effective_timing_reference
 from app.domain.channel_classification import UNDEFINED
 from app.domain.engineering_units import DisplayAxis, resolve_display_axis, resolve_per_unit_display_axis
 from app.domain.source import SourceMetadata
@@ -122,6 +123,19 @@ def _canonical(value: datetime | None, time_basis: TimeBasis | None = None) -> d
     return canonical_utc(value, time_basis=time_basis) if value is not None else None
 
 
+class TimeReferenceUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Required: null explicitly restores raw time; an omitted field is not a reset.
+    offset_minutes: int | None = Field(..., strict=True, ge=-720, le=840, multiple_of=15)
+
+
+class TimeReferenceInterpretationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    offset_minutes: int
+    assigned_at: datetime
+    provenance: str
+
+
 class _RecorderClockOut(BaseModel):
     """Keep the normalized microsecond clock precision, including zero fractions.
 
@@ -142,6 +156,9 @@ class TimebaseOut(_RecorderClockOut):
     start_time_utc: datetime | None = None
     trigger_time_utc: datetime | None = None
     time_basis: TimeBasis | None = None
+    time_reference_interpretation: TimeReferenceInterpretationOut | None = None
+    time_reference_revision: int = 0
+    effective_timing_reference: str | None = None
     sample_count: int
     duration_seconds: float
     elapsed_start_seconds: float
@@ -211,6 +228,9 @@ class SourceSummaryOut(_RecorderClockOut):
     start_time_utc: datetime | None = None
     trigger_time_utc: datetime | None = None
     time_basis: TimeBasis | None = None
+    time_reference_interpretation: TimeReferenceInterpretationOut | None = None
+    time_reference_revision: int = 0
+    effective_timing_reference: str | None = None
     sampling_rates: list[float]
     # Time of Day (Recording Events metadata display fix): mirrors
     # `SourceMetadata.time_of_day_reference_seconds` verbatim, same as
@@ -257,11 +277,14 @@ class SourceSummaryOut(_RecorderClockOut):
             elapsed_end_seconds=source.elapsed_end_seconds,
             sample_count=source.sample_count,
             timing_reference=source.timing_reference,
+            effective_timing_reference=effective_timing_reference(source),
+            time_reference_revision=source.time_reference_revision,
             time_basis=resolve_time_basis(source.start_time or source.trigger_time, source.time_basis),
+            time_reference_interpretation=(TimeReferenceInterpretationOut.model_validate(source.time_reference_interpretation) if source.time_reference_interpretation else None),
             start_time=source.start_time,
             trigger_time=source.trigger_time,
-            start_time_utc=_canonical(source.start_time, source.time_basis),
-            trigger_time_utc=_canonical(source.trigger_time, source.time_basis),
+            start_time_utc=source_timestamp_utc(source, "start_time"),
+            trigger_time_utc=source_timestamp_utc(source, "trigger_time"),
             sampling_rates=list(source.sampling_rates),
             time_of_day_reference_seconds=source.time_of_day_reference_seconds,
             preparation_interpreter_id=(
@@ -285,11 +308,14 @@ class SourceChannelsOut(BaseModel):
             source=SourceSummaryOut.from_domain(source),
             timebase=TimebaseOut(
                 timing_reference=source.timing_reference,
+                effective_timing_reference=effective_timing_reference(source),
+                time_reference_revision=source.time_reference_revision,
                 time_basis=resolve_time_basis(source.start_time or source.trigger_time, source.time_basis),
+                time_reference_interpretation=(TimeReferenceInterpretationOut.model_validate(source.time_reference_interpretation) if source.time_reference_interpretation else None),
                 start_time=source.start_time,
                 trigger_time=source.trigger_time,
-                start_time_utc=_canonical(source.start_time, source.time_basis),
-                trigger_time_utc=_canonical(source.trigger_time, source.time_basis),
+                start_time_utc=source_timestamp_utc(source, "start_time"),
+                trigger_time_utc=source_timestamp_utc(source, "trigger_time"),
                 sample_count=source.sample_count,
                 duration_seconds=source.duration_seconds,
                 elapsed_start_seconds=source.elapsed_start_seconds,

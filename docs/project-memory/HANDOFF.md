@@ -4,8 +4,41 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-22** - BEN5K unknown-timezone correction implemented locally; see correction section below. Previous handoff: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-23** - session-scoped Time Reference Interpretation implemented and validated locally; commit/report only, no push or deployment. BEN5K unknown-timezone correction remains included; see sections below. Previous handoff: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
+
+## Time Reference Interpretation (2026-10-23)
+
+[DECISION] Final owner rules: recording-specific and session-scoped; interpret once,
+use the shared effective timebase automatically everywhere. Raw timestamps, precision,
+source authority, original record and waveform samples stay immutable. Preserve Raw
+Time restores original authority (unknown BEN5K: no canonical UTC, elapsed-only).
+No browser/server/database/file persistence and no separate synchronization action.
+A reload/new page requires a new selection, even when workspace sources survive.
+
+[FACT] Implemented with page-local metadata projections in WorkspaceRegistry and the
+existing UTC resolver / overlap-based Time Groups. UTC-12:00 to UTC+14:00 offsets in
+15-minute increments. Shared epoch consumers, table timing, Waveform and Event
+Reconstruction consume effective timestamps. Timing revisions invalidate dependent
+results/caches. Manual offsets remain independent/applied once; t0 and Cursor A/B
+rebase through native source coordinates when groups merge/split. Conflicting t0
+origins reject the change atomically rather than silently dropping an origin.
+
+[FACT] Automatic GPTH/KTBR placement and reset passed local API tests using the actual
+files: +0.002067 s KTBR relative to GPTH; raw file hashes unchanged. Browser tests
+passed in UTC, New York and Kuala Lumpur, including plotted placement, Cursor A/t0,
+reset to raw and reload requiring a new selection.
+
+[VALIDATION] Full backend: 10,236 passed, 321 skipped; final affected backend/static
+checks: 87 passed. Full parallel browser run: 1,115 passed, 10 assertion failures
+and 2 timeouts (1,127 total). All 12 unsuccessful cases subsequently passed serially.
+An overlapping trace-add race exposed by request timing was corrected using existing
+stable trace identity; the unchanged six-test presentation suite passed afterward.
+Final browser run: both timeout cases plus the three timezone-specific GPTH/KTBR
+alignment/reset/reload cases passed (5/5). The original parallel run was not clean.
+No push or DEV deployment in this implementation task. BEN documentation stash intact.
+
+Design/API/lifecycle/UAT: [TIME_REFERENCE_INTERPRETATION.md](TIME_REFERENCE_INTERPRETATION.md).
 
 ## BEN5K unknown timezone correction (2026-10-22)
 

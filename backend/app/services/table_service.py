@@ -50,6 +50,8 @@ per the owner's own explicit "no silent transformation" requirement.
 
 from __future__ import annotations
 
+from app.domain.time_reference import effective_timing_reference, source_timestamp_utc
+
 import math
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -123,7 +125,7 @@ def _time_column_label(active: ActiveSource) -> str:
     `time_of_day_reference_seconds` for Time of Day, both required,
     matching each field's own "None exactly when genuinely unknown"
     contract) -- never re-derived differently here."""
-    if active.metadata.timing_reference == "absolute" and active.metadata.start_time is not None:
+    if effective_timing_reference(active.metadata) == "absolute" and source_timestamp_utc(active.metadata, "start_time") is not None:
         return "Time"
     if active.metadata.timing_reference == "time_of_day" and active.metadata.time_of_day_reference_seconds is not None:
         return "Time of Day"
@@ -261,7 +263,7 @@ def fetch_table_rows(
     page = df.iloc[page_start:page_stop] if offset < total else df.iloc[0:0]
 
     columns = build_table_columns(active)
-    time_is_absolute = active.metadata.timing_reference == "absolute" and active.metadata.start_time is not None
+    time_is_absolute = effective_timing_reference(active.metadata) == "absolute" and source_timestamp_utc(active.metadata, "start_time") is not None
     # Time of Day (additive): this source's own date-neutral clock
     # reference, present only when `timing_reference == "time_of_day"`
     # (see `TimingInformation.time_of_day_reference_seconds`'s own
@@ -275,7 +277,7 @@ def fetch_table_rows(
     # absolute wall-clock ORIGIN, unrelated to the caller's optional
     # time-WINDOW filter above) to avoid shadowing it -- purely an
     # internal disambiguation, never part of this function's signature.
-    record_start_time = active.metadata.start_time
+    record_start_time = (source_timestamp_utc(active.metadata, "start_time") if active.metadata.time_reference_interpretation else active.metadata.start_time)
 
     column_arrays = {col.key: page[col.key].to_numpy() for col in columns}
     row_count = len(page)

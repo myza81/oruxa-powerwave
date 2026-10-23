@@ -20306,6 +20306,28 @@ known declared offsets and the established COMTRADE naive-time policy remain
 unchanged. GPTH/KTBR evidence and remaining uncertainty: HANDOFF correction
 section.
 
+### DEC-122 amendment - session-scoped Time Reference Interpretation (2026-10-23)
+
+[DECISION] Final owner-approved rules supersede the earlier explicit-sync draft:
+interpretation is recording-specific and applies only to the active page session.
+Original clock digits/precision, source authority and waveform samples are immutable.
+A selected UTC offset immediately supplies one central effective timebase to every
+consumer, including automatic Waveform alignment. No separate synchronization button
+or parallel engine. Preserve Raw Time restores original source status; unknown BEN5K
+again has null UTC authority and elapsed-only timing. No interpretation is persisted
+to browser storage, server disk, database, exported files or the original recording.
+Reload/new session/another computer requires a fresh selection. Provenance must
+separate source-verified and user-interpreted authority.
+
+[FACT] The implementation uses page-local projections in the existing workspace
+registry, the shared source UTC resolver and existing overlap-based grouping. Timing
+changes reconcile manual-offset/t0/cursor coordinates and invalidate dependent caches.
+Contradictory pre-existing t0 origins reject a merge atomically; no origin is silently
+chosen. GPTH UTC+08:00 and verified KTBR align 2.067 ms apart automatically and reset
+reversibly. Verified SubBen/COMTRADE policies and cross-source sample-alignment
+engineering guardrails remain unchanged. Full design and UAT acceptance examples:
+[TIME_REFERENCE_INTERPRETATION.md](TIME_REFERENCE_INTERPRETATION.md).
+
 ## DEC-123 — Event Reconstruction is a top-level function immediately after Waveform; Slice 0 is a frontend shell only
 
 Date: 2026-10-01

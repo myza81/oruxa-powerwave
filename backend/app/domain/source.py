@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.domain.source_timezone import TimeBasis
+from app.domain.time_reference import TimeReferenceInterpretation
 
 from app.domain.channel_classification import UNDEFINED, WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
@@ -147,6 +148,8 @@ class SourceMetadata:
     # Explicit UNKNOWN must never inherit the default naive-source timezone.
     # None preserves the established interpretation of existing providers.
     time_basis: TimeBasis | None = None
+    time_reference_interpretation: TimeReferenceInterpretation | None = None
+    time_reference_revision: int = 0
 
 
 @dataclass(slots=True)

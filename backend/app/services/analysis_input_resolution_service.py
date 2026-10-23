@@ -31,6 +31,8 @@ notion of a "current time" at all.
 
 from __future__ import annotations
 
+from app.domain.time_reference import source_start_epoch
+
 import numpy as np
 
 from app.domain.analysis_input_resolution import (
@@ -43,7 +45,6 @@ from app.domain.analysis_input_resolution import (
 )
 from app.domain.analysis_requirements import get_requirement
 from app.domain.calculated_channel import ChannelRef, timebases_aligned
-from app.domain.time_grouping import normalize_absolute_datetime
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError, UnknownAnalysisRequirementError
@@ -51,17 +52,8 @@ from app.services.workspace_registry import WorkspaceRegistry
 
 
 def _source_start_epoch(active) -> float | None:
-    """Mirrors `calculated_channel_service._source_start_epoch()`
-    exactly (same naive-datetime-ambiguity fix, same
-    `normalize_absolute_datetime()` call) -- deliberately a separate,
-    locally-owned copy rather than importing that module's own private
-    helper, matching this codebase's own established convention of each
-    module owning its small resolution helpers (see
-    `app.domain.engineering_context_detection`'s own docstring for the
-    same reasoning applied to phase-suffix vocabulary)."""
-    if active.metadata.start_time is None:
-        return None
-    return normalize_absolute_datetime(active.metadata.start_time).timestamp()
+    """The shared recording-level effective UTC epoch, or None for unknown time."""
+    return source_start_epoch(active.metadata)
 
 
 def _resolve_candidate_metadata(

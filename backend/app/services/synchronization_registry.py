@@ -60,6 +60,8 @@ which combination).
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
+from app.services.workspace_session import page_session_id
 
 
 class SynchronizationRegistry:
@@ -73,6 +75,7 @@ class SynchronizationRegistry:
         self._lock = threading.Lock()
         self._offsets: dict[tuple[str, str], float] = {}
         self._t0: dict[tuple[str, str], float] = {}
+        self._session_t0: dict[tuple[str, str], dict[str, float]] = {}
 
     def get_offset(self, workspace_id: str, source_id: str) -> float:
         """Returns the stored offset, or `0.0` for an unconfigured/
@@ -182,12 +185,19 @@ class SynchronizationRegistry:
         group's own key (Time-Group architecture's own governing
         principle: independent coherent time domains, task section 24)."""
         with self._lock:
+            session_values = self._session_t0.get((workspace_id, page_session_id.get()))
+            if session_values is not None:
+                return session_values.get(time_group_key)
             return self._t0.get((workspace_id, time_group_key))
 
     def set_t0(self, workspace_id: str, time_group_key: str, t0_workspace_time: float) -> None:
         """Create-or-replace THIS time group's own event origin."""
         with self._lock:
-            self._t0[(workspace_id, time_group_key)] = t0_workspace_time
+            session_values = self._session_t0.get((workspace_id, page_session_id.get()))
+            if session_values is not None:
+                session_values[time_group_key] = t0_workspace_time
+            else:
+                self._t0[(workspace_id, time_group_key)] = t0_workspace_time
 
     def clear_t0(self, workspace_id: str, time_group_key: str) -> bool:
         """Removes THIS time group's own event origin ("Clear t=0",
@@ -199,7 +209,32 @@ class SynchronizationRegistry:
         offsets"), and ONLY this one group's own key, never another
         group's."""
         with self._lock:
+            session_values = self._session_t0.get((workspace_id, page_session_id.get()))
+            if session_values is not None:
+                return session_values.pop(time_group_key, None) is not None
             return self._t0.pop((workspace_id, time_group_key), None) is not None
+
+    def transition_time_reference(
+        self, workspace_id: str,
+        calculate: Callable[[dict[str, float], dict[str, float]], dict[str, float]],
+    ) -> None:
+        """Validate/rebase t0 atomically; manual corrections are read, never rewritten.
+
+        Page-local t0 coordinates cannot leak into a reload's original timebase.
+        A rejected transition publishes no synchronization state.
+        """
+        with self._lock:
+            key = (workspace_id, page_session_id.get())
+            current = self._session_t0.get(key)
+            if current is None:
+                current = {gid: value for (wid, gid), value in self._t0.items() if wid == workspace_id}
+            manual = {sid: value for (wid, sid), value in self._offsets.items() if wid == workspace_id}
+            updated = calculate(manual, dict(current))
+            self._session_t0[key] = updated
+
+    def clear_time_reference_session(self, workspace_id: str) -> None:
+        with self._lock:
+            self._session_t0.pop((workspace_id, page_session_id.get()), None)
 
     def clear_all_t0_for_workspace(self, workspace_id: str) -> int:
         """Full workspace-lifecycle teardown counterpart to
@@ -210,6 +245,8 @@ class SynchronizationRegistry:
         logging/testing only, mirroring `remove_workspace()`'s own
         return-count convention."""
         with self._lock:
+            for session_key in [key for key in self._session_t0 if key[0] == workspace_id]:
+                del self._session_t0[session_key]
             keys = [key for key in self._t0 if key[0] == workspace_id]
             for key in keys:
                 del self._t0[key]

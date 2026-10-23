@@ -101,7 +101,7 @@ from app.domain.rms_detector import (
     classify_waveform_form,
 )
 from app.domain.source import ActiveSource
-from app.domain.source_timezone import canonical_utc
+from app.domain.time_reference import source_start_epoch
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_group_aware_per_unit import (
     resolve_calculated_group_aware_per_unit,
@@ -242,16 +242,8 @@ class _ResolvedInput:
 
 
 def _source_start_epoch(active: ActiveSource) -> float | None:
-    """Resolve a source start using the shared source-timezone authority.
-
-    Unknown recorder clock time supplies no absolute epoch. Existing declared
-    offsets and the DEC-121 naive-source policy remain deterministic, independent
-    of the server timezone. Same-source calculations do not require an epoch.
-    """
-    if active.metadata.start_time is None:
-        return None
-    instant = canonical_utc(active.metadata.start_time, time_basis=active.metadata.time_basis)
-    return instant.timestamp() if instant is not None else None
+    """The shared recording-level effective UTC epoch, or None for unknown time."""
+    return source_start_epoch(active.metadata)
 
 
 def _resolve_input(

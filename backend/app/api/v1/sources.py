@@ -22,6 +22,8 @@ way; both are one multipart POST to this same endpoint.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from app.domain.time_reference import TimeReferenceInterpretation
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
@@ -34,7 +36,7 @@ from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
 from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
 from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
 from app.schemas.per_unit import PerUnitResolutionOut
-from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
+from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut, TimeReferenceUpdateRequest
 from app.schemas.table import SourceTableOut
 from app.schemas.waveform import WaveformRangeOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -57,7 +59,7 @@ from app.services.per_unit_provenance_service import build_source_channel_proven
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import delete_source_per_unit_config
 from app.services.synchronization_registry import SynchronizationRegistry
-from app.services.synchronization_service import remove_source_alignment
+from app.services.synchronization_service import remove_source_alignment, rebase_time_reference_state
 from app.services.table_service import TABLE_DEFAULT_LIMIT, TABLE_MAX_LIMIT, fetch_table_rows
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.waveform_service import (
@@ -818,3 +820,38 @@ def delete_source(
         workspace_id=workspace_id, source_id=source_id, registry=engineering_context_registry,
         calculated_channel_registry=calc_registry,
     )
+
+
+@router.put("/{source_id}/time-reference", response_model=SourceSummaryOut)
+def update_time_reference(
+    workspace_id: str, source_id: str, body: TimeReferenceUpdateRequest,
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> SourceSummaryOut:
+    workspace_id = _validate_workspace_id(workspace_id)
+    interpretation = None if body.offset_minutes is None else TimeReferenceInterpretation(
+        offset_minutes=body.offset_minutes, assigned_at=datetime.now(timezone.utc),
+    )
+    try:
+        active = registry.set_time_reference_interpretation(
+            workspace_id, source_id, interpretation,
+            transition=lambda before, after: rebase_time_reference_state(
+                workspace_id=workspace_id, before=before, after=after, registry=synchronization_registry,
+            ),
+        )
+    except (ValueError, OverflowError) as exc:
+        raise HTTPException(status_code=409, detail=ErrorOut(code="invalid_time_reference", message=str(exc)).model_dump()) from exc
+    if active is None:
+        raise HTTPException(status_code=404, detail=ErrorOut(code="source_not_found", message="Recording not found in this workspace.").model_dump())
+    return SourceSummaryOut.from_domain(active.metadata)
+
+
+@router.delete("/time-reference/session", status_code=204)
+def clear_time_reference_session(
+    workspace_id: str,
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> None:
+    workspace_id = _validate_workspace_id(workspace_id)
+    registry.clear_time_reference_session(workspace_id)
+    synchronization_registry.clear_time_reference_session(workspace_id)

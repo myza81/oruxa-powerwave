@@ -40,6 +40,7 @@ from app.services.relay_review_token import signer_from_settings
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
+from app.services.workspace_session import page_session_id
 from app.storage import StorageBackend, get_storage
 
 # Multipart body overhead (boundaries, part headers) beyond the raw file
@@ -158,6 +159,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # ARCHITECTURE.md item 12 for the full defect/fix account.
         expose_headers=["Content-Disposition"],
     )
+
+    @app.middleware("http")
+    async def scope_page_session(request: Request, call_next):
+        # A browser page generates a fresh nonce on every load; it is not an auth token.
+        session = request.headers.get("x-powerwave-session", "")
+        if len(session) > 128 or any(not (c.isascii() and (c.isalnum() or c in "-_")) for c in session):
+            return JSONResponse(status_code=400, content={"detail": {"code": "invalid_session", "message": "Invalid page session identifier."}})
+        token = page_session_id.set(session)
+        try:
+            response = await call_next(request)
+            if request.url.path.startswith("/api/v1/workspaces/"):
+                response.headers["Cache-Control"] = "no-store"
+                response.headers.append("Vary", "X-Powerwave-Session")
+            return response
+        finally:
+            page_session_id.reset(token)
 
     @app.middleware("http")
     async def reject_oversized_uploads(request: Request, call_next):

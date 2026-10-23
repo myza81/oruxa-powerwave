@@ -131,7 +131,7 @@ class TestDisplayModeSwitchNeverReanchorsAnnotations:
 
     def test_set_time_mode_never_touches_ww_annotations(self):
         source = _source()
-        fn_idx = source.index("function wwSetTimeMode(mode)")
+        fn_idx = source.index("function wwSetTimeMode(mode, refreshPresentation = false)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "ww.annotations" not in fn_body
         assert "wwCreateAnnotation" not in fn_body

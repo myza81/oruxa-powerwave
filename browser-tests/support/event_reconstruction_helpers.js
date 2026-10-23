@@ -24,8 +24,8 @@ const VI = [
 const SLOW_VI = VI.map((c) => Object.assign({}, c, { frequencyHz: 0.5 }));
 
 // Uploads one synthetic record through the normal Recordings flow.
-async function uploadRecord(page, { station, date, startClock, rateHz = 1000, durationS = 1, channels = VI }) {
-  const { cfg, dat } = syntheticComtrade({ station, date, startClock, rateHz, durationS, channels });
+async function uploadRecord(page, { station, date, startClock, triggerClock, rateHz = 1000, durationS = 1, channels = VI }) {
+  const { cfg, dat } = syntheticComtrade({ station, date, startClock, triggerClock, rateHz, durationS, channels });
   await page.locator("#mainNavRecordingsBtn").click();
   await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();

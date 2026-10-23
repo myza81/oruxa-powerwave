@@ -58,6 +58,8 @@ across sources with different start times.
 
 from __future__ import annotations
 
+from app.domain.time_reference import source_start_epoch
+
 import math
 
 from app.domain.analysis_input_resolution import (
@@ -106,7 +108,6 @@ from app.domain.phasor import (
     relative_angle_deg,
 )
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
-from app.domain.time_grouping import normalize_absolute_datetime
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -114,14 +115,8 @@ from app.services.workspace_registry import WorkspaceRegistry
 
 
 def _source_start_epoch(active) -> float | None:
-    """Mirrors `analysis_input_resolution_service._source_start_epoch()`
-    (itself mirroring `calculated_channel_service`'s own) exactly --
-    deliberately a separate, locally-owned copy per this codebase's own
-    established convention (see `app.domain.engineering_context_
-    detection`'s own docstring for the same reasoning)."""
-    if active.metadata.start_time is None:
-        return None
-    return normalize_absolute_datetime(active.metadata.start_time).timestamp()
+    """The shared recording-level effective UTC epoch, or None for unknown time."""
+    return source_start_epoch(active.metadata)
 
 
 class _RoleCandidate:
