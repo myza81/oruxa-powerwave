@@ -1,7 +1,7 @@
 // Calculator -- Power & Current (Current / P-Q-S / Power Factor tabs).
 // Frontend-local calculator: no recording and no backend calls are needed.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 

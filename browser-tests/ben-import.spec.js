@@ -3,7 +3,7 @@
 // Recordings row, Waveform page, a rendered trace -- with no BEN-specific
 // screen. Fixtures are synthetic (backend/tests/ben/make_fixtures.py).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const fs = require("fs");
 const path = require("path");
 

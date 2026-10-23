@@ -9,6 +9,16 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Release hardening Slice B (2026-10-23)
+
+[FACT] Focused source deletion/late metadata lifecycle fixes, browser-only workspace
+cleanup and response/render readiness improvements are implemented locally.
+The stale GRZ100 real-sheet expectation is corrected against approved catalog/OEM
+equations; production protection behaviour is unchanged. Targeted regressions pass.
+Full backend and four-worker browser validation is in progress; release remains
+NO-GO. No push or deployment. Evidence and final results:
+[SLICE_B_RELEASE_HARDENING.md](SLICE_B_RELEASE_HARDENING.md).
+
 ## Release hardening Slice A (2026-10-23)
 
 [FACT] Calculated results now validate all original/transitive inputs against the
@@ -28,7 +38,7 @@ cursors and approved session-only interpretation semantics are unchanged.
 
 [OPEN] Slice A does not authorize release: the earlier audit's unrelated GRZ100
 real-PDF conformance snapshot mismatch and browser stability findings remain
-separate. No Slice B work, push, deployment or VPS change is authorized.
+separate. Slice B was subsequently authorized; push, deployment and VPS changes remain excluded.
 The owner explicitly approved a focused local commit with known baseline failures
 documented, provided Slice A regressions pass. The unrelated BEN documentation stash
 is preserved. See

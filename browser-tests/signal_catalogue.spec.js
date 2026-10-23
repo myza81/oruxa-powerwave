@@ -6,7 +6,7 @@
 //
 // Fixture: line_to_line_multibay (see line-to-line-voltage.spec.js).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

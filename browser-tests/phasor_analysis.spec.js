@@ -44,7 +44,7 @@
 // data is seeded directly" pattern other Playwright suites in this repo
 // already use for state this slice's own UI cannot create yet.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const {
   BACKEND_URL,
@@ -785,13 +785,12 @@ test.describe("Phasor Analysis -- Playback integration", () => {
 test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () => {
   // ---- Scenario A: bootstrap succeeds ----
   test("no contexts + loaded source -> automatic suggestion populates the Bay selector", async ({ page }) => {
-    // Delay the suggest POST slightly so the transient "Identifying
-    // engineering contexts…" state is reliably observable in a real
-    // browser (bootstrap otherwise completes fast enough locally that a
-    // fixed-interval poll could miss it) -- a standard Playwright
-    // technique, not a change to the app's own timing.
-    await page.route("**/engineering-contexts/suggest", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+    // Hold the real suggestion until the transient state has been asserted;
+    // a fixed delay can expire before the assertion runs under parallel load.
+    let releaseSuggestion;
+    const suggestionGate = new Promise(resolve => { releaseSuggestion = resolve; });
+    await page.route("**/engineering-contexts/suggest", async route => {
+      await suggestionGate;
       await route.continue();
     });
 
@@ -810,7 +809,9 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     await openAnalysisPhasor(page);
 
     // 4. Verify the temporary context-identification state appears.
-    await expect(page.locator("#wwPhasorEmptyState")).toContainText("Identifying engineering contexts");
+    try {
+      await expect(page.locator("#wwPhasorEmptyState")).toContainText("Identifying engineering contexts");
+    } finally { releaseSuggestion(); }
 
     // 5/6. The suggestion request succeeds and the Bay selector is
     // populated automatically, with the newly-suggested context

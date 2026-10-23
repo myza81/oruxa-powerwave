@@ -1,5 +1,5 @@
 // Unknown recorder time is distinct from the existing naive-source policy.
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 // Synthetic file using the GPTH header clock, without owner waveform data.
 const { clockFixture } = require("./support/ben5k_clock");

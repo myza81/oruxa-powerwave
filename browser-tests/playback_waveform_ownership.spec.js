@@ -26,7 +26,7 @@
 // `--ok` color, with a positive control proving the scan actually
 // detects the line when it IS painted.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
 

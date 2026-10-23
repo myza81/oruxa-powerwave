@@ -25,7 +25,7 @@
 // "opaque" and "still sticky" on the actual browser-painted element,
 // for exactly the "Not Assigned" column header the real bug hit.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 function csvRows(n) {
   const lines = [];

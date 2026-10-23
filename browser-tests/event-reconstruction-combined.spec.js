@@ -5,7 +5,7 @@
 // navigation, one A/B cursor overlay, and a presentation-only mode switch
 // that reuses fetched data.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, openEventReconstruction, api,
   addRecords, channelRow, selectChannel, waitForPlot, plotState, zoomTo, dragOnPanel,

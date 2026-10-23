@@ -5,7 +5,7 @@
 // synthetic COMTRADE records are naive Asia/Kuala_Lumpur wall clock
 // (DEC-121), so their displayed digits equal the recorded ones.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, memberRow, api, addRecords, selectChannel,
   waitForPlot, plotState, zoomTo,

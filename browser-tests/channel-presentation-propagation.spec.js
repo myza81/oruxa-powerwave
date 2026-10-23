@@ -6,7 +6,7 @@
 // Real backend + real frontend, no mocks. Fixture: one synthetic 1 kHz / 2 s
 // COMTRADE with Frequency (FREQ), Active Power (P_MW) and Voltage (VA).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { routeConfig } = require("./support/relay_import_helpers");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 

@@ -9,7 +9,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 const BACKEND = path.resolve(__dirname, "..", "backend");

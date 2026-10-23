@@ -8,7 +8,7 @@
 //   rich  -> real subscript: V<sub>A</sub> V<sub>AB</sub> V<sub>1</sub> I<sub>2</sub>
 //   plain -> concatenated:   VA VAB V1 I2 (never an underscore-joined form)
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");

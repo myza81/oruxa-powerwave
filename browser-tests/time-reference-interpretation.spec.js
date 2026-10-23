@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { clockFixture } = require("./support/ben5k_clock");
 const { uploadRecord, addRecords, selectChannel, waitForPlot } = require("./support/event_reconstruction_helpers");
 async function getApi(page, suffix) {

@@ -12,7 +12,7 @@
 // frontend/config.js pins the API to :8000; PW_BACKEND_PORT re-points it
 // per page (same approach as relay_import_upload.spec.js).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 const BACKEND_PORT = process.env.PW_BACKEND_PORT || "8000";
 

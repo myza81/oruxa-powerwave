@@ -16,7 +16,7 @@
 // and is confirmed unchanged by this ticket (regression run), not
 // duplicated here.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { uploadRecord } = require("./support/event_reconstruction_helpers");
 

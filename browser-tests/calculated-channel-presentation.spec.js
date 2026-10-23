@@ -11,7 +11,7 @@
 // Fixture: a 100 Hz, 1.5 s ASCII COMTRADE with FREQ (Hz) and VA (V) -- same
 // shape as calculated-channel-rocof.spec.js.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { routeConfig } = require("./support/relay_import_helpers");
 
 const SAMPLES = 151;

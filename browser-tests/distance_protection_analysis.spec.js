@@ -23,7 +23,7 @@
 // than time evolution, which is the correct way to prove "instantaneous,
 // never latched" element state against this fixture.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
 
@@ -464,7 +464,7 @@ test.describe("Distance Protection v1 -- Recording mode", () => {
     const playBtn = page.locator("#wwDistancePlaybackMount .ww-tg-playback-play-btn");
     await playBtn.click();
     await expect(playBtn).toHaveText("Pause");
-    await page.waitForTimeout(700);
+    await expect.poll(() => locusPathSegmentCount(page)).toBeGreaterThan(before);
     await playBtn.click();
 
     const afterPlay = await locusPathSegmentCount(page);

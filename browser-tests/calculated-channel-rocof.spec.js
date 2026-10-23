@@ -8,7 +8,7 @@
 // the explicit "Calculate anyway" fallback are both exercised. What is
 // plotted is asserted from the live Plotly trace arrays, not only text.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { routeConfig } = require("./support/relay_import_helpers");
 
 const SAMPLES = 151;

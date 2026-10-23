@@ -8,7 +8,7 @@
 // says "Not evaluated"), a stale answer never overwrites a newer decision, and
 // nothing is applied to the manual form.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 const VALIDATE = "**/api/v1/relay-import/review/validate";

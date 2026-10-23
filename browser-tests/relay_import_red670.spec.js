@@ -8,7 +8,7 @@
 // every zone's activation itself, so unlike the 7SA511 nothing about zone state or delay is asked of the user.
 // Runs against LOCAL code.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;

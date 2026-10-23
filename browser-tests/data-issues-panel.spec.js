@@ -15,7 +15,7 @@
 // navigation, Mark as Null, Undo/Redo, Time Axis guardrail) is exercised
 // through real clicks only.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 const CSV_CONTENT = [
   "2026-08-31 13:00:00,10.0",

@@ -11,7 +11,7 @@
 // Expected metadata for the fixture: fs = 1000 Hz, duration = 5 s,
 // 5001 samples, Nyquist = 500 Hz, 1/T = 0.2 Hz.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 
 async function openOscillation(page) {

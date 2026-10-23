@@ -10,7 +10,7 @@
 // The per-unit settings below are made through Waveform's own endpoints
 // (Measurement Groups, Source Default) -- never by Event Reconstruction.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, memberRow, api, addRecords, channelRow, selectChannel,
   waitForPlot, plotState, zoomTo, openEventReconstruction,

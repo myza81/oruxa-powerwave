@@ -4,7 +4,7 @@
 // calculated; per-trace fetching, timing and cursor values; the Combined
 // Multi-Axis View is not available yet.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, VI, api, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, memberRow, openEventReconstruction,
   addRecords, channelRow, selectChannel, waitForPlot, plotState, zoomTo,

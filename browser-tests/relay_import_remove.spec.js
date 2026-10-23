@@ -11,7 +11,7 @@
 // * A new upload, once ACCEPTED, releases the previous import's unedited state the same way; an
 //   edited configuration is kept, and a failed upload changes nothing.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

@@ -14,7 +14,7 @@
 // Components' own Manual form is the identical six-role, two-basis
 // Manual Phasor architecture, never a separate sequence-entry model.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 const path = require("path");
 const { reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
@@ -77,6 +77,14 @@ async function selectContextAndWaitForResult(page, contextId) {
 }
 
 async function enterRole(page, roleKey, { magnitude, unit, angleDeg, enabled = true } = {}) {
+  // Wait for the final inputs' accepted response, not a pre-existing role label.
+  const ready = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    if (!url.pathname.endsWith("/sequence-components-manual")) return false;
+    const prefix = roleKey.toLowerCase();
+    return [["magnitude", magnitude], ["unit", unit], ["angle_deg", angleDeg]]
+      .every(([field, value]) => value === undefined || url.searchParams.get(`${prefix}_${field}`) === String(value));
+  });
   if (enabled) await page.locator(`#wwSequenceManual${roleKey}Enabled`).check();
   if (unit !== undefined) await page.locator(`#wwSequenceManual${roleKey}Unit`).selectOption(unit);
   if (magnitude !== undefined) {
@@ -89,6 +97,11 @@ async function enterRole(page, roleKey, { magnitude, unit, angleDeg, enabled = t
     await page.locator(`#wwSequenceManual${roleKey}Angle`).dispatchEvent("change");
     await page.locator(`#wwSequenceManual${roleKey}Angle`).blur();
   }
+  const response = await ready;
+  expect(response.ok()).toBe(true);
+  const result = await response.json();
+  await expect.poll(() => page.evaluate(() => JSON.stringify(wwSequenceState.manual.latestResult)))
+    .toBe(JSON.stringify(result));
 }
 
 async function setRatio(page, prefix, { primary, secondary }) {

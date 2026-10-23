@@ -13,7 +13,7 @@
 // text_spacing_helpers.js), never only on textContent. Real backend + real
 // frontend, no mocks.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 const {

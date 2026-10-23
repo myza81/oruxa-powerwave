@@ -7,7 +7,7 @@
 // interaction with a Y axis's own scale; never by hovering or by an
 // X-axis gesture.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, addRecords, channelRow, selectChannel, waitForPlot, plotState,
   zoomTo, dragOnPanel, waitForSharedAxis, clickPanelHeader, clickLegendAxis,

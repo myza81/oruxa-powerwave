@@ -2,7 +2,7 @@
 // stack, compact typography and the findings-card hierarchy. Presentation only: the card
 // colour is derived from the backend's review summary, never from the file or relay.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

@@ -15,7 +15,7 @@
 // editor is covered by reference_envelope_editor.spec.js); everything
 // Compliance-side is driven through the real UI.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

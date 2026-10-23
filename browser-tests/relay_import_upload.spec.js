@@ -8,7 +8,7 @@
 // (isolated run, to avoid another worktree's servers) the config is
 // re-pointed per page via request interception -- nothing is committed.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet } = require("./support/relay_import_helpers");
 
 const BACKEND_PORT = process.env.PW_BACKEND_PORT || "8000";

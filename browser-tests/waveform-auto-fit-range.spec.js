@@ -32,7 +32,7 @@
 // from "the long source's own duration alone" (~0.0398s). Both sources
 // share one Time Group (their raw recorded absolute intervals overlap).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

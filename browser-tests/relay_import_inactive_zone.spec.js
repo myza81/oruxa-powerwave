@@ -10,7 +10,7 @@
 // * A sheet with no Zone P at all assumes it disabled: an Assumption (not Mapped), with
 //   helper text, nothing to confirm, and no blocker.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

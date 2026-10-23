@@ -13,7 +13,7 @@
 // (KPDN1_VR, MCRS_VB) stay verbatim. Plain fallback is concatenated (VRY),
 // never an underscore form.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 const { ensureContextSelected } = require("./support/engineering_context_helpers");

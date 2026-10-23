@@ -10,7 +10,7 @@
 // Synchronise Sources state. Plotting itself (Slice 3C) is covered by
 // event-reconstruction-plot.spec.js.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const fs = require("fs");
 

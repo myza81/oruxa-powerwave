@@ -7,7 +7,7 @@
 // never touched, and every decision disappears with Remove, a new upload or a
 // refresh. Runs against LOCAL code.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

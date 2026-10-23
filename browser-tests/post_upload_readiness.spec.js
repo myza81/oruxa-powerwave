@@ -28,7 +28,7 @@
 // own UI cannot create yet) -- the entire point here is that upload
 // ALONE is sufficient.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

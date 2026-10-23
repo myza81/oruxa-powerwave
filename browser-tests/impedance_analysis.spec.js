@@ -22,7 +22,7 @@
 // uses, and the same direct-backend-API Engineering Context seeding
 // pattern (no context-creation UI exists yet).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
 // (ensureContextSelected() is not reused verbatim here -- see
@@ -301,7 +301,7 @@ test.describe("Impedance Locus v1 -- chronological locus reveal", () => {
     const playBtn = page.locator("#wwImpedancePlaybackMount .ww-tg-playback-play-btn");
     await playBtn.click();
     await expect(playBtn).toHaveText("Pause");
-    await page.waitForTimeout(700);
+    await expect.poll(() => locusPathSegmentCount(page)).toBeGreaterThan(before);
     await playBtn.click(); // pause
 
     const afterPlay = await locusPathSegmentCount(page);

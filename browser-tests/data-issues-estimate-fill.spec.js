@@ -8,7 +8,7 @@
 // dialogs exercised through real clicks only) -- see that file's own
 // header comment for the shared rationale.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 // 10 rows: an isolated single-row missing gap (row 4, single-cell
 // Estimate target) and a 3-row mixed missing/invalid gap (rows 7-9:

@@ -20,7 +20,7 @@
 // (`#wwComplianceChartPlot`'s own `.data`/`.layout`), not just visible
 // text or a screenshot (task section 20's own explicit instruction).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");

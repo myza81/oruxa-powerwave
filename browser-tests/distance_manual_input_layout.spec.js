@@ -3,7 +3,7 @@
 // * VT / CT / angle inputs use the same control style as the settings grid;
 // * no horizontal overflow, wide or narrow. Runs against LOCAL code.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 const BACKEND_PORT = process.env.PW_BACKEND_PORT || "8000";
 

@@ -36,7 +36,7 @@
 // Measurement Groups are seeded directly via the existing Measurement
 // Group REST API; Reference Profiles/Layers via their REST API.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

@@ -5,7 +5,7 @@
 // Y, viewport rebasing when the reference or a correction moves the
 // reconstruction zero, the Fit All span notice, and Waveform isolation.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   api, collectConsoleErrors, uploadRecord, memberRow, openEventReconstruction, addRecords, channelRow, selectChannel,
   waitForPlot, plotState, zoomTo, waitForSharedAxis, expectSharedAxis, dragOnPanel,

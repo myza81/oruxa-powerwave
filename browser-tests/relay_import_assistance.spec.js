@@ -7,7 +7,7 @@
 // * A payload with an unbounded approximation is refused and changes nothing.
 // Runs against LOCAL code.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;

@@ -17,7 +17,7 @@
 // interaction helpers playback.spec.js/phasor_analysis.spec.js already
 // established for that scrubber class.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
 

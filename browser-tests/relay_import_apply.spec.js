@@ -9,7 +9,7 @@
 // * Later manual edits behave normally; Apply again overwrites them; a failed Apply changes nothing.
 // * Applied settings are page state only: a reload starts clean.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

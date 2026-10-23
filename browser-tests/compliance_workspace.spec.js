@@ -13,7 +13,7 @@
 // References are created through the real API; everything Compliance-side is
 // driven through the real UI and the real Plotly trace data is inspected.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

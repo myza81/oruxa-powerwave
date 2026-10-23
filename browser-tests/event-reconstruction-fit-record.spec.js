@@ -5,7 +5,7 @@
 // corrections, reference, membership and channel selection are untouched;
 // time is never compressed.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   collectConsoleErrors, uploadRecord, sourceIdFor, memberRow, api,
   addRecords, selectChannel, waitForPlot, plotState, waitForSharedAxis, expectSharedAxis,

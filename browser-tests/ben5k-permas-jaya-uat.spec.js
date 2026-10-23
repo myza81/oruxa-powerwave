@@ -15,7 +15,7 @@
 //   • sample_count:          7719
 //   • duration_seconds:      ~1.544 s at 5000 Hz
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const fs = require("fs");
 const path = require("path");
 

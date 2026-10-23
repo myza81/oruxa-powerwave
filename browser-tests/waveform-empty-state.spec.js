@@ -9,7 +9,7 @@
 // look at yet", mirroring Event Reconstruction's own always-present
 // #wwErCanvas header + #wwErEmptyState pattern.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   collectConsoleErrors, uploadRecord, openEventReconstruction,
 } = require("./support/event_reconstruction_helpers");

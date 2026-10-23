@@ -7,7 +7,7 @@
 // shown in the left channel tree (Cur A / Cur B / Δ columns, Waveform's
 // sidebar pattern); the panels only draw the lines.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, VI, SLOW_VI, api, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, memberRow, openEventReconstruction,
   addRecords, channelRow, selectChannel, waitForPlot, plotState, zoomTo, waitForSharedAxis,

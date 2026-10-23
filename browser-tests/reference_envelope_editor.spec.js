@@ -14,7 +14,7 @@
 // app.domain.reference_profile); the last describe block replays the SAME
 // golden vectors pytest uses, so the two cannot drift.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const fs = require("fs");
 const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");

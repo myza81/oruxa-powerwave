@@ -14,7 +14,7 @@
 // hint's own text, so it only ever claims "no recording" when that is
 // literally true.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { uploadRecord } = require("./support/event_reconstruction_helpers");
 
 const VI_CHANNELS = [

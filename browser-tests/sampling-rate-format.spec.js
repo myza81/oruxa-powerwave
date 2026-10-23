@@ -11,7 +11,7 @@
 // functions, not the full wizard UI, to keep this test focused on the
 // actual subject).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 const CSV_CONTENT = [
   "2026-08-31 13:00:00,0",

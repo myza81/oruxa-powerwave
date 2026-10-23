@@ -9,7 +9,7 @@
 // `ApplySettingsOut` (the backend suite pins that shape against real canonical models); one case
 // drives the whole path against the real backend with the P441 sample.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

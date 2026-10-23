@@ -41,7 +41,7 @@
 // timing-sensitive real-browser behavior is inherently non-deterministic
 // down to the millisecond.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

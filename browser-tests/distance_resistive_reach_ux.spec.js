@@ -10,7 +10,7 @@
 //   chooses "Use 0.00 Ω". The accepted suggestion keeps the Missing cause visible,
 //   is not a source/profile value, and Clear restores Missing / blocking.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 test.beforeEach(async ({ page }) => {

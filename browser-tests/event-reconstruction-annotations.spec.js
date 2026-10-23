@@ -7,7 +7,7 @@
 // draw them on the right trace and Y axis; Relative / Absolute changes
 // only their time text.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, memberRow, api, addRecords, selectChannel,
   waitForPlot, plotState, zoomTo, openEventReconstruction, channelRow,

@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { clockFixture } = require("./support/ben5k_clock");
 
 test("retained calculated result rejects raw reset and a new page session", async ({ page }) => {

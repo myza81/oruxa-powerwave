@@ -11,7 +11,7 @@
 // Run from the browser-tests directory:
 //   npx playwright test ben5k-gpth-uat.spec.js
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const fs = require("fs");
 

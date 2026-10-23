@@ -9,7 +9,7 @@
 // (support/synthetic_comtrade.js) so each has the sampling rate, duration
 // and start instant the scenario needs.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, VI, SLOW_VI, collectConsoleErrors, uploadRecord, workspaceId, api, sourceIdFor,
   recordRow, memberRow, openEventReconstruction, addRecords, channelRow, selectChannel,

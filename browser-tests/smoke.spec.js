@@ -16,7 +16,7 @@
 // frontend regression tests (backend/tests/test_frontend_*.py) -- no new
 // data-testid attributes were added; none were needed.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");

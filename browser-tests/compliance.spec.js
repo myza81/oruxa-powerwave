@@ -4,7 +4,7 @@
 // Playback, no backend data dependency of any kind in this slice -- every
 // test here starts from a plain, empty workspace.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 async function openCompliance(page) {
   await page.goto("/index.html");

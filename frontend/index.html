@@ -16334,6 +16334,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const button = document.getElementById("newWorkspaceButton");
             hideWorkspaceResetError();
             button.disabled = true;
+            // Stop producers and transport BEFORE the backend can delete their
+            // workspace. Waiting until wwClearWorkspace leaves a DELETE roundtrip
+            // in which playback can request already-deleted sources.
+            wwPlaybackPause();
+            wwAnalysisFetchAbortController.abort();
+            let deleted = false;
 
             try {
                 const response = await fetch(
@@ -16344,11 +16350,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     showWorkspaceResetError("Could not clear the current workspace. Please try again.");
                     return;
                 }
+                deleted = true;
             } catch (error) {
                 showWorkspaceResetError("Could not reach the backend. Check your connection and try again.");
                 return;
             } finally {
                 button.disabled = false;
+                // A failed deletion keeps the workspace usable, with playback
+                // paused. Successful teardown renews transport in wwClearWorkspace.
+                if (!deleted && currentWorkspaceId() === oldWorkspaceId) {
+                    wwAnalysisFetchAbortController = new AbortController();
+                }
             }
 
             // Only now -- backend cleanup confirmed -- rotate identity and
@@ -17077,16 +17089,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Channel metadata for every recording of a current member, fetched
         // once per recording; entries for removed recordings are dropped.
         async function wwErEnsureMemberChannelsFetched() {
+            const workspaceAtStart = currentWorkspaceId(), epochAtStart = ww.epoch;
             const liveIds = new Set(wwErState.sources.map((s) => s.source_id));
             for (const sourceId of Object.keys(wwErState.channelsBySource)) {
                 if (!liveIds.has(sourceId)) delete wwErState.channelsBySource[sourceId];
             }
             const needed = [...new Set(wwErCurrentMembers().flatMap((m) => m.source_ids))]
-                .filter((sourceId) => liveIds.has(sourceId) && !wwErState.channelsBySource[sourceId]);
+                .filter((sourceId) => liveIds.has(sourceId) && !wwRemovedSourceIds.has(sourceId) && !wwErState.channelsBySource[sourceId]);
             const results = await Promise.all(needed.map((sourceId) =>
                 wwErFetchWorkspaceJson("/sources/" + encodeURIComponent(sourceId) + "/channels")));
             needed.forEach((sourceId, index) => {
-                if (results[index]) wwErState.channelsBySource[sourceId] = results[index];
+                if (results[index] && workspaceAtStart === currentWorkspaceId() && epochAtStart === ww.epoch &&
+                    !wwRemovedSourceIds.has(sourceId)) wwErState.channelsBySource[sourceId] = results[index];
             });
         }
 
@@ -21930,6 +21944,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // Cache generations are local to this page. Authority remains in the backend.
+        const wwRemovedSourceIds = new Set(); // ids are never reused within this page
         const wwTimingGenerations = new Map();
         let wwTimingCatalogueGeneration = 0;
         let wwCalculatedListRequestGeneration = 0;
@@ -27694,11 +27709,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
 
         async function performRemoveSource(sourceId) {
-            await fetch(
-                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                "/sources/" + encodeURIComponent(sourceId),
-                { method: "DELETE" }
-            );
+            const workspaceId = currentWorkspaceId();
+            const epoch = ww.epoch;
+            hideWorkspaceResetError();
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/sources/" + encodeURIComponent(sourceId), { method: "DELETE" }
+                );
+                if (!response.ok) {
+                    showWorkspaceResetError("Could not remove the recording. Please try again.");
+                    return false;
+                }
+            } catch (error) {
+                showWorkspaceResetError("Could not reach the backend to remove the recording. Please try again.");
+                return false;
+            }
+            if (workspaceId !== currentWorkspaceId() || epoch !== ww.epoch) return true;
+            wwRemovedSourceIds.add(sourceId);
+            wwInvalidateAnalysisTiming(sourceId);
             if (focusedSourceId === sourceId) {
                 focusedSourceId = null;
             }
@@ -27927,7 +27956,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // own return value, used by selectSource()'s resetViewport
         // decision).
         async function wwEnsureSourceChannelsFetched(sourceId) {
-            if (ww.sourceChannelsData.has(sourceId)) return false;
+            if (wwRemovedSourceIds.has(sourceId) || ww.sourceChannelsData.has(sourceId)) return false;
+            const workspaceAtStart = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
             const timingAtStart = wwTimingGenerations.get(sourceId) || 0;
             let response;
             try {
@@ -27940,7 +27971,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (!response.ok) return false;
             const data = await response.json();
-            if (timingAtStart !== (wwTimingGenerations.get(sourceId) || 0)) return false;
+            if (workspaceAtStart !== currentWorkspaceId() || epochAtStart !== ww.epoch || wwRemovedSourceIds.has(sourceId) ||
+                timingAtStart !== (wwTimingGenerations.get(sourceId) || 0)) return false;
             ww.sourceChannelsData.set(sourceId, data);
             // Phase 5A-UAT3 (DEC-047 clarification): the SAME cache this
             // source's complete analog-channel inventory step
@@ -33050,6 +33082,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // response is reported as `{ superseded: true }`.
         async function wwFetchWaveformRange(request) {
             const { requestState, sourceId, channelName, isCalculated, nativeStart, nativeEnd, pointBudget, unitMode, timeOffsetS } = request;
+            if (wwTimingSourcesForDisplay(sourceId).some(id => wwRemovedSourceIds.has(id))) return { superseded: true };
             const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             if (requestState.abortController) requestState.abortController.abort();
             const controller = new AbortController();

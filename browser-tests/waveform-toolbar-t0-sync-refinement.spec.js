@@ -22,7 +22,7 @@
 // endpoints) -- only the control's location and target resolution
 // moved.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { uploadRecord } = require("./support/event_reconstruction_helpers");
 

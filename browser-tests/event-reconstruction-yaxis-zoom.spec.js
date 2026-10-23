@@ -6,7 +6,7 @@
 // changes until Autoscale Y / Reset. Plot-area Pan (DEC-144: the only
 // plot-area mode -- Box Zoom is retired) stays X-only.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   collectConsoleErrors, uploadRecord, memberRow, addRecords, channelRow, selectChannel, waitForPlot, plotState,
   zoomTo, dragOnPanel, waitForSharedAxis,

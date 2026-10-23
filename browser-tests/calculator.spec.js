@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 
 const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 

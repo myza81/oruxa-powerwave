@@ -10,7 +10,7 @@
 // wwErWireResizeHandle), adapted only for this page's own panel.key/
 // wwErState.plot.panelHeights identity.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, addRecords, selectChannel, waitForPlot, plotState,
   clickPanelHeader, clickLegendAxis,

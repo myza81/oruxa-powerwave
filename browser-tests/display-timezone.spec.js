@@ -7,7 +7,7 @@
 // the same recording, so both must read 14:07:08.023456 and share one
 // Time Group at 0.0 s.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "ben");

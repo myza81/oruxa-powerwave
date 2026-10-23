@@ -6,7 +6,7 @@
 // uses a relay-specific selector: the review, the Apply button and the cards are the P441 ones.
 // Runs against LOCAL code.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;

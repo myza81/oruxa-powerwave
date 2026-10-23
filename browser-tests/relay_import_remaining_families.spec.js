@@ -9,7 +9,7 @@
 // Synthetic sheets with invented numbers; the owner's real sheets are never committed.
 // Runs against LOCAL code.
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const { relaySheet, routeConfig, openDistance, pick } = require("./support/relay_import_helpers");
 
 let problems;

@@ -15,7 +15,7 @@
 // uses, and the same direct-backend-API Engineering Context seeding
 // pattern (no context-creation UI exists yet).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./support/test");
 const path = require("path");
 const { clearContexts, postContext, reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
 
