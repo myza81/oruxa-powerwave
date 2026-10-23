@@ -229,9 +229,14 @@ def parse_ben5k_slow(data: bytes) -> BenRecord:
         severity="warning",
         message=(
             "BEN5K Slow channel-to-sample-word mapping uses the formula "
-            "word_index = selector >> 8.  This is confirmed for Group 0 (BDNG 1) "
-            "only.  All other group mappings are tentative pending oracle validation. "
-            "Scale factors are not decoded; all values are raw int16 with unit 'raw'."
+            "word_index = selector >> 8. S4 engineering analysis confirmed this "
+            "formula for Group 0 (BDNG 1) only: FREQ BDNG 1 produces 49.6-50.6 Hz "
+            "(Malaysian 50 Hz grid confirmed), POWER BDNG 1 produces 63-152 MW, "
+            "MVAR BDNG 1 produces 13.5-13.7 Mvar (oracle validation still needed "
+            "for power and Mvar scaling). Groups 1+ channels are excluded: S4 "
+            "data analysis showed their word positions hold limit-event/status "
+            "data, not the declared measurements. Scale factors are not decoded; "
+            "all values are raw int16 with unit 'raw'."
         ),
     ))
 
@@ -250,6 +255,27 @@ def parse_ben5k_slow(data: bytes) -> BenRecord:
         oor = [ch for ch in unresolved if ch.status == SlowChannelStatus.UNRESOLVED_OOR]
         zero = [ch for ch in unresolved if ch.status == SlowChannelStatus.UNRESOLVED_ZERO]
         conflict = [ch for ch in unresolved if ch.status == SlowChannelStatus.UNRESOLVED_CONFLICT]
+        formula_unconfirmed = [
+            ch for ch in unresolved if ch.status == SlowChannelStatus.UNRESOLVED_FORMULA_UNCONFIRMED
+        ]
+        if formula_unconfirmed:
+            names = ", ".join(
+                f"{ch.name!r}(w{ch.word_index_tentative},grp{ch.group_index})"
+                for ch in formula_unconfirmed[:4]
+            )
+            if len(formula_unconfirmed) > 4:
+                names += f" ... ({len(formula_unconfirmed) - 4} more)"
+            diagnostics.append(BenDiagnostic(
+                code="ben5k_slow_formula_unconfirmed_channels",
+                severity="warning",
+                message=(
+                    f"{len(formula_unconfirmed)} channel(s) have a word index from "
+                    f"selector >> 8 but are from Groups 1+ where that formula is "
+                    f"NOT confirmed. S4 engineering analysis shows these word positions "
+                    f"hold limit-event/status data, not the declared measurements. "
+                    f"These channels are excluded from value_channels. {names}"
+                ),
+            ))
         if oor:
             diagnostics.append(BenDiagnostic(
                 code="ben5k_slow_oor_channels",

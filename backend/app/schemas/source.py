@@ -221,6 +221,11 @@ class SourceSummaryOut(BaseModel):
     # `time_of_day` sources, which are already fully disambiguated by
     # those two fields.
     preparation_interpreter_id: str | None = None
+    # S4 (investigation/legacy-ben5k-slow): BEN provider layout family, sourced
+    # from preparation_provenance["layout_family"].  Non-null only for BEN
+    # sources; None for COMTRADE and CSV/Excel.  Read by the frontend to show a
+    # BEN5K Slow development/UAT notice in the recording Details panel.
+    layout_family: str | None = None
 
     @classmethod
     def from_domain(cls, source: SourceMetadata) -> "SourceSummaryOut":
@@ -249,6 +254,10 @@ class SourceSummaryOut(BaseModel):
             time_of_day_reference_seconds=source.time_of_day_reference_seconds,
             preparation_interpreter_id=(
                 source.preparation_provenance.get("interpreter_id")
+                if source.preparation_provenance else None
+            ),
+            layout_family=(
+                source.preparation_provenance.get("layout_family")
                 if source.preparation_provenance else None
             ),
         )

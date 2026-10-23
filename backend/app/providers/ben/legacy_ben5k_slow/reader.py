@@ -166,9 +166,19 @@ class SlowChannelStatus(Enum):
     #: Channel slot not in use (name == '----' or selector == 0 and name empty).
     INACTIVE = auto()
     #: word_index in range (0 < wi < words_per_sample); mapping is TENTATIVE.
-    #: The word_index formula (selector >> 8) is confirmed for Group 0 only.
-    #: Other groups use this formula tentatively pending oracle validation.
+    #: Restricted to Group 0 (BDNG 1) where the formula selector >> 8 is
+    #: confirmed by S4 engineering analysis: FREQ BDNG 1 (wi=1) produces
+    #: 49.6–50.6 Hz on the Malaysian 50 Hz grid; POWER BDNG 1 (wi=4) produces
+    #: 63–152 MW; MVAR BDNG 1 (wi=2) produces 13.5–13.7 Mvar.
     TENTATIVE = auto()
+    #: word_index in range but the group's selector encoding is NOT confirmed.
+    #: S4 analysis: Group 0 formula (selector >> 8) applied to Groups 1+ maps
+    #: to words that contain limit-event/status data, not the declared channel
+    #: measurements.  FREQ JJNG 1 at wi=8 holds counts 1–27 and 65500–65534
+    #: (not ~13000 frequency values).  MVAR JJNG 1 at wi=16 is bimodal 0–24
+    #: and 64804–65534 (not Mvar).  These channels are explicitly excluded from
+    #: value_channels.
+    UNRESOLVED_FORMULA_UNCONFIRMED = auto()
     #: word_index == 0 for a named channel: selector has only its low byte set.
     #: Word 0 in GRNE is a status/flag word; mapping is ambiguous.
     UNRESOLVED_ZERO = auto()
@@ -375,6 +385,14 @@ def read_channel_groups(
                     status = SlowChannelStatus.UNRESOLVED_OOR
                 elif wi in claimed_words:
                     status = SlowChannelStatus.UNRESOLVED_CONFLICT
+                elif g != 0:
+                    # S4 finding: selector >> 8 formula confirmed for Group 0
+                    # only.  Group 1 channels (FREQ JJNG 1 at wi=8, MVAR JJNG 1
+                    # at wi=16) map to words containing limit-event/status data,
+                    # not the declared channel measurements.  Claim the word to
+                    # prevent false TENTATIVE assignments from later groups.
+                    status = SlowChannelStatus.UNRESOLVED_FORMULA_UNCONFIRMED
+                    claimed_words.add(wi)
                 else:
                     status = SlowChannelStatus.TENTATIVE
                     claimed_words.add(wi)
@@ -501,8 +519,9 @@ def active_channels(groups: list[SlowGroup]) -> list[SlowChannelDescriptor]:
 
 
 def unresolved_channels(groups: list[SlowGroup]) -> list[SlowChannelDescriptor]:
-    """Return all UNRESOLVED channels (OOR, ZERO, CONFLICT) across all groups."""
+    """Return all UNRESOLVED channels (FORMULA_UNCONFIRMED, OOR, ZERO, CONFLICT)."""
     _unresolved = {
+        SlowChannelStatus.UNRESOLVED_FORMULA_UNCONFIRMED,
         SlowChannelStatus.UNRESOLVED_ZERO,
         SlowChannelStatus.UNRESOLVED_OOR,
         SlowChannelStatus.UNRESOLVED_CONFLICT,

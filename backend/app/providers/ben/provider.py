@@ -24,6 +24,7 @@ BEN_SUFFIX = ".ben"
 SOURCE_FORMAT = "BEN"
 _LAYOUT_FAMILY_SUBBEN = "BEN32 SubBen"
 _LAYOUT_FAMILY_BEN5K = "BEN32 BEN5K Legacy"
+_LAYOUT_FAMILY_BEN5K_SLOW = "BEN32 BEN5K Slow Legacy"
 
 
 class BenProvider(BaseProvider):
@@ -42,12 +43,14 @@ class BenProvider(BaseProvider):
         *,
         nominal_frequency_hz: float | None = None,
         ben5k_experimental_enabled: bool = False,
+        ben5k_slow_experimental_enabled: bool = False,
     ) -> None:
         self._nominal_frequency_assumed = nominal_frequency_hz is None
         self._nominal_frequency_hz = (
             DEFAULT_NOMINAL_FREQUENCY_HZ if nominal_frequency_hz is None else nominal_frequency_hz
         )
         self._ben5k_experimental = ben5k_experimental_enabled
+        self._ben5k_slow_experimental = ben5k_slow_experimental_enabled
 
     def can_load(self, path: Path) -> bool:
         return path.suffix.lower() == BEN_SUFFIX
@@ -62,24 +65,33 @@ class BenProvider(BaseProvider):
             from app.providers.ben.errors import BenFormatError
             raise BenFormatError(f"Cannot read BEN file '{path}': {exc}") from exc
 
-        record = parse_ben_experimental(data, allow_legacy_ben5k=self._ben5k_experimental)
+        record = parse_ben_experimental(
+            data,
+            allow_legacy_ben5k=self._ben5k_experimental,
+            allow_legacy_ben5k_slow=self._ben5k_slow_experimental,
+        )
         normalized = to_disturbance_record(
             record,
             source_file=str(path),
             nominal_frequency_hz=self._nominal_frequency_hz,
         )
         header = record.header
-        is_ben5k = header.record_class == BenRecordClass.BEN5K_LEGACY
-        layout_family = _LAYOUT_FAMILY_BEN5K if is_ben5k else _LAYOUT_FAMILY_SUBBEN
-        time_basis = "UTC (unverified)" if is_ben5k else "UTC"
+        is_ben5k_fast = header.record_class == BenRecordClass.BEN5K_LEGACY
+        is_ben5k_slow = header.record_class == BenRecordClass.BEN5K_SLOW_LEGACY
+        is_ben5k_any = is_ben5k_fast or is_ben5k_slow
+        if is_ben5k_slow:
+            layout_family = _LAYOUT_FAMILY_BEN5K_SLOW
+        elif is_ben5k_fast:
+            layout_family = _LAYOUT_FAMILY_BEN5K
+        else:
+            layout_family = _LAYOUT_FAMILY_SUBBEN
+        time_basis = "UTC (unverified)" if is_ben5k_any else "UTC"
 
-        # BEN5K timestamp timezone is unconfirmed (UTC vs local time +8).
-        # Override timing_reference to "relative_elapsed" so this source
-        # lands in the TIME_REFERENCE_ELAPSED_ONLY bucket and is never
+        # BEN5K Fast and Slow timestamp timezone is unconfirmed (UTC vs local
+        # time +8). Override timing_reference to "relative_elapsed" so these
+        # sources land in the TIME_REFERENCE_ELAPSED_ONLY bucket and are never
         # automatically grouped with confirmed-UTC sources by timestamp.
-        # The timestamps themselves are retained in start_time/trigger_time
-        # for display but are not used as absolute synchronization anchors.
-        if is_ben5k:
+        if is_ben5k_any:
             normalized = replace(
                 normalized,
                 timing_info=replace(normalized.timing_info, timing_reference="relative_elapsed"),
@@ -95,7 +107,8 @@ class BenProvider(BaseProvider):
             "nominal_frequency_hz": self._nominal_frequency_hz,
             "nominal_frequency_assumed": self._nominal_frequency_assumed,
             "diagnostics": [
-                {"code": d.code, "severity": d.severity, "message": d.message} for d in record.diagnostics
+                {"code": d.code, "severity": d.severity, "message": d.message}
+                for d in record.diagnostics
             ],
             "channels": channel_identities(record),
         }

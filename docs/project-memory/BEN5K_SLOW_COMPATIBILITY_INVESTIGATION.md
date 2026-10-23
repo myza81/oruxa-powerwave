@@ -1,6 +1,6 @@
 # BEN5K Slow Compatibility Investigation
 
-**Status:** S3 (Extended Catalog Decoded) implemented — word-index resolution pending oracle validation  
+**Status:** S4 (Engineering Measurements + Controlled UAT) complete — 3 Group 0 channels available as raw values; 2 Group 1 channels invalidated by S4 analysis; 25 remaining channels unresolved  
 **Branch:** `investigation/legacy-ben5k-slow`  
 **Based on:** `investigation/legacy-ben5k` at commit `b33b7af`  
 **Recording under investigation:** `GRNE230726_143432426.ben`
@@ -511,23 +511,41 @@ BEN5K Fast regression: `tests/test_ben5k_reader.py` (27 tests) — all pass, no 
 
 ### 10.2 Channel classification result (GRNE230726_143432426.ben)
 
+**S3 classification (superseded by S4 for Group 1):**
+
 ```
 INACTIVE             : 42   (groups 7–8 entirely; unused slots in groups 0–6)
-TENTATIVE            :  5   (available for decoding)
+TENTATIVE            :  5   (Group 0 only — see S4 reclassification below)
 UNRESOLVED_ZERO      : 12   (low-byte selector; formula gives wi=0)
 UNRESOLVED_OOR       :  6   (wi >= 26; selector >> 8 is out of frame range)
 UNRESOLVED_CONFLICT  :  7   (groups 4–5 claim words already held by groups 0–1)
 ```
 
-The 5 TENTATIVE channels with their confirmed word indices:
+**S4 reclassification (current):**
 
-| Channel | Group | selector | wi |
-|---------|-------|----------|----|
-| POWER BDNG 1 | SENS BDNG 1 | 0x0400 | 4 |
-| FREQ BDNG 1  | SENS BDNG 1 | 0x0100 | 1 |
-| MVAR BDNG 1  | SENS BDNG 1 | 0x0200 | 2 |
-| FREQ JJNG 1  | SENS JJNG 1 | 0x0800 | 8 |
-| MVAR JJNG 1  | SENS JJNG 1 | 0x1000 | 16 |
+```
+INACTIVE                    : 42
+TENTATIVE                   :  3   (Group 0 only; confirmed by S4 engineering analysis)
+UNRESOLVED_FORMULA_UNCONFIRMED:  2   (Group 1: formula confirmed invalid by S4 data analysis)
+UNRESOLVED_ZERO             : 12
+UNRESOLVED_OOR              :  6
+UNRESOLVED_CONFLICT         :  7
+```
+
+Group 0 TENTATIVE channels (available as raw int16 values):
+
+| Channel | Group | selector | wi | S4 validation |
+|---------|-------|----------|----|---------------|
+| POWER BDNG 1 | SENS BDNG 1 | 0x0400 | 4 | PLAUSIBLE (63–152 MW; oracle needed for scale) |
+| FREQ BDNG 1  | SENS BDNG 1 | 0x0100 | 1 | CONFIRMED (49.6–50.6 Hz; Malaysian 50 Hz grid) |
+| MVAR BDNG 1  | SENS BDNG 1 | 0x0200 | 2 | PLAUSIBLE (13.45–13.72 Mvar; oracle needed for scale) |
+
+Group 1 FORMULA_UNCONFIRMED channels (excluded from value_channels):
+
+| Channel | Group | selector | wi | S4 finding |
+|---------|-------|----------|----|------------|
+| FREQ JJNG 1 | SENS JJNG 1 | 0x0800 | 8 | INVALIDATED — wi=8 values are 1–27 and 65500–65534 (limit-event/status data, not frequency) |
+| MVAR JJNG 1 | SENS JJNG 1 | 0x1000 | 16 | INVALIDATED — wi=16 values are bimodal 0–24 and 64804–65534 (not Mvar range) |
 
 POWER JJNG 1 (selector 0x2000 → wi=32) remains UNRESOLVED_OOR as expected.
 
@@ -558,17 +576,58 @@ The selector encoding for Groups 2–6 remains unknown. No alternative formula
 (`sel >> 4`, `lsb_pos(sel)`, `msb_pos(sel)`) maps Groups 2–6 selectors to word
 indices without conflict across all channels. The root cause is unresolved.
 
-### 10.4 Diagnostics always attached to every BenRecord
+### 10.3 Root cause of JJNG 1 invalidation (S4 finding)
+
+The `selector >> 8` formula was confirmed for Group 0 (BDNG 1) by engineering
+analysis. For Group 1 (JJNG 1), the same formula gives wi=8 for FREQ JJNG 1 and
+wi=16 for MVAR JJNG 1. S4 analysis of the actual word column data:
+
+- **wi=8:** Values are 1–27 and 65500–65534 (near 0 and near 0xFFFF). This is a
+  bimodal limit-event or status pattern, not a frequency channel (which would
+  show values near 13,000–13,200 for 50 Hz).
+- **wi=16:** Values are bimodal 0–24 and 64804–65534. Again a status/limit pattern,
+  not Mvar (which would show small positive values like 13,000–14,000 if the same
+  scale applied).
+
+These word positions contain recorder internal state, not the declared measurements.
+The `selector >> 8` formula encodes something different for Group 1+ than for Group 0.
+The actual mapping formula for Groups 1+ remains unknown.
+
+### 10.4 Additional recording search result (S4)
+
+Owner-authorized directories searched:
+- `C:\Users\fairizat\OneDrive\...\Tripping Event\` (all subdirectories)
+- `C:\Users\fairizat\Desktop\BEN\`
+
+Result: Only 2 copies of `GRNE230726_143432426.ben` (70,315 bytes each, identical
+content) found with the `29 FF` Slow layout signature. No other `29 FF` Slow
+recording exists in owner-authorized directories. Cross-recording validation is
+not possible at this time.
+
+### 10.5 Frequency scale clarification (S4)
+
+The wi=1 column statistics for 1,188 samples:
+- Minimum: ~12,898 (49.3 Hz at scale 50/13000)
+- Median: 13,086 → 50/13086 ≈ 0.003821 Hz/count
+- Maximum: ~13,152 (50.6 Hz at scale 50/13000)
+
+The scale 50/13086 ≈ 0.003821 Hz/count gives median exactly 50.00 Hz. The
+previously documented estimate of 50/13000 ≈ 0.003846 is close but slightly off;
+the median-based value is more consistent. Oracle validation against SCADA
+frequency logs remains the authoritative resolution.
+
+### 10.6 Diagnostics always attached to every BenRecord (S4 updated)
 
 ```
-time_basis_unconfirmed          [WARNING]  Timestamp decoded as UTC; local vs UTC unconfirmed
-layout_ben5k_slow_legacy        [INFO]     Layout type, tentative/unresolved counts
-ben5k_slow_mapping_tentative    [WARNING]  word_index formula confirmed for Group 0 only
-ben5k_slow_tentative_channels   [INFO]     Names and word indices of TENTATIVE channels
-ben5k_slow_oor_channels         [INFO]     Count and first example of OOR channels
-ben5k_slow_zero_index_channels  [INFO]     Count and first example of ZERO channels
-ben5k_slow_conflict_channels    [INFO]     Count and first example of CONFLICT channels
-ben5k_slow_hvdc_formula         [INFO]     HVDC formula name noted; decoding deferred
+time_basis_unconfirmed                  [WARNING]  Timestamp decoded as UTC; local vs UTC unconfirmed
+layout_ben5k_slow_legacy                [INFO]     Layout type, tentative/unresolved counts
+ben5k_slow_mapping_tentative            [WARNING]  word_index formula confirmed for Group 0 only; S4 findings
+ben5k_slow_formula_unconfirmed_channels [WARNING]  Group 1+ channels excluded; S4 data analysis result
+ben5k_slow_tentative_channels           [INFO]     Names and word indices of TENTATIVE channels
+ben5k_slow_oor_channels                 [INFO]     Count and first example of OOR channels
+ben5k_slow_zero_index_channels          [INFO]     Count and first example of ZERO channels
+ben5k_slow_conflict_channels            [INFO]     Count and first example of CONFLICT channels
+ben5k_slow_hvdc_formula                 [INFO]     HVDC formula name noted; decoding deferred
 ```
 
 ---
@@ -689,12 +748,21 @@ The BEN5K Slow decoder must not affect:
 1. **Production SubBen decoder** — `parse_ben()` dispatch unchanged; `2a ff`
    recordings continue to parse identically.
 2. **BEN5K Fast decoder** — `28 ff` recordings continue to parse identically;
-   all 17 existing BEN5K Fast test assertions pass unmodified.
-3. **Feature flag** — BEN5K Slow dispatch is gated behind the same
-   `BEN5K_EXPERIMENTAL_ENABLED` env var. Disabled by default in production
-   until oracle validation passes.
+   all existing BEN5K Fast test assertions pass unmodified.
+3. **Feature flag** — BEN5K Slow dispatch is gated behind its own, separate
+   `BEN5K_SLOW_EXPERIMENTAL_ENABLED` env var (Settings field
+   `ben5k_slow_experimental_enabled`). This is independent of the BEN5K Fast
+   `BEN5K_EXPERIMENTAL_ENABLED` flag — enabling one does NOT enable the other.
+   Disabled by default in production. See S4 decision record below.
 4. **Import pipeline** — no change to recording import API surface, file
    routing, or storage paths.
+5. **Unresolved channels not in value_channels** — FORMULA_UNCONFIRMED, OOR,
+   ZERO, and CONFLICT channels must never appear in value_channels and must
+   not be displayed as valid measured waveforms.
+6. **timing_reference must be `relative_elapsed`** — BEN5K Slow sources
+   (like BEN5K Fast) use `timing_reference="relative_elapsed"` so they land
+   in the elapsed-only time bucket and are never auto-grouped with confirmed-UTC
+   sources by timestamp.
 
 ---
 
@@ -702,27 +770,79 @@ The BEN5K Slow decoder must not affect:
 
 | # | Question | Status | Impact |
 |---|----------|--------|--------|
-| 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S3 confirmed no lookup in extended catalog; formula unknown | Required to map remaining 25 channels |
-| 2 | Scale/offset encoding in descriptor bytes 24–27 | OPEN — S2 exposes raw int16 pending oracle | Required for physical units |
-| 3 | Timestamp UTC vs UTC+8 | OPEN | Affects time-axis alignment with other event data |
-| 4 | Significance of wi=16 (MVAR JJNG 1 TENTATIVE) — range 0–65535 signed -732 to 24 is anomalous for Mvar | OPEN | TENTATIVE label may be wrong; oracle needed |
+| 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S3 confirmed no lookup in extended catalog; S4 confirmed formula is wrong for Group 1; formula for Groups 2–6 unknown | Required to map remaining 25 channels |
+| 2 | Scale/offset encoding in descriptor bytes 24–27 | OPEN — S4 exposes raw int16 pending oracle | Required for physical units; FREQ scaling at 50/13086 ≈ 0.003821 Hz/count is the best current estimate |
+| 3 | Timestamp UTC vs UTC+8 | OPEN | Affects time-axis alignment; `timing_reference="relative_elapsed"` applied as safeguard |
+| 4 | Significance of wi=16 (MVAR JJNG 1) — range anomaly | **RESOLVED (S4):** wi=16 is NOT Mvar. Values are bimodal 0–24 and 64804–65534 (limit-event/status data). Channel reclassified to UNRESOLVED_FORMULA_UNCONFIRMED. | Closed — channel excluded from value_channels |
 | 5 | Significance of wi=17 — signed -3713 to -641, large negative, no channel assignment | OPEN | Possibly autotransformer load or flag word |
-| 6 | HVDC Power formula channel: should it be decoded and displayed? | OPEN — deferred | Scope decision |
+| 6 | HVDC Power formula channel: should it be decoded and displayed? | OPEN — deferred per S4 decision | Scope decision |
 | 7 | Extended catalog at 0x0A1B — does it hold the bitmask/ID→word lookup? | **RESOLVED (S3):** No. Catalog contains 85 30-byte records with channel names and IDs only; no word indices. | OQ 1 cannot be resolved via catalog. |
 | 8 | Groups 7 and 8 (placeholder groups): are all channels `----` in every GRNE recording? | OPEN — confirmed `----` in this recording only | Skip logic validation |
-| 9 | Is the selector for Groups 2–6 a BEN recorder internal register address or a display-group bitmask? | OPEN — S3 investigation exhausted all known binary sections | Requires second Slow recording or BEN5K Slow protocol documentation |
+| 9 | Is the selector for Groups 2–6 a BEN recorder internal register address or a display-group bitmask? | OPEN — S3 and S4 investigations exhausted all known binary sections | Requires second Slow recording or BEN5K Slow protocol documentation |
+| 10 | Is there a second `29 FF` Slow recording available for cross-recording validation? | **RESOLVED (S4):** No. Only the two copies of GRNE230726_143432426.ben exist in owner-authorized directories (OneDrive Tripping Event + Desktop BEN). | Cross-recording validation not possible at this time |
 
 ---
 
-## 15. Decision Required
+## 15. Decision Record (S4)
 
-Before implementation begins, obtain owner approval on:
+The following decisions were made during S4 implementation:
 
-- Whether to decode HVDC Power formula channels (scope: yes/no/deferred)
-- Whether raw int16 values with unit "raw" are acceptable for an initial
-  version pending oracle scale validation
-- Whether BEN5K Slow dispatch should share the existing `BEN5K_EXPERIMENTAL_ENABLED`
-  flag or get its own (e.g. `BEN5K_SLOW_EXPERIMENTAL_ENABLED`)
+| Decision | Resolution |
+|----------|-----------|
+| BEN5K Slow feature flag | **Separate flag** — `BEN5K_SLOW_EXPERIMENTAL_ENABLED` (env var) / `ben5k_slow_experimental_enabled` (Settings field). Independent of BEN5K Fast flag. Disabled by default. |
+| HVDC Power formula channel | **Deferred** — `hvdc.name` is captured and reported in diagnostics but not included in value_channels. |
+| Raw int16 values with unit "raw" | **Accepted for UAT** — all TENTATIVE channels exposed with `scale=1.0, offset=0.0, unit="raw"`. Oracle validation required before engineering units are published. |
+| Group 1 TENTATIVE channels | **Reclassified to UNRESOLVED_FORMULA_UNCONFIRMED** — S4 engineering analysis definitively shows wi=8 and wi=16 hold limit-event/status data, not the declared measurements. |
+| Production merge | **Not approved** — S4 provides development/UAT path only. No production merge without owner approval and oracle validation. |
+
+---
+
+## 16. S4 Engineering Validation
+
+### 16.1 Group 0 (BDNG 1) validation results
+
+Analysis of 1,188 samples from `GRNE230726_143432426.ben`:
+
+| Channel | wi | Raw value range | Interpretation | Status |
+|---------|-----|----------------|----------------|--------|
+| FREQ BDNG 1 | 1 | 12,898–13,152 unsigned | Scale 50/13086 → 49.3–50.6 Hz. Consistent with Malaysian 50 Hz grid. | **CONFIRMED** |
+| MVAR BDNG 1 | 2 | 13,453–13,720 unsigned | ~13.45–13.72 Mvar if scale ≈ 0.001 Mvar/count. Plausible for 132 kV feeder. | **PLAUSIBLE** — oracle needed |
+| POWER BDNG 1 | 4 | 63–152 unsigned | ~63–152 MW if scale ≈ 1 MW/count; mean 108 MW. Plausible for 132 kV transmission feeder. | **PLAUSIBLE** — oracle needed |
+
+### 16.2 Group 1 (JJNG 1) invalidation results
+
+| Channel | wi | Raw value range | Expected for measurement | Finding |
+|---------|-----|----------------|--------------------------|---------|
+| FREQ JJNG 1 | 8 | 1–27 and 65500–65534 (bimodal) | ~12,900–13,200 for 50 Hz | **INVALIDATED** — values are status/limit pattern |
+| MVAR JJNG 1 | 16 | 0–24 and 64,804–65,534 (bimodal) | ~13,000–14,000 for similar Mvar range | **INVALIDATED** — values are status/limit pattern |
+
+Both channels map to word positions that contain internal recorder state
+(limit-crossing events, status flags), not the declared physical measurements.
+The `selector >> 8` formula is confirmed only for Group 0.
+
+### 16.3 Implications for Groups 2–6
+
+S4 confirms that the `selector >> 8` formula cannot be relied on for any group
+other than Group 0. The encoding for Groups 2–6 remains unknown. All 25
+remaining non-trivial channels (UNRESOLVED_ZERO, UNRESOLVED_OOR, UNRESOLVED_CONFLICT,
+UNRESOLVED_FORMULA_UNCONFIRMED) are preserved in diagnostics for future investigation.
+
+### 16.4 S4 implementation summary
+
+| Component | Change |
+|-----------|--------|
+| `reader.py` | Added `UNRESOLVED_FORMULA_UNCONFIRMED` to `SlowChannelStatus`; `g != 0` condition routes Group 1+ channels to new status instead of TENTATIVE; `unresolved_channels()` includes the new status |
+| `normalize.py` | New `ben5k_slow_formula_unconfirmed_channels` diagnostic (WARNING); updated `ben5k_slow_mapping_tentative` message with S4 findings |
+| `config.py` | Added `ben5k_slow_experimental_enabled: bool = False` to `Settings`; reads `BEN5K_SLOW_EXPERIMENTAL_ENABLED` env var |
+| `provider.py` | Added `ben5k_slow_experimental_enabled` param; separate `_LAYOUT_FAMILY_BEN5K_SLOW` constant; `timing_reference="relative_elapsed"` applied to both Fast and Slow; `is_ben5k_any` covers both |
+| `import_service.py` | Threaded `ben5k_slow_experimental_enabled` through `build_provider_manager()` and `import_ben_source()` |
+| `api/v1/sources.py` | Passes `settings.ben5k_slow_experimental_enabled` to `import_ben_source()` |
+| `schemas/source.py` | Added `layout_family: str | None = None` to `SourceSummaryOut`; populated from `preparation_provenance["layout_family"]` |
+| `frontend/index.html` | Added `.ww-ben5k-slow-notice` CSS; updated `renderRecordingDetails()` to show UAT warning when `layout_family === "BEN32 BEN5K Slow Legacy"`; BEN filename shown in Files zone |
+| `tests/test_ben5k_slow_api.py` | 14 new tests: flag disabled/enabled, layout_family, timing_reference, channel counts, flag independence |
+
+**Test results at S4 commit:** All 14 new `test_ben5k_slow_api.py` tests pass.
+All existing BEN5K Fast tests pass. Full test suite regression confirmed.
 
 ---
 

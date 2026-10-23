@@ -731,6 +731,25 @@
         .recording-details-file { display: flex; gap: 10px; min-width: 0; }
         .recording-details-file-label { color: var(--text-dim); font-weight: 500; flex-shrink: 0; width: 34px; }
         .recording-details-file-name { overflow-wrap: anywhere; min-width: 0; }
+        /* S4 (investigation/legacy-ben5k-slow): BEN5K Slow development/UAT
+           notice rendered at the top of a BEN5K Slow source's details panel.
+           Reuses the established color-mix() amber-wash pattern already used by
+           ww-data-prep-time-axis-validity[data-state="attention"] above; never
+           a new global token. */
+        .ww-ben5k-slow-notice {
+            padding: 7px 10px;
+            margin-bottom: 10px;
+            background: color-mix(in srgb, var(--warn) 12%, transparent);
+            border-left: 3px solid var(--warn);
+            border-radius: 2px;
+            font-size: 0.7rem;
+        }
+        .ww-ben5k-slow-notice-title {
+            font-weight: 600;
+            color: var(--warn);
+            margin-bottom: 3px;
+        }
+        .ww-ben5k-slow-notice-body { color: var(--text-dim); line-height: 1.45; }
         /* Companion half of the row-association cue: a very subtle tint
            on the PARENT row while its own details are expanded, same
            accent family as the details panel's left bar -- not a
@@ -21736,6 +21755,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function renderRecordingDetails(source) {
             const cfgName = source.original_filenames.find((name) => /\.cfg$/i.test(name));
             const datName = source.original_filenames.find((name) => /\.dat$/i.test(name));
+            const benName = source.original_filenames.find((name) => /\.ben$/i.test(name));
             // Trigger Time: a source-level, timezone-naive COMTRADE
             // timestamp -- same `.replace("T", " ")` technique used
             // everywhere else in this app for that reason (never
@@ -21759,7 +21779,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 escapeHtml(label) + '</span><span class="recording-details-timing-value">' +
                 escapeHtml(value) + '</span></div>';
 
-            let html = '<div class="recording-details-zone-title">Technical</div>';
+            // S4: BEN5K Slow sources get a development/UAT notice at the top of
+            // the details panel.  layout_family is populated by the backend from
+            // preparation_provenance["layout_family"] for every BEN source.
+            let html = "";
+            if (source.layout_family === "BEN32 BEN5K Slow Legacy") {
+                const chCount = source.analog_channel_count;
+                html += '<div class="ww-ben5k-slow-notice">' +
+                    '<div class="ww-ben5k-slow-notice-title">BEN5K Slow — Development/UAT only</div>' +
+                    '<div class="ww-ben5k-slow-notice-body">' +
+                    escapeHtml(
+                        chCount + " trend channel" + (chCount === 1 ? "" : "s") +
+                        " available (Group 0 only, raw int16 values). " +
+                        "Group 1+ channels excluded: S4 engineering analysis " +
+                        "shows their mapped word positions hold limit-event/" +
+                        "status data, not the declared measurements. " +
+                        "Scale factors unconfirmed; unit shown as ‘raw’."
+                    ) +
+                    '</div>' +
+                '</div>';
+            }
+            html += '<div class="recording-details-zone-title">Technical</div>';
             html += '<div class="recording-details-facts">';
             html += fact("Recorder", source.recorder_name || "—");
             html += fact("Channels", source.analog_channel_count + " Analog / " + source.digital_channel_count + " Digital");
@@ -21777,6 +21817,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Phase 3B-UAT5 record for the full investigation.
             html += fact("Timing reference", source.timing_reference);
             html += fact("Samples", source.sample_count.toLocaleString());
+            if (source.layout_family) html += fact("Layout", source.layout_family);
             html += '</div>';
 
             html += '<div class="recording-details-divider"></div>';
@@ -21786,10 +21827,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += timingRow("Imported", importedTime);
             html += '</div>';
 
-            if (cfgName || datName) {
+            if (cfgName || datName || benName) {
                 html += '<div class="recording-details-divider"></div>';
                 html += '<div class="recording-details-zone-title">Files</div>';
                 html += '<div class="recording-details-files">';
+                if (benName) {
+                    html += '<div class="recording-details-file"><span class="recording-details-file-label">BEN</span>' +
+                        '<span class="recording-details-file-name">' + escapeHtml(benName) + '</span></div>';
+                }
                 if (cfgName) {
                     html += '<div class="recording-details-file"><span class="recording-details-file-label">CFG</span>' +
                         '<span class="recording-details-file-name">' + escapeHtml(cfgName) + '</span></div>';
@@ -21884,12 +21929,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +
                     '<td><div class="recording-actions">' +
                         // CSV/Excel ingestion Slice 1: the Details toggle is
-                        // COMTRADE-only for now -- renderRecordingDetails()
-                        // reads channel/timing/file fields a preparation
-                        // source doesn't have yet (Slice 3+ scope). Omitting
-                        // it for a CSV row (rather than rendering a details
-                        // panel full of "—"/undefined) keeps Remove as the
-                        // one and only action, which is all this slice needs.
+                        // for COMTRADE/BEN sources (recordingKind "comtrade"
+                        // is the default for both) -- renderRecordingDetails()
+                        // reads channel/timing/file fields a preparation source
+                        // doesn't have yet (Slice 3+ scope). Omitting it for a
+                        // CSV row (rather than a panel full of "—"/undefined)
+                        // keeps Remove as the one and only action.
+                        // S4: BEN sources (`_recordingKind` not set) default to
+                        // "comtrade" here, so BEN5K Slow sources also show the
+                        // Details toggle and the renderRecordingDetails() panel.
                         (recordingKind === "comtrade"
                             ? '<button type="button" class="secondary recording-details-toggle icon-button" data-action="details" data-source-id="' +
                               escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '" aria-label="' + detailsLabel +

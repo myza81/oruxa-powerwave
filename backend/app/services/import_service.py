@@ -87,6 +87,7 @@ def build_provider_manager(
     *,
     nominal_frequency_hz: float | None = None,
     ben5k_experimental_enabled: bool = False,
+    ben5k_slow_experimental_enabled: bool = False,
 ) -> ProviderManager:
     """The providers source upload resolves against (DEC-120).
 
@@ -102,6 +103,7 @@ def build_provider_manager(
         BenProvider(
             nominal_frequency_hz=nominal_frequency_hz,
             ben5k_experimental_enabled=ben5k_experimental_enabled,
+            ben5k_slow_experimental_enabled=ben5k_slow_experimental_enabled,
         )
     )
     return manager
@@ -194,6 +196,7 @@ async def import_ben_source(
     registry: WorkspaceRegistry,
     nominal_frequency_hz: float | None = None,
     ben5k_experimental_enabled: bool = False,
+    ben5k_slow_experimental_enabled: bool = False,
 ) -> SourceMetadata:
     """Validate, stage, and natively parse one BEN record (DEC-120).
 
@@ -227,6 +230,7 @@ async def import_ben_source(
         provider = build_provider_manager(
             nominal_frequency_hz=nominal_frequency_hz,
             ben5k_experimental_enabled=ben5k_experimental_enabled,
+            ben5k_slow_experimental_enabled=ben5k_slow_experimental_enabled,
         ).find_provider(ben_path)
         try:
             record, provenance = provider.load_with_provenance(ben_path)
