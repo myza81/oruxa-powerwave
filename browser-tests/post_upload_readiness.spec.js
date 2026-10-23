@@ -81,6 +81,7 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     // "Identifying engineering contexts…" transient state must never
     // even appear.
     await expect(page.locator("#wwPhasorEmptyState")).not.toContainText("Identifying engineering contexts");
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(5);
     const options = await page.locator("#wwPhasorContextSelect option").allTextContents();
     expect(new Set(options.slice(1))).toEqual(new Set(["KPDN1", "KPDN2", "SLKS", "SGT1"]));
 

@@ -460,7 +460,7 @@ test.describe("Event Playback Slice 1", () => {
     // clean console and no unexpected HTTP failure.
     await page.waitForTimeout(1200);
     await expect(page.locator("#wwTimeGroupCanvases .ww-time-group-canvas")).toHaveCount(0);
-    expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}`).toEqual([]);
+    expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}\nFailed requests:\n${badResponses.join("\n")}`).toEqual([]);
     expect(badResponses, `Unexpected failed HTTP responses:\n${badResponses.join("\n")}`).toEqual([]);
   });
 });

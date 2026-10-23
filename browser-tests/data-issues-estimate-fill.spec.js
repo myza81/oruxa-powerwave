@@ -307,7 +307,7 @@ test("Data Issues: bulk Fill / Estimate Missing Values -- Constant Value + respo
       await page.setViewportSize({ width, height: 900 });
       await expect(page.locator("#wwDataIssuesPanel")).toHaveAttribute("data-open", "true");
       const bulkFillBtn = page.locator('.ww-data-issues-bulk-fill-btn[data-bulk-fill-issue-code="waveform_value_missing"]').first();
-      await bulkFillBtn.scrollIntoViewIfNeeded();
+      // Locator click re-resolves a row replaced by asynchronous panel render.
       await bulkFillBtn.click();
       const overlay = page.locator("#wwDataIssuesBulkFillOverlay");
       await expect(overlay).toBeVisible();

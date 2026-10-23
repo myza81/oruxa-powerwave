@@ -321,7 +321,12 @@ test.describe("Event Reconstruction Y-axis drag zoom -- channels and isolation",
       cursors: JSON.stringify(Array.from(ww.timeGroupCursorState.entries())),
       presentation: JSON.stringify(Array.from(ww.channelPresentationOverrides.entries())),
     }));
-    await page.waitForTimeout(500);
+    // Capture the initialized Waveform, including its async sample/axis load.
+    await expect.poll(() => page.evaluate(() => ww.timeGroupViewports.size > 0 &&
+      ww.panels.length > 0 && ww.panels.every(p => p.chartEl && p.chartEl.data &&
+        p.chartEl.data.some(t => t.y && t.y.length > 0) &&
+        p.chartEl.layout && p.chartEl.layout.yaxis &&
+        Array.isArray(p.chartEl.layout.yaxis.range)))).toBe(true);
     const before = await waveform();
     await addRecords(page, ["STN_A"]);
     await selectChannel(page, "STN_A", "VA");

@@ -315,3 +315,20 @@ also checked through isolated local API imports, with hashes unchanged.
 
 Final full-suite counts and commit are recorded in HANDOFF. Commit and report first;
 no push or combined DEV deployment is authorized by the final implementation ticket.
+
+
+## Release hardening Slice B lifecycle follow-up (2026-10-24)
+
+Workspace deletion now cancels pending workspace GETs through the existing
+session-header fetch wrapper before the backend DELETE, including source metadata
+outside Analysis's transport. Caller AbortSignals remain effective. Failed deletion
+keeps the recording workspace and restores usable read/analysis transport; no
+interpretation is persisted or reassigned. Source metadata acceptance also checks
+workspace identity and source liveness. Event Reconstruction uses its own load
+sequence, retaining its boundary from Waveform engine state.
+
+This is request/cache lifecycle hardening, not new time authority or synchronization.
+Raw recorder digits, samples, precision, page-session interpretation, shared effective
+timebase, manual offsets and t0/cursors retain the owner-approved contract above.
+Final regression evidence and release disposition are maintained in
+[SLICE_B_RELEASE_HARDENING.md](SLICE_B_RELEASE_HARDENING.md).

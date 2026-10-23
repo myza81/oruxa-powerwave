@@ -15,7 +15,8 @@
 cleanup and response/render readiness improvements are implemented locally.
 The stale GRZ100 real-sheet expectation is corrected against approved catalog/OEM
 equations; production protection behaviour is unchanged. Targeted regressions pass.
-Full backend and four-worker browser validation is in progress; release remains
+The initial complete runs exposed remaining boundary/readiness/cancellation defects;
+follow-up fixes and final regression validation are in progress. Release remains
 NO-GO. No push or deployment. Evidence and final results:
 [SLICE_B_RELEASE_HARDENING.md](SLICE_B_RELEASE_HARDENING.md).
 

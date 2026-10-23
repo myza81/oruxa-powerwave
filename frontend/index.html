@@ -16246,6 +16246,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // A fresh page nonce scopes temporary clock interpretations. Never save it in
         // localStorage/sessionStorage, a recording, or an exported document.
         const powerwavePageSessionId = crypto.randomUUID();
+        // Workspace reads share a deletion lifetime, including metadata requests
+        // outside the Analysis transport. This is cancellation only, not timing state.
+        const powerwaveWorkspaceReadControllers = new Map();
+        function powerwaveWorkspaceReadController(workspaceId) {
+            if (!powerwaveWorkspaceReadControllers.has(workspaceId)) {
+                powerwaveWorkspaceReadControllers.set(workspaceId, new AbortController());
+            }
+            return powerwaveWorkspaceReadControllers.get(workspaceId);
+        }
         const powerwaveNativeFetch = window.fetch.bind(window);
         window.fetch = function(input, init) {
             const url = new URL(input instanceof Request ? input.url : input, window.location.href);
@@ -16255,6 +16264,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 new Headers(options.headers).forEach((value, key) => headers.set(key, value));
                 headers.set("X-Powerwave-Session", powerwavePageSessionId);
                 options.headers = headers;
+                const method = options.method || (input instanceof Request ? input.method : "GET");
+                if (String(method).toUpperCase() === "GET") {
+                    const workspaceId = decodeURIComponent(url.pathname.split("/")[4]);
+                    const controller = new AbortController();
+                    const signals = [powerwaveWorkspaceReadController(workspaceId).signal,
+                        options.signal || (input instanceof Request ? input.signal : null)].filter(Boolean);
+                    const abort = event => controller.abort(event.target.reason);
+                    for (const signal of signals) {
+                        if (signal.aborted) controller.abort(signal.reason);
+                        else signal.addEventListener("abort", abort, { once: true });
+                    }
+                    options.signal = controller.signal;
+                    return powerwaveNativeFetch(input, options).finally(() => {
+                        signals.forEach(signal => signal.removeEventListener("abort", abort));
+                    });
+                }
                 return powerwaveNativeFetch(input, options);
             }
             return powerwaveNativeFetch(input, init);
@@ -16338,6 +16363,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // workspace. Waiting until wwClearWorkspace leaves a DELETE roundtrip
             // in which playback can request already-deleted sources.
             wwPlaybackPause();
+            powerwaveWorkspaceReadController(oldWorkspaceId).abort();
             wwAnalysisFetchAbortController.abort();
             let deleted = false;
 
@@ -16359,6 +16385,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // A failed deletion keeps the workspace usable, with playback
                 // paused. Successful teardown renews transport in wwClearWorkspace.
                 if (!deleted && currentWorkspaceId() === oldWorkspaceId) {
+                    powerwaveWorkspaceReadControllers.delete(oldWorkspaceId);
                     wwAnalysisFetchAbortController = new AbortController();
                 }
             }
@@ -17089,7 +17116,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Channel metadata for every recording of a current member, fetched
         // once per recording; entries for removed recordings are dropped.
         async function wwErEnsureMemberChannelsFetched() {
-            const workspaceAtStart = currentWorkspaceId(), epochAtStart = ww.epoch;
+            const workspaceAtStart = currentWorkspaceId(), loadSeqAtStart = wwErState.loadSeq;
             const liveIds = new Set(wwErState.sources.map((s) => s.source_id));
             for (const sourceId of Object.keys(wwErState.channelsBySource)) {
                 if (!liveIds.has(sourceId)) delete wwErState.channelsBySource[sourceId];
@@ -17099,7 +17126,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const results = await Promise.all(needed.map((sourceId) =>
                 wwErFetchWorkspaceJson("/sources/" + encodeURIComponent(sourceId) + "/channels")));
             needed.forEach((sourceId, index) => {
-                if (results[index] && workspaceAtStart === currentWorkspaceId() && epochAtStart === ww.epoch &&
+                if (results[index] && workspaceAtStart === currentWorkspaceId() && loadSeqAtStart === wwErState.loadSeq &&
                     !wwRemovedSourceIds.has(sourceId)) wwErState.channelsBySource[sourceId] = results[index];
             });
         }

@@ -81,4 +81,43 @@ only, production geometry unsupported, Apply returns 409.
 - Relay conformance with owner PDFs: 597 passed, 101 conditional skips, no failures.
 - Workspace deletion cancellation/recovery + Playback: 32 passed, four workers.
 - Deterministic Phasor bootstrap: 1 passed.
-- Full backend and full four-worker browser results: pending; release remains NO-GO.
+- First full backend with owner PDFs: 10,405 passed, 167 skipped, one failed
+  (Event Reconstruction's strict module-boundary guard), 33m59.91s.
+- First complete browser run: 1,132 passed, 12 failed, zero skips, four workers,
+  zero retries, 38.6 minutes. Backend regressions also ran on the host during
+  part of this run; final browser validation will run separately.
+
+## Follow-up closure (2026-10-24)
+
+The first browser run's twelve failures comprise five request transport failures
+(ECONNRESET / socket hang-up, including two cleanup DELETEs), two test timeouts,
+four readiness gaps and one late workspace GET returning 404. The connection
+resets affect ordinary test GET/POST as well as cleanup; no backend traceback
+establishes their cause. Playwright's local source uses shared keep-alive agents,
+but an idle-socket race is only a hypothesis, not a confirmed root cause. No
+request retry, timeout increase or failure suppression is introduced.
+
+The architecture guard is corrected by capturing Event Reconstruction's own
+`loadSeq`, preserving its boundary from Waveform state. Its full 165-test static
+suite passes. Impedance pause checks now await the final accepted sample-time
+fetch before testing stability. Event Reconstruction's isolation test awaits
+initialized Waveform samples, axes and viewport before its before-state snapshot.
+Post-upload Analysis checks await the populated Bay options; Data Issues clicks
+use Locator's normal re-resolution rather than retaining a detached row during
+an explicit scroll. Numerical, isolation and visibility assertions remain.
+
+A three-repeat/four-worker targeted run passed 19 cases but reproduced the late
+404 twice. Improved diagnostics identify the actual URL as a source `/channels`
+GET. Pausing Playback and aborting only Analysis was insufficient: source metadata
+uses a separate fetch. The existing session-header fetch wrapper now supplies a
+workspace read lifetime to workspace GETs, composed with each caller's AbortSignal.
+Start New Workspace aborts those reads before DELETE; successful deletion leaves
+the old workspace blocked, failed deletion re-enables reads and preserves state.
+No writes are retried or cancelled by this read-lifetime mechanism. The original
+success/failure handling, immutable samples and effective timebase are unchanged.
+
+Two additional lifecycle regressions cover an intercepted metadata GET and caller
+cancellation. All lifecycle/cancellation cases including the previous flaky clear
+while playing pass three repeats with four workers: **24 passed**. Final lifecycle + Slice A timing/interpretation: **22 passed**, four
+workers. Full backend and isolated full four-worker browser results are pending. Release
+remains NO-GO until final evidence is reviewed.

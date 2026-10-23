@@ -307,9 +307,13 @@ test.describe("Impedance Locus v1 -- chronological locus reveal", () => {
     const afterPlay = await locusPathSegmentCount(page);
     expect(afterPlay).toBeGreaterThan(before);
 
-    // Pause: the trail must stop growing (a brief settle window is
-    // allowed for the in-flight exact-fetch, then it must be stable).
-    await page.waitForTimeout(300);
+    // Pause converges through an exact fetch; observe its completion before
+    // measuring stability, rather than assuming a 300 ms network roundtrip.
+    await expect.poll(() => page.evaluate(() =>
+      !wwImpedancePlaybackFetchInFlight && wwImpedanceState.latestResult !== null &&
+      wwImpedancePlaybackFetchedTime !== null &&
+      Math.abs(wwImpedancePlaybackFetchedTime - wwImpedanceState.analysisTime) < 1e-9
+    )).toBe(true);
     const settled = await locusPathSegmentCount(page);
     await page.waitForTimeout(500);
     const stillSettled = await locusPathSegmentCount(page);

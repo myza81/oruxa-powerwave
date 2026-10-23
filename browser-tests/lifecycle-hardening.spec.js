@@ -104,3 +104,40 @@ test("failed workspace deletion retains recordings and restores analysis transpo
   expect(result).toBeTruthy();
   expect(await page.evaluate(() => wwAnalysisFetchAbortController.signal.aborted)).toBe(false);
 });
+
+
+test("workspace deletion cancels a pending recording metadata request before the backend sees it", async ({ page }) => {
+  const sid = await recording(page);
+  const badResponses = [];
+  page.on("response", response => { if (response.status() >= 400) badResponses.push(response.url()); });
+  let releaseRead, markStarted, markFinished;
+  const gate = new Promise(resolve => { releaseRead = resolve; });
+  const started = new Promise(resolve => { markStarted = resolve; });
+  const finished = new Promise(resolve => { markFinished = resolve; });
+  await page.route("**/sources/" + sid + "/channels", async route => {
+    markStarted(); await gate;
+    try { await route.continue(); } finally { markFinished(); }
+  });
+  await page.evaluate(sid => {
+    ww.sourceChannelsData.delete(sid);
+    window.pendingMetadata = wwEnsureSourceChannelsFetched(sid);
+  }, sid);
+  await started;
+  try { await page.evaluate(() => resetToNewWorkspace()); }
+  finally { releaseRead(); }
+  await finished;
+  expect(await page.evaluate(() => window.pendingMetadata)).toBe(false);
+  expect(badResponses).toEqual([]);
+  expect(await page.evaluate(sid => ww.sourceChannelsData.has(sid), sid)).toBe(false);
+});
+
+test("a workspace read continues to honor the caller's AbortSignal", async ({ page }) => {
+  await page.goto("/index.html");
+  expect(await page.evaluate(async () => {
+    const caller = new AbortController(); caller.abort();
+    try {
+      await fetch(apiBaseUrl() + "/api/v1/workspaces/" + currentWorkspaceId() + "/sources", { signal: caller.signal });
+      return "unexpected success";
+    } catch (error) { return error.name; }
+  })).toBe("AbortError");
+});
