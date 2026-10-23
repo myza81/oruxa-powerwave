@@ -771,7 +771,7 @@ The BEN5K Slow decoder must not affect:
 | # | Question | Status | Impact |
 |---|----------|--------|--------|
 | 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S3 confirmed no lookup in extended catalog; S4 confirmed formula is wrong for Group 1; formula for Groups 2–6 unknown | Required to map remaining 25 channels |
-| 2 | Scale/offset encoding in descriptor bytes 24–27 | **PARTIALLY RESOLVED (S6):** Two byte patterns found: `33 ff 38 00` (Power/Freq/Voltage) and `ff ff 00 00` (Mvar). These are opaque calibration table references, not literal scale factors. Physical scale requires oracle. Candidate scales: POWER 1.0 MW/count, MVAR 0.001 Mvar/count, voltage 0.01 kV/count. | Physical engineering units still require SCADA oracle |
+| 2 | Scale/offset encoding in descriptor bytes 24–27 | **PARTIALLY RESOLVED (S6):** Two byte patterns found: `33 ff 38 00` (Power/Freq/Voltage) and `ff ff 00 00` (Mvar); not literal scale factors. Their meaning is **unverified** — firmware documentation or a second Slow recording with known engineering values would be required to confirm any interpretation. Candidate scales (unconfirmed): POWER 1.0 MW/count, MVAR 0.001 Mvar/count, voltage 0.01 kV/count. | Physical engineering units still require SCADA oracle |
 | 3 | Timestamp UTC vs UTC+8 | OPEN — S6 found no independent reference data for 2023-07-26 | Affects time-axis alignment; `timing_reference="relative_elapsed"` applied as safeguard |
 | 4 | Significance of wi=16 (MVAR JJNG 1) — range anomaly | **RESOLVED (S4):** wi=16 is NOT Mvar. Values are bimodal 0–24 and 64804–65534 (limit-event/status data). Channel reclassified to UNRESOLVED_FORMULA_UNCONFIRMED. | Closed — channel excluded from value_channels |
 | 5 | Significance of wi=17 — signed -3713 to -641, large negative, no channel assignment | OPEN | Possibly autotransformer load or flag word |
@@ -881,11 +881,13 @@ the assumption that the nominal grid frequency is 50 Hz:
   resistant to outliers).
 - The divisor 13,082 (sample mean) produces mean frequency = 50.000 Hz
   exactly, but this is trivially true by construction.
-- The divisor 13,000 gives a mean of 50.315 Hz — inconsistent with
-  nominal 50 Hz operation and therefore ruled out as the intended scale.
+- The divisor 13,000 gives a mean of 50.315 Hz — less consistent with
+  nominal 50 Hz operation than the mean-based and median-based candidates,
+  but cannot be independently excluded without a SCADA frequency reference.
+  All three (13,000, 13,082, 13,086) remain candidate interpretations.
 - **The correct divisor cannot be established from the binary alone.**
-  The choice of 13,086 (median) versus 13,082 (mean) requires an
-  independent SCADA frequency reading for the same 59-second window to
+  The choice of 13,086 (median) versus 13,082 (mean) versus 13,000 requires
+  an independent SCADA frequency reading for the same 59-second window to
   resolve.
 - The S5 conversion `f = raw × 50 / 13,086` is the best available
   estimate but is classified as **INFERRED, not independently confirmed**.
@@ -906,13 +908,16 @@ The SENS group descriptors' bytes 20–23 also carry pattern A (`33 ff 38 00`).
 
 **Interpretation:**
 
-- The `0xFF33` prefix is not a scale multiplier. It appears to be a BEN
-  recorder internal **calibration table reference** (table 0xFF, entry
-  0x33), pointing to a fixed calibration record in the recorder firmware.
-  The second u16le (0x38, 0x39, 0x30) is a sub-type or range code.
-- Pattern B (`0xFFFF, 0`) indicates no calibration table reference —
-  possibly the Mvar quantity type is encoded with a different convention,
-  or these channels have no reference in the applicable table.
+- The `0xFF33` prefix is not a scale multiplier. Its meaning is
+  **unverified** — one hypothesis is that it is a BEN recorder internal
+  calibration table reference (table 0xFF, entry 0x33), but this
+  interpretation cannot be confirmed without firmware documentation.
+  The second u16le (0x38, 0x39, 0x30) may be a sub-type or range code
+  under the same hypothesis.
+- Pattern B (`0xFFFF, 0x0000`) is similarly **unverified** — one
+  hypothesis is that it indicates no calibration table reference, and
+  that the Mvar quantity uses a different convention, but this too
+  cannot be confirmed without firmware documentation.
 - These bytes cannot be interpreted as IEEE 754 floats (they produce
   sub-normal values) and are not meaningful as u32le integers at any
   plausible scale factor.
@@ -1006,9 +1011,9 @@ BDNG 1. **Hypothesis: wi=3 = MVAR BDNG 2 at scale 0.001 Mvar/count**
 Values 133.6–138.0 kV are fully consistent with a 132 kV bus operating
 at 1–4% above nominal voltage (normal operational practice). The
 interpretation **wi=20–23 = JJNG 2 RMS voltage channels at 0.01 kV/count**
-is now assessed as **PLAUSIBLE with high confidence**, pending resolution
-of the selector encoding for Group 4 (currently UNRESOLVED_CONFLICT or
-UNRESOLVED_OOR).
+is assessed as **PLAUSIBLE**; the Group 4 physical mapping (selector
+encoding) is not validated — these words are currently UNRESOLVED_CONFLICT
+or UNRESOLVED_OOR, so the channel-to-word assignment cannot be confirmed.
 
 **wi=9, wi=11 (all negative signed):**
 
@@ -1091,7 +1096,7 @@ recorded here for completeness.
 | FREQ BDNG 1 | 1 | 12,898–13,152 | 50/13,086 Hz/count | CONFIRMED (nominal 50 Hz) | Divisor precision |
 | POWER BDNG 1 | 4 | 63–152 | 1.0 MW/count | PLAUSIBLE | SCADA MW reading |
 | MVAR BDNG 1 | 2 | 13,453–13,720 | 0.001 Mvar/count | PLAUSIBLE | SCADA Mvar reading |
-| JJNG 2 RMS (wi=20–23) | 20–23 | 13,356–13,801 | 0.01 kV/count | HIGH CONFIDENCE (plausible) | SCADA voltage reading |
+| JJNG 2 RMS (wi=20–23) | 20–23 | 13,356–13,801 | 0.01 kV/count | PLAUSIBLE — Group 4 mapping unvalidated | SCADA voltage reading + selector decode |
 | wi=3 | 3 | 13,822–14,096 | 0.001 Mvar/count? | PROVISIONAL | Oracle + selector decode |
 
 **Remaining uncertainties:**
@@ -1124,6 +1129,132 @@ backend: pytest tests/test_ben5k_slow_api.py tests/test_ben5k_slow_reader.py
 No code changes were made to the decoder, reader, normalizer, or API in S6.
 The S5 browser UAT test (`grne-slow-uat.spec.js`, 16/16) was not re-run as
 no browser-facing code changed; its results remain as recorded in S5.
+
+---
+
+## 18. Branch Freeze — S6 Status, Uncertainties and Integration Prerequisites
+
+### 18.1 Final S6 branch status
+
+The `investigation/legacy-ben5k-slow` branch at the S6 commit (`81bb409`) is
+complete for the current investigation phase. No further investigation can be
+conducted without external reference data (see Section 18.3). The branch is
+ready to remain frozen until the owner authorizes integration.
+
+**What exists:**
+
+| Component | Status |
+|-----------|--------|
+| Binary format reverse-engineering | Complete — header, config, groups, payload all mapped |
+| S2 reader + decoder + catalog parser | Implemented; all tests pass |
+| S3 extended catalog decoder | Implemented; all tests pass |
+| S4 engineering validation, feature flag, API | Implemented; all tests pass |
+| S5 browser UAT test suite | Implemented; 16/16 pass |
+| S6 calibration analysis | Documentation only; no code change |
+| Production feature flag | `BEN5K_SLOW_EXPERIMENTAL_ENABLED` disabled by default |
+| Fast/Slow flag independence | Verified — each flag is independent |
+| Raw provisional labels | `unit="raw"`, "Development/UAT only" notice in browser |
+| Relative-elapsed timing | `timing_reference="relative_elapsed"` enforced |
+| Unresolved channels excluded | FORMULA_UNCONFIRMED, OOR, ZERO, CONFLICT never in `value_channels` |
+
+**What does not exist:**
+- Confirmed engineering unit calibration for any channel
+- Oracle-validated scale factors
+- Resolved selector encoding for Groups 2–6 (27 channels)
+- A second `29 FF` Slow recording for cross-recording validation
+
+### 18.2 Remaining uncertainties (all unresolved at S6 freeze)
+
+| Uncertainty | Evidence basis | Confidence |
+|-------------|---------------|------------|
+| Frequency divisor exact value — 13,000 vs 13,082 vs 13,086 | Sample statistics only; none stored in binary | Cannot distinguish without SCADA oracle |
+| Active power scale — 1.0 MW/count | Physical plausibility for 132 kV EHV feeder | HYPOTHESIS only |
+| Reactive power scale — 0.001 Mvar/count | Physical plausibility (Q/P ratio) | HYPOTHESIS only |
+| Voltage RMS scale — 0.01 kV/count (wi=20–23) | Numerical range consistent with 132 kV bus | PLAUSIBLE — Group 4 selector unvalidated |
+| Descriptor bytes `33 ff 38 00` and `ff ff 00 00` | Byte pattern only | UNVERIFIED — meaning unknown without firmware documentation |
+| Timestamp UTC vs MYT | Analogy with BEN5K Fast (assumed UTC) | UNVERIFIED — no independent reference for 2023-07-26 |
+| Selector encoding for Groups 2–6 | All known binary sections exhausted | OPEN — requires second Slow recording or firmware documentation |
+| HVDC Power formula channel | Formula string decoded; values not decoded | DEFERRED — out of scope |
+
+### 18.3 Reference evidence required before production merge
+
+The following external references are required before any production integration:
+
+1. **SCADA frequency logs** — GRNE substation, 2023-07-26 14:34–14:35 UTC (or MYT
+   if the recording is MYT-encoded). Needed to resolve divisor and timestamp basis.
+
+2. **SCADA MW reading** — BDNG 1 feeder, same period. Needed to confirm 1.0 MW/count
+   scale (or refute it in favour of 0.01, 0.1 or another value).
+
+3. **SCADA Mvar reading** — BDNG 1 feeder, same period. Needed to confirm
+   0.001 Mvar/count scale.
+
+4. **A second `29 FF` Slow recording** from any BEN5K recorder — needed to
+   cross-validate the Group 2–6 selector encoding. Without this, 25 of 27
+   unresolved channels cannot be mapped by binary analysis alone.
+
+5. **BEN5K Slow firmware or protocol documentation** — would allow decoding
+   descriptor bytes 24–27 and confirming the Group 2–6 selector formula.
+   Not publicly available as of S6.
+
+Any of references 1–3 alone would confirm or refute the Group 0 calibration
+hypotheses. None of references 1–5 was available in owner-authorized directories
+at S6 (confirmed by S4 and S6 searches).
+
+### 18.4 Test baseline at S6 freeze
+
+| Suite | Tests | Result |
+|-------|-------|--------|
+| `test_ben5k_slow_api.py` | 14 | All pass |
+| `test_ben5k_slow_reader.py` | 36 | All pass |
+| `test_ben5k_slow_decoder.py` | 42 | All pass |
+| `test_ben5k_slow_catalog.py` | 15 | All pass |
+| **Backend subtotal** | **107** | **All pass** |
+| `grne-slow-uat.spec.js` (S5) | 16 | All pass (S5 run; no browser-facing change in S6) |
+| BEN5K Fast regression (`test_ben5k_reader.py`) | 27 | All pass |
+
+No test was added or modified in S6. The test baseline is unchanged from S5.
+
+### 18.5 Dependencies for future integration
+
+Any future production merge of the BEN5K Slow decoder requires:
+
+1. **Owner approval** — no merge to `main` without explicit owner decision.
+2. **Oracle-validated calibration** — at minimum, POWER and MVAR scales confirmed
+   against SCADA. Raw `unit="raw"` must be replaced by confirmed engineering units
+   before the feature can be called production-quality.
+3. **Feature flag decision** — whether `BEN5K_SLOW_EXPERIMENTAL_ENABLED` becomes
+   a permanent opt-in for a "beta" path, or is removed once the decoder is stable.
+4. **Group 2–6 channel mapping** — current deployment surfaces only 3 channels.
+   A production deployment without resolving Groups 2–6 would leave 25 channels
+   permanently excluded.
+
+The following must be preserved through any future integration:
+
+- `BEN5K_SLOW_EXPERIMENTAL_ENABLED` disabled by default.
+- Fast and Slow feature flags remain independent.
+- `timing_reference = "relative_elapsed"` for all BEN5K Slow sources.
+- Unresolved channels (`FORMULA_UNCONFIRMED`, `ZERO`, `OOR`, `CONFLICT`) never
+  in `value_channels` and never displayed as valid waveforms.
+- No calibration logic or guessed scale factors introduced without oracle evidence.
+
+### 18.6 Can the branch remain frozen safely?
+
+Yes. The branch is self-contained and isolated:
+
+- All new code is in `backend/app/providers/ben/legacy_ben5k_slow/` (new package)
+  and three modified files in the BEN provider layer (`layout.py`, `model.py`,
+  `parser.py`).
+- The production dispatch path (`parse_ben()`) is unchanged. BEN5K Slow dispatch
+  is only reachable via `parse_ben_experimental()` with `allow_legacy_ben5k_slow=True`
+  AND `BEN5K_SLOW_EXPERIMENTAL_ENABLED=1`.
+- No changes to SubBen, BEN5K Fast, relay-import, or main branch code.
+- No migrations, database changes, or API surface changes.
+- All tests pass.
+
+The branch can remain frozen at commit `81bb409` indefinitely. The only action
+needed before freezing is to push the S6 documentation commits to GitHub when
+the owner authorizes it.
 
 ---
 
