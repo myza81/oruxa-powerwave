@@ -5,7 +5,8 @@ The BEN5K Slow format uses a group-based config area starting at offset 0xDC:
   [0x00DC – 0x00FD]  Config header (34 bytes)
   [0x00FE – 0x013E]  HVDC Power formula descriptor (65 bytes)
   [0x013F – 0x0A1A]  Nine channel groups, 252 bytes each
-  [0x0A1B – ...]     Extended sections (not required for sample decoding)
+  [0x0A1B – SubBen2] Extended catalog: 30-byte logical/derived channel records
+  [SubBen2 – payload] SubBen 2 section: display-text strings for recorder panel
 
 Each 252-byte channel group:
   [0  – 23]    SENS descriptor   24 bytes   (group header)
@@ -37,6 +38,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import Optional
 
 from app.providers.ben.errors import BenStructureError, BenTruncatedError
 
@@ -101,6 +103,26 @@ _CH_SCALE_REF_OFFSET = 24        # 4 bytes, scale/unit reference (not decoded)
 
 # Inactive channel detection: name starts with '-'
 _INACTIVE_NAME_PREFIX = ord("-")
+
+# ── Extended catalog layout constants ─────────────────────────────────────────
+
+_EXT_CATALOG_OFFSET = _GROUPS_START_OFFSET + _GROUP_COUNT * _GROUP_STRIDE  # 0x0A1B
+_EXT_RECORD_STRIDE = 30       # each 30-byte extended catalog record
+_EXT_RECORD_TAIL = b"\xff\xff\xff\xff"  # bytes 26-29 of a valid catalog record
+
+# Record-type byte pairs (bytes 0-1 of each 30-byte record):
+_EXT_TYPE_LOGICAL = (0x01, 0x01)   # logical channel, unique id in bytes 2-3
+_EXT_TYPE_DERIVED = (0x04, 0x33)   # derived/threshold channel, parent id in bytes 2-3
+
+# Field offsets within a 30-byte record:
+_EXT_ID_OFFSET = 2        # u16le channel ID
+_EXT_FLAGS_OFFSET = 4     # u16le flags (0xFF00 = primary, 0xFF01 = secondary)
+_EXT_NAME_OFFSET = 6      # 20-byte NUL-padded name (bytes 6-25)
+_EXT_NAME_SIZE = 20
+_EXT_TAIL_OFFSET = 26     # 4-byte tail (0xFFFFFFFF for valid records)
+
+# SubBen 2 section boundary marker:
+_SUBBEN2_MARKER = b"SubBen 2"
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -376,6 +398,96 @@ def read_channel_groups(
         ))
 
     return groups
+
+
+class ExtendedCatalogEntryType(Enum):
+    """Type of a 30-byte extended catalog record."""
+    #: `0x01 0x01` — logical channel with unique sequential ID and name.
+    LOGICAL = auto()
+    #: `0x04 0x33` — derived/threshold channel referencing a parent logical ID.
+    DERIVED = auto()
+    #: Any other byte pair; the record's interpretation is unknown.
+    UNKNOWN = auto()
+
+
+@dataclass(frozen=True)
+class ExtendedCatalogEntry:
+    """One 30-byte record from the extended catalog section.
+
+    The catalog starts immediately after the nine channel groups (0x0A1B) and
+    ends at the SubBen 2 display section.  Each record carries:
+
+      bytes 0-1  : type marker  (0x01,0x01 = LOGICAL; 0x04,0x33 = DERIVED)
+      bytes 2-3  : channel_id   (u16le; sequential for LOGICAL; parent ID for DERIVED)
+      bytes 4-5  : flags        (0x00FF = primary substation; 0x01FF = secondary)
+      bytes 6-25 : name         (20-byte NUL-padded latin-1 string)
+      bytes 26-29: tail         (0xFFFFFFFF for valid records)
+
+    The catalog defines logical channel names and IDs but does NOT contain
+    physical sample word indices.  The relationship between catalog IDs and
+    the group-descriptor selector values is not yet decoded.
+    """
+    entry_type: ExtendedCatalogEntryType
+    channel_id: int       # u16le from bytes 2-3
+    flags: int            # u16le from bytes 4-5
+    name: str             # decoded from bytes 6-25, NUL-stripped
+    record_offset: int    # byte offset in the file
+
+
+def read_extended_catalog(data: bytes) -> list[ExtendedCatalogEntry]:
+    """Read 30-byte extended catalog records between the group area and SubBen 2.
+
+    The catalog section starts at 0x0A1B (immediately after the nine channel
+    groups) and ends where the SubBen 2 display section begins, identified by
+    the ASCII signature b"SubBen 2".
+
+    Only records with tail == 0xFFFFFFFF are included.  Records in the overlap
+    zone near SubBen 2 (which may be corrupted by the SubBen 2 overlay) are
+    excluded if their tail does not match.
+
+    Returns:
+        List of ExtendedCatalogEntry, in file order.  Returns an empty list if
+        the SubBen 2 marker is not found or the catalog section is empty.
+    """
+    subben2_off = data.find(_SUBBEN2_MARKER, _EXT_CATALOG_OFFSET)
+    if subben2_off < 0:
+        return []
+
+    entries: list[ExtendedCatalogEntry] = []
+    max_records = (subben2_off - _EXT_CATALOG_OFFSET) // _EXT_RECORD_STRIDE
+
+    for i in range(max_records):
+        off = _EXT_CATALOG_OFFSET + i * _EXT_RECORD_STRIDE
+        if off + _EXT_RECORD_STRIDE > len(data):
+            break
+        rec = data[off : off + _EXT_RECORD_STRIDE]
+
+        # Validate tail; skip records that are not cleanly 0xFFFFFFFF
+        if rec[_EXT_TAIL_OFFSET : _EXT_TAIL_OFFSET + 4] != _EXT_RECORD_TAIL:
+            continue
+
+        b0, b1 = rec[0], rec[1]
+        if (b0, b1) == _EXT_TYPE_LOGICAL:
+            entry_type = ExtendedCatalogEntryType.LOGICAL
+        elif (b0, b1) == _EXT_TYPE_DERIVED:
+            entry_type = ExtendedCatalogEntryType.DERIVED
+        else:
+            entry_type = ExtendedCatalogEntryType.UNKNOWN
+
+        channel_id = struct.unpack_from("<H", rec, _EXT_ID_OFFSET)[0]
+        flags = struct.unpack_from("<H", rec, _EXT_FLAGS_OFFSET)[0]
+        name_raw = rec[_EXT_NAME_OFFSET : _EXT_NAME_OFFSET + _EXT_NAME_SIZE]
+        name = name_raw.split(b"\x00")[0].decode("latin-1", errors="replace")
+
+        entries.append(ExtendedCatalogEntry(
+            entry_type=entry_type,
+            channel_id=channel_id,
+            flags=flags,
+            name=name,
+            record_offset=off,
+        ))
+
+    return entries
 
 
 def active_channels(groups: list[SlowGroup]) -> list[SlowChannelDescriptor]:

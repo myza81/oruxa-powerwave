@@ -1,6 +1,6 @@
 # BEN5K Slow Compatibility Investigation
 
-**Status:** S2 (Structural Reader and Channel Mapping) implemented — oracle validation phase  
+**Status:** S3 (Extended Catalog Decoded) implemented — word-index resolution pending oracle validation  
 **Branch:** `investigation/legacy-ben5k-slow`  
 **Based on:** `investigation/legacy-ben5k` at commit `b33b7af`  
 **Recording under investigation:** `GRNE230726_143432426.ben`
@@ -221,24 +221,80 @@ byte  3:    0xFF
 bytes 4–19: '-' '-' '-' '-' followed by NUL padding
 ```
 
-### 6.5 Extended config sections (0x0A1C – 0x215A)
+### 6.5 Extended catalog section (0x0A1B – 0x141B, 2,561 bytes)
 
-After the 9 channel groups (ending at 0x0A1A), the remaining ~4,670 bytes contain
-at least three more sections:
+Immediately after the nine channel groups, the 2,561 bytes from 0x0A1B to the
+SubBen 2 boundary at 0x141C contain a sequence of **30-byte catalog records**.
+This section was fully decoded in S3. There are 85 complete 30-byte records.
 
-- **0x0A1B – ~0x1050:** Wider-stride (~30-byte) extended descriptors repeating
-  channel names with additional metadata. Stride and exact format not yet decoded.
-- **~0x1053 – ~0x1400:** Long feeder description entries (stride ~194 bytes),
-  including 'GURUN EAST S/S:FEEDER BDNG NO 1', 'GURUN EAST S/S:FEEDER JJNG NO 1',
-  page numbers, and other recorder display strings.
-- **0x141C – 0x215A:** A SubBen-style section beginning with the literal string
-  `'SubBen 2'` followed by station/feeder long names ('GURUN EAST S/S') and
-  further autotransformer and short-form names (e.g. 'SENS BDNG1', 'SENS JJNG1').
-  This section appears to be a secondary BEN display format embedded within the
-  Slow config for recorder front-panel use.
+**30-byte record structure:**
 
-These extended sections are not required for sample decoding — the channel-to-word
-mapping is fully determined by the 9-group primary section.
+```
+bytes 0–1  : type marker  (0x01 0x01 = LOGICAL; 0x04 0x33 = DERIVED)
+bytes 2–3  : channel ID   u16le (sequential for LOGICAL; parent ID for DERIVED)
+bytes 4–5  : flags        u16le (0xFF00 = primary substation; 0xFF01 = secondary)
+bytes 6–25 : name         20 bytes, NUL-padded latin-1 (name starts at byte 6)
+bytes 26–29: tail         0xFFFFFFFF for all valid catalog records
+```
+
+> **Field offset correction from pre-S3 analysis:** The name field begins at byte 6,
+> not byte 10. The first 4 characters of each name were truncated by the initial
+> analysis script; full names have been verified against byte-by-byte decodes.
+
+**Record types observed in GRNE:**
+
+| Type | Byte pair | Count | Meaning |
+|------|-----------|-------|---------|
+| LOGICAL | `0x01 0x01` | 23 | Logical channel with unique sequential ID |
+| DERIVED | `0x04 0x33` | 29 | Derived/threshold channel referencing a parent ID |
+| (end/garbage) | other | 33 | Overlap with SubBen 2 section; excluded by tail validation |
+
+**LOGICAL records (IDs 44–60, flags=0xFF00 primary or 0xFF01 secondary):**
+
+Records 0–11 and 30–32 (type 0x0101, flags=0xFF00) define the primary logical
+channels for this recording:
+
+| ID | Name |
+|----|------|
+| 44 | MVAR JJNG 1 |
+| 45 | UR JJNG 2 RMS |
+| 46 | UY JJNG 2 RMS |
+| 47 | UB JJNG 2 RMS |
+| 48 | POWER BDNG 2 |
+| 49 | FREQ. JJNG 2 |
+| 50 | FREQ, BDNG 2 |
+| 51 | MVAR BDNG 2 |
+| 52 | MVAR JJNG 2 |
+| 53 | POWER JJNG 2 |
+| 54 | MVAR BDNG 1 |
+| 55 | POWER JJNG 1 |
+| 58 | FREQ JJNG 1 |
+| 59 | POWER BDNG 1 |
+| 60 | FREQ BDNG 1 |
+
+Records 45–52 (type 0x0101, flags=0xFF01) define the secondary-substation variants
+of the same channels (autotransformer feeder names: FREQ UR TF1, P AUTO TF1, etc.).
+
+**DERIVED records (type 0x0433, IDs 56 and 57):**
+
+Records 12–29 list derived channel names (FREQ BDNG 1, MVAR BDNG 1, POWER BDNG 1,
+UR JJNG 2 MAX, UR JJNG 2 MIN, etc.) all referencing parent IDs 56 or 57. These are
+the recorder's pre-computed combined-group measurement list.
+
+Records 33–44 reference parent ID 48 and define transformer threshold channels
+(OVER UR HV TF1, UNDER UR HV TF1, etc.).
+
+**S3 conclusion:** The catalog contains logical channel names and IDs but does NOT
+contain physical sample word indices. No word-index data was found in any of the
+85 catalog records. The relationship between catalog IDs and the group-descriptor
+selector values has not been decoded.
+
+### 6.6 SubBen 2 section (0x141C – 0x215A)
+
+A display-text section beginning with the ASCII signature `b"SubBen 2"` at 0x141C.
+Contains station long names (`GURUN EAST S/S:FEEDER BDNG1`, `GURUN EAST S/S:FEEDER
+JJNG NO 2`, etc.) for the recorder's front-panel display. Not relevant to sample
+decoding or channel-to-word mapping.
 
 ---
 
@@ -410,9 +466,9 @@ accounting — not for relay protection review.
 
 ---
 
-## 10. S2 Implementation Status
+## 10. S2 and S3 Implementation Status
 
-### 10.1 What was implemented
+### 10.1 What was implemented (S2 + S3)
 
 S2 ("Structural Reader and Channel Mapping") was implemented in the
 `investigation/legacy-ben5k-slow` worktree on branch of the same name.
@@ -442,8 +498,16 @@ No production code was modified; all new code is isolated behind the
 |------|-------|---------|
 | `tests/test_ben5k_slow_reader.py` | 36 tests: header, config header, HVDC formula, group reading, channel classification, dispatch | ✓ |
 | `tests/test_ben5k_slow_decoder.py` | 42 tests: raw matrix extraction, signed column extraction, word inventory, end-to-end BenRecord | ✓ |
+| `tests/test_ben5k_slow_catalog.py` | 15 tests: catalog record parsing, name-at-byte-6 correctness, tail validation, SubBen 2 boundary, record types | ✓ |
 
 BEN5K Fast regression: `tests/test_ben5k_reader.py` (27 tests) — all pass, no regression.
+
+**S3 additions to `reader.py`:**
+
+- `ExtendedCatalogEntryType` enum: `LOGICAL`, `DERIVED`, `UNKNOWN`
+- `ExtendedCatalogEntry` frozen dataclass: `entry_type`, `channel_id`, `flags`, `name`, `record_offset`
+- `read_extended_catalog(data)` — reads 30-byte records from 0x0A1B to the SubBen 2
+  boundary; excludes records with tail ≠ 0xFFFFFFFF
 
 ### 10.2 Channel classification result (GRNE230726_143432426.ben)
 
@@ -485,11 +549,14 @@ Groups 2–6 use selectors that differ fundamentally from the Groups 0–1 encod
 - **Group 6 (AUTO TRF 2):** Mix of low-byte-only (ZERO) and large-value (0x4000,
   0x8000 → wi=64, wi=128) OOR selectors.
 
-**Working hypothesis:** The `selector >> 8` formula is specific to groups using a
-"direct word-index" selector encoding (high byte = index). Groups 2–6 use an
-alternative encoding (bitmask or global ID). The 30-byte extended descriptor
-section at 0x0A1B likely contains the lookup table mapping these channel IDs to
-word indices, but that section is not decoded in S2.
+**S3 finding (definitive):** The extended catalog at 0x0A1B was fully decoded in S3.
+It provides 23 LOGICAL channel entries (IDs 44–60) and 29 DERIVED channel entries
+but contains **no physical word indices**. The catalog is a logical channel name
+registry, not a word-index lookup table.
+
+The selector encoding for Groups 2–6 remains unknown. No alternative formula
+(`sel >> 4`, `lsb_pos(sel)`, `msb_pos(sel)`) maps Groups 2–6 selectors to word
+indices without conflict across all channels. The root cause is unresolved.
 
 ### 10.4 Diagnostics always attached to every BenRecord
 
@@ -635,14 +702,15 @@ The BEN5K Slow decoder must not affect:
 
 | # | Question | Status | Impact |
 |---|----------|--------|--------|
-| 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S2 classified as UNRESOLVED; formula confirmed for Group 0 and Group 1 only | Required to map remaining ~20 channels |
+| 1 | Exact word_index encoding for groups 2–6 (JJNG 2, BDNG 2, AUTO TRF 1/2) — bitmask or global ID? | OPEN — S3 confirmed no lookup in extended catalog; formula unknown | Required to map remaining 25 channels |
 | 2 | Scale/offset encoding in descriptor bytes 24–27 | OPEN — S2 exposes raw int16 pending oracle | Required for physical units |
 | 3 | Timestamp UTC vs UTC+8 | OPEN | Affects time-axis alignment with other event data |
 | 4 | Significance of wi=16 (MVAR JJNG 1 TENTATIVE) — range 0–65535 signed -732 to 24 is anomalous for Mvar | OPEN | TENTATIVE label may be wrong; oracle needed |
 | 5 | Significance of wi=17 — signed -3713 to -641, large negative, no channel assignment | OPEN | Possibly autotransformer load or flag word |
 | 6 | HVDC Power formula channel: should it be decoded and displayed? | OPEN — deferred | Scope decision |
-| 7 | Extended config sections (0x0A1B onwards) — do they hold the bitmask/ID→word lookup? | OPEN | Required to resolve OQ 1 |
+| 7 | Extended catalog at 0x0A1B — does it hold the bitmask/ID→word lookup? | **RESOLVED (S3):** No. Catalog contains 85 30-byte records with channel names and IDs only; no word indices. | OQ 1 cannot be resolved via catalog. |
 | 8 | Groups 7 and 8 (placeholder groups): are all channels `----` in every GRNE recording? | OPEN — confirmed `----` in this recording only | Skip logic validation |
+| 9 | Is the selector for Groups 2–6 a BEN recorder internal register address or a display-group bitmask? | OPEN — S3 investigation exhausted all known binary sections | Requires second Slow recording or BEN5K Slow protocol documentation |
 
 ---
 
