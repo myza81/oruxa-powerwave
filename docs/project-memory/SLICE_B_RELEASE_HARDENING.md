@@ -131,3 +131,50 @@ The final cancellation/timing browser target passes **22/22**. Every frontend gu
 plus backend timing/authority tests was rechecked after this final wrapper change:
 **2,080 passed, 17 POSIX-shell skips**, 201.88 seconds. Full backend completion and
 the isolated complete browser run remain pending.
+
+
+## Final validation (2026-10-24)
+
+- Full backend with owner PDFs: **10,406 passed, 167 skipped, zero failures**,
+  1,606.51 seconds (26m46s).
+- Skip breakdown: 49 require an unconfigured BEN reference directory, 17 require
+  POSIX `sh`, 101 are relay-sheet/catalog applicability conditions. No new skips.
+- Final frontend/timing guard recheck: **2,080 passed, 17 POSIX-shell skips**.
+- The complete browser suite is now running separately, with four workers,
+  retries zero, unchanged timeouts and a fresh backend. Final result pending;
+  release remains NO-GO until the result is reviewed.
+
+
+## Isolated full-browser follow-up
+
+The isolated four-worker run completed **1,140 passed, 6 failed, zero skips**,
+2,237.41 seconds (37.3 minutes), retries zero. Failures: premature Distance Apply
+snapshot; annotation redraw lag; PU test budget exhaustion; Combined Y-axis
+budget/readiness; Oscillation's global no-request observation overlapping unrelated
+bootstrap; one cleanup DELETE ECONNRESET. Source removal, workspace cancellation,
+GPTH/KTBR interpretation, session/timing authority and Sequence fixes did not fail.
+
+A controlled local health-request probe with server keep-alive TTLs of 1 and 5
+seconds produced HTTP 200 for both pooled and Connection: close clients (eight
+observations). It did **not** reproduce the reset. Keep-alive is not claimed as
+confirmed root cause and no header/transport workaround or request retry is added.
+
+A temporary Playwright-instrumented benchmark of two 4,001-sample comparisons
+measured 11,762.58 ms for individual toBeCloseTo matchers versus 12.34 ms for a
+maximum pointwise error assertion over every sample. Follow-up test-only changes
+preserve the exact 9-digit threshold (error < 0.5e-9), add length equality, and
+reduce readiness polling to axis metadata instead of copying complete waveforms.
+Distance snapshots await the accepted matching result; annotation movement awaits
+the new DOM coordinate; Oscillation's strict zero-request observation waits for
+existing bootstrap promises and transport completion, without issuing extra queries.
+These changes do not modify any Per-Unit calculation, settings or model semantics.
+Repeated four-worker validation and complete-suite closure are pending. Release
+remains NO-GO; the isolated cleanup reset is an unresolved blocker.
+
+
+Final readiness targets: **15 passed**, three repeats of all five affected cases
+with four workers, zero retries, 89 seconds. An intermediate barrier incorrectly
+required inactive Phasor playback convergence; it now checks actual transport
+completion after the existing bootstrap promises. The strict global no-request
+assertion remains unchanged. Another complete four-worker run follows on this
+focused test-only candidate; no clean release is claimed in advance.

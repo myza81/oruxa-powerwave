@@ -13,7 +13,7 @@
 const { test, expect } = require("./support/test");
 const {
   BACKEND, collectConsoleErrors, uploadRecord, workspaceId, sourceIdFor, memberRow, api, addRecords, channelRow, selectChannel,
-  waitForPlot, plotState, zoomTo, openEventReconstruction,
+  waitForPlot, waitForScaledAxes, plotState, zoomTo, openEventReconstruction,
 } = require("./support/event_reconstruction_helpers");
 
 const LL_BASE_KV = 275;
@@ -93,7 +93,18 @@ async function setUnits(page, mode) {
 // scaled.
 async function settle(page, count) {
   await waitForPlot(page, count);
-  await expect.poll(async () => (await plotState(page)).groups.flatMap((g) => g.axes).every((a) => !a.pending)).toBe(true);
+  await waitForScaledAxes(page);
+}
+
+// Exactly the previous toBeCloseTo(..., 9) bound, applied to EVERY sample.
+// One matcher per sample creates thousands of instrumented Playwright steps.
+function expectScaledSamples(actual, engineering, base) {
+  expect(actual.length).toBe(engineering.length);
+  let maxError = 0;
+  for (let i = 0; i < actual.length; i++) {
+    maxError = Math.max(maxError, Math.abs(actual[i] - engineering[i] / base));
+  }
+  expect(maxError, "maximum pointwise PU error").toBeLessThan(0.5 * 10 ** -9);
 }
 
 const traceOf = (state, label) => state.panels.find((c) => c.label === label);
@@ -176,11 +187,11 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     // ~159.5 kV engineering -> ~1.0046 pu (never /275, never the legacy /132).
     expect(va.r).toEqual(eng["STN_A · VA"].r);
     expect(va.traceColor).toBe(eng["STN_A · VA"].traceColor);
-    va.values.forEach((value, index) => expect(value).toBeCloseTo(eng["STN_A · VA"].values[index] / LG_BASE_KV, 9));
+    expectScaledSamples(va.values, eng["STN_A · VA"].values, LG_BASE_KV);
     const peak = Math.max(...va.values);
     expect(peak).toBeGreaterThan(1.0);
     expect(peak).toBeLessThan(1.01);
-    traceOf(state, "STN_A · IA").values.forEach((value, index) => expect(value).toBeCloseTo(eng["STN_A · IA"].values[index] / (IBASE_KA * 1000), 9));
+    expectScaledSamples(traceOf(state, "STN_A · IA").values, eng["STN_A · IA"].values, IBASE_KA * 1000);
     expect(traceOf(state, "STN_A · P").values).toEqual(eng["STN_A · P"].values);
     // The basis Event Reconstruction consumed is Waveform's resolved one.
     const resolved = await api(page, `/sources/${sourceA}/per-unit-resolution?channel_name=VA`);
@@ -273,7 +284,7 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     const state = await plotState(page);
     expect(titles(state)).toEqual(["Voltage (pu)"]);
     expect(state.groups[0].traces).toEqual(["STN_A · VA", "STN_A · -VA"]);
-    traceOf(state, "STN_A · -VA").values.forEach((value, index) => expect(value).toBeCloseTo(eng.values[index] / LG_BASE_KV, 9));
+    expectScaledSamples(traceOf(state, "STN_A · -VA").values, eng.values, LG_BASE_KV);
     const resolved = await api(page, `/calculated-channels/${negated.id}/per-unit-resolution`);
     expect(resolved.status).toBe("configured");
     await expect(await unavailableBadge(page, "STN_A", "VA-VB")).toHaveText("PU unavailable");

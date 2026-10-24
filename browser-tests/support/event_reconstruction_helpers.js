@@ -96,6 +96,14 @@ async function waitForPlot(page, count) {
   })).toBe(count + ":true");
 }
 
+// Readiness needs axis metadata only; avoid copying every waveform sample on
+// each poll. Failure output names the pending axes without weakening the check.
+async function waitForScaledAxes(page) {
+  await expect.poll(() => page.evaluate(() => wwErState.plot.panels.flatMap(panel =>
+    panel.axes.filter(axis => axis.autoscaleYPending).map(axis => ({ key: axis.key, manual: !!axis.manual }))
+  ))).toEqual([]);
+}
+
 // A snapshot of the plot. `panels` is CHANNEL-level (one entry per trace,
 // in panel order then trace order), each carrying its own data and the
 // axis state of the panel it is drawn on; `groups` is panel-level.
@@ -293,6 +301,6 @@ function expectSharedAxis(state) {
 module.exports = {
   BACKEND, VI, SLOW_VI, collectConsoleErrors, uploadRecord, workspaceId, api, sourceIdFor,
   recordRow, memberRow, openEventReconstruction, addRecords, channelRow, selectChannel,
-  waitForPlot, plotState, zoomTo, waitForSharedAxis, expectSharedAxis, dragOnPanel,
+  waitForPlot, waitForScaledAxes, plotState, zoomTo, waitForSharedAxis, expectSharedAxis, dragOnPanel,
   clickPanelHeader, clickLegendAxis,
 };

@@ -8,7 +8,7 @@
 
 const { test, expect } = require("./support/test");
 const {
-  collectConsoleErrors, uploadRecord, memberRow, addRecords, channelRow, selectChannel, waitForPlot, plotState,
+  collectConsoleErrors, uploadRecord, memberRow, addRecords, channelRow, selectChannel, waitForPlot, waitForScaledAxes, plotState,
   zoomTo, dragOnPanel, waitForSharedAxis,
 } = require("./support/event_reconstruction_helpers");
 
@@ -30,7 +30,7 @@ async function setup(page, names = ["VA", "P", "F"]) {
 }
 
 async function waitForScaled(page) {
-  await expect.poll(async () => (await plotState(page)).groups.flatMap((g) => g.axes).every((a) => !a.pending)).toBe(true);
+  await waitForScaledAxes(page);
 }
 
 // Drags one Y axis's own scale: region "nsdrag" (middle), "ndrag" (top

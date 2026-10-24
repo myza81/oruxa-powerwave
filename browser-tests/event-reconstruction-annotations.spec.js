@@ -280,6 +280,9 @@ test.describe("Event Reconstruction annotations -- each type", () => {
     const beforeMove = await findDrawn(page, note.annotation_id);
     await dragBy(page, box(page, note.annotation_id).locator(".ww-annotation-header"), 60, 20);
     await expect.poll(async () => (await byType(page, "text_note"))[0].reconstruction_time_s).not.toBe(note.reconstruction_time_s);
+    // API persistence can finish before the response redraws the box.
+    await expect.poll(async () => (await findDrawn(page, note.annotation_id))?.left ?? NaN)
+      .toBeCloseTo(beforeMove.left + 60, 0);
     d = await expectPlaced(page, note.annotation_id);
     expect(d.left).toBeCloseTo(beforeMove.left + 60, 0);
     expect(d.top).toBeCloseTo(beforeMove.top + 20, 0);

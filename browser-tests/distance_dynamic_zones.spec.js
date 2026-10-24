@@ -237,7 +237,17 @@ test("an extra zone with a 0 ohm Left Resistive Reach is valid and draws through
 
 test("a refused Apply (unsupported settings) leaves the zones and the plot exactly as they were", async ({ page }) => {
   await openDistance(page);
-  await apply(page, payload([...standard(), quad("ZP", "Zone P")]));
+  const rendered = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith("/distance-protection-manual") &&
+      JSON.parse(url.searchParams.get("zones") || "[]").some(zone => zone.key === "z_zp");
+  });
+  expect(await apply(page, payload([...standard(), quad("ZP", "Zone P")]))).toBe(true);
+  const response = await rendered;
+  expect(response.ok()).toBe(true);
+  const result = await response.json();
+  await expect.poll(() => page.evaluate(() => JSON.stringify(wwDistanceState.manual.latestResult)))
+    .toBe(JSON.stringify(result));
   const snapshot = () =>
     page.evaluate(() => ({
       titles: [...document.querySelectorAll("#wwDistancePanel .ww-dist-zone-card-title")].map((e) => e.textContent),

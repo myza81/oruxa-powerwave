@@ -520,7 +520,29 @@ test.describe("Oscillation Analysis setup -- information and adequacy", () => {
 test.describe("Oscillation Analysis setup -- performance and time architecture", () => {
   test("changing signal, window and band issues no backend request", async ({ page }) => {
     await openOscillation(page);
+    // Observe the real asynchronous bootstrap tasks; do not trigger a second
+    // discovery pass or require unavailable Current inputs in this VA-only fixture.
+    await page.evaluate(() => {
+      window.oscContextTasks = [];
+      for (const consumer of wwAnalysisContextConsumers) {
+        const original = consumer.onFreshContextsDiscovered;
+        if (!original) continue;
+        consumer.onFreshContextsDiscovered = function(...args) {
+          const task = original.apply(consumer, args);
+          if (task && typeof task.then === "function") window.oscContextTasks.push(task);
+          return task;
+        };
+      }
+    });
     await uploadSynthetic(page);
+    await expect.poll(() => page.evaluate(() => wwAnalysisContextState.everPublishedUsableContexts)).toBe(true);
+    await page.evaluate(async () => { await Promise.all(window.oscContextTasks); });
+    // Readiness means transport completion; an inactive analyser need not
+    // have computed its desired playback time.
+    await expect.poll(() => page.evaluate(() => ({
+      phasorSettled: !wwPhasorPlaybackFetchInFlight,
+      sequenceSettled: !wwSequencePlaybackFetchInFlight,
+    }))).toEqual({ phasorSettled: true, sequenceSettled: true });
     await page.waitForLoadState("networkidle");
     const requests = [];
     page.on("request", (request) => { if (request.url().includes("/api/")) requests.push(request.url()); });
