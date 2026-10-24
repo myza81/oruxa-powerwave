@@ -47448,7 +47448,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // one entry means ALL must be ready (e.g. Impedance/Distance's own
         // Voltage+Current pair) -- this function never does OR-matching.
         async function wwAnalysisFindFirstCompatibleContext(workspaceId, contexts, analysisKind, modes) {
+            const timingAtStart = wwTimingCatalogueGeneration;
             for (const ctx of contexts) {
+                if (timingAtStart !== wwTimingCatalogueGeneration) return null;
                 let allReady = true;
                 for (const mode of modes) {
                     let result;
@@ -47458,6 +47460,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         allReady = false;
                         break;
                     }
+                    if (timingAtStart !== wwTimingCatalogueGeneration) return null;
                     if (!result || result.status !== "resolved") {
                         allReady = false;
                         break;
@@ -47501,9 +47504,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwAnalysisLoadContexts() {
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
-            wwAnalysisFetchContexts(workspaceId).then(
-                (contexts) => wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, contexts),
-                () => wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, null)
+            const timingAtStart = wwTimingCatalogueGeneration;
+            // Source removal/interpretation invalidates the existing catalogue even
+            // within one workspace epoch. Never republish its old context members.
+            return wwAnalysisFetchContexts(workspaceId).then(
+                (contexts) => {
+                    if (timingAtStart !== wwTimingCatalogueGeneration) return;
+                    wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, contexts);
+                },
+                () => {
+                    if (timingAtStart !== wwTimingCatalogueGeneration) return;
+                    wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, null);
+                }
             );
         }
 
@@ -47592,13 +47604,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // it finishes, NEVER replacing any consumer's page with an empty
         // state).
         async function wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, knownContexts, blocking) {
+            const timingAtStart = wwTimingCatalogueGeneration;
             let sources;
             try {
                 sources = await fetchSourcesList();
             } catch (error) {
                 sources = null;
             }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || timingAtStart !== wwTimingCatalogueGeneration) return;
 
             if (!sources || sources.length === 0) {
                 // UAT fix (owner-reported, recording-state propagation):
@@ -47649,7 +47662,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 } catch (error) {
                     anyFailed = true;
                 }
-                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || timingAtStart !== wwTimingCatalogueGeneration) return;
             }
 
             let contexts;
@@ -47658,7 +47671,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } catch (error) {
                 contexts = null;
             }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) {
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || timingAtStart !== wwTimingCatalogueGeneration) {
                 if (!blocking) wwAnalysisSetDiscovering(false);
                 return;
             }
