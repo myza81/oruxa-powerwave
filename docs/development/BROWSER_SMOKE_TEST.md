@@ -118,3 +118,33 @@ same tolerance over every sample with a maximum-error assertion and length check
 The navigation/removal console-error regression includes failed-response paths in
 its assertion message. Final release evidence and unresolved blockers are recorded
 in [SLICE_B_RELEASE_HARDENING.md](../project-memory/SLICE_B_RELEASE_HARDENING.md).
+
+
+## Slice C local diagnostics
+
+Set `PW_DIAGNOSTICS_DIR` to a new local temporary directory to opt into safe
+client/server JSONL diagnostics. The backend wrapper calls the same `create_app`
+factory and retains the installed default HTTP protocol and five-second keep-alive.
+Events correlate PID, peer/client socket ports, reuse, FIN/close, method/path/status,
+request cancellation and worker/context/application/cleanup lifetimes. No headers,
+query strings, body contents or page-session nonces are recorded. Diagnostic errors
+do not retry or suppress the failed operation. With the variable absent, startup
+uses the original Uvicorn command and diagnostics perform no logging.
+
+`PW_FRONTEND_DIR` optionally serves a temporary frontend copy for controlled
+baseline comparisons; normal validation leaves it unset and serves this checkout.
+These are test controls, with no deployment or application configuration effect.
+
+
+## Local API idle socket ownership
+
+The shared fixture and runner register only their loopback backend port with
+`support/local_backend_transport.js`. Free API sockets retire at four seconds,
+before Uvicorn's unchanged five-second idle expiry. Warm connections still pool;
+active request/header/body budgets are restored on reuse. The wrapper also retires
+expired free sockets synchronously before dispatch if worker load delayed timers.
+No request is retried, no Connection header is forced, and other ports are untouched.
+This corrects the reproduced Node pool/server idle-expiry race, rather than changing
+engineering assertions or request timeouts. Context disposal alone does not empty
+Playwright's shared agent pool. See
+[Slice C evidence](../project-memory/SLICE_C_TRANSPORT_LIFECYCLE.md).

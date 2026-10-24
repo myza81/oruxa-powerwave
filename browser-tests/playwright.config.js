@@ -23,6 +23,10 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const BACKEND_PORT = process.env.PW_BACKEND_PORT || "8000";
 const FRONTEND_PORT = process.env.PW_FRONTEND_PORT || "8101";
 const PYTHON = process.env.PW_PYTHON || "python3";
+const { registerLocalBackend, SERVER_KEEP_ALIVE_SECONDS } = require("./support/local_backend_transport");
+registerLocalBackend(BACKEND_PORT);
+const DIAGNOSTICS = process.env.PW_DIAGNOSTICS_DIR;
+if (DIAGNOSTICS) require("./support/transport_diagnostics");
 
 // A fresh, unique storage dir per config load -- test isolation
 // (section 14): a brand-new backend process each run, with nowhere for
@@ -48,7 +52,9 @@ module.exports = {
   },
   webServer: [
     {
-      command: `${PYTHON} -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port ${BACKEND_PORT}`,
+      command: DIAGNOSTICS
+        ? `${PYTHON} "../browser-tests/support/diagnostic_server.py" "${DIAGNOSTICS}" ${BACKEND_PORT} ${SERVER_KEEP_ALIVE_SECONDS}`
+        : `${PYTHON} -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port ${BACKEND_PORT} --timeout-keep-alive ${SERVER_KEEP_ALIVE_SECONDS}`,
       cwd: path.join(REPO_ROOT, "backend"),
       url: `http://127.0.0.1:${BACKEND_PORT}/health`,
       env: { STORAGE_PATH },
@@ -57,7 +63,7 @@ module.exports = {
     },
     {
       command: `${PYTHON} -m http.server ${FRONTEND_PORT} --bind 127.0.0.1`,
-      cwd: path.join(REPO_ROOT, "frontend"),
+      cwd: process.env.PW_FRONTEND_DIR || path.join(REPO_ROOT, "frontend"),
       url: `http://127.0.0.1:${FRONTEND_PORT}/index.html`,
       reuseExistingServer: !process.env.CI,
       timeout: 15_000,

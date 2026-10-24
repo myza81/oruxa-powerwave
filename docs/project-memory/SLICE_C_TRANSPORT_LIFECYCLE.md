@@ -47,29 +47,75 @@ document comparison blocked browser API access and is excluded from RED evidence
 - Prior Slice B full run: 1,142 passed, four unsuccessful, four workers, zero retries.
   One console 404; cleanup resets in BEN5K/ Oscillation; setup GET reset in Overcurrent.
 
-## Transport investigation remains open
+## Confirmed transport mechanism
 
-Opt-in local diagnostics correlate browser/API requests, worker/context/cleanup
-phases, Node HTTP socket reuse/local ports, ASGI response status, server peer ports,
-keep-alive expiry and process lifecycle. They exclude headers, query strings,
-session nonces, request/response bodies and uploaded contents. Application use and
-cleanup are labeled separately. No retry, Connection: close or timeout/worker
-change is introduced.
+The API resets are separate from the HTTP-404 lifecycle defect. Pinned Playwright
+1.62.1 uses process-shared keep-alive agents. Disposing and replacing an API context
+does not empty that pool. Its free sockets had no bounded idle lifetime, while the
+unchanged Uvicorn server expires idle connections after five seconds. A new request
+can acquire a socket at the server's idle-expiry boundary and fail before ASGI sees it.
 
-One server PID handled the 60-case run. Normal keep-alive expiry and browser
-cancellation were observed; no application request exception or process restart.
-A sampled backend working set was approximately 156 MB with 436 handles. This does
-not establish a peak or rule out every resource issue. Playwright uses shared
-keep-alive agents; a socket-idle race remains a hypothesis pending an actual failed
-socket/server correlation. Slice B's eight controlled keep-alive observations were
-negative and are not treated as proof of the cause.
+Controlled socket/server-correlated probes established:
 
-The three transport failures are not classified as the same defect as the confirmed
-HTTP-404 lifecycle race. Cause of each reset remains unknown pending further evidence.
+- Default five-second server expiry: 4 resets in 20 GET operations, all reused sockets.
+- Paired concurrent GET/DELETE comparison, same five-second server setting and load:
+  policy absent **7/40 failures** (4 DELETE, 3 GET); policy present **0/40 failures**.
+- Failed sockets correlate with server keep-alive expiry/connection loss. There is
+  no ASGI request start for the failed operation and no process restart or app error.
+- A shortened 30 ms probe produced 133/600 resets; this amplifies the race and is
+  not an estimate of ordinary-suite failure frequency.
+- The original 60-case target included 15 cleanup API contexts reusing existing
+  sockets. A fresh API context therefore was not sufficient socket isolation.
+
+This establishes a shared method-independent mechanism for the BEN5K cleanup
+DELETE, Oscillation cleanup DELETE and Overcurrent setup contexts GET reset class.
+Their historical Slice B logs did not capture socket identity, so each historical
+connection cannot be reconstructed retroactively. Neither process exhaustion nor
+application DELETE logic is needed to reproduce these failures. Slice B's earlier
+negative eight-observation probe did not disprove this boundary race.
+
+## Focused test infrastructure correction
+
+`support/local_backend_transport.js` bounds FREE registered-loopback sockets to
+four seconds, before the existing five-second server expiry. It decorates only the
+observed Agent instance using Node's documented `keepSocketAlive` / `reuseSocket`
+hooks. Active request timeout is restored on reuse; warm pooling remains enabled.
+Other hosts/ports are unaffected. A monotonic pre-dispatch check retires overdue
+free sockets when a busy worker has delayed timer delivery. It reads `freeSockets`
+without mutating the pool; Node owns removal. No Playwright private bundle patch,
+retry, Connection: close, request timeout increase or worker reduction is involved.
+
+Primary reference: [Node 24 Agent hooks](https://nodejs.org/docs/latest-v24.x/api/http.html#agentkeepsocketalivesocket).
+
+The timer-only draft failed a deterministic blocked-client-loop test; adding the
+pre-dispatch deadline check made it pass. Five transport regressions cover warm
+reuse/other ports, idle retirement, active headers/body budgets, original request
+deadline without retry, and delayed timer delivery. An initial combined target
+had two new-test readiness assumptions fail under concurrent backend load: expecting
+100 ms warm reuse, and assuming a 200 ms deadline always reaches the server. Tests
+now gate active responses and accept zero or one server invocation while retaining
+the exact original timeout assertion. These were harness-test assumptions, not
+application failures. Final combined evidence below supersedes that attempt.
+
+Opt-in `PW_DIAGNOSTICS_DIR` diagnostics correlate browser/API requests, worker and
+context phases, socket ports/reuse/FIN/close, ASGI status, idle expiry and PID lifetime.
+They exclude headers, query strings, nonces, body contents and uploaded files.
+Normal startup without that flag still uses the original Uvicorn factory command;
+explicit five-second keep-alive documents its unchanged default.
 
 ## Validation and release
 
-Normal-startup, full browser and backend regression validation remain pending.
-Release remains **NO-GO**. Approved session-only interpretation, immutable recorder
-timestamps/samples, shared timebase, offsets/t0, calculation authorization, source
-isolation and relay production/shadow/Apply safeguards are unchanged.
+- Three deterministic lifecycle cases fail against the baseline and pass corrected.
+- Diagnostics-off lifecycle + timing/authority targets: **25 passed**, four workers.
+- Final combined lifecycle/transport/four affected scenarios: **42 passed**, three
+  repeats, four workers, zero retries (1.6 minutes).
+- Full backend with owner PDFs: **10,406 passed, 167 skipped, 20 warnings** (1232.59 s).
+  Skips: 49 unavailable BEN-reference directory, 17 POSIX-only, 101 relay applicability.
+- Full browser four-worker, zero-retry validation is running; release remains **NO-GO**
+  pending its outcome. Local artifacts: TEMP `powerwave-slice-c-browser-full.xml`,
+  `.log`, and `powerwave-slice-c-browser-full-diagnostics/`; backend report
+  `powerwave-slice-c-backend-full.xml`.
+
+Approved session-only interpretation, immutable recorder timestamps/samples,
+shared timebase, offsets/t0, calculation authorization, source isolation and relay
+production/shadow/Apply safeguards are unchanged. No push, deployment or VPS change.
