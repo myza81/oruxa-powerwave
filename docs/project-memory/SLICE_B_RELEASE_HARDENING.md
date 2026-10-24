@@ -71,110 +71,139 @@ The conformance harness confirms production counts, readiness, blockers, offers,
 approximations and Apply are unchanged. V1 remains authoritative; V2 stays shadow
 only, production geometry unsupported, Apply returns 409.
 
-## Validation
+## Final validation and release status (2026-10-24)
 
-- RED: two source lifecycle reproductions failed on the baseline.
-- GREEN: lifecycle + Slice A timing/interpretation: 17 passed, four workers.
-- Sequence readiness + lifecycle: 35 passed, four workers.
-- Broader timing/playback/navigation/analyser targets: 83 passed, four workers.
-- Final lifecycle (including workspace replacement): 3 passed, four workers.
-- Relay conformance with owner PDFs: 597 passed, 101 conditional skips, no failures.
-- Workspace deletion cancellation/recovery + Playback: 32 passed, four workers.
-- Deterministic Phasor bootstrap: 1 passed.
-- First full backend with owner PDFs: 10,405 passed, 167 skipped, one failed
-  (Event Reconstruction's strict module-boundary guard), 33m59.91s.
-- First complete browser run: 1,132 passed, 12 failed, zero skips, four workers,
-  zero retries, 38.6 minutes. Backend regressions also ran on the host during
-  part of this run; final browser validation will run separately.
+**NO-GO. Focused fixes are committed; Slice B regression closure is not achieved.**
+No push, deployment, VPS/configuration change or subsequent feature work occurred.
 
-## Follow-up closure (2026-10-24)
+### Backend
 
-The first browser run's twelve failures comprise five request transport failures
-(ECONNRESET / socket hang-up, including two cleanup DELETEs), two test timeouts,
-four readiness gaps and one late workspace GET returning 404. The connection
-resets affect ordinary test GET/POST as well as cleanup; no backend traceback
-establishes their cause. Playwright's local source uses shared keep-alive agents,
-but an idle-socket race is only a hypothesis, not a confirmed root cause. No
-request retry, timeout increase or failure suppression is introduced.
+- Full suite with `RELAY_SAMPLE_PDF_DIR=C:\Users\fairizat\Desktop`:
+  **10,406 passed, 167 skipped, zero failures**, 1,606.51 seconds (26m46s).
+- Skips: 49 require an unconfigured BEN reference directory, 17 require POSIX
+  `sh`, 101 are relay-sheet/catalog applicability conditions. No new skips and no
+  PDF-availability skips.
+- All frontend guards plus backend timing/authority tests were checked after the
+  final cancellation-wrapper refinement: **2,080 passed, 17 POSIX-shell skips**,
+  201.88 seconds. Subsequent changes are test-only and documentation.
+- Relay conformance with owner PDFs: **597 passed, 101 conditional skips**.
+- Initial full backend: 10,405 passed, 167 skipped, one strict Event Reconstruction
+  module-boundary failure. Using ER's own `loadSeq` instead of Waveform `epoch`
+  corrected that boundary; the final full backend result above is green.
 
-The architecture guard is corrected by capturing Event Reconstruction's own
-`loadSeq`, preserving its boundary from Waveform state. Its full 165-test static
-suite passes. Impedance pause checks now await the final accepted sample-time
-fetch before testing stability. Event Reconstruction's isolation test awaits
-initialized Waveform samples, axes and viewport before its before-state snapshot.
-Post-upload Analysis checks await the populated Bay options; Data Issues clicks
-use Locator's normal re-resolution rather than retaining a detached row during
-an explicit scroll. Numerical, isolation and visibility assertions remain.
+### Complete browser runs
 
-A three-repeat/four-worker targeted run passed 19 cases but reproduced the late
-404 twice. Improved diagnostics identify the actual URL as a source `/channels`
-GET. Pausing Playback and aborting only Analysis was insufficient: source metadata
-uses a separate fetch. The existing session-header fetch wrapper now supplies a
-workspace read lifetime to workspace GETs, composed with each caller's AbortSignal.
-Start New Workspace aborts those reads before DELETE; successful deletion leaves
-the old workspace blocked, failed deletion re-enables reads and preserves state.
-No writes are retried or cancelled by this read-lifetime mechanism. The original
-success/failure handling, immutable samples and effective timebase are unchanged.
+Every run used four workers, zero retries and unchanged test/expect timeouts.
 
-Two additional lifecycle regressions cover an intercepted metadata GET and caller
-cancellation. All lifecycle/cancellation cases including the previous flaky clear
-while playing pass three repeats with four workers: **24 passed**. Final lifecycle + Slice A timing/interpretation: **22 passed**, four
-workers. Full backend and isolated full four-worker browser results are pending. Release
-remains NO-GO until final evidence is reviewed.
+| Run | Passed | Failed | Skipped | Total | Duration |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Initial | 1,132 | 12 | 0 | 1,144 | 38.6 min |
+| Isolated follow-up | 1,140 | 6 | 0 | 1,146 | 37.3 min |
+| Final candidate `5915223` | **1,142** | **4** | **0** | **1,146** | **2,010.92 s / 33.5 min** |
 
+The initial run overlapped backend regression work for part of its duration.
+The latter two ran independently against fresh local backend/frontend processes.
+Two added cancellation tests account for the total changing to 1,146. JUnit labels
+one final failure as `failure` and three as `error`; all four count as unsuccessful.
+A shorter duration is not claimed as a controlled product-performance improvement.
 
-Native `AbortSignal.any` composes caller and workspace cancellation through response
-body consumption, including cancellation after headers. Expected metadata body
-`AbortError` means no cache update; other parsing errors still propagate. Regression
-coverage explicitly checks both pre-request and post-header caller cancellation.
-The final cancellation/timing browser target passes **22/22**. Every frontend guard
-plus backend timing/authority tests was rechecked after this final wrapper change:
-**2,080 passed, 17 POSIX-shell skips**, 201.88 seconds. Full backend completion and
-the isolated complete browser run remain pending.
+Final full-run failures:
 
+1. `analyser-recording-detection.spec.js:167`: upload/navigation/removal and
+   re-navigation produced a console HTTP 404. Its exact request path was not
+   captured by the original assertion. This is an unresolved lifecycle finding;
+   the narrower deterministic metadata regressions do not establish full closure.
+2. `ben5k-timezone.spec.js:43`, UTC case: application assertions passed; cleanup
+   `DELETE /api/v1/workspaces/{id}` failed with `ECONNRESET`.
+3. `oscillation_setup.spec.js:256`, raw V/I eligibility: application assertions
+   passed; cleanup workspace DELETE failed with `socket hang up`.
+4. `overcurrent_analysis.spec.js:1378`, independent minor-grid toggles: setup
+   `GET /api/v1/workspaces/{id}/engineering-contexts` failed with `ECONNRESET`.
 
-## Final validation (2026-10-24)
+All five corrected follow-up readiness cases passed in the final full run:
+Distance refused Apply, annotation movement, PU numeric comparison, Combined
+Y-axis reset and Oscillation's strict global no-backend-request assertion.
+GPTH/KTBR interpretation/alignment, Slice A authority/invalidation, Sequence and
+new lifecycle/cancellation cases also passed. This does not override the four
+failures or authorize release.
 
-- Full backend with owner PDFs: **10,406 passed, 167 skipped, zero failures**,
-  1,606.51 seconds (26m46s).
-- Skip breakdown: 49 require an unconfigured BEN reference directory, 17 require
-  POSIX `sh`, 101 are relay-sheet/catalog applicability conditions. No new skips.
-- Final frontend/timing guard recheck: **2,080 passed, 17 POSIX-shell skips**.
-- The complete browser suite is now running separately, with four workers,
-  retries zero, unchanged timeouts and a fresh backend. Final result pending;
-  release remains NO-GO until the result is reviewed.
+### Targeted regression evidence
 
+- Lifecycle + timing/interpretation: **22 passed**, four workers, after final
+  cancellation/body-consumption refinement.
+- Lifecycle/workspace cancellation including the formerly flaky clear-while-
+  playing case: **24 passed**, three repeats, four workers.
+- Follow-up readiness cases: **15 passed**, three repeats of all five cases,
+  four workers, 89 seconds. Intermediate test-barrier failures were corrected;
+  inactive Phasor need not compute its desired playback time to finish transport.
+- Source-removal diagnostic: **5 passed**, five repeats, four workers, 44.2 seconds.
+  Failed-response method/path/status now appear in that test's assertion message.
+  The 404 did not recur; this targeted success does not clear the full-run failure.
+- Earlier wider timing/playback/navigation/analyser targets: **83 passed**.
 
-## Isolated full-browser follow-up
+### Follow-up corrections and performance evidence
 
-The isolated four-worker run completed **1,140 passed, 6 failed, zero skips**,
-2,237.41 seconds (37.3 minutes), retries zero. Failures: premature Distance Apply
-snapshot; annotation redraw lag; PU test budget exhaustion; Combined Y-axis
-budget/readiness; Oscillation's global no-request observation overlapping unrelated
-bootstrap; one cleanup DELETE ECONNRESET. Source removal, workspace cancellation,
-GPTH/KTBR interpretation, session/timing authority and Sequence fixes did not fail.
+The initial browser run exposed a late source `/channels` GET returning 404 during
+workspace deletion. Pausing playback and aborting only Analysis was insufficient:
+metadata uses separate transport. The existing session-header fetch wrapper now
+composes caller cancellation with a workspace GET lifetime using native
+`AbortSignal.any`, retained through response-body consumption. Reset aborts reads
+before DELETE. Successful deletion leaves old reads blocked; failure restores
+usable transport and preserves workspace state. No writes are cancelled or retried.
+Expected metadata body `AbortError` means no cache update; other parsing failures
+still propagate. Pre-request and post-header caller cancellation are tested.
 
-A controlled local health-request probe with server keep-alive TTLs of 1 and 5
-seconds produced HTTP 200 for both pooled and Connection: close clients (eight
-observations). It did **not** reproduce the reset. Keep-alive is not claimed as
-confirmed root cause and no header/transport workaround or request retry is added.
+The isolated follow-up's six failures additionally revealed premature Distance
+snapshots, annotation redraw lag, expensive PU/axis polling and unrelated analyser
+bootstrap overlapping Oscillation's request observation. Tests now wait for the
+matching accepted Distance result, rendered annotation coordinates, axis metadata,
+and existing bootstrap promises/transport completion. They do not issue extra
+bootstrap queries. Numerical, pause, visibility, isolation and no-request assertions
+remain intact.
 
-A temporary Playwright-instrumented benchmark of two 4,001-sample comparisons
-measured 11,762.58 ms for individual toBeCloseTo matchers versus 12.34 ms for a
-maximum pointwise error assertion over every sample. Follow-up test-only changes
-preserve the exact 9-digit threshold (error < 0.5e-9), add length equality, and
-reduce readiness polling to axis metadata instead of copying complete waveforms.
-Distance snapshots await the accepted matching result; annotation movement awaits
-the new DOM coordinate; Oscillation's strict zero-request observation waits for
-existing bootstrap promises and transport completion, without issuing extra queries.
-These changes do not modify any Per-Unit calculation, settings or model semantics.
-Repeated four-worker validation and complete-suite closure are pending. Release
-remains NO-GO; the isolated cleanup reset is an unresolved blocker.
+A temporary Playwright benchmark of two 4,001-sample comparisons measured
+11,762.58 ms for individual instrumented `toBeCloseTo` matchers versus 12.34 ms
+for one maximum pointwise error assertion. Every sample and array length is still
+checked at the same strict error bound `< 0.5e-9`. No PU calculation, setting or
+measurement-model semantics changed. Polling readiness no longer copies complete
+waveform arrays solely to inspect pending-axis flags.
 
+### Unresolved causes and next closure steps
 
-Final readiness targets: **15 passed**, three repeats of all five affected cases
-with four workers, zero retries, 89 seconds. An intermediate barrier incorrectly
-required inactive Phasor playback convergence; it now checks actual transport
-completion after the existing bootstrap promises. The strict global no-request
-assertion remains unchanged. Another complete four-worker run follows on this
-focused test-only candidate; no clean release is claimed in advance.
+Intermittent API transport resets remain unexplained. They affect ordinary GETs,
+POSTs in earlier runs, and cleanup DELETEs; a cleanup-only defect is not established.
+No backend application traceback establishes their cause. A static-file server
+`ConnectionAbortedError` in the final log describes a client disconnect and is not
+proof of a backend API failure mechanism.
+
+Local Playwright source uses shared keep-alive agents, but that is only a hypothesis.
+A controlled local health-request probe, with server keep-alive TTLs of 1 and 5
+seconds, returned 200 for both pooled and `Connection: close` clients in all eight
+observations. It did not reproduce the reset. No retry, header workaround, timeout
+increase or failure suppression was added.
+
+Before another release check: capture the failing source-removal request using the
+new path diagnostic; correlate API connection resets with server/request/socket
+lifetimes; correct only reproduced causes and rerun the complete four-worker suite.
+Five repeated diagnostic passes and serial reruns cannot authorize release.
+
+### Commits and artifacts
+
+Focused correction commits:
+
+- `3c6495b`: source lifecycle, browser workspace cleanup/readiness, GRZ100 expectation.
+- `e048cb4`: workspace metadata-read cancellation before deletion and follow-up readiness.
+- `772de6a`: cancellation through response bodies and caller-signal coverage.
+- `5915223`: accepted-result/render/bootstrap readiness and numeric assertion overhead.
+
+The final report commit adds path diagnostics and current project-memory results.
+Local JUnit/log artifacts are in the Windows temporary directory, named
+`powerwave-slice-b-backend-final`, `powerwave-slice-b-browser-candidate`,
+`powerwave-slice-b-readiness-confirm` and `powerwave-slice-b-removal-diagnostic`
+(`.xml` / `.log`). These committed summaries are the durable evidence; temporary
+artifacts are not required to interpret the result.
+
+The unrelated BEN documentation stash remains
+`2f39bdfbd7d2f3242825c42a9f9a20c5cb077c5a`. Approved session-only interpretation,
+immutable raw data/samples, shared timebase, precision, grouping, offsets/t0,
+V1 production authority and V2 shadow-only status remain unchanged.

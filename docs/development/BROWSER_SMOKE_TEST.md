@@ -109,3 +109,12 @@ and its acceptance into rendered state. Phasor bootstrap gates its request until
 the temporary identification state is asserted. Playback tests wait for actual trail
 growth; numerical and pause-stability assertions remain. A serial rerun is useful
 to diagnose failures but never replaces this full parallel release check.
+
+
+Slice B follow-up readiness checks await matching accepted Distance results,
+annotation redraw coordinates and actual bootstrap transport completion. Axis
+readiness polls inspect only pending-axis metadata; PU comparisons retain the
+same tolerance over every sample with a maximum-error assertion and length check.
+The navigation/removal console-error regression includes failed-response paths in
+its assertion message. Final release evidence and unresolved blockers are recorded
+in [SLICE_B_RELEASE_HARDENING.md](../project-memory/SLICE_B_RELEASE_HARDENING.md).

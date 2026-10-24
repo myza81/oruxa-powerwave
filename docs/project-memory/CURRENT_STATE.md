@@ -9,15 +9,27 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## Release hardening Slice B (2026-10-23)
+## Release hardening Slice B (2026-10-24)
 
-[FACT] Focused source deletion/late metadata lifecycle fixes, browser-only workspace
-cleanup and response/render readiness improvements are implemented locally.
-The stale GRZ100 real-sheet expectation is corrected against approved catalog/OEM
-equations; production protection behaviour is unchanged. Targeted regressions pass.
-The initial complete runs exposed remaining boundary/readiness/cancellation defects;
-follow-up fixes and final regression validation are in progress. Release remains
-NO-GO. No push or deployment. Evidence and final results:
+[FACT] Focused source/metadata deletion lifecycle, workspace GET cancellation,
+failed-delete recovery, browser workspace cleanup and deterministic readiness fixes
+are committed locally. GRZ100's stale real-sheet expectation is corrected against
+approved catalog/OEM equations; production protection behaviour is unchanged.
+
+[VALIDATION] Backend with owner PDFs: **10,406 passed, 167 conditional/platform
+skips, zero failures**. Final complete browser candidate `5915223`: **1,142 passed,
+4 failed, zero skips**, four workers, zero retries, 33.5 minutes. Final readiness
+targets: **15/15** across three repeats/four workers. Removal diagnostic: **5/5**
+across five repeats/four workers; this does not clear the full-run 404.
+
+[OPEN / NO-GO] Full-run upload/navigation/removal still emitted a 404 whose path
+was not captured; the test now reports failed method/path/status. Intermittent API
+resets affect two cleanup DELETEs and an ordinary engineering-contexts GET in the
+final run. Transport cause remains unconfirmed. Slice B closure is incomplete;
+another release check requires reproduced causes to be fixed and a clean full
+parallel run. No push, deployment, VPS change, retry or timeout increase.
+
+Evidence, skip breakdown, exact failures and next steps:
 [SLICE_B_RELEASE_HARDENING.md](SLICE_B_RELEASE_HARDENING.md).
 
 ## Release hardening Slice A (2026-10-23)
@@ -37,9 +49,10 @@ result/playback-cache writes. Unaffected contexts and reconstruction resolutions
 retain caches. Raw bytes, sample arrays, microseconds, manual offsets, global t0,
 cursors and approved session-only interpretation semantics are unchanged.
 
-[OPEN] Slice A does not authorize release: the earlier audit's unrelated GRZ100
-real-PDF conformance snapshot mismatch and browser stability findings remain
-separate. Slice B was subsequently authorized; push, deployment and VPS changes remain excluded.
+[STATUS] Slice A was committed with the owner's approval despite documented
+baseline failures. Slice B subsequently corrected the stale GRZ100 expectation;
+current release evidence and remaining browser blockers are in the Slice B section
+above. Push, deployment and VPS changes remain excluded.
 The owner explicitly approved a focused local commit with known baseline failures
 documented, provided Slice A regressions pass. The unrelated BEN documentation stash
 is preserved. See
@@ -51,19 +64,20 @@ contract and shared dependency model.
 **16 passed**. Final focused browser run: **15 passed, 0 skipped** (12 Slice A
 cases plus GPTH/KTBR in three browser timezones).
 
-[VALIDATION] Full backend run with owner PDFs: **10,399 passed, 167 skipped,
+[HISTORICAL SLICE A VALIDATION] Backend with owner PDFs: **10,399 passed, 167 skipped,
 3 failed**; two structural assertions were corrected and pass in the final
 all-static run above. The remaining failure is the unchanged GRZ100 real-PDF
 snapshot mismatch, reproduced in the prior audit on untouched `3d16604`.
 The full run collected 11 new Slice A cases; the final checks include all 16.
 No PDF-availability skips; exact skip reasons are in the design document.
 
-[VALIDATION] Full relevant browser run: **691 passed, 11 assertion failures,
+[HISTORICAL SLICE A VALIDATION] Browser run: **691 passed, 11 assertion failures,
 11 timeouts, 0 skipped (713 total, four workers, no retries)**. All 12 Slice A
 cases and all three GPTH/KTBR cases passed. Each unsuccessful case subsequently
 passed serially: **11/11 assertion cases and 11/11 timeout cases**. The parallel
 run remains unclean; serial success does not prove every failure pre-existed.
-No reproducible Slice A regression remained. No Slice B stability fixes were made.
+No reproducible Slice A regression remained in that validation. Slice B work and
+current results are documented above.
 
 [STATUS] Focused local commit approved by the owner with these limitations
 explicitly documented. No push, deployment or VPS change. BEN stash hash remains

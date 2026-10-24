@@ -4,18 +4,30 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-24** - release hardening Slice B follow-up validation underway locally; no push/deployment. Earlier: release hardening Slice A implemented locally; timing authority and derived-result invalidation corrected. Commit/report only, no push or deployment. BEN5K unknown-timezone correction remains included; see sections below. Previous handoff: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-24** - release hardening Slice B focused fixes committed; full browser remains NO-GO; no push/deployment. Earlier: release hardening Slice A implemented locally; timing authority and derived-result invalidation corrected. Commit/report only, no push or deployment. BEN5K unknown-timezone correction remains included; see sections below. Previous handoff: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
 
-## Release hardening Slice B (2026-10-23)
+## Release hardening Slice B (2026-10-24)
 
-[FACT] Focused source deletion/late metadata lifecycle fixes, browser-only workspace
-cleanup and response/render readiness improvements are implemented locally.
-The stale GRZ100 real-sheet expectation is corrected against approved catalog/OEM
-equations; production protection behaviour is unchanged. Targeted regressions pass.
-The initial complete runs exposed remaining boundary/readiness/cancellation defects;
-follow-up fixes and final regression validation are in progress. Release remains
-NO-GO. No push or deployment. Evidence and final results:
+[FACT] Focused source/metadata deletion lifecycle, workspace GET cancellation,
+failed-delete recovery, browser workspace cleanup and deterministic readiness fixes
+are committed locally. GRZ100's stale real-sheet expectation is corrected against
+approved catalog/OEM equations; production protection behaviour is unchanged.
+
+[VALIDATION] Backend with owner PDFs: **10,406 passed, 167 conditional/platform
+skips, zero failures**. Final complete browser candidate `5915223`: **1,142 passed,
+4 failed, zero skips**, four workers, zero retries, 33.5 minutes. Final readiness
+targets: **15/15** across three repeats/four workers. Removal diagnostic: **5/5**
+across five repeats/four workers; this does not clear the full-run 404.
+
+[OPEN / NO-GO] Full-run upload/navigation/removal still emitted a 404 whose path
+was not captured; the test now reports failed method/path/status. Intermittent API
+resets affect two cleanup DELETEs and an ordinary engineering-contexts GET in the
+final run. Transport cause remains unconfirmed. Slice B closure is incomplete;
+another release check requires reproduced causes to be fixed and a clean full
+parallel run. No push, deployment, VPS change, retry or timeout increase.
+
+Evidence, skip breakdown, exact failures and next steps:
 [SLICE_B_RELEASE_HARDENING.md](SLICE_B_RELEASE_HARDENING.md).
 
 ## Release hardening Slice A (2026-10-23)
@@ -35,9 +47,10 @@ result/playback-cache writes. Unaffected contexts and reconstruction resolutions
 retain caches. Raw bytes, sample arrays, microseconds, manual offsets, global t0,
 cursors and approved session-only interpretation semantics are unchanged.
 
-[OPEN] Slice A does not authorize release: the earlier audit's unrelated GRZ100
-real-PDF conformance snapshot mismatch and browser stability findings remain
-separate. Slice B was subsequently authorized; push, deployment and VPS changes remain excluded.
+[STATUS] Slice A was committed with the owner's approval despite documented
+baseline failures. Slice B subsequently corrected the stale GRZ100 expectation;
+current release evidence and remaining browser blockers are in the Slice B section
+above. Push, deployment and VPS changes remain excluded.
 The owner explicitly approved a focused local commit with known baseline failures
 documented, provided Slice A regressions pass. The unrelated BEN documentation stash
 is preserved. See
@@ -49,19 +62,20 @@ contract and shared dependency model.
 **16 passed**. Final focused browser run: **15 passed, 0 skipped** (12 Slice A
 cases plus GPTH/KTBR in three browser timezones).
 
-[VALIDATION] Full backend run with owner PDFs: **10,399 passed, 167 skipped,
+[HISTORICAL SLICE A VALIDATION] Backend with owner PDFs: **10,399 passed, 167 skipped,
 3 failed**; two structural assertions were corrected and pass in the final
 all-static run above. The remaining failure is the unchanged GRZ100 real-PDF
 snapshot mismatch, reproduced in the prior audit on untouched `3d16604`.
 The full run collected 11 new Slice A cases; the final checks include all 16.
 No PDF-availability skips; exact skip reasons are in the design document.
 
-[VALIDATION] Full relevant browser run: **691 passed, 11 assertion failures,
+[HISTORICAL SLICE A VALIDATION] Browser run: **691 passed, 11 assertion failures,
 11 timeouts, 0 skipped (713 total, four workers, no retries)**. All 12 Slice A
 cases and all three GPTH/KTBR cases passed. Each unsuccessful case subsequently
 passed serially: **11/11 assertion cases and 11/11 timeout cases**. The parallel
 run remains unclean; serial success does not prove every failure pre-existed.
-No reproducible Slice A regression remained. No Slice B stability fixes were made.
+No reproducible Slice A regression remained in that validation. Slice B work and
+current results are documented above.
 
 [STATUS] Focused local commit approved by the owner with these limitations
 explicitly documented. No push, deployment or VPS change. BEN stash hash remains

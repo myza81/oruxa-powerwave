@@ -166,6 +166,12 @@ test.describe("Analyser recording detection", () => {
 
   test("7. No console errors across upload, navigation, removal and re-navigation", async ({ page }) => {
     const consoleErrors = [];
+    const failedResponses = [];
+    page.on("response", response => {
+      if (response.status() >= 400) failedResponses.push({
+        method: response.request().method(), path: new URL(response.url()).pathname, status: response.status(),
+      });
+    });
     page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
     page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
     const waitForApiIdle = trackApiRequests(page);
@@ -190,6 +196,6 @@ test.describe("Analyser recording detection", () => {
     await openAnalysis(page);
     await expect(phasorHint(page)).toHaveText("No recording loaded. Manual mode is available.");
 
-    expect(consoleErrors).toEqual([]);
+    expect(consoleErrors, JSON.stringify(failedResponses)).toEqual([]);
   });
 });
