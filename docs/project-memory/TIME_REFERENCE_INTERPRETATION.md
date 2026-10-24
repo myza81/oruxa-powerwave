@@ -332,3 +332,14 @@ Raw recorder digits, samples, precision, page-session interpretation, shared eff
 timebase, manual offsets and t0/cursors retain the owner-approved contract above.
 Final regression evidence and release disposition are maintained in
 [SLICE_B_RELEASE_HARDENING.md](SLICE_B_RELEASE_HARDENING.md).
+
+
+## Slice C source/context lifecycle follow-up (2026-10-24)
+
+Shared context bootstrap, readiness selection and uncovered-source discovery now
+capture the existing timing catalogue generation. Source deletion invalidates old
+continuations before they publish removed contexts or issue dependent requests.
+This extends the existing liveness architecture; it does not add time authority,
+change grouping or introduce a synchronization engine. Timing/authority targets
+pass with diagnostics disabled. Full release evidence is recorded in
+[SLICE_C_TRANSPORT_LIFECYCLE.md](SLICE_C_TRANSPORT_LIFECYCLE.md).

@@ -9,6 +9,38 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Release hardening Slice C (2026-10-24)
+
+This section supersedes the release disposition in the retained Slice B record below.
+
+[FACT] `bf67e3c` rejects obsolete shared context-list, readiness and source-discovery
+continuations after source deletion using the existing timing catalogue generation.
+Three deterministic baseline failures demonstrate stale publication and subsequent
+404 requests; corrected cases pass. The historical Slice B console URL is unavailable.
+
+[FACT] `0b9f295` corrects the local Playwright shared-agent idle pool/server expiry
+race. Default five-second paired GET/DELETE probes: 7/40 reset without the policy,
+0/40 with it. Only free registered-loopback sockets retire before server expiry;
+warm pooling and active request budgets remain. No retries or server timeout change.
+This transport mechanism is separate from the application 404 lifecycle defect.
+
+[VALIDATION] Combined targets: **42 passed**, three repeats, four workers, zero
+retries. Diagnostics-off timing/lifecycle targets: **25 passed**. Full backend with
+owner PDFs: **10,406 passed, 167 skipped, 20 warnings**. Full browser candidate
+`0b9f295`: **1,151 passed, 3 failed, 0 skipped**, four workers, zero retries,
+38.7 minutes. All original four failure scenarios and all eight new cases passed;
+no Node HTTP errors or API resets were captured.
+
+[OPEN / NO-GO] Additional full-run failures: Compliance rapid fine-shift loses one
+step during overlapping successful updates; grouped Event Reconstruction cursor A
+shows `0.0` instead of `No sample`; playback mid-play speed-switch ratio fails.
+The latter two causes remain unconfirmed. Evidence and the unimplemented Compliance
+proposal are recorded in the Slice C report. No unrelated corrections were made.
+
+No push, deployment or VPS change. BEN documentation stash is preserved. Approved
+session-scoped interpretation, shared timebase, authorization and relay safeguards
+are unchanged. Evidence: [SLICE_C_TRANSPORT_LIFECYCLE.md](SLICE_C_TRANSPORT_LIFECYCLE.md).
+
 ## Release hardening Slice B (2026-10-24)
 
 [FACT] Focused source/metadata deletion lifecycle, workspace GET cancellation,

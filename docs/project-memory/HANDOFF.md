@@ -7,6 +7,38 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-24** - release hardening Slice B focused fixes committed; full browser remains NO-GO; no push/deployment. Earlier: release hardening Slice A implemented locally; timing authority and derived-result invalidation corrected. Commit/report only, no push or deployment. BEN5K unknown-timezone correction remains included; see sections below. Previous handoff: **2026-10-22** — **Consolidated main: BEN5K Stage 11 + Distance Protection Phase 3A merged and pushed to `origin/main` (`781d1fa`); DEV auto-deployment triggered via CI. Owner UAT pending at https://dev.powerwave.oruxa.uk/**. (Earlier: Relay Scalability Phase 3A -- TripCapability relay-neutral classification, DEC-199 Amendment 9; earlier **2026-10-21** **2026-10-17** Relay Scalability Phase 2G -- generic constant-value boundaries, GRZ100 right blinder, DEC-199 Amendment 7; Relay Scalability Phase 2F -- 7SA613 lower reactance boundary, catalog-only reuse, DEC-199 Amendment 6; Relay Scalability Phase 2D -- shadow inclined reactance boundaries, 7SA613 and 7SL87, DEC-199 Amendment 5; Relay Scalability Phase 2C -- shadow lower reactance boundary, REL511 first, DEC-199 Amendment 4; **2026-10-16** Relay Scalability Phase 2B -- shadow directional half-planes, REL511 first, DEC-199 Amendment 3; Relay Scalability Phase 2A -- shadow inclined resistive boundaries, DEC-199 Amendment 2; Relay Scalability Phase 1 -- shadow geometry kernel, DEC-199 Amendment 1; Relay Scalability Phase 0 -- generic conformance harness, DEC-199; GRZ100 documented relay behaviour, DEC-198 Amendment 7; 7SA613 documented relay behaviour, DEC-198 Amendment 6; signed relay review validation token, DEC-198 Amendment 5; relay manual resolution authority, DEC-198 Amendment 4; earlier **2026-10-15** 7SL87 documented relay behaviour, DEC-198 Amendment 3; REL511 semantic integration -- basis and RF meanings verified, DEC-198 Amendment 2; REL511 knowledge integration, DEC-198 Amendment 1; Relay Import Assistance foundation, DEC-198; earlier **2026-10-14** remaining relay families, catalog-only, DEC-197; earlier **2026-10-13** workspace-wide channel presentation, DEC-070 Amendment 1; RED670 correction DEC-193 + Parameter Catalog Foundation DEC-194; Slice 12 RED670 DEC-192; earlier **2026-10-12** (Slice 11 correction: 7SA511 source fidelity + explicit R/X geometry, DEC-191; Slice 11 Siemens 7SA511 profile, DEC-196; Slice 10 dynamic distance zones, DEC-189; DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)))
 
+## Release hardening Slice C (2026-10-24)
+
+This section supersedes the release disposition in the retained Slice B record below.
+
+[FACT] `bf67e3c` rejects obsolete shared context-list, readiness and source-discovery
+continuations after source deletion using the existing timing catalogue generation.
+Three deterministic baseline failures demonstrate stale publication and subsequent
+404 requests; corrected cases pass. The historical Slice B console URL is unavailable.
+
+[FACT] `0b9f295` corrects the local Playwright shared-agent idle pool/server expiry
+race. Default five-second paired GET/DELETE probes: 7/40 reset without the policy,
+0/40 with it. Only free registered-loopback sockets retire before server expiry;
+warm pooling and active request budgets remain. No retries or server timeout change.
+This transport mechanism is separate from the application 404 lifecycle defect.
+
+[VALIDATION] Combined targets: **42 passed**, three repeats, four workers, zero
+retries. Diagnostics-off timing/lifecycle targets: **25 passed**. Full backend with
+owner PDFs: **10,406 passed, 167 skipped, 20 warnings**. Full browser candidate
+`0b9f295`: **1,151 passed, 3 failed, 0 skipped**, four workers, zero retries,
+38.7 minutes. All original four failure scenarios and all eight new cases passed;
+no Node HTTP errors or API resets were captured.
+
+[OPEN / NO-GO] Additional full-run failures: Compliance rapid fine-shift loses one
+step during overlapping successful updates; grouped Event Reconstruction cursor A
+shows `0.0` instead of `No sample`; playback mid-play speed-switch ratio fails.
+The latter two causes remain unconfirmed. Evidence and the unimplemented Compliance
+proposal are recorded in the Slice C report. No unrelated corrections were made.
+
+No push, deployment or VPS change. BEN documentation stash is preserved. Approved
+session-scoped interpretation, shared timebase, authorization and relay safeguards
+are unchanged. Evidence: [SLICE_C_TRANSPORT_LIFECYCLE.md](SLICE_C_TRANSPORT_LIFECYCLE.md).
+
 ## Release hardening Slice B (2026-10-24)
 
 [FACT] Focused source/metadata deletion lifecycle, workspace GET cancellation,

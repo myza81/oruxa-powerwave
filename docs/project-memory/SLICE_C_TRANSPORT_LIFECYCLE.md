@@ -111,11 +111,72 @@ explicit five-second keep-alive documents its unchanged default.
   repeats, four workers, zero retries (1.6 minutes).
 - Full backend with owner PDFs: **10,406 passed, 167 skipped, 20 warnings** (1232.59 s).
   Skips: 49 unavailable BEN-reference directory, 17 POSIX-only, 101 relay applicability.
-- Full browser four-worker, zero-retry validation is running; release remains **NO-GO**
-  pending its outcome. Local artifacts: TEMP `powerwave-slice-c-browser-full.xml`,
-  `.log`, and `powerwave-slice-c-browser-full-diagnostics/`; backend report
-  `powerwave-slice-c-backend-full.xml`.
+- Full browser candidate `0b9f295`: **1,151 passed, 3 failed, 0 skipped**, four
+  workers, zero retries, unchanged assertions, **2320.747 s / 38.7 minutes**.
+  All four original failure scenarios passed (six cases including three BEN5K zones).
+  All eight added lifecycle/transport cases passed. The complete timing interpretation
+  and authority tests also passed. One backend start/PID was observed, with no ASGI
+  request exception, Node HTTP error, or API ECONNRESET/socket-hang-up event captured.
+- The three failures are the additional Compliance, Event Reconstruction and playback
+  blockers detailed below. Release remains **NO-GO**; there is no full regression
+  closure or deployment authorization. No serial rerun is used to clear them.
+- Local artifacts: TEMP `powerwave-slice-c-browser-full.xml`, `.log`, and
+  `powerwave-slice-c-browser-full-diagnostics/`; backend report
+  `powerwave-slice-c-backend-full.xml`. Committed summaries preserve the findings
+  independently of these temporary machine-local files.
+
+Implementation commits: `bf67e3c` (shared context lifecycle) and `0b9f295` (local
+transport ownership and diagnostics). The final report commit changes documentation
+only. Workspace route prefix for the lifecycle endpoints above is
+`/api/v1/workspaces/{workspace_id}`; suggestion requests use
+`/sources/{source_id}/engineering-contexts/suggest` under that prefix.
 
 Approved session-only interpretation, immutable recorder timestamps/samples,
 shared timebase, offsets/t0, calculation authorization, source isolation and relay
 production/shadow/Apply safeguards are unchanged. No push, deployment or VPS change.
+
+
+## Newly observed release blocker outside the four Slice C failures
+
+[FACT] The full four-worker run failed `compliance_workspace.spec.js:508` at line
+523: two consecutive Later clicks should display `0.547 s`, but display `0.548 s`.
+All four alignment PUTs returned HTTP 200; there was no reset or HTTP failure.
+The final two PUT requests began at epoch 1792829265.429 and .477; their responses
+arrived at .508 and .578. Thus the second request began before the first response.
+`wwComplianceFineShift` derives an absolute origin from the current acknowledged
+`wwComplianceState.alignment` and starts `wwComplianceCommitAlignment` without
+serializing mutations. The observed overlap and one-step result are consistent
+with both clicks using the same old origin. Diagnostics deliberately omit bodies,
+so no request-body equality is claimed from the trace alone.
+
+Issue: rapid Compliance fine shifts can lose a step while an update is in flight.
+Evidence: exact unchanged assertion above, overlapping successful PUT lifecycle,
+and the existing read/derive/async-commit code at `wwComplianceFineShift`.
+Proposal (not implemented or approved): serialize fine-shift intents and derive each
+origin after the previous update is acknowledged, with a deterministic held-response
+regression. Benefits: preserve every requested step and ordered UI/backend state.
+Risks: must handle failure, group changes and cancellation without applying an intent
+to another alignment. Expected impact: Compliance alignment mutation lifecycle only;
+no recorder interpretation or waveform timing change. This is outside the four
+requested Slice C corrections and remains a separate owner-scoped follow-up.
+
+
+[OPEN] The same full run also failed `event-reconstruction-grouped.spec.js:204`
+at line 229: STN_B cursor A displayed `0.0` instead of `No sample`. Its diagnostic
+record contains 53 browser request starts and 53 responses, no HTTP-error status
+and no API transport error; workspace cleanup succeeded. The assertion reads
+cursor row values after a predicate that checks presence of cursor B objects.
+The available trace does not establish whether the unexpected value originated
+in timing resolution, cursor sampling, or acceptance/readiness. No root cause is
+asserted and no Event Reconstruction correction is included. This remains an
+additional release blocker requiring a separately bounded investigation.
+
+
+[OPEN] `playback.spec.js:916` also failed at line 948: `delta4x` was
+1.7265999999761568, while the required lower bound `delta1xAgain * 2` was
+2.9808000000000057. API setup/cleanup succeeded; no HTTP-error status or API reset
+was captured for this test. The existing test places automation actions and fixed
+300 ms waits between time reads, but does not measure the actual wall duration of
+each segment. This observation does not prove whether engine rate or test scheduling
+caused the ratio failure. No playback code, assertion or wait was changed; the
+cause remains unconfirmed and release remains blocked.
