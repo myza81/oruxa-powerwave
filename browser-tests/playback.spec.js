@@ -43,6 +43,7 @@
 
 const { test, expect } = require("./support/test");
 const path = require("path");
+const { drivePlaybackClock } = require("./support/playback_clock");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
@@ -890,27 +891,15 @@ test.describe("Event Playback Slice 2", () => {
     expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(4);
     await expect(speedSelect).toHaveValue("4"); // native <select> -- one value selected is also "no other option selected"
 
-    // ---- Actual engine rate: currentTime delta vs wall-clock delta ----
-    // A native <select> reporting "4" says nothing about whether
-    // wwPlaybackTick() is actually advancing currentTime at that rate --
-    // this is the distinction section 6 of the task asks for. Bounded,
-    // generous tolerance (not an exact-ms assertion) to absorb real rAF/
-    // scheduling jitter while still clearly distinguishing "really ~4x"
-    // from "no faster than 1x" or "wildly wrong".
+    // Controlled frame delivery measures the real controller at a known clock,
+    // excluding automation delays and recording completion from the rate assertion.
     await restartBtn.click();
-    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
-    await playBtn.click();
-    const wallMs = 500;
-    await page.waitForTimeout(wallMs);
-    const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
-    const recordingDelta = currentTime - startTime;
-    const wallSeconds = wallMs / 1000;
-    // Expect roughly 4x real elapsed time; generous [2x, 7x] band absorbs
-    // scheduling jitter/slow CI hosts without being able to pass at 1x or
-    // at a broken/runaway rate.
-    expect(recordingDelta).toBeGreaterThan(wallSeconds * 2);
-    expect(recordingDelta).toBeLessThan(wallSeconds * 7);
-    await playBtn.click(); // pause
+    const [segment] = await drivePlaybackClock(mount, [{ speed: 4, steps: [17, 83, 400] }]);
+    const recordingDelta = segment.after.time - segment.afterSwitch.time;
+    expect(recordingDelta).toBeGreaterThan(segment.wallSeconds * 2);
+    expect(recordingDelta).toBeLessThan(segment.wallSeconds * 7);
+    expect(recordingDelta).toBeCloseTo(segment.wallSeconds * 4, 9);
+    expect(segment.frameLoops).toEqual([1, 1, 1]);
   });
 
   test("4x speed takes effect immediately on a mid-play switch, no restart required", async ({ page }) => {
@@ -920,33 +909,28 @@ test.describe("Event Playback Slice 2", () => {
     const speedSelect = mount.locator(".ww-tg-playback-speed-select");
 
     await restartBtn.click();
-    await expect(speedSelect).toHaveValue("1"); // default
-    await playBtn.click();
-    await expect(playBtn).toHaveText("Pause");
-    await page.waitForTimeout(300);
-    const before1x = await page.evaluate(() => wwPlaybackState().currentTime);
-
-    // Switch to 4x WHILE STILL PLAYING -- no Pause/Play cycle, no Restart.
-    await speedSelect.selectOption("4");
-    await expect(speedSelect).toHaveValue("4");
-    expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(4);
-    await expect(playBtn).toHaveText("Pause"); // still playing, no interruption
-    await page.waitForTimeout(300);
-    const after4x = await page.evaluate(() => wwPlaybackState().currentTime);
-    const delta4x = after4x - before1x;
-
-    // Switch back to 1x, same real interval.
-    await speedSelect.selectOption("1");
     await expect(speedSelect).toHaveValue("1");
-    await page.waitForTimeout(300);
-    const after1xAgain = await page.evaluate(() => wwPlaybackState().currentTime);
-    const delta1xAgain = after1xAgain - after4x;
-
-    // The 4x segment must cover materially more recording time than the
-    // 1x segment over the SAME real interval -- proves the switch changed
-    // the engine's actual rate, not merely a UI label.
+    const segments = await drivePlaybackClock(mount, [
+      { speed: 1, steps: [17, 83, 200] },
+      { speed: 4, steps: [110, 10, 180] },
+      { speed: 1, steps: [250, 30, 20] },
+    ]);
+    const delta4x = segments[1].after.time - segments[1].afterSwitch.time;
+    const delta1xAgain = segments[2].after.time - segments[2].afterSwitch.time;
+    // Original ratio retained; exact rates additionally prove the multiplier.
     expect(delta4x).toBeGreaterThan(delta1xAgain * 2);
-    await playBtn.click(); // pause
+    for (const [i, segment] of segments.entries()) {
+      expect(segment.after.time - segment.afterSwitch.time).toBeCloseTo(segment.wallSeconds * segment.after.speed, 9);
+      expect(segment.afterSwitch.time).toBeCloseTo(segment.beforeSwitch.time, 12); // no jump
+      expect(segment.afterSwitch.raf).toBe(segment.beforeSwitch.raf); // same chain
+      expect(segment.afterSwitch.generation).toBe(segment.beforeSwitch.generation); // no restart
+      expect(segment.after.state).toBe("playing");
+      expect(segment.selected).toBe(String([1, 4, 1][i]));
+      expect(segment.button).toBe("Pause");
+      expect(segment.frameLoops).toEqual([1, 1, 1]);
+    }
+    expect(delta4x).toBeCloseTo(1.2, 9);
+    expect(delta1xAgain).toBeCloseTo(0.3, 9);
   });
 
   test("4x speed: Pause freezes at 4x, Resume continues at 4x (speed itself never changes)", async ({ page }) => {

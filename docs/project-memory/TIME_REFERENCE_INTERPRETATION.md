@@ -114,6 +114,14 @@ placement without deleting its correction. Cross-source calculation/readiness st
 requires proven matching sample instants; display alignment never adds resampling
 or weakens those engineering guardrails.
 
+Slice D tightened the existing Event Reconstruction cursor lifecycle without
+changing this time-reference contract. When a cursor coordinate changes, its
+previous sample value loses authority immediately; the request for the new
+coordinate must finish before a sample or out-of-range label is displayed.
+Request identity and current coordinates reject delayed responses, including
+ones from before a cursor reset that reuse a sequence number. A true zero at a
+valid sample remains zero, and manual correction/reset uses the same rule.
+
 ## Retained derived results: Slice A hardening (2026-10-23)
 
 The release audit reproduced two correctness defects: a cross-source calculated

@@ -9,6 +9,33 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Release hardening Slice D (2026-10-25)
+
+[FACT] Compliance now orders rapid alignment writes and rejects stale trace or
+old-group responses. Event Reconstruction clears cursor values when coordinates
+change and rejects delayed or pre-reset responses. Playback's production clock
+is unchanged; controlled frame delivery verifies its rate. Five lifecycle cases
+failed on exact `9137afa` and passed after correction. Approved adjacent browser
+test readiness/fixture corrections cover Waveform render, Event Reconstruction
+reset, Overcurrent gridlines and Related Waveforms empty-state setup; no product
+calculation changed.
+
+[VALIDATION] Focused Slice D targets: **30 passed** across three repeats/four
+workers. Relevant backend: **457 passed**. Full backend with owner PDFs:
+**10,406 passed, 167 skipped, 20 warnings**. Adjacent targets: **18/18** at
+four workers. Latest complete browser run: **1,158 passed, 2 failed, 0 skipped**
+out of 1,160 (four workers, zero retries, 31.3 min). A preceding complete run
+had 1,159 passed/1 failed; a separate attempt stopped at 655/1,160 and is not
+a completed-suite result.
+
+[OPEN / NO-GO] The latest full run failed a Distance Protection golden-result
+test whose `10.0 Ω` wait also accepts `110.0 Ω`, and an Event Reconstruction
+per-unit test that zooms before its 7 ms correction is acknowledged. Focused
+test-only patches are prepared and awaiting owner approval; neither is applied.
+Three timeout symptoms from the interrupted run remain unexplained. Release
+validation is incomplete. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
+No push, deployment or VPS change. The unrelated BEN documentation stash remains.
+
 ## Release hardening Slice C (2026-10-24)
 
 This section supersedes the release disposition in the retained Slice B record below.

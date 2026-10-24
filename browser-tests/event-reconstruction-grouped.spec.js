@@ -201,6 +201,89 @@ test.describe("Event Reconstruction Grouped View -- records, timing and Y", () =
 });
 
 test.describe("Event Reconstruction Grouped View -- cursors and isolation", () => {
+  test("changed cursor times hide stale values until the matching sample response", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: MIXED });
+    await uploadRecord(page, { station: "STN_B", startClock: "10:00:00.500000", channels: MIXED });
+    await addRecords(page, ["STN_A", "STN_B"]);
+    await selectChannel(page, "STN_A", "P");
+    await selectChannel(page, "STN_B", "P");
+    await waitForPlot(page, 2);
+    await page.locator("#wwErCursorModeBtn").click();
+    // B's first real sample is a genuine zero, not missing data.
+    await page.evaluate(() => { wwErSetCursorTime("a", 0.5); wwErSetCursorTime("b", 0.9); });
+    await expect.poll(() => page.evaluate(() => Object.values(wwErState.plot.cursorRequests).every(r => r.done))).toBe(true);
+    const row = await channelRow(page, "STN_B", "P");
+    await expect(row.locator(".cur-value--a")).toHaveText("0.0");
+    let release, reached;
+    const gate = new Promise(resolve => { release = resolve; });
+    const held = new Promise(resolve => { reached = resolve; });
+    const source = await sourceIdFor(page, "STN_B");
+    let answer;
+    await page.route("**/sources/" + source + "/cursor-values", async route => {
+      const response = await route.fetch(); answer = await response.json(); reached();
+      await gate; await route.fulfill({ response });
+    });
+    try {
+      await page.evaluate(() => wwErSetCursorTime("a", 0.25));
+      await held;
+      expect(answer.cursor_a.sample_time).toBeNull(); // native -0.25 is outside B
+      await expect(row.locator(".cur-value--a")).toHaveText("\u2014"); // never the old zero
+    } finally { release(); }
+    await expect(row.locator(".cur-value--a")).toHaveText("No sample");
+    await expect(row.locator(".cur-value--delta")).toHaveText("\u2014");
+    // Restore the genuine zero, then move only B beneath the fixed cursor.
+    await page.unroute("**/sources/" + source + "/cursor-values");
+    await page.evaluate(() => wwErSetCursorTime("a", 0.5));
+    await expect(row.locator(".cur-value--a")).toHaveText("0.0");
+    await memberRow(page, "STN_B").locator("input[data-er-correction-input]").fill("100");
+    await memberRow(page, "STN_B").locator('button[data-er-action="set-correction"]').click();
+    await expect(row.locator(".cur-value--a")).toHaveText("No sample");
+    await memberRow(page, "STN_B").locator("input[data-er-correction-input]").fill("0");
+    await memberRow(page, "STN_B").locator('button[data-er-action="set-correction"]').click();
+    await expect(row.locator(".cur-value--a")).toHaveText("0.0");
+    expect(await page.evaluate(() => wwErCursorValueText({ a: { value: null, noSample: false } }, "a"))).toBe("Unavailable");
+  });
+
+  test("a response from before cursor reset cannot authorize a reused request sequence", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: MIXED });
+    await addRecords(page, ["STN_A"]);
+    await selectChannel(page, "STN_A", "P"); await waitForPlot(page, 1);
+    let releaseOld, releaseNew, oldReached, newReached;
+    const oldGate = new Promise(resolve => { releaseOld = resolve; });
+    const newGate = new Promise(resolve => { releaseNew = resolve; });
+    const oldHeld = new Promise(resolve => { oldReached = resolve; });
+    const newHeld = new Promise(resolve => { newReached = resolve; });
+    let requests = 0, expected;
+    await page.route("**/sources/*/cursor-values", async route => {
+      const number = ++requests; const response = await route.fetch();
+      if (number === 1) { oldReached(); await oldGate; }
+      else { expected = await response.json(); newReached(); await newGate; }
+      await route.fulfill({ response });
+    });
+    try {
+      await page.evaluate(() => {
+        const original = wwErRefreshCursorValues;
+        wwErRefreshCursorValues = () => { const result = original(); window.oldCursorBatch = result; return result; };
+        try { document.getElementById("wwErCursorModeBtn").click(); }
+        finally { wwErRefreshCursorValues = original; }
+      });
+      await oldHeld;
+      await page.locator("#wwErCursorModeBtn").click(); // clears request catalogue
+      await page.evaluate(() => wwErSetCursorTime("a", 0.25));
+      await page.locator("#wwErCursorModeBtn").click();
+      await newHeld;
+      releaseOld(); await page.evaluate(() => window.oldCursorBatch);
+      const row = await channelRow(page, "STN_A", "P");
+      await expect(row.locator(".cur-value--a")).toHaveText("\u2014");
+      releaseNew();
+      const value = expected.channels.find(c => c.channel_name === "P").a_value;
+      const display = await page.evaluate(value => wwFormatEngineeringValue(value), value);
+      await expect(row.locator(".cur-value--a")).toHaveText(display);
+    } finally { releaseOld(); releaseNew(); }
+  });
+
   test("cursor values are per trace in the channel tree, not per panel", async ({ page }) => {
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: MIXED });

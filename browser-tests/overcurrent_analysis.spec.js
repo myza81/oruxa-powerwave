@@ -1350,8 +1350,7 @@ test.describe("Overcurrent Analysis v1 -- minor grid toggles (chart UX enhanceme
     await expect(page.locator("#wwOvercurrentMinorGridXCheckbox")).not.toBeChecked();
     await expect(page.locator("#wwOvercurrentMinorGridYCheckbox")).not.toBeChecked();
     await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor")).toHaveCount(0);
-    const majorCount = await page.locator("#wwOvercurrentSvg line.ww-oc-gridline").count();
-    expect(majorCount).toBeGreaterThan(0);
+    await expect.poll(() => page.locator("#wwOvercurrentSvg line.ww-oc-gridline").count()).toBeGreaterThan(0);
   });
 
   test("enabling Minor X shows the 1.2/1.4/1.6/1.8 subdivisions between 1 and 2, disabling removes them", async ({ page }) => {

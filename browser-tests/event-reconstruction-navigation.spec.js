@@ -354,6 +354,9 @@ test.describe("Event Reconstruction Slice 3D -- viewport rebasing", () => {
     // B corrected far earlier: the window over B's end is partly outside
     // the new Fit All [0, 5] and is clamped to what remains.
     await memberRow(page, "STN_B").locator('button[data-er-action="reset-correction"]').click();
+    // The old viewport can already match while the reset request is pending.
+    // Wait for the authoritative B offset before testing the next zoom.
+    await expect.poll(async () => (await plotState(page)).panels[1].totalOffsetS).toBeCloseTo(2, 12);
     await waitForViewport(page, 2.5, 3);
     await zoomTo(page, 4.5, 5.5);
     await setCorrection(page, "STN_B", -1000);

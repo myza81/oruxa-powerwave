@@ -261,7 +261,12 @@ test.describe("Event Reconstruction time display -- adaptive formats", () => {
       cursors: JSON.stringify(Array.from(ww.timeGroupCursorState.entries())),
       dragMode: ww.dragMode,
     }));
-    await page.waitForTimeout(500);
+    // Snapshot only after the original Waveform plot has finished rendering.
+    await expect.poll(() => page.evaluate(() => ww.panels.length > 0 && ww.panels.every(panel =>
+      panel.plotlyReady && panel.chartEl?.data?.length > 0 &&
+      panel.chartEl?.layout?.xaxis?.ticktext?.length > 0 &&
+      ww.timeGroupViewports.has(wwPanelTimeGroupId(panel))
+    ))).toBe(true);
     const before = await waveform();
     await addRecords(page, ["STN_A"]);
     await selectChannel(page, "STN_A", "VA");

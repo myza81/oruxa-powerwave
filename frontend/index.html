@@ -21087,7 +21087,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const plot = wwErState.plot;
             const cursor = plot.cursors[kind];
             if (!cursor || !Number.isFinite(time)) return;
-            cursor.time = wwErClampCursorTime(plot.fitAll, time);
+            const nextTime = wwErClampCursorTime(plot.fitAll, time);
+            // Even throttled dragging must stop displaying the previous instant.
+            if (cursor.time !== nextTime) for (const trace of wwErPlottedTraces()) trace.cursorValues = null;
+            cursor.time = nextTime;
             wwErDrawCursors();
             wwErSyncCursorReadout();
             if (immediate) wwErRefreshCursorValues();
@@ -21263,7 +21266,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const known = plot.cursorRequests[group.id];
                 if (known && known.key === key && known.done && group.traces.every((t) => t.cursorValues)) return;
                 const seq = (known ? known.seq : 0) + 1;
-                plot.cursorRequests[group.id] = { key, seq, done: false };
+                const request = { key, seq, done: false };
+                plot.cursorRequests[group.id] = request;
+                for (const trace of group.traces) trace.cursorValues = null;
+                wwErSyncTreeCursorValues();
                 const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
                 const url = group.calculated ? base + "/calculated-channels/cursor-values"
                     : base + "/sources/" + encodeURIComponent(group.sourceId) + "/cursor-values";
@@ -21279,6 +21285,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 const current = plot.cursorRequests[group.id];
                 if (!current || current.seq !== seq) return; // superseded
+                const live = wwErShownCursorTimes();
+                // Identity also rejects a pre-reset request whose seq was reused;
+                // times reject a response during the drag throttle window.
+                if (current !== request || live.a !== shown.a || live.b !== shown.b) return;
                 current.done = true;
                 const outside = (r) => r < group.timing.startS || r > group.timing.endS;
                 for (const trace of group.traces) {
@@ -52414,6 +52424,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // engineer has selected but not yet committed, and the explicit
             // "Select Event Point" / "Change Alignment" selection mode (aligning).
             alignment: null,
+            // Serialize UI intents over the API's absolute replacement semantics.
+            alignmentQueue: Promise.resolve(),
+            alignmentGeneration: 0,
+            alignmentRevision: 0,
+            alignmentPending: 0,
             alignSelected: null,
             aligning: false,
             alignNotice: "",
@@ -62518,9 +62533,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const groupId = wwComplianceState.selectedGroupId;
             const anyReady = !!(readiness && groupId && readiness.references.some((r) => r.status === "ready"));
             const requestSeq = ++wwComplianceState.tracesSeq;
+            const alignmentRevision = wwComplianceState.alignmentRevision;
+            const alignmentWasPending = wwComplianceState.alignmentPending > 0;
             const apply = (payload) => {
                 wwComplianceState.traces = payload;
-                if (payload && payload.alignment) wwComplianceState.alignment = payload.alignment;
+                // A trace snapshot is not authority over a newer user mutation.
+                if (payload && payload.alignment && !alignmentWasPending && !wwComplianceState.alignmentPending &&
+                    alignmentRevision === wwComplianceState.alignmentRevision) wwComplianceState.alignment = payload.alignment;
                 // A selected-but-uncommitted point only survives while its trace exists.
                 const sel = wwComplianceState.alignSelected;
                 if (sel && !(payload && payload.traces.some((t) => t.id === sel.traceId))) wwComplianceState.alignSelected = null;
@@ -62657,29 +62676,49 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         async function wwComplianceCommitAlignment(method, body) {
-            const groupId = wwComplianceState.selectedGroupId;
-            if (!groupId) return;
-            try {
-                const view = method === "DELETE"
-                    ? await wwRefFetchJson(wwComplianceAlignmentUrl(groupId), { method: "DELETE" })
-                    : await wwRefFetchJson(wwComplianceAlignmentUrl(null), {
-                        method: "PUT", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ measurement_group_id: groupId, ...body }),
-                    });
-                wwComplianceState.alignment = view;
-            } catch (error) {
-                const hint = document.getElementById("wwComplianceEventAlignmentHint");
-                hint.hidden = false;
-                hint.textContent = error.message || "Could not update the alignment.";
-                return;
-            }
-            wwComplianceState.alignSelected = null;
-            wwComplianceState.aligning = false;
-            wwComplianceState.alignNotice = "";
-            wwRefRenderChart();
-            wwComplianceRenderEventAlignment();
-            const next = document.getElementById(wwComplianceState.alignment && wwComplianceState.alignment.aligned ? "wwComplianceAlignChangeBtn" : "wwComplianceAlignSelectBtn");
-            if (next && !next.hidden && !next.disabled) next.focus();
+            const state = wwComplianceState;
+            const groupId = state.selectedGroupId;
+            const workspaceId = currentWorkspaceId();
+            const generation = state.alignmentGeneration;
+            if (!groupId) return false;
+            const live = () => currentWorkspaceId() === workspaceId && state.selectedGroupId === groupId &&
+                state.alignmentGeneration === generation;
+            state.alignmentRevision += 1;
+            state.alignmentPending += 1;
+            const operation = state.alignmentQueue.then(async () => {
+                if (!live()) return false;
+                try {
+                    // A relative fine shift resolves only after earlier writes are
+                    // acknowledged. Set/Clear remain ordered absolute operations.
+                    const resolved = typeof body === "function" ? body(state.alignment) : body;
+                    if (resolved === null) return false;
+                    const view = method === "DELETE"
+                        ? await wwRefFetchJson(wwComplianceAlignmentUrl(groupId), { method: "DELETE" })
+                        : await wwRefFetchJson(wwComplianceAlignmentUrl(null), {
+                            method: "PUT", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ measurement_group_id: groupId, ...resolved }),
+                        });
+                    if (!live()) return false;
+                    state.alignment = view;
+                    state.alignSelected = null;
+                    state.aligning = false;
+                    state.alignNotice = "";
+                    wwRefRenderChart();
+                    wwComplianceRenderEventAlignment();
+                    const next = document.getElementById(view && view.aligned ? "wwComplianceAlignChangeBtn" : "wwComplianceAlignSelectBtn");
+                    if (next && !next.hidden && !next.disabled) next.focus();
+                    return true;
+                } catch (error) {
+                    if (live()) {
+                        const hint = document.getElementById("wwComplianceEventAlignmentHint");
+                        hint.hidden = false;
+                        hint.textContent = error.message || "Could not update the alignment.";
+                    }
+                    return false;
+                }
+            });
+            state.alignmentQueue = operation.finally(() => { state.alignmentPending -= 1; });
+            return state.alignmentQueue;
         }
 
         function wwComplianceSetSelectedAsReferenceZero() {
@@ -62693,23 +62732,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Shift Earlier moves the measured event LEFT on the chart (x decreases) =
         // the origin increases; Shift Later moves it right = the origin decreases.
         function wwComplianceFineShift(direction) {
-            const a = wwComplianceState.alignment;
-            if (!a || !a.aligned) return;
-            const step = a.fine_shift_step_s;
-            const origin = a.measurement_event_origin_s + (direction === "earlier" ? step : -step);
-            wwComplianceCommitAlignment("PUT", { measurement_event_origin_s: origin, snap_to_sample: false });
+            if (!wwComplianceState.alignment || !wwComplianceState.alignment.aligned) return;
+            return wwComplianceCommitAlignment("PUT", (alignment) => {
+                if (!alignment || !alignment.aligned) return null;
+                const step = alignment.fine_shift_step_s;
+                const origin = alignment.measurement_event_origin_s + (direction === "earlier" ? step : -step);
+                return { measurement_event_origin_s: origin, snap_to_sample: false };
+            });
         }
 
         // Changing the Bay / Measurement Group: never assume the old timestamp
         // exists on the new recording -- clear it (best effort; the backend also
         // treats another group's alignment as "not aligned").
         function wwComplianceResetAlignmentForGroupChange(previousGroupId) {
+            wwComplianceState.alignmentGeneration += 1;
+            wwComplianceState.alignmentRevision += 1;
             wwComplianceState.alignment = null;
             wwComplianceState.alignSelected = null;
             wwComplianceState.aligning = false;
             wwComplianceState.alignNotice = "";
             if (previousGroupId) {
-                wwRefFetchJson(wwComplianceAlignmentUrl(previousGroupId), { method: "DELETE" }).catch(() => { /* nothing to clear */ });
+                const workspaceId = currentWorkspaceId();
+                const url = wwComplianceAlignmentUrl(previousGroupId);
+                // Clear after an already-sent old-group write, never before it.
+                wwComplianceState.alignmentQueue = wwComplianceState.alignmentQueue.then(() => {
+                    if (currentWorkspaceId() !== workspaceId) return;
+                    return wwRefFetchJson(url, { method: "DELETE" }).catch(() => { /* nothing to clear */ });
+                });
             }
         }
 

@@ -526,6 +526,124 @@ test.describe("DEC-170 -- Compliance Event Alignment", () => {
     await expect(page.locator("#wwComplianceAlignOffset")).toHaveText(`-${sec(raw - 0.001)}`);
   });
 
+  test("overlapping fine shifts preserve both successful adjustments", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const raw = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw));
+    let release, reached;
+    const held = new Promise(resolve => { reached = resolve; });
+    const gate = new Promise(resolve => { release = resolve; });
+    const origins = [], statuses = [];
+    await page.route("**/compliance/voltage/event-alignment", async route => {
+      if (route.request().method() !== "PUT") return route.continue();
+      origins.push(route.request().postDataJSON().measurement_event_origin_s);
+      const response = await route.fetch();
+      statuses.push(response.status());
+      if (origins.length === 1) { reached(); await gate; }
+      await route.fulfill({ response });
+    });
+    try {
+      await alignBtn(page, "Later").click();
+      await held; // first write succeeded; acknowledgement is deliberately held
+      await alignBtn(page, "Later").click();
+    } finally { release(); }
+    await expect.poll(() => statuses.length).toBe(2);
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw - 0.002));
+    expect(statuses).toEqual([200, 200]);
+    expect(origins[0]).toBeCloseTo(raw - 0.001, 12);
+    expect(origins[1]).toBeCloseTo(raw - 0.002, 12);
+    const saved = await (await page.request.get(await wsUrl(page, "/compliance/voltage/event-alignment?measurement_group_id=" +
+      await page.evaluate(() => wwComplianceState.selectedGroupId)))).json();
+    expect(saved.measurement_event_origin_s).toBeCloseTo(raw - 0.002, 12);
+  });
+
+  test("an old trace response cannot overwrite a successful alignment update", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const raw = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw));
+    let release, reached;
+    const gate = new Promise(resolve => { release = resolve; });
+    const held = new Promise(resolve => { reached = resolve; });
+    await page.route("**/compliance/voltage/measurement-traces?*", async route => {
+      const response = await route.fetch(); reached(); await gate; await route.fulfill({ response });
+    });
+    await page.evaluate(() => {
+      const original = wwComplianceFetchJson;
+      wwComplianceFetchJson = (...args) => {
+        const response = original(...args);
+        window.traceReloadComplete = response.then(() => new Promise(resolve => setTimeout(resolve, 0)));
+        return response;
+      };
+      try { wwComplianceRefreshTraces(wwComplianceState.readiness); }
+      finally { wwComplianceFetchJson = original; }
+    });
+    await held;
+    try {
+      await alignBtn(page, "Later").click();
+      await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw - 0.001));
+    } finally { release(); }
+    await page.evaluate(() => window.traceReloadComplete);
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw - 0.001));
+  });
+
+  test("a failed fine shift preserves acknowledged state and the next adjustment remains usable", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const raw = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw));
+    let calls = 0;
+    await page.route("**/compliance/voltage/event-alignment", route => {
+      if (route.request().method() === "PUT" && ++calls === 1) return route.fulfill({
+        status: 503, contentType: "application/json", body: JSON.stringify({ detail: { message: "Controlled write failure" } }),
+      });
+      return route.continue();
+    });
+    await alignBtn(page, "Later").click();
+    await expect(page.locator("#wwComplianceEventAlignmentHint")).toHaveText("Controlled write failure");
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw));
+    await alignBtn(page, "Later").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw - 0.001));
+    expect(calls).toBe(2);
+  });
+
+  test("changing the Bay rejects an old acknowledgement and orders cleanup after its write", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const raw = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw));
+    const oldGroup = await page.evaluate(() => wwComplianceState.selectedGroupId);
+    let release, reached;
+    const gate = new Promise(resolve => { release = resolve; });
+    const held = new Promise(resolve => { reached = resolve; });
+    await page.route("**/compliance/voltage/event-alignment", async route => {
+      if (route.request().method() !== "PUT") return route.continue();
+      // Hold before sending: cleanup must not run ahead of this write.
+      reached(); await gate; const response = await route.fetch(); await route.fulfill({ response });
+    });
+    await page.evaluate(() => {
+      window.originalAlignmentCommit = wwComplianceCommitAlignment;
+      wwComplianceCommitAlignment = (...args) => {
+        window.oldAlignmentWrite = window.originalAlignmentCommit(...args); return window.oldAlignmentWrite;
+      };
+    });
+    await alignBtn(page, "Later").click();
+    await page.evaluate(() => { wwComplianceCommitAlignment = window.originalAlignmentCommit; });
+    await held;
+    try {
+      await page.locator("#wwComplianceGroupSelect").selectOption({ label: "MCRS VOLTAGE" });
+    } finally { release(); }
+    await page.evaluate(() => window.oldAlignmentWrite);
+    await page.evaluate(() => wwComplianceState.alignmentQueue);
+    const state = await page.evaluate(() => ({ group: wwComplianceState.selectedGroupId, alignment: wwComplianceState.alignment }));
+    expect(state.group).not.toBe(oldGroup);
+    expect(!state.alignment || state.alignment.measurement_group_id === state.group).toBe(true);
+    const saved = await (await page.request.get(await wsUrl(page,
+      "/compliance/voltage/event-alignment?measurement_group_id=" + oldGroup))).json();
+    expect(saved.aligned).toBe(false);
+  });
+
   test("Change Alignment re-selects (Cancel keeps the old one); Clear returns to the original recording axis", async ({ page }) => {
     await plotMeasuredAndReady(page);
     const first = await clickMeasuredSample(page, 0, 550);
