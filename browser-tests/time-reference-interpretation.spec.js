@@ -62,6 +62,11 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    expect(channels.source.time_basis).toBe("unknown");
    expect(channels.timebase.time_reference_interpretation.provenance).toBe("user_assigned");
    expect((await getApi(page,"/event-reconstruction/definition")).defined).toBe(false);
+   // The interpretation rebuilds Plotly panels; metadata can be ready first.
+   await expect.poll(async()=>{
+    const samples=(await timingState(page)).firstSamples;
+    return [ktbr,gpth].filter(id=>Number.isFinite(samples.find(s=>s.id===id)?.x)).length;
+   }).toBe(2);
    const state=await timingState(page);
    expect(state.cursors.find(([id])=>id===gpth)[1].a.time).toBeCloseTo(.402067,10);
    // Plotted source-native first samples are mapped once, with the common t0 subtracted.

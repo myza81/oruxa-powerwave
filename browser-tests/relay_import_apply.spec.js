@@ -120,6 +120,8 @@ test("applied settings and the same values typed by hand give the same R-X geome
       values[n][id] = await input(page, n, id).inputValue();
     }
   }
+  // Compare the same zone-derived R-X viewport on both pages; SVG points are pixels.
+  await page.locator("#wwDistanceFitZonesBtn").click();
   const imported = [await points(page, 1), await points(page, 2), await points(page, 3)];
 
   await openDistance(page); // a fresh page: nothing imported
@@ -131,6 +133,7 @@ test("applied settings and the same values typed by hand give the same R-X geome
       await input(page, n, id).dispatchEvent("change");
     }
   }
+  await page.locator("#wwDistanceFitZonesBtn").click();
   const manual = [await points(page, 1), await points(page, 2), await points(page, 3)];
   expect(manual).toEqual(imported);
 });

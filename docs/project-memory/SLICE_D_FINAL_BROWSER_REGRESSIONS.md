@@ -108,6 +108,11 @@ pause/resume/seek and analyser coverage remain in the regression suite.
   zero retries (27.7 min). Both corrected cases passed; Relay Apply viewport
   parity and GPTH/KTBR plot readiness failed as documented below. Those two
   cases passed **12/12** in a subsequent focused four-worker rerun.
+- The approved Relay Apply and GPTH/KTBR readiness corrections passed
+  **20/20** across five repeats/four workers. The next complete run finished
+  **1,156 passed, 4 failed, 0 skipped** out of 1,160 (four workers, zero
+  retries, 25.6 min). Both corrected cases passed; four separate failures
+  are described below.
 - Release remains **NO-GO** while the complete browser suite has a failure.
 
 Invalid setup runs are excluded: one confirmation launched from the repository root
@@ -231,7 +236,45 @@ Distance and per-unit cases passed. The two different failures were:
 
 Both cases passed in a focused **12/12** four-worker, zero-retry rerun (three
 repeats per case/timezone variant, 1.0 min), so the failures remain sensitive
-to full-suite timing. The interrupted attempt's three timeout symptoms were
+to full-suite timing. The owner approved two focused test-only corrections:
+Relay Apply now invokes the existing Fit Zones action before each SVG snapshot,
+fixing the comparison viewport while preserving exact polygon equality; the
+GPTH/KTBR test waits for finite first samples from both recordings after
+interpretation before asserting the same 2.067 ms plotted separation. No
+product code or engineering assertion changed. The corrected target passed
+**20/20** across five repeats/four workers, zero retries (1.2 min). Both
+corrected cases passed in the next complete browser run.
+
+That complete browser run finished **1,156 passed, 4 failed, 0 skipped** out
+of 1,160 cases (four workers, zero retries, 25.6 min). Both newly approved
+cases passed. The four different failures were:
+
+1. `distance_protection_analysis.spec.js:532`: the R-X geometry test waited
+   for `/10.0+ Ω/`, which also accepts a stale `110.0 Ω` result. It then read
+   the earlier point, so its golden-coordinate cross-product failed.
+2. `event-reconstruction-fit-record.spec.js:294`: backend member extent had
+   advanced to 3.5 s, but Fit Record used the browser's still-old 3.0 s
+   definition. The existing helper's axis wait accepts any internally
+   consistent viewport, including the old one. This reproduced once in a
+   three-repeat/four-worker comparison (14/15 passed overall).
+3. `event-reconstruction.spec.js:816`: a console error reported HTTP 404
+   after source removal, but that console-only message did not identify its
+   request path or initiation sequence. Twenty focused repeats with existing
+   path-only transport diagnostics passed without a 404. Its cause remains
+   unknown; there is no 404 suppression or speculative fix.
+4. `sequence_components_analysis.spec.js:401`: the captured page had Manual
+   selected and Va=77 V/5° entered, but the Values list displayed complete
+   Recording sequences instead of the incomplete Manual result. The Manual
+   result request had completed. Inspection found that an already-in-flight
+   Recording analysis response can still call `wwSequenceRenderResult(result)`
+   after the input source changes; it does not check the live input source at
+   acceptance. This is an application result-lifecycle defect, not proof that
+   the sequence calculation itself is wrong.
+
+The full-suite result remains **NO-GO**. No correction for these four cases is
+included without the owner approval required by Change governance.
+
+The interrupted attempt's three timeout symptoms were
 also absent from both completed full runs, but their exact causes were not
 established. Release remains **NO-GO**; no claim of complete browser regression
 closure is made.

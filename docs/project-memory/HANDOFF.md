@@ -40,9 +40,20 @@ five repeats/four workers and both passed in the next complete browser run.
 That run finished **1,158 passed, 2 failed**: Relay Apply compared SVG points
 at different automatic R-X viewport scales, and the Asia/Kuala_Lumpur
 time-reference case read Waveform samples before its post-interpretation plot
-was ready. Both passed in a focused **12/12** four-worker rerun, so full-suite
-closure remains unproven. Three timeout symptoms from the earlier interrupted
-run remain unexplained. Release remains **NO-GO**. See
+was ready. Both passed in a focused **12/12** four-worker rerun. The owner
+approved test-only corrections: use Fit Zones before both relay SVG snapshots
+and wait for both interpreted Waveform first samples before the 2.067 ms
+assertion. The corrected targets passed **20/20** across five repeats/four
+workers, zero retries; both passed in the next complete browser run. That run
+finished **1,156 passed, 4 failed** (four workers, zero retries, 25.6 min):
+Distance R-X result readiness, Event Reconstruction Fit Record client timing
+readiness, a source-removal console 404 of unknown path, and an in-flight
+Sequence Recording result displayed while Manual was selected. Four affected
+cases passed 14/15 in three repeats/four workers; Fit Record failed once.
+Twenty source-removal mapping repeats with path-only diagnostics passed without
+a 404. No speculative 404 fix is included. Full-suite closure remains unproven.
+Three timeout symptoms from the earlier interrupted run remain unexplained.
+Release remains **NO-GO**. See
 [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 The BEN documentation stash is retained. No push, deployment or VPS change.
 

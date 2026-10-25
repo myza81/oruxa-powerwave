@@ -23,10 +23,9 @@ calculation changed.
 [VALIDATION] Focused Slice D targets: **30 passed** across three repeats/four
 workers. Relevant backend: **457 passed**. Full backend with owner PDFs:
 **10,406 passed, 167 skipped, 20 warnings**. Adjacent targets: **18/18** at
-four workers. Latest complete browser run: **1,158 passed, 2 failed, 0 skipped**
-out of 1,160 (four workers, zero retries, 31.3 min). A preceding complete run
-had 1,159 passed/1 failed; a separate attempt stopped at 655/1,160 and is not
-a completed-suite result.
+four workers. The latest complete browser run finished **1,156 passed, 4 failed,
+0 skipped** out of 1,160 (four workers, zero retries, 25.6 min). An earlier
+attempt stopped at 655/1,160 and is not a completed-suite result.
 
 [OPEN / NO-GO] The owner-approved Distance Protection and Event Reconstruction
 per-unit test corrections passed **10/10** at four workers and both passed in
@@ -34,8 +33,18 @@ the next complete browser run. That run finished **1,158 passed, 2 failed**:
 Relay Apply compared SVG points across different automatic R-X viewport scales,
 and the Asia/Kuala_Lumpur time-reference case read a Waveform plot before its
 post-interpretation samples were available. The latter two cases passed
-**12/12** in a focused four-worker rerun; full-suite closure remains unproven.
-Three timeout symptoms from an earlier interrupted run remain unexplained.
+**12/12** in a focused four-worker rerun. The owner approved both focused
+test-only corrections: compare relay polygons after Fit Zones sets the same
+zone-derived viewport on each page, and wait for both interpreted Waveform
+first samples to be finite before checking the unchanged 2.067 ms separation.
+The corrected targeted cases passed **20/20** at four workers, zero retries;
+both passed in the latest full run. Four different failures remain: Distance
+R-X result readiness, Event Reconstruction Fit Record client timing readiness,
+one source-removal console 404 of unknown path, and an in-flight Sequence
+Recording result displayed during Manual mode. A focused rerun passed 14/15,
+reproducing Fit Record; 20 path-only source-removal repeats passed without a
+404. Full-suite closure remains unproven. Three timeout symptoms from an
+earlier interrupted run remain unexplained.
 Release validation is incomplete. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 No push, deployment or VPS change. The unrelated BEN documentation stash remains.
 
