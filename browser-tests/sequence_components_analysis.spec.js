@@ -398,6 +398,33 @@ test.describe("Sequence Components v1 -- Recording mode", () => {
 });
 
 test.describe("Sequence Components v1 -- Recording <-> Manual state isolation", () => {
+  test("a delayed Recording response cannot replace the displayed Manual result", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    let releaseRecording;
+    const heldRecording = new Promise((resolve) => { releaseRecording = resolve; });
+    let recordingStarted = false;
+    await page.route((url) => url.pathname.endsWith(`/engineering-contexts/${contextId}/sequence-components`), async (route) => {
+      if (recordingStarted) return route.continue();
+      recordingStarted = true;
+      await heldRecording;
+      await route.continue();
+    });
+
+    await openAnalysisSequence(page);
+    await expect.poll(() => recordingStarted).toBe(true);
+    await page.locator("#wwSequenceInputSourceManualBtn").click();
+    await enterRole(page, "Va", { magnitude: 77, unit: "V", angleDeg: 5 });
+    await expect(page.locator("#wwSequenceValuesList")).toContainText("Missing");
+
+    const recordingReply = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith(`/engineering-contexts/${contextId}/sequence-components`));
+    releaseRecording();
+    expect((await recordingReply).ok()).toBe(true);
+    await expect.poll(() => page.evaluate(() => wwSequencePlaybackFetchInFlight)).toBe(false);
+    await expect(page.locator("#wwSequenceInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwSequenceValuesList")).toContainText("Missing");
+  });
+
   test("Manual values survive switching to Recording and back; Recording never overwrites Manual fields", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisSequence(page);

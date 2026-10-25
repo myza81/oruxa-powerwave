@@ -113,6 +113,12 @@ pause/resume/seek and analyser coverage remain in the regression suite.
   **1,156 passed, 4 failed, 0 skipped** out of 1,160 (four workers, zero
   retries, 25.6 min). Both corrected cases passed; four separate failures
   are described below.
+- The approved Distance, Fit Record and Sequence corrections passed **30/30**
+  together across five repeats/four workers. Full backend: **10,406 passed,
+  167 skipped** with owner PDFs. The next complete browser run finished
+  **1,157 passed, 4 failed, 0 skipped** out of 1,161 (four workers, zero
+  retries, 30.6 min); the new corrections all passed and path-only diagnostics
+  identified the four later failures below.
 - Release remains **NO-GO** while the complete browser suite has a failure.
 
 Invalid setup runs are excluded: one confirmation launched from the repository root
@@ -273,8 +279,69 @@ cases passed. The four different failures were:
    acceptance. This is an application result-lifecycle defect, not proof that
    the sequence calculation itself is wrong.
 
-The full-suite result remains **NO-GO**. No correction for these four cases is
-included without the owner approval required by Change governance.
+That full-suite result remained **NO-GO**. At that point no correction for
+these four cases had been applied without the owner approval required by Change
+governance.
+
+The owner subsequently approved focused corrections for the Distance, Fit
+Record and Sequence failures. The Distance wait now requires the golden `|Z|`
+10.0 Ω and +20.00° Angle before inspecting SVG geometry. Fit Record waits for
+the browser's own refreshed member extent of 3.5 s after the already-checked
+backend value. Sequence recording response acceptance now checks the live input
+source after the existing request/workspace guards and releases the Updating
+indicator without rendering if Manual is active. The same check covers a
+failed Recording request. No backend timing, waveform, sequence calculation
+or manual input data changed.
+
+A new held-response browser test failed on the unchanged product code: after
+Manual Va=77 V/5° produced the expected incomplete Manual result, releasing a
+previously held Recording response replaced the Values list with complete
+Recording sequences while Manual remained selected. It passed **5/5** after
+the correction. The affected Distance (two widths), Fit Record, source-removal
+mapping, and both Sequence isolation cases passed **30/30** together across
+five repeats/four workers, zero retries (1.2 min). Path-only diagnostics in
+that run recorded no browser 404. Targeted backend/frontend contract checks
+passed (**342 tests**). The full backend suite passed **10,406** with **167
+skips** using the owner-PDF setting. The complete four-worker, zero-retry
+browser suite was then run with existing path-only diagnostics.
+At this stage the source-removal 404 cause remained unknown and unsuppressed.
+
+The next complete browser run finished **1,157 passed, 4 failed, 0 skipped**
+out of 1,161 (four workers, zero retries, 30.6 min). The approved Distance,
+Fit Record and Sequence corrections all passed. Path-only diagnostics identified
+the four remaining failures independently:
+
+1. `analyser-recording-detection.spec.js:167`: source DELETE began, an older
+   staged `wwFetchSynchronizationStateForWorkspace()` read then received a
+   time-group list, and it requested `/synchronization/t0` for the now-deleted
+   group. The GET began before DELETE's 204 acknowledgement and completed
+   HTTP 404 afterward. A focused three-repeat/four-worker comparison reproduced
+   the same DELETE/GET/404 sequence. This is a source-removal lifecycle race in
+   the shared synchronization fetch, not a backend process restart or a
+   connection reset.
+2. `analysis_related_waveforms.spec.js:116`: the fixture deleted an
+   upload-created ALPHA1 Engineering Context, then opening Analysis triggered
+   source discovery and a POST to re-suggest a new context. The captured page
+   had ALPHA1 selected and related waveforms drawn. The no-active-roles test
+   premise was therefore false. This is a fixture setup issue.
+3. `playback.spec.js:496`: the 2x-versus-1x test uses two fixed 500 ms browser
+   waits and compares recording-time deltas as if the browser automation and
+   animation-frame delivery consumed equal wall time. Under the full run, the
+   measured 2x delta (1.0284 s) failed its 1.3 ratio against the 1x delta;
+   the same case failed once in a focused three-repeat/four-worker run. The
+   established deterministic clock tests cover the unchanged production
+   controller, so this observation does not establish an engine-rate defect.
+4. `relay_import_review_polish.spec.js:50`: a route installed before review
+   replaces validation with a ready/clear response, but the test then waits
+   for the initial blocking card. Under full load the mock completed first,
+   leaving the card clear. The mock and assertion order causes the race; no
+   relay readiness calculation defect was observed.
+
+These four cases passed **10/12** in a focused three-repeat/four-worker run:
+the source-removal 404 and Playback ratio each failed once. No new correction
+is included without owner approval under Change governance. Release remains
+**NO-GO**. The path-only diagnostic artifacts stay local; they contain no
+headers, bodies, signing keys or session secrets.
 
 The interrupted attempt's three timeout symptoms were
 also absent from both completed full runs, but their exact causes were not

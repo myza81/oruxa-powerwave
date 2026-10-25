@@ -307,6 +307,9 @@ test.describe("Event Reconstruction Fit Record -- timing changes and isolation",
     // Correct the active record by +500 ms: Fit Record uses the new extent.
     await setCorrection(page, "STN_B", 500);
     await expect.poll(async () => (await memberExtent(page, ids.b)).start).toBeCloseTo(3.5, 9);
+    // The backend can acknowledge the correction before this page accepts its refreshed definition.
+    await expect.poll(() => page.evaluate((id) =>
+      wwErState.definition.members.find((member) => member.record_id === id)?.start_s, ids.b)).toBeCloseTo(3.5, 9);
     await fitRecord(page, 3);
     let state = await plotState(page);
     expect(state.viewport.start).toBeCloseTo(3.5, 9);

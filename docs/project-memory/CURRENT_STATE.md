@@ -22,10 +22,10 @@ calculation changed.
 
 [VALIDATION] Focused Slice D targets: **30 passed** across three repeats/four
 workers. Relevant backend: **457 passed**. Full backend with owner PDFs:
-**10,406 passed, 167 skipped, 20 warnings**. Adjacent targets: **18/18** at
-four workers. The latest complete browser run finished **1,156 passed, 4 failed,
-0 skipped** out of 1,160 (four workers, zero retries, 25.6 min). An earlier
-attempt stopped at 655/1,160 and is not a completed-suite result.
+**10,406 passed, 167 skipped**. The latest complete browser run finished
+**1,157 passed, 4 failed, 0 skipped** out of 1,161 (four workers, zero retries,
+30.6 min, path-only diagnostics). An earlier attempt stopped at 655/1,160 and
+is not a completed-suite result.
 
 [OPEN / NO-GO] The owner-approved Distance Protection and Event Reconstruction
 per-unit test corrections passed **10/10** at four workers and both passed in
@@ -43,7 +43,22 @@ R-X result readiness, Event Reconstruction Fit Record client timing readiness,
 one source-removal console 404 of unknown path, and an in-flight Sequence
 Recording result displayed during Manual mode. A focused rerun passed 14/15,
 reproducing Fit Record; 20 path-only source-removal repeats passed without a
-404. Full-suite closure remains unproven. Three timeout symptoms from an
+404. The owner approved the three focused corrections: require both golden
+Distance magnitude and angle before reading R-X coordinates, wait for the
+client's corrected member extent before Fit Record, and reject late Sequence
+Recording results while Manual is active. A held-response Sequence test failed
+on the baseline and passed **5/5** after correction; the five affected cases
+passed **30/30** together at four workers. Targeted backend checks passed;
+the full backend suite passed **10,406** with **167 skips** using the owner-PDF
+setting. Those corrected cases passed in the latest full browser run, which
+had four different failures: a staged synchronization read requested a deleted
+group's t0 during source removal (HTTP 404, reproduced twice with request
+timing); Related Waveforms re-suggested a context that its fixture deleted;
+a wall-clock Playback ratio assertion failed under load; and a relay test's
+mocked ready response arrived before its expected initial blocking state.
+The four affected cases passed **10/12** in three focused repeats, reproducing
+the t0 404 and Playback failure. Full-suite closure remains unproven. Three
+timeout symptoms from an
 earlier interrupted run remain unexplained.
 Release validation is incomplete. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 No push, deployment or VPS change. The unrelated BEN documentation stash remains.

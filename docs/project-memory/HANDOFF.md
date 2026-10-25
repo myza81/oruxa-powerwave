@@ -51,7 +51,22 @@ readiness, a source-removal console 404 of unknown path, and an in-flight
 Sequence Recording result displayed while Manual was selected. Four affected
 cases passed 14/15 in three repeats/four workers; Fit Record failed once.
 Twenty source-removal mapping repeats with path-only diagnostics passed without
-a 404. No speculative 404 fix is included. Full-suite closure remains unproven.
+a 404. The owner approved three focused changes: completed Distance result
+readiness, completed client member timing before Fit Record, and rejecting
+late Sequence Recording results while Manual is active. A held-response
+Sequence test failed on the baseline and passed **5/5** after correction; the
+affected cases passed **30/30** together at four workers. Targeted backend
+checks passed; the full backend suite passed **10,406**, with **167 skips**,
+using the owner-PDF setting. The next complete four-worker, zero-retry browser
+run finished **1,157 passed, 4 failed** out of 1,161 (30.6 min). All three
+newly corrected cases passed. Path-only diagnostics tied the source-removal
+404 to an old synchronization read issuing t0 for a deleted group; this
+reproduced in a focused comparison. Related Waveforms re-suggested the context
+its fixture removed; Playback's real-time ratio failed under load; relay
+review's mock-ready response won a race with its initial blocking assertion.
+The four affected cases passed **10/12** in three focused repeats (404 and
+Playback each failed once). No correction for these four is included. Full-suite
+closure remains unproven.
 Three timeout symptoms from the earlier interrupted run remain unexplained.
 Release remains **NO-GO**. See
 [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).

@@ -542,7 +542,8 @@ test.describe("Distance Protection v1 -- R-X plot geometry", () => {
       // reflects the fully-entered values).
       await expect(async () => {
         const text = await page.locator("#wwDistanceValuesList").innerText();
-        expect(text).toMatch(/10\.0+\s*Ω/);
+        expect(text).toMatch(/\|Z\|\s*10\.0+\s*Ω/);
+        expect(text).toMatch(/Angle\s*\+20\.00°/);
       }).toPass({ timeout: 5000 });
       await expect(page.locator("#wwDistanceSvg circle.ww-dist-point--manual")).toHaveCount(1);
       const { cx, cy } = await page.evaluate(() => {

@@ -54699,6 +54699,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } catch (error) {
                 wwReleaseAnalysisTransport(wwSequenceState, myGeneration, () => { wwSequencePlaybackFetchInFlight = false; });
                 if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                // The user may have switched to Manual while this Recording request was in flight.
+                if (wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                    wwSequenceSetUpdatingIndicator(false);
+                    return;
+                }
                 wwSequencePlaybackLastFetchAtMs = performance.now();
                 wwSequencePlaybackFetchedTime = desiredTime;
                 wwSequenceSetUpdatingIndicator(false);
@@ -54709,6 +54714,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             wwReleaseAnalysisTransport(wwSequenceState, myGeneration, () => { wwSequencePlaybackFetchInFlight = false; });
             if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                wwSequenceSetUpdatingIndicator(false);
+                return;
+            }
             wwSequencePlaybackLastFetchAtMs = performance.now();
             wwSequencePlaybackFetchedTime = desiredTime;
             wwSequenceSetUpdatingIndicator(false);
