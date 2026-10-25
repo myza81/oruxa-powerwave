@@ -250,8 +250,10 @@ of 1,160 cases (four workers, zero retries, 25.6 min). Both newly approved
 cases passed. The four different failures were:
 
 1. `distance_protection_analysis.spec.js:532`: the R-X geometry test waited
-   for `/10.0+ Ω/`, which also accepts a stale `110.0 Ω` result. It then read
-   the earlier point, so its golden-coordinate cross-product failed.
+   for `/10.0+ Ω/` without checking the golden +20° angle. The regex also
+   accepts `110.0 Ω`. It then read a point that did not have the golden R/X
+   ratio, so its golden-coordinate cross-product failed. The captured assertion
+   does not identify which partial phasor result was displayed.
 2. `event-reconstruction-fit-record.spec.js:294`: backend member extent had
    advanced to 3.5 s, but Fit Record used the browser's still-old 3.0 s
    definition. The existing helper's axis wait accepts any internally
