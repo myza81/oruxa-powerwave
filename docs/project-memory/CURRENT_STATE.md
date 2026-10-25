@@ -20,47 +20,24 @@ test readiness/fixture corrections cover Waveform render, Event Reconstruction
 reset, Overcurrent gridlines and Related Waveforms empty-state setup; no product
 calculation changed.
 
-[VALIDATION] Focused Slice D targets: **30 passed** across three repeats/four
-workers. Relevant backend: **457 passed**. Full backend with owner PDFs:
-**10,406 passed, 167 skipped**. The latest complete browser run finished
-**1,157 passed, 4 failed, 0 skipped** out of 1,161 (four workers, zero retries,
-30.6 min, path-only diagnostics). An earlier attempt stopped at 655/1,160 and
-is not a completed-suite result.
+[FACT] Approved adjacent corrections make test setup wait for authoritative
+Distance, Event Reconstruction, Overcurrent, Waveform, relay and Related
+Waveforms state. A late Sequence Recording response cannot replace Manual
+results. Source removal invalidates staged synchronization reads before they
+can request a deleted group's t0. Playback and relay-review calculations are
+unchanged; their tests now use deterministic clock input and correct mock order.
 
-[OPEN / NO-GO] The owner-approved Distance Protection and Event Reconstruction
-per-unit test corrections passed **10/10** at four workers and both passed in
-the next complete browser run. That run finished **1,158 passed, 2 failed**:
-Relay Apply compared SVG points across different automatic R-X viewport scales,
-and the Asia/Kuala_Lumpur time-reference case read a Waveform plot before its
-post-interpretation samples were available. The latter two cases passed
-**12/12** in a focused four-worker rerun. The owner approved both focused
-test-only corrections: compare relay polygons after Fit Zones sets the same
-zone-derived viewport on each page, and wait for both interpreted Waveform
-first samples to be finite before checking the unchanged 2.067 ms separation.
-The corrected targeted cases passed **20/20** at four workers, zero retries;
-both passed in the latest full run. Four different failures remain: Distance
-R-X result readiness, Event Reconstruction Fit Record client timing readiness,
-one source-removal console 404 of unknown path, and an in-flight Sequence
-Recording result displayed during Manual mode. A focused rerun passed 14/15,
-reproducing Fit Record; 20 path-only source-removal repeats passed without a
-404. The owner approved the three focused corrections: require both golden
-Distance magnitude and angle before reading R-X coordinates, wait for the
-client's corrected member extent before Fit Record, and reject late Sequence
-Recording results while Manual is active. A held-response Sequence test failed
-on the baseline and passed **5/5** after correction; the five affected cases
-passed **30/30** together at four workers. Targeted backend checks passed;
-the full backend suite passed **10,406** with **167 skips** using the owner-PDF
-setting. Those corrected cases passed in the latest full browser run, which
-had four different failures: a staged synchronization read requested a deleted
-group's t0 during source removal (HTTP 404, reproduced twice with request
-timing); Related Waveforms re-suggested a context that its fixture deleted;
-a wall-clock Playback ratio assertion failed under load; and a relay test's
-mocked ready response arrived before its expected initial blocking state.
-The four affected cases passed **10/12** in three focused repeats, reproducing
-the t0 404 and Playback failure. Full-suite closure remains unproven. Three
-timeout symptoms from an
-earlier interrupted run remain unexplained.
-Release validation is incomplete. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
+[VALIDATION] The held t0 test failed on the baseline and passed **5/5** after
+correction. All five affected browser cases passed **25/25** together at four
+workers, zero retries. The complete backend suite passed **10,406**, with
+**167 skips** and 20 warnings using the owner-PDF setting. The complete browser
+suite passed **1,162/1,162**, four workers, zero retries (28.6 min); path-only
+diagnostics recorded no HTTP 404 or connection reset.
+
+[OPEN / NO-GO] Three timeout symptoms from an earlier interrupted browser run
+remain unexplained. The green complete run verifies this candidate but does not
+establish those symptoms' cause. Release remains **NO-GO** pending their
+disposition. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 No push, deployment or VPS change. The unrelated BEN documentation stash remains.
 
 ## Release hardening Slice C (2026-10-24)

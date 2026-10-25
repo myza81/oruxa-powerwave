@@ -198,4 +198,43 @@ test.describe("Analyser recording detection", () => {
 
     expect(consoleErrors, JSON.stringify(failedResponses)).toEqual([]);
   });
+
+  test("a synchronization read held across source removal never requests the deleted group's t0", async ({ page }) => {
+    const failedResponses = [];
+    page.on("response", (response) => {
+      if (response.status() >= 400) failedResponses.push({
+        method: response.request().method(), path: new URL(response.url()).pathname, status: response.status(),
+      });
+    });
+    await page.goto("/index.html");
+    await uploadRecord(page, { station: "STN_SYNC", startClock: "10:00:00.000000", durationS: 1, channels: VI_CHANNELS });
+    const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const sourceId = await row.getAttribute("data-source-id");
+
+    let releaseGroupResponse;
+    const heldGroupResponse = new Promise((resolve) => { releaseGroupResponse = resolve; });
+    let groupResponseReady;
+    const groupResponseFetched = new Promise((resolve) => { groupResponseReady = resolve; });
+    let heldOnce = false;
+    await page.route((url) => url.pathname.endsWith("/synchronization/time-groups"), async (route) => {
+      if (heldOnce) return route.continue();
+      heldOnce = true;
+      const response = await route.fetch(); // old group's authoritative pre-delete snapshot
+      groupResponseReady();
+      await heldGroupResponse;
+      await route.fulfill({ response });
+    });
+    const staleRead = page.evaluate(() => wwFetchSynchronizationStateForWorkspace());
+    await groupResponseFetched;
+    try {
+      await row.locator('button[data-action="remove"]').click();
+      await page.locator("#confirmRemoveBtn").click();
+      await expect(page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`)).toHaveCount(0);
+    } finally {
+      releaseGroupResponse();
+    }
+    await staleRead;
+    expect(failedResponses.filter((entry) => entry.path.endsWith("/synchronization/t0"))).toEqual([]);
+    expect(await page.evaluate((id) => Array.from(ww.timeGroups.values()).some((group) => group.sourceIds.includes(id)), sourceId)).toBe(false);
+  });
 });

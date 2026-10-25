@@ -21977,6 +21977,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Cache generations are local to this page. Authority remains in the backend.
         const wwRemovedSourceIds = new Set(); // ids are never reused within this page
+        // A staged synchronization read must not use a pre-removal Time Group
+        // to request t0 after its representative source has been deleted.
+        const wwSourcesPendingRemoval = new Set();
+        let wwSynchronizationLifecycleGeneration = 0;
         const wwTimingGenerations = new Map();
         let wwTimingCatalogueGeneration = 0;
         let wwCalculatedListRequestGeneration = 0;
@@ -27744,19 +27748,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const workspaceId = currentWorkspaceId();
             const epoch = ww.epoch;
             hideWorkspaceResetError();
+            wwSourcesPendingRemoval.add(sourceId);
+            wwSynchronizationLifecycleGeneration += 1;
             try {
                 const response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
                     "/sources/" + encodeURIComponent(sourceId), { method: "DELETE" }
                 );
                 if (!response.ok) {
+                    wwSourcesPendingRemoval.delete(sourceId);
                     showWorkspaceResetError("Could not remove the recording. Please try again.");
                     return false;
                 }
             } catch (error) {
+                wwSourcesPendingRemoval.delete(sourceId);
                 showWorkspaceResetError("Could not reach the backend to remove the recording. Please try again.");
                 return false;
             }
+            wwSourcesPendingRemoval.delete(sourceId);
+            wwSynchronizationLifecycleGeneration += 1;
             if (workspaceId !== currentWorkspaceId() || epoch !== ww.epoch) return true;
             wwRemovedSourceIds.add(sourceId);
             wwInvalidateAnalysisTiming(sourceId);
@@ -30437,6 +30447,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // primary-source-only fetch.
         async function wwFetchSynchronizationStateForWorkspace() {
             const workspaceId = currentWorkspaceId();
+            const lifecycleGeneration = wwSynchronizationLifecycleGeneration;
+            // A DELETE may be in flight while navigation starts a new staged
+            // read. The post-delete refresh below is the next authority.
+            if (wwSourcesPendingRemoval.size) return;
+            const isCurrent = () => lifecycleGeneration === wwSynchronizationLifecycleGeneration &&
+                workspaceId === currentWorkspaceId() && !wwSourcesPendingRemoval.size;
 
             let sourcesBody = null;
             try {
@@ -30447,6 +30463,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } catch (error) {
                 // Leave the existing caches as-is.
             }
+            if (!isCurrent()) return;
             if (sourcesBody !== null) {
                 ww.alignmentOffsets.clear();
                 ww.manualAlignmentOffsets.clear();
@@ -30478,6 +30495,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } catch (error) {
                 // Leave the existing cache as-is.
             }
+            if (!isCurrent()) return;
             if (groupsBody !== null) {
                 ww.timeGroups.clear();
                 for (const group of groupsBody) {
@@ -30507,6 +30525,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     Array.from(ww.timeGroups.entries()).map(async ([groupId, group]) => {
                         const representativeSourceId = group.sourceIds && group.sourceIds[0];
                         if (!representativeSourceId) return [groupId, null];
+                        if (!isCurrent()) return [groupId, null];
                         try {
                             const response = await fetch(
                                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/t0" +
@@ -30520,6 +30539,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         }
                     })
                 );
+                if (!isCurrent()) return;
                 ww.timeGroupT0State.clear();
                 for (const [groupId, t0] of entries) {
                     if (typeof t0 === "number" && Number.isFinite(t0)) ww.timeGroupT0State.set(groupId, t0);

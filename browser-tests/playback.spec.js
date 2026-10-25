@@ -495,32 +495,20 @@ async function seekSliderBounds(slider) {
 test.describe("Event Playback Slice 2", () => {
   test("2x speed advances materially farther than 1x over the same real interval", async ({ page }) => {
     const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
-    const playBtn = mount.locator(".ww-tg-playback-play-btn");
     const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
-    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
-
-    // ---- 1x baseline ----
     await restartBtn.click();
-    await expect(speedSelect).toHaveValue("1"); // default, unaffected by Restart
-    await playBtn.click();
-    await page.waitForTimeout(500);
-    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
-    const delta1x = (await page.evaluate(() => wwPlaybackState().currentTime)) - startTime;
-    await playBtn.click(); // pause
-
-    // ---- restart, switch to 2x, play the SAME real interval ----
-    await restartBtn.click();
-    await speedSelect.selectOption("2");
-    await expect(speedSelect).toHaveValue("2");
-    await playBtn.click();
-    await page.waitForTimeout(500);
-    const delta2x = (await page.evaluate(() => wwPlaybackState().currentTime)) - startTime;
-
-    // Materially farther, never an exact 2.0x ratio assertion (real
-    // wall-clock timing jitter) -- 1.3x is a generous, non-flaky margin
-    // comfortably below the ~2x expected while still proving a real
-    // difference.
+    // Drive the real mounted controller through equal elapsed wall-clock
+    // intervals. Automation and background-frame scheduling cannot change
+    // the measurement window; the same 1.3x engineering assertion remains.
+    const [one, two] = await drivePlaybackClock(mount, [
+      { speed: 1, steps: [17, 83, 400] }, { speed: 2, steps: [17, 83, 400] },
+    ]);
+    const delta1x = one.after.time - one.afterSwitch.time;
+    const delta2x = two.after.time - two.afterSwitch.time;
+    expect(one.wallSeconds).toBe(two.wallSeconds);
     expect(delta2x).toBeGreaterThan(delta1x * 1.3);
+    expect(delta1x).toBeCloseTo(one.wallSeconds, 9);
+    expect(delta2x).toBeCloseTo(two.wallSeconds * 2, 9);
   });
 
   test("0.05x and 0.10x speeds support Play/Pause/Seek/Restart like any other speed", async ({ page }) => {

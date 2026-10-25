@@ -119,7 +119,13 @@ pause/resume/seek and analyser coverage remain in the regression suite.
   **1,157 passed, 4 failed, 0 skipped** out of 1,161 (four workers, zero
   retries, 30.6 min); the new corrections all passed and path-only diagnostics
   identified the four later failures below.
-- Release remains **NO-GO** while the complete browser suite has a failure.
+- The owner-approved source-removal guard and three test corrections passed
+  **25/25** together across five repeats/four workers. Final full backend:
+  **10,406 passed, 167 skipped, 20 warnings** with owner PDFs. Final complete
+  browser: **1,162 passed, 0 failed, 0 skipped**, four workers, zero retries,
+  28.6 min. No HTTP 404 or connection reset appeared in path-only diagnostics.
+- Release remains **NO-GO** because three timeout symptoms from an earlier
+  interrupted run have not been explained.
 
 Invalid setup runs are excluded: one confirmation launched from the repository root
 without its Playwright config; one first cursor test used an incorrectly encoded
@@ -127,8 +133,7 @@ dash literal before correction. An expanded-target run had **27 passed, 3 failed
 because the new cursor-reset fixture omitted its required start clock; upload was
 correctly rejected, and the fixture was corrected without changing assertions.
 
-Artifacts are local TEMP files prefixed `powerwave-slice-d-`. Completed results and
-final Git state will be recorded before the final documentation commit. Session-only
+Artifacts are local TEMP files prefixed `powerwave-slice-d-`. Session-only
 time interpretation, immutable raw timestamps/waveforms, GPTH/KTBR placement,
 manual offsets/global t0, calculation authorization and V1/V2/relay Apply authority
 retain their approved contracts.
@@ -343,10 +348,37 @@ is included without owner approval under Change governance. Release remains
 **NO-GO**. The path-only diagnostic artifacts stay local; they contain no
 headers, bodies, signing keys or session secrets.
 
+The owner approved the four focused corrections. A new deterministic browser
+test held a pre-delete `/synchronization/time-groups` response until source
+removal completed. On the unchanged frontend, the resumed staged read requested
+the deleted group's t0 and received HTTP 404. It passed **5/5** after a
+source-removal lifecycle generation guard: pending removal blocks new staged
+sync reads, invalidates already-started reads before each stage publishes or
+issues t0, and leaves the existing post-delete refresh to load the current
+state. A failed DELETE clears the pending marker. The backend's source-not-found
+semantics are unchanged.
+
+The first proposed Related Waveforms fixture using generic channel names did
+prevent context discovery, but selected Manual mode and hid the entire shared
+panel, so it did not satisfy the intended visible empty-state test (24/25
+combined cases passed). The corrected fixture keeps a valid Recording context
+and hides all six roles through the existing UI. That case passed **5/5** alone,
+then all five affected cases passed **25/25** together across five repeats/four
+workers, zero retries (1.6 min), with no browser 404 in path-only diagnostics.
+The Playback case retains its 1.3 ratio assertion and additionally checks
+exact 1x/2x rates using the existing deterministic clock helper. The relay
+case checks the initial real blocking card before installing its mock-ready
+response. Production Playback and relay-review logic are unchanged. Full
+backend rerun: **10,406 passed, 167 skipped, 20 warnings** with the owner-PDF
+setting. Complete browser rerun: **1,162 passed**, four workers, zero retries,
+28.6 min, exit 0. The path-only client/server diagnostics contain no HTTP
+404 or connection reset. The new held t0 test and all four corrected cases
+passed in the complete run.
+
 The interrupted attempt's three timeout symptoms were
-also absent from both completed full runs, but their exact causes were not
-established. Release remains **NO-GO**; no claim of complete browser regression
-closure is made.
+also absent from the completed full runs, including the green 1,162-case run,
+but their exact causes were not established. Release remains **NO-GO** pending
+their disposition; one green full run does not establish their root cause.
 
 The first issue is not evidence of Event Reconstruction mutating a completed
 Waveform plot; the before snapshot was explicitly incomplete. The held-request

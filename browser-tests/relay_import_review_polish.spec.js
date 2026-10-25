@@ -48,7 +48,9 @@ test("card is red while any setting blocks, amber with only non-blocking issues,
 });
 
 test("card is green only when the backend reports nothing blocking and nothing outstanding", async ({ page }) => {
-  // A clean authoritative answer is substituted for the real one; the card must follow it.
+  await reviewP441(page);
+  await expect(card(page)).toHaveAttribute("data-review", "blocking");
+  // Substitute the clean authoritative answer only for the next validation.
   await page.route("**/api/v1/relay-import/review/validate", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
@@ -60,8 +62,6 @@ test("card is green only when the backend reports nothing blocking and nothing o
     });
     await route.fulfill({ response, json: body });
   });
-  await reviewP441(page);
-  await expect(card(page)).toHaveAttribute("data-review", "blocking");
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(card(page)).toHaveAttribute("data-review", "clear");
   await page.unrouteAll({ behavior: "ignoreErrors" });

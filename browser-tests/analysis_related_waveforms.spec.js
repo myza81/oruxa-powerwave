@@ -114,12 +114,14 @@ test.describe("Related Waveforms -- shared panel structure", () => {
   });
 
   test("no active roles shows the compact empty state, never a blank plot", async ({ page }) => {
-    await uploadFixture(page);
-    // Upload-time discovery creates ALPHA1's roles for this fixture. Remove
-    // that context so this case actually exercises the no-active-roles state.
-    const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
-    await clearContexts(page, workspaceId);
-    await openAnalysisPhasor(page);
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page, contextId);
+    await waitForWaveformsRendered(page);
+    // Keep the Recording panel visible while removing every active role via
+    // the engineer's own visibility controls.
+    for (const role of ["Va", "Vb", "Vc", "Ia", "Ib", "Ic"]) {
+      await page.locator(`.ww-phasor-value-row--toggle[data-role="${role}"]`).click();
+    }
     await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toContainText("No related waveform signals available");
     await expect(page.locator("#wwAnalysisRelatedWaveformsBody")).toBeHidden();

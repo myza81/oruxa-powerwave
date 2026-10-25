@@ -65,10 +65,21 @@ reproduced in a focused comparison. Related Waveforms re-suggested the context
 its fixture removed; Playback's real-time ratio failed under load; relay
 review's mock-ready response won a race with its initial blocking assertion.
 The four affected cases passed **10/12** in three focused repeats (404 and
-Playback each failed once). No correction for these four is included. Full-suite
-closure remains unproven.
-Three timeout symptoms from the earlier interrupted run remain unexplained.
-Release remains **NO-GO**. See
+Playback each failed once). The owner approved four focused corrections. A
+held time-group response reproduced the t0 404 on baseline and passed **5/5**
+after a shared synchronization read generation guard during source removal.
+The Related Waveforms empty-state case now keeps a valid Recording context and
+hides its six roles via the UI (a generic source instead selected Manual and
+hid the panel). Playback uses the existing deterministic controller clock;
+relay review installs its ready-response mock only after verifying initial
+blocking. The five affected cases passed **25/25** together, four workers and
+zero retries, with no browser 404. The complete backend suite passed
+**10,406**, with **167 skips** and 20 warnings using the owner-PDF setting.
+The complete browser suite passed **1,162/1,162**, four workers and zero
+retries (28.6 min), with no 404 or connection reset in path-only diagnostics.
+Three timeout symptoms from an earlier interrupted run remain unexplained;
+despite the green complete suite, release remains **NO-GO** pending their
+disposition. See
 [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 The BEN documentation stash is retained. No push, deployment or VPS change.
 
