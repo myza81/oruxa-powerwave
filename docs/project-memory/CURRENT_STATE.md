@@ -28,12 +28,15 @@ out of 1,160 (four workers, zero retries, 31.3 min). A preceding complete run
 had 1,159 passed/1 failed; a separate attempt stopped at 655/1,160 and is not
 a completed-suite result.
 
-[OPEN / NO-GO] The latest full run failed a Distance Protection golden-result
-test whose `10.0 Ω` wait also accepts `110.0 Ω`, and an Event Reconstruction
-per-unit test that zooms before its 7 ms correction is acknowledged. Focused
-test-only patches are prepared and awaiting owner approval; neither is applied.
-Three timeout symptoms from the interrupted run remain unexplained. Release
-validation is incomplete. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
+[OPEN / NO-GO] The owner-approved Distance Protection and Event Reconstruction
+per-unit test corrections passed **10/10** at four workers and both passed in
+the next complete browser run. That run finished **1,158 passed, 2 failed**:
+Relay Apply compared SVG points across different automatic R-X viewport scales,
+and the Asia/Kuala_Lumpur time-reference case read a Waveform plot before its
+post-interpretation samples were available. The latter two cases passed
+**12/12** in a focused four-worker rerun; full-suite closure remains unproven.
+Three timeout symptoms from an earlier interrupted run remain unexplained.
+Release validation is incomplete. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 No push, deployment or VPS change. The unrelated BEN documentation stash remains.
 
 ## Release hardening Slice C (2026-10-24)

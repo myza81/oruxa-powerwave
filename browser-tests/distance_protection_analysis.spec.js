@@ -217,11 +217,9 @@ test.describe("Distance Protection v1 -- empty workspace Manual mode (golden flo
     await expect(async () => {
       const text = await page.locator("#wwDistanceValuesList").innerText();
       expect(text).toMatch(/Loop[\s\S]*?Zab/);
-      expect(text).toMatch(/10\.0+\s*Ω/);
+      expect(text).toMatch(/\|Z\|\s*10\.0+\s*Ω/);
+      expect(text).toMatch(/Angle\s*\+20\.00°/);
     }).toPass({ timeout: 5000 });
-
-    const text = await page.locator("#wwDistanceValuesList").innerText();
-    expect(text).toMatch(/\+20\.00°/);
 
     // No historical trail in Manual mode -- one point only.
     await expect(page.locator("#wwDistanceSvg path.ww-dist-locus-path")).toHaveCount(0);

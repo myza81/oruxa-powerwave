@@ -299,6 +299,8 @@ test.describe("Event Reconstruction Per-Unit Display -- display only", () => {
     await selectAll(page, [["STN_A", "VA"], ["STN_A", "P"], ["STN_B", "VA"]]);
     await memberRow(page, "STN_B").locator("input[data-er-correction-input]").fill("7");
     await memberRow(page, "STN_B").locator('button[data-er-action="set-correction"]').click();
+    // The old viewport can remain visible while the correction is in flight.
+    await expect.poll(async () => (await plotState(page)).panels.find(p => p.label.startsWith("STN_B")).totalOffsetS).toBeCloseTo(1.007, 12);
     await page.locator("#wwErCursorModeBtn").click();
     await zoomTo(page, 1.2, 2.6);
     await memberRow(page, "STN_B").locator("[data-er-activate-record]").click();

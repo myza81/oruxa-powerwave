@@ -102,6 +102,12 @@ pause/resume/seek and analyser coverage remain in the regression suite.
   **1,158 passed, 2 failed, 0 skipped** out of 1,160 cases, four workers,
   zero retries (31.3 min). The exact two test-readiness failures are recorded
   below; neither involves a changed product calculation.
+- The owner-approved Distance and per-unit readiness corrections passed
+  **10/10** across five repeats/four workers. The next complete run finished
+  **1,158 passed, 2 failed, 0 skipped** out of 1,160 cases, four workers,
+  zero retries (27.7 min). Both corrected cases passed; Relay Apply viewport
+  parity and GPTH/KTBR plot readiness failed as documented below. Those two
+  cases passed **12/12** in a subsequent focused four-worker rerun.
 - Release remains **NO-GO** while the complete browser suite has a failure.
 
 Invalid setup runs are excluded: one confirmation launched from the repository root
@@ -187,27 +193,48 @@ out of 1,160 cases, four workers, zero retries (31.3 min). All three named
 Slice D cases and the approved adjacent readiness/fixture cases passed.
 
 The two final-run failures are separate test-readiness defects outside the
-named Slice D scope; test-only patches were prepared for owner approval and
-have not been applied:
+named Slice D scope. The owner approved both test-only patches; they passed
+**10/10** together across five repeats/four workers (47.4 s):
 
 1. `distance_protection_analysis.spec.js:212`: the manual phasor input fields
    showed the intended golden values, but the result still displayed an older
    `110.0 Ω`, `+30.00°`. The test's wait regex for `10.0 Ω` also matches the
    tail of `110.0 Ω`, allowing it to advance before the golden result arrives.
-   The proposed patch waits for the `|Z|` row to show `10.0 Ω` and the Angle
+   The applied patch waits for the `|Z|` row to show `10.0 Ω` and the Angle
    row to show `+20.00°` in the same retry. V1 calculation code is untouched.
 2. `event-reconstruction-per-unit.spec.js:296`: `zoomTo(1.2, 2.6)` did not
    retain the requested viewport after clicking a 7 ms correction on STN_B.
    That click starts an asynchronous mutation. The earlier held-request probe
    proved this architecture can expose the old viewport while a correction is
-   still pending; the proposed patch waits for B's authoritative 1.007 s
+   still pending; the applied patch waits for B's authoritative 1.007 s
    offset before zooming. This is a test setup readiness change only; the
    ENG/PU timing invariants and product timebase remain unchanged.
 
-The interrupted attempt's three timeout symptoms were absent from the final
-full run, but their exact causes were not established. The release stays
-**NO-GO** because the final full suite failed; no claim of complete browser
-regression closure is made.
+The next complete browser run finished **1,158 passed, 2 failed, 0 skipped**
+out of 1,160 cases (four workers, zero retries, 27.7 min). Both approved
+Distance and per-unit cases passed. The two different failures were:
+
+1. `relay_import_apply.spec.js:114`: equal applied and manually entered zone
+   values produced SVG `polygon.points` differing by about 20 times. The test
+   reads pixel positions in the automatic R-X viewport, whose scale includes
+   the current analysis result as well as zone reach. It did not establish the
+   same viewport before comparing pixels. The captured manual page had the
+   expected secondary basis and zone settings. No production geometry defect
+   has been established.
+2. `time-reference-interpretation.spec.js:19` under Asia/Kuala_Lumpur:
+   canonical and interpreted API timestamps and the 2.067 ms placement passed;
+   the later Waveform first-sample difference was `NaN`. The test read plot
+   arrays while on Recordings after interpretation without waiting for the
+   rebuilt Waveform plot. The captured page showed correct recorder-clock
+   presentation and user-assigned UTC+08:00 interpretation. No wrong
+   alignment value was observed.
+
+Both cases passed in a focused **12/12** four-worker, zero-retry rerun (three
+repeats per case/timezone variant, 1.0 min), so the failures remain sensitive
+to full-suite timing. The interrupted attempt's three timeout symptoms were
+also absent from both completed full runs, but their exact causes were not
+established. Release remains **NO-GO**; no claim of complete browser regression
+closure is made.
 
 The first issue is not evidence of Event Reconstruction mutating a completed
 Waveform plot; the before snapshot was explicitly incomplete. The held-request

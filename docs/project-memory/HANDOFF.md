@@ -35,9 +35,14 @@ The owner-approved Related Waveforms fixture correction and adjacent cases passe
 **1,158 passed, 2 failed, 0 skipped** out of 1,160 (four workers, zero retries):
 a Distance golden-result wait accepts `110.0 Ω` when seeking `10.0 Ω`, and an
 Event Reconstruction per-unit test zooms before its correction is acknowledged.
-Two focused test-only patches are prepared and await owner approval. Three
-timeout symptoms from the interrupted run remain unexplained. Release remains
-**NO-GO**. See
+The owner approved both focused test-only patches; they passed **10/10** across
+five repeats/four workers and both passed in the next complete browser run.
+That run finished **1,158 passed, 2 failed**: Relay Apply compared SVG points
+at different automatic R-X viewport scales, and the Asia/Kuala_Lumpur
+time-reference case read Waveform samples before its post-interpretation plot
+was ready. Both passed in a focused **12/12** four-worker rerun, so full-suite
+closure remains unproven. Three timeout symptoms from the earlier interrupted
+run remain unexplained. Release remains **NO-GO**. See
 [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
 The BEN documentation stash is retained. No push, deployment or VPS change.
 
