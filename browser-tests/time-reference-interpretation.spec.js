@@ -13,6 +13,12 @@ async function timingState(page) {
   firstSamples:ww.panels.flatMap(p=>p.channels.map((c,i)=>({id:c.sourceId,x:p.chartEl.data?.[i]?.x?.[0]}))),
  }));
 }
+async function timeGroupHeader(page, sourceId) {
+ return page.evaluate(id => {
+  const groupId = ww.timeGroupBySourceId.get(id);
+  return document.querySelector('.ww-time-group-canvas[data-time-group-id="' + groupId + '"] .ww-tg-header-meta')?.textContent || null;
+ }, sourceId);
+}
 for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
  test.describe(timezoneId,()=>{
   test.use({timezoneId});
@@ -39,6 +45,7 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    }
    await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
    await expect.poll(async()=> (await timingState(page)).firstSamples.filter(s=>Number.isFinite(s.x)).length).toBe(2);
+   await expect.poll(() => timeGroupHeader(page, gpth)).toContain("Elapsed / unaligned");
    await page.evaluate(async ktbr=>{
     await fetch(apiBaseUrl()+"/api/v1/workspaces/"+currentWorkspaceId()+"/synchronization/t0",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_id:ktbr,t0_workspace_time:.4})});
     await wwFetchSynchronizationStateForWorkspace();
@@ -49,10 +56,21 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    const select=page.locator(`.recording-time-reference[data-source-id="${gpth}"]`);
    await expect(select).toHaveValue("raw");
    expect(await select.locator("option").count()).toBe(106);
+   await select.selectOption("0");
+   await expect(row().locator(".recording-start-time-cell")).toContainText("2026-10-16 18:03:14.035400 (UTC; user assigned)");
+   await expect(page.locator(`#channelGroups details.source-recording[data-source-id="${gpth}"] .source-recording-time-identity`)).toContainText("2026-10-16 18:03:14.035400 (UTC; user assigned)");
+   await expect.poll(() => timeGroupHeader(page, gpth)).toContain("16 Oct 2026 · 18:03:14");
+   await expect.poll(() => timeGroupHeader(page, gpth)).toContain(" UTC · 1 source");
+   expect((await getApi(page,`/sources/${gpth}`)).trigger_time_utc).toBe("2026-10-16T18:03:14.535400Z");
+   expect((await getApi(page,"/synchronization/t0?source_id="+ktbr)).t0_workspace_time).toBeCloseTo(.4,10);
    await select.selectOption("480");
    await expect(select).toBeEnabled();
+   await expect(row().locator(".recording-start-time-cell")).toContainText("2026-10-16 18:03:14.035400 (UTC+08:00; user assigned)");
+   await expect(page.locator(`#channelGroups details.source-recording[data-source-id="${gpth}"] .source-recording-time-identity`)).toContainText("2026-10-16 18:03:14.035400 (UTC+08:00; user assigned)");
    await expect(page.locator(`.recording-details-row[data-details-for="${gpth}"]`)).toContainText("2026-10-16T10:03:14.535400Z");
    await expect.poll(async()=> (await timingState(page)).groups.length).toBe(1);
+   await expect.poll(() => timeGroupHeader(page, gpth)).toContain("16 Oct 2026 · 10:03:14");
+   await expect.poll(() => timeGroupHeader(page, gpth)).toContain(" UTC · 2 sources");
    const aligned=await getApi(page,"/synchronization/sources");
    expect(aligned.find(s=>s.source_id===ktbr).timestamp_placement_offset_s).toBeCloseTo(.002067,10);
    const t0=await getApi(page,"/synchronization/t0?source_id="+ktbr);
@@ -80,6 +98,7 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    await page.locator("#mainNavRecordingsBtn").click();
    await select.selectOption("raw");await expect(select).toBeEnabled();
    await expect.poll(async()=> (await timingState(page)).groups.length).toBe(2);
+   await expect.poll(() => timeGroupHeader(page, gpth)).toContain("Elapsed / unaligned");
    expect((await getApi(page,`/sources/${gpth}`)).trigger_time_utc).toBeNull();
    expect((await getApi(page,"/synchronization/t0?source_id="+ktbr)).t0_workspace_time).toBeCloseTo(.4,10);
    expect((await getApi(page,"/event-reconstruction/definition")).members.find(m=>m.record_id===gpth).recorded_placement_s).toBeNull();

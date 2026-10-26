@@ -43,6 +43,18 @@ label the selected offset as user assigned; Details separately shows derived UTC
 There is no recorder-specific assumption, fixed GPTH correction or waveform decoder
 change.
 
+DEV GPTH UAT found that the Waveform Time Group header previously showed the
+canonical UTC group start through the configured Asia/Kuala_Lumpur display-zone
+anchor without naming that zone. With GPTH interpreted as UTC, the sidebar showed
+`16 Oct 2026 18:03:14.035400 (UTC; user assigned)` while the header showed
+`17 Oct 2026 02:03:14`. The header now reads the group's origin source's effective
+`start_time_utc` from the existing timebase cache and labels its compact range
+`UTC`. Unknown BEN5K under Preserve Raw Time remains elapsed-only. Other
+display-zone surfaces and the shared microsecond placement/timebase are unchanged;
+the header's millisecond conversion is solely for second-precision presentation.
+The browser regression covers UTC, Asia/Kuala_Lumpur and America/New_York,
+UTC+00:00/UTC+08:00/raw/reset, GPTH/KTBR's 2.067 ms placement and t0.
+
 The existing `SourceMetadata` gains optional `time_reference_interpretation`
 (offset minutes, UTC assignment time, `user_assigned` provenance) and a timing
 revision. Original `start_time`, `trigger_time`, `time_basis` and `timing_reference`

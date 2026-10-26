@@ -9,6 +9,24 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## DEV UAT: Time Group UTC header (2026-10-26)
+
+[FACT] DEV is running `ba8ff4829a575be048d3870720d49117af7c5df3`.
+GPTH UAT exposed a display-only mismatch: the source/sidebar showed raw clock
+digits with the user-assigned offset, while the Time Group header silently
+converted the effective UTC origin to the configured Asia/Kuala_Lumpur display
+zone. A focused local correction makes the compact header explicitly UTC from
+the cached canonical source timebase. Grouping, waveform placement, t0, samples
+and the rest of the display-zone UI remain unchanged.
+
+[VALIDATION] New header assertions failed **3/3** on the deployed baseline,
+each receiving `17 Oct 2026 02:03:14` after UTC selection. After correction,
+the relevant four-worker browser selection passed **21/21**, and the final
+sidebar/header selection passed **5/5** after one local test-server startup
+timeout before test collection. Targeted backend/frontend-contract tests passed
+**117**, with three warnings. The correction is local only; it has not been
+pushed or deployed.
+
 ## Release hardening Slice D (2026-10-25)
 
 [FACT] Compliance now orders rapid alignment writes and rejects stale trace or
@@ -34,11 +52,11 @@ workers, zero retries. The complete backend suite passed **10,406**, with
 suite passed **1,162/1,162**, four workers, zero retries (28.6 min); path-only
 diagnostics recorded no HTTP 404 or connection reset.
 
-[OPEN / NO-GO] Three timeout symptoms from an earlier interrupted browser run
-remain unexplained. The green complete run verifies this candidate but does not
-establish those symptoms' cause. Release remains **NO-GO** pending their
-disposition. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
-No push, deployment or VPS change. The unrelated BEN documentation stash remains.
+[HISTORY] Three timeout symptoms from an earlier interrupted browser run remain
+unexplained. The owner treated them as known observations and authorized the
+successful DEV deployment of `ba8ff48` after the green complete run and VPS
+configuration verification. Evidence: [SLICE_D_FINAL_BROWSER_REGRESSIONS.md](SLICE_D_FINAL_BROWSER_REGRESSIONS.md).
+The unrelated BEN documentation stash remains.
 
 ## Release hardening Slice C (2026-10-24)
 

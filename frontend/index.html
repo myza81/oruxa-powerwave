@@ -31148,17 +31148,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         var WW_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        // DEC-122: the `originMs` anchor these read is now the DISPLAY-
-        // timezone wall clock of the recording's canonical start
-        // (wwRecordingDisplayStartTime()), so the "naive numbers" below are
-        // display-timezone digits for every source, not raw stored digits.
-        // Plain "DD Mon YYYY" from a UTC epoch ms -- same "UTC getters
-        // only, never a locale-dependent Date method, never JS's own
-        // local-timezone parsing" discipline every other Absolute-mode
-        // helper in this file already follows (see wwParseNaiveTimestamp()'s
-        // own comment for why: COMTRADE timestamps are timezone-naive,
-        // and the numbers shown must exactly reproduce the backend's own
-        // naive numbers regardless of the browser's own timezone).
+        // Header-only formatting: use the group's origin source's effective
+        // canonical UTC start from the shared timebase cache. The existing
+        // display-timezone anchor still owns rulers/cursors/plots; this
+        // millisecond Date is only for the compact second-precision label.
+        function wwTimeGroupHeaderUtcOriginMs(groupId) {
+            const group = ww.timeGroups.get(groupId);
+            const timebase = group && (ww.sourceChannelsData.get(group.originSourceId) || {}).timebase;
+            if (!timebase || (timebase.time_basis === "unknown" && !timebase.time_reference_interpretation)) return null;
+            const canonical = timebase.start_time_utc;
+            if (typeof canonical !== "string" || !canonical.endsWith("Z")) return null;
+            const ms = Date.parse(canonical);
+            return Number.isFinite(ms) ? ms : null;
+        }
+
+        // These UTC getters are deliberately independent of the browser and
+        // configured display timezones; the header names UTC explicitly.
         function wwFormatHeaderDate(originMs) {
             const d = new Date(originMs);
             return wwPadNumber(d.getUTCDate()) + " " + WW_MONTH_ABBR[d.getUTCMonth()] + " " + d.getUTCFullYear();
@@ -31182,12 +31187,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const sourceCount = group ? group.sourceIds.length : 0;
             const sourceWord = sourceCount === 1 ? "source" : "sources";
             const bounds = wwDeriveTimeGroupBounds(groupId);
-            const originMs = wwTimeGroupRecordingStartMs(groupId);
+            const originMs = wwTimeGroupHeaderUtcOriginMs(groupId);
             let meta;
             if (originMs !== null && bounds) {
                 const absStartMs = originMs + bounds.start * 1000;
                 const absEndMs = originMs + bounds.end * 1000;
-                meta = wwFormatHeaderDate(absStartMs) + " · " + wwFormatHeaderTime(absStartMs) + "–" + wwFormatHeaderTime(absEndMs) + " · " + sourceCount + " " + sourceWord;
+                meta = wwFormatHeaderDate(absStartMs) + " · " + wwFormatHeaderTime(absStartMs) + "–" + wwFormatHeaderTime(absEndMs) + " UTC · " + sourceCount + " " + sourceWord;
             } else if (bounds && group && group.timeReferenceType === "time_of_day") {
                 // Time of Day (additive): a real, clock-time-synchronized
                 // group -- never mislabeled as "Elapsed / unaligned" (that

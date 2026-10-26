@@ -95,7 +95,7 @@ test("a BEN record and its BEN32 COMTRADE export show the same local time", asyn
   });
   expect(placements).toEqual([0, 0]);
 
-  // ---- One Time Group, labelled in the display timezone ----
+  // ---- One Time Group, explicitly labelled in UTC; the ruler keeps the configured display timezone ----
   await rows.nth(1).click(); // open the BEN recording
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await showChannel(page, benId, "LINE1 VR");
@@ -104,9 +104,10 @@ test("a BEN record and its BEN32 COMTRADE export show the same local time", asyn
   const canvases = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas");
   await expect(canvases).toHaveCount(1);
   const meta = canvases.first().locator(".ww-tg-header-meta");
-  await expect(meta).toContainText("05 Mar 2024 · 14:07:08");
+  await expect(meta).toContainText("05 Mar 2024 · 06:07:08");
+  await expect(meta).toContainText(" UTC · 2 sources");
   await expect(meta).toContainText("2 sources");
-  await expect(meta).not.toContainText("06:07:08");
+  await expect(meta).not.toContainText("14:07:08");
 
   // The ruler's Absolute labels are display-timezone clock times.
   const ruler = canvases.first().locator(".ww-tg-ruler");
