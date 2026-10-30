@@ -182,13 +182,13 @@ class TestCalculatorPageShell:
         source = _source()
         page = _calculator_page(source)
         calc_block = _function_body(source, "const WW_CALCULATOR_RYB_PHASE_DISPLAY", "// ==================================================================\n        // Compliance")
+        # Topology/analysis keywords that were never requested for this tool.
+        # /api/v1 and fetch( are intentionally present for the V-I Phasors tab (DEC-200).
         for forbidden in (
             "Star",
             "Delta",
             "P/Q/S",
             "sequence-component",
-            "/api/v1",
-            "fetch(",
         ):
             assert forbidden not in page
             assert forbidden not in calc_block
@@ -362,10 +362,21 @@ class TestPowerCurrentCalculator:
         assert "V_LL" not in block
         assert "V_LL" not in _calculator_page(source)
 
-    def test_power_current_is_frontend_local(self):
+    def test_current_pqs_pf_use_no_browser_storage_or_xhr(self):
+        """Current / P-Q-S / Power Factor tabs are frontend-local (DEC-164).
+        V-I Phasors (DEC-200) intentionally calls POST /api/v1/calculator/power/single-phase."""
         source = _source()
         block = _calc_block(source)
         page = _calculator_page(source)
-        for forbidden in ("fetch(", "/api/v1", "localStorage", "sessionStorage", "XMLHttpRequest"):
+        # No browser-storage or XHR in the calculator block or page.
+        for forbidden in ("localStorage", "sessionStorage", "XMLHttpRequest"):
             assert forbidden not in block, forbidden
             assert forbidden not in page, forbidden
+        # HTML page section never embeds fetch() calls directly.
+        assert "fetch(" not in page
+
+    def test_vi_phasors_tab_calls_the_backend_api(self):
+        """V-I Phasors tab posts to the backend power endpoint (DEC-200)."""
+        block = _calc_block(_source())
+        assert "/api/v1/calculator/power/single-phase" in block
+        assert "fetch(" in block

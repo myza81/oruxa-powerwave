@@ -1356,7 +1356,10 @@ class TestAnalysisShellVisualPolish:
             ".ww-phasor-discovering-indicator",
         )
         for selector in analysis_selectors:
-            start = css_body.index(selector + " {")
+            # Use "\n        " prefix so compound selectors ending with the
+            # same token (e.g. ".ww-calculator-pc-vi-units .ww-phasor-field {")
+            # are not confused with the standalone definition being tested.
+            start = css_body.index("\n        " + selector + " {")
             end = css_body.index("}", start)
             block = css_body[start:end]
             sizes = [float(m) for m in re.findall(r"font-size:\s*([\d.]+)rem", block)]
