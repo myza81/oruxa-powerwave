@@ -23,7 +23,7 @@ async function openPowerCurrent(page) {
 }
 
 async function openTab(page, tab) {
-  const ids = { current: "wwPcTabCurrentBtn", pqs: "wwPcTabPqsBtn", pf: "wwPcTabPfBtn" };
+  const ids = { current: "wwPcTabCurrentBtn", pqs: "wwPcTabPqsBtn", pf: "wwPcTabPfBtn", vi: "wwPcTabViBtn" };
   await page.locator(`#${ids[tab]}`).click();
   await expect(page.locator(`#${ids[tab]}`)).toHaveAttribute("aria-selected", "true");
 }
@@ -66,7 +66,7 @@ test.describe("Calculator -- Power & Current: navigation and shell", () => {
       "Power, current, and power-factor calculations for common electrical engineering use cases."
     );
     const tabs = await page.locator("#wwPcTabList [role=tab]").allTextContents();
-    expect(tabs).toEqual(["Current", "P-Q-S", "Power Factor"]);
+    expect(tabs).toEqual(["Current", "P-Q-S", "Power Factor", "V-I Phasors"]);
   });
 
   test("the owner power-triangle icon renders through the registry mask", async ({ page }) => {
@@ -424,14 +424,21 @@ test.describe("Calculator -- Power & Current: tabs, state, accessibility, themes
     await expect(page.locator("#wwPcPfPanel")).toBeVisible();
     await expect(page.locator("#wwPcTabPfBtn")).toBeFocused();
     await page.keyboard.press("ArrowRight");
+    await expect(page.locator("#wwPcViPanel")).toBeVisible();
+    await page.keyboard.press("ArrowRight");
     await expect(page.locator("#wwPcCurrentPanel")).toBeVisible();
     await page.keyboard.press("End");
-    await expect(page.locator("#wwPcPfPanel")).toBeVisible();
+    await expect(page.locator("#wwPcViPanel")).toBeVisible();
     await page.keyboard.press("Home");
     await expect(page.locator("#wwPcCurrentPanel")).toBeVisible();
     await page.keyboard.press("ArrowLeft");
-    await expect(page.locator("#wwPcPfPanel")).toBeVisible();
-    for (const [btn, panel] of [["wwPcTabCurrentBtn", "wwPcCurrentPanel"], ["wwPcTabPqsBtn", "wwPcPqsPanel"], ["wwPcTabPfBtn", "wwPcPfPanel"]]) {
+    await expect(page.locator("#wwPcViPanel")).toBeVisible();
+    for (const [btn, panel] of [
+      ["wwPcTabCurrentBtn", "wwPcCurrentPanel"],
+      ["wwPcTabPqsBtn", "wwPcPqsPanel"],
+      ["wwPcTabPfBtn", "wwPcPfPanel"],
+      ["wwPcTabViBtn", "wwPcViPanel"],
+    ]) {
       await expect(page.locator(`#${btn}`)).toHaveAttribute("aria-controls", panel);
       await expect(page.locator(`#${panel}`)).toHaveAttribute("aria-labelledby", btn);
     }
@@ -521,7 +528,7 @@ test.describe("Calculator -- Power & Current: tabs, state, accessibility, themes
     await openPowerCurrent(page);
     for (const width of [1366, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const tab of ["current", "pqs", "pf"]) {
+      for (const tab of ["current", "pqs", "pf", "vi"]) {
         await openTab(page, tab);
         const overflow = await page.locator("#pageCalculator").evaluate((el) => el.scrollWidth - el.clientWidth);
         expect(overflow, `${width}px ${tab}`).toBeLessThanOrEqual(1);

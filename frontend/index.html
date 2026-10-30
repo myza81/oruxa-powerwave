@@ -6578,6 +6578,25 @@
             align-items: start;
             min-width: 0;
         }
+        /* V-I Phasors tab: 4-column input grid (label | magnitude | unit | angle). */
+        .ww-calculator-pc-vi-grid {
+            display: grid;
+            grid-template-columns: minmax(62px, 0.5fr) minmax(110px, 1fr) minmax(72px, 100px) minmax(110px, 1fr);
+            gap: 8px;
+            align-items: end;
+        }
+        /* P/Q/S output unit selects row inside the V-I result section. */
+        .ww-calculator-pc-vi-units {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: end;
+            margin-bottom: 10px;
+        }
+        .ww-calculator-pc-vi-units .ww-phasor-field {
+            flex: 0 1 150px;
+            min-width: 90px;
+        }
         .ww-calculator-pc-triplet {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(76px, 112px);
@@ -6939,7 +6958,8 @@
             }
             .ww-calculator-balanced-inputs,
             .ww-calculator-grid,
-            .ww-calculator-phase-grid {
+            .ww-calculator-phase-grid,
+            .ww-calculator-pc-vi-grid {
                 grid-template-columns: 1fr;
             }
             .ww-calculator-phase-row {
@@ -13096,6 +13116,7 @@
                                 <button type="button" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" id="wwPcTabCurrentBtn" data-pc-tab="current" role="tab" aria-selected="true" aria-controls="wwPcCurrentPanel">Current</button>
                                 <button type="button" class="ww-oc-axis-toggle-btn" id="wwPcTabPqsBtn" data-pc-tab="pqs" role="tab" aria-selected="false" aria-controls="wwPcPqsPanel">P-Q-S</button>
                                 <button type="button" class="ww-oc-axis-toggle-btn" id="wwPcTabPfBtn" data-pc-tab="pf" role="tab" aria-selected="false" aria-controls="wwPcPfPanel">Power Factor</button>
+                                <button type="button" class="ww-oc-axis-toggle-btn" id="wwPcTabViBtn" data-pc-tab="vi" role="tab" aria-selected="false" aria-controls="wwPcViPanel">V-I Phasors</button>
                             </span>
                         </div>
 
@@ -13282,6 +13303,97 @@
                             <section class="ww-calculator-block" aria-label="Power factor notes">
                                 <p class="ww-calculator-section-title">Notes</p>
                                 <p class="ww-calculator-assumption">Lagging / inductive: Q is positive. Leading / capacitive: Q is negative. PF must be greater than 0 and no more than 1; at PF = 1, Q = 0.</p>
+                            </section>
+                        </div>
+
+                        <div class="ww-calculator-layout" id="wwPcViPanel" role="tabpanel" aria-labelledby="wwPcTabViBtn" hidden>
+                            <section class="ww-calculator-block" aria-label="V-I phasor inputs">
+                                <p class="ww-calculator-section-title">Input Phasors</p>
+                                <div class="ww-calculator-pc-vi-grid" aria-label="Voltage and current phasor inputs">
+                                    <span class="ww-calculator-phase-head"></span>
+                                    <span class="ww-calculator-phase-head">Magnitude (RMS)</span>
+                                    <span class="ww-calculator-phase-head">Unit</span>
+                                    <span class="ww-calculator-phase-head">Angle (°)</span>
+                                    <div class="ww-calculator-phase-row">
+                                        <span class="ww-calculator-phase-label">V</span>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Voltage magnitude</span>
+                                            <input type="number" id="wwViVMag" min="0" step="any" value="11" inputmode="decimal" data-vi-phasor-input="true">
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Voltage unit</span>
+                                            <select id="wwViVUnit" data-vi-phasor-input="true">
+                                                <option value="V">V</option>
+                                                <option value="kV" selected>kV</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Voltage angle (degrees)</span>
+                                            <input type="number" id="wwViVAngle" step="any" value="0" inputmode="decimal" data-vi-phasor-input="true">
+                                        </label>
+                                    </div>
+                                    <div class="ww-calculator-phase-row">
+                                        <span class="ww-calculator-phase-label">I</span>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Current magnitude</span>
+                                            <input type="number" id="wwViIMag" min="0" step="any" value="100" inputmode="decimal" data-vi-phasor-input="true">
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Current unit</span>
+                                            <select id="wwViIUnit" data-vi-phasor-input="true">
+                                                <option value="mA">mA</option>
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Current angle (degrees)</span>
+                                            <input type="number" id="wwViIAngle" step="any" value="-30" inputmode="decimal" data-vi-phasor-input="true">
+                                        </label>
+                                    </div>
+                                </div>
+                            </section>
+                            <section class="ww-calculator-block ww-calculator-result" aria-live="polite" aria-label="V-I phasor result">
+                                <p class="ww-calculator-result-label">Result</p>
+                                <div class="ww-calculator-pc-vi-units" aria-label="Output units">
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">P unit</span>
+                                        <select id="wwViPUnit">
+                                            <option value="W">W</option>
+                                            <option value="kW">kW</option>
+                                            <option value="MW" selected>MW</option>
+                                        </select>
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">Q unit</span>
+                                        <select id="wwViQUnit">
+                                            <option value="var">var</option>
+                                            <option value="kvar">kvar</option>
+                                            <option value="MVAr" selected>MVAr</option>
+                                        </select>
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">S unit</span>
+                                        <select id="wwViSUnit">
+                                            <option value="VA">VA</option>
+                                            <option value="kVA">kVA</option>
+                                            <option value="MVA" selected>MVA</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <table class="ww-calculator-results-table">
+                                    <thead><tr><th>Quantity</th><th>Value</th><th>Unit</th></tr></thead>
+                                    <tbody id="wwViResultBody"></tbody>
+                                </table>
+                                <p class="ww-calculator-result-note" id="wwViNote"></p>
+                            </section>
+                            <section class="ww-calculator-block" aria-label="V-I phasor formula">
+                                <p class="ww-calculator-section-title">Formula</p>
+                                <div class="ww-calculator-formula" id="wwViFormula"></div>
+                            </section>
+                            <section class="ww-calculator-block" aria-label="V-I phasor notes">
+                                <p class="ww-calculator-section-title">Notes</p>
+                                <p class="ww-calculator-assumption">Passive sign convention: S = V &times; I* = P + jQ. Positive P: element absorbs active power. Positive Q: inductive / lagging. Negative Q: capacitive / leading. PF = P / |S|, signed &mdash; negative PF indicates reverse active power flow (element is supplying power).</p>
                             </section>
                         </div>
                     </section>
@@ -51942,19 +52054,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // read and converted back only for display.
         const WW_PC_UNIT_FACTORS = Object.freeze({
             V: 1, kV: 1e3,
+            mA: 1e-3, A: 1, kA: 1e3,
             W: 1, kW: 1e3, MW: 1e6,
             var: 1, kvar: 1e3, MVAr: 1e6,
             VA: 1, kVA: 1e3, MVA: 1e6,
         });
         // A leg may exceed S by float noise only; beyond this it is invalid.
         const WW_PC_REL_TOLERANCE = 1e-9;
-        const WW_PC_TABS = ["current", "pqs", "pf"];
+        const WW_PC_TABS = ["current", "pqs", "pf", "vi"];
         const WW_PC_TAB_IDS = {
             current: ["wwPcTabCurrentBtn", "wwPcCurrentPanel"],
             pqs: ["wwPcTabPqsBtn", "wwPcPqsPanel"],
             pf: ["wwPcTabPfBtn", "wwPcPfPanel"],
+            vi: ["wwPcTabViBtn", "wwPcViPanel"],
         };
         const wwPcState = { tab: "current", system: "three", pfType: "lagging" };
+        const wwPcViState = { loading: false, result: null, error: null };
+        let wwPcViDebounceTimer = null;
 
         // blank -> "blank"; unparsable / non-finite -> "invalid".
         function wwPcRead(id) {
@@ -52264,11 +52380,162 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwPfFormula").innerHTML = wwPcFormulaHtml(lines);
         }
 
+        function wwPcViTrigger() {
+            wwPcRenderVi();
+            clearTimeout(wwPcViDebounceTimer);
+            wwPcViDebounceTimer = setTimeout(wwPcFetchVi, 200);
+        }
+
+        async function wwPcFetchVi() {
+            const vMagRead = wwPcRead("wwViVMag");
+            const iMagRead = wwPcRead("wwViIMag");
+            const vAngRead = wwPcRead("wwViVAngle");
+            const iAngRead = wwPcRead("wwViIAngle");
+
+            if ([vMagRead, iMagRead, vAngRead, iAngRead].some(r => r.state === "blank")) {
+                wwPcViState.loading = false;
+                wwPcViState.result = null;
+                wwPcViState.error = null;
+                wwPcRenderVi();
+                return;
+            }
+            if ([vMagRead, iMagRead, vAngRead, iAngRead].some(r => r.state === "invalid")) {
+                wwPcViState.loading = false;
+                wwPcViState.result = null;
+                wwPcViState.error = "invalid";
+                wwPcRenderVi();
+                return;
+            }
+
+            const vSI = vMagRead.value * WW_PC_UNIT_FACTORS[wwPcUnit("wwViVUnit")];
+            const iSI = iMagRead.value * WW_PC_UNIT_FACTORS[wwPcUnit("wwViIUnit")];
+
+            wwPcViState.loading = true;
+            wwPcViState.error = null;
+            wwPcRenderVi();
+
+            try {
+                const resp = await fetch(apiBaseUrl() + "/api/v1/calculator/power/single-phase", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        v_magnitude_rms: vSI,
+                        v_angle_deg: vAngRead.value,
+                        i_magnitude_rms: iSI,
+                        i_angle_deg: iAngRead.value,
+                    }),
+                });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    const msg = (data && data.detail) ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : ("Error " + resp.status);
+                    wwPcViState.loading = false;
+                    wwPcViState.result = null;
+                    wwPcViState.error = msg;
+                } else {
+                    wwPcViState.loading = false;
+                    wwPcViState.result = await resp.json();
+                    wwPcViState.error = null;
+                }
+            } catch (err) {
+                wwPcViState.loading = false;
+                wwPcViState.result = null;
+                wwPcViState.error = "Network error";
+            }
+            wwPcRenderVi();
+        }
+
+        function wwPcRenderVi() {
+            const tbody = document.getElementById("wwViResultBody");
+            const note = document.getElementById("wwViNote");
+            const formula = document.getElementById("wwViFormula");
+            if (!tbody) return;
+
+            if (wwPcViState.loading) {
+                tbody.innerHTML = '<tr><td colspan="3" class="ww-calculator-note">Calculating…</td></tr>';
+                note.textContent = "";
+                formula.innerHTML = "";
+                return;
+            }
+
+            if (!wwPcViState.result && !wwPcViState.error) {
+                tbody.innerHTML = '<tr><td colspan="3" class="ww-calculator-note">Enter phasors above to compute power.</td></tr>';
+                note.textContent = "";
+                formula.innerHTML = "";
+                return;
+            }
+
+            if (wwPcViState.error) {
+                const msg = wwPcViState.error === "invalid" ? "Check inputs — one or more values are not valid numbers." : wwPcViState.error;
+                tbody.innerHTML = '<tr><td colspan="3" class="ww-calculator-error">' + msg + '</td></tr>';
+                note.textContent = "";
+                formula.innerHTML = "";
+                return;
+            }
+
+            const r = wwPcViState.result;
+            const pUnit = wwPcUnit("wwViPUnit");
+            const qUnit = wwPcUnit("wwViQUnit");
+            const sUnit = wwPcUnit("wwViSUnit");
+            const pF = WW_PC_UNIT_FACTORS[pUnit];
+            const qF = WW_PC_UNIT_FACTORS[qUnit];
+            const sF = WW_PC_UNIT_FACTORS[sUnit];
+
+            function fmtNum(v, f) {
+                const d = v / f;
+                return Number.isFinite(d) ? d.toPrecision(5).replace(/\.?0+$/, "") : "—";
+            }
+
+            const pfText = r.power_factor !== null ? r.power_factor.toFixed(4) : "undefined";
+            const signText = r.power_factor_sign === "lagging" ? "lagging" :
+                             r.power_factor_sign === "leading" ? "leading" :
+                             r.power_factor_sign === "unity" ? "unity" : "undefined";
+            const pfFull = r.power_factor !== null ? (pfText + " (" + signText + ")") : "undefined";
+
+            const rows = [
+                ["P", fmtNum(r.p_watts, pF), pUnit],
+                ["Q", fmtNum(r.q_var, qF), qUnit],
+                ["S", fmtNum(r.s_va, sF), sUnit],
+                ["PF", pfFull, ""],
+                ["δ (θV − θI)", r.power_angle_deg.toFixed(3) + "°", ""],
+            ];
+
+            tbody.innerHTML = rows.map(([label, val, unit]) =>
+                '<tr><td class="ww-calculator-label">' + label + '</td>' +
+                '<td class="ww-calculator-value">' + val + '</td>' +
+                '<td class="ww-calculator-unit">' + unit + '</td></tr>'
+            ).join("");
+
+            note.textContent = "";
+
+            const vMagRead = wwPcRead("wwViVMag");
+            const iMagRead = wwPcRead("wwViIMag");
+            const vAngRead = wwPcRead("wwViVAngle");
+            const iAngRead = wwPcRead("wwViIAngle");
+            if (vMagRead.state === "value" && iMagRead.state === "value") {
+                const vUnit = wwPcUnit("wwViVUnit");
+                const iUnit = wwPcUnit("wwViIUnit");
+                const vAng = vAngRead.state === "value" ? vAngRead.value : 0;
+                const iAng = iAngRead.state === "value" ? iAngRead.value : 0;
+                const lines = [
+                    "S = V × conj(I)",
+                    "V = " + vMagRead.value + " " + vUnit + " ∠ " + vAng + "°",
+                    "I = " + iMagRead.value + " " + iUnit + " ∠ " + iAng + "°",
+                    "P = " + fmtNum(r.p_watts, pF) + " " + pUnit,
+                    "Q = " + fmtNum(r.q_var, qF) + " " + qUnit + " (" + signText + ")",
+                    "S = " + fmtNum(r.s_va, sF) + " " + sUnit,
+                ];
+                formula.innerHTML = wwPcFormulaHtml(lines);
+            } else {
+                formula.innerHTML = "";
+            }
+        }
+
         function wwPcRender() {
             if (!document.getElementById("wwCalcToolPowerCurrent")) return;
             wwPcRenderCurrent();
             wwPcRenderPqs();
             wwPcRenderPf();
+            wwPcRenderVi();
         }
 
         function wwPcSetTab(tab, focusTab) {
@@ -52357,7 +52624,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 el.addEventListener("input", wwCalcRender);
                 el.addEventListener("change", wwCalcRender);
             }
+            for (const el of page.querySelectorAll("[data-vi-phasor-input]")) {
+                el.addEventListener("input", wwPcViTrigger);
+                el.addEventListener("change", wwPcViTrigger);
+            }
             wwCalcRender();
+            wwPcViTrigger();
         }
 
         // ==================================================================

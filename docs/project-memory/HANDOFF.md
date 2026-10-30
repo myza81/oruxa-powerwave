@@ -4,7 +4,7 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-26** - DEV UAT Time Group UTC-header correction; see section below.
+Last updated: **2026-10-30** (Power Calculation domain + V-I Phasors Calculator tab, DEC-200, Slices 0 and 1 deployed to DEV for owner UAT; earlier **2026-10-26** - DEV UAT Time Group UTC-header correction; see section below.)
 
 ## DEV UAT: Time Group UTC header (2026-10-26)
 
@@ -507,6 +507,21 @@ No new CSS. Pickup, TMS, the curves, CT conversion, the operating time, the char
 1. live-values precision;
 2. the Manual status row is hidden, so an invalid Direct Current value shows no validation message;
 3. a stale-response race on an invalid Direct Current value.
+
+## Power Calculation domain + V-I Phasors Calculator tab -- Slices 0 and 1 (2026-10-30, `feature/calculator-vi-phasors`, DEC-200)
+
+**Slice 0 (domain) and Slice 1 (API + frontend tab) are implemented, tested and deployed to DEV for owner UAT.**
+
+The existing Power & Current calculator (`DEC-164`) now has a fourth tab, "V-I Phasors", backed by a new stateless API endpoint (`POST /api/v1/calculator/power/single-phase`) and a new pure-Python domain module (`app/domain/power_calculation.py`).
+
+- **Slice 0 — domain module:** Pure Python (stdlib only; zero NumPy / registry / I/O), providing `single_phase_power()` and `three_phase_power()`. Passive sign convention (DEC-PWR-003: S = V × conj(I)); geometric apparent power (DEC-PWR-002: S = |S_total| = sqrt(P² + Q²)); provenance fields on every result. Tests: 94 unit tests (`test_power_calculation_domain.py`), all pass.
+- **Slice 1 — API + frontend tab:** `POST /api/v1/calculator/power/single-phase` (Pydantic schema, FastAPI router, registered in `main.py`); new "V-I Phasors" tab (`wwPcTabViBtn`/`wwPcViPanel`) in the Power & Current tool, with unit selectors (V/kV, A/mA; W-MW, var-Gvar, VA-GVA), debounced API call (200 ms), graceful zero-V/zero-I display. Keyboard navigation extended to four tabs. Tests: 42 API tests (`test_calculator_power_api.py`), all pass; browser spec `calculator-vi-phasors.spec.js` added; `calculator-power-current.spec.js` updated for four-tab navigation and overflow.
+- **Deployed to DEV (`powerwave-dev`):** branch merged to `main` → CI passed → auto-deploy fired (DEC-036).
+- **PROD unchanged.** Relay Scalability Phase 3A work (`feature/remaining-relay-imports`, DEC-199) is unrelated and its status is unchanged.
+
+**Awaiting owner UAT of the V-I Phasors tab.** DEV URL: see `powerwave-dev` VPS (ports 8200/8201).
+
+Open: owner UAT of V-I Phasors tab; future Slices 2 (three-phase input form) and 3+ (Calculated Channels time-series path) deferred; DEC-PWR-004 (RMS-phasor input from pre-computed channels) deferred. Do **not** begin Slice 2 until owner UAT feedback is received.
 
 ## Relay Scalability Phase 3A -- TripCapability: relay-neutral zone trip/pickup classification (2026-10-22, `feature/remaining-relay-imports`, DEC-199 Amendment 9)
 

@@ -403,9 +403,11 @@ and lives in tab memory only. **Left Resistive Reach (−R) suggestion (DEC-185,
   `contexts.length > 0`.
 - **Playback (DEC-163).** Speeds 0.005x to 4x (nine values); Restart uses the
   registry icon, hydrated by `wwWirePlaybackControls()`.
-- **Calculator (DEC-164).** Line / Phase Voltage plus **Power & Current**
-  (Current, P-Q-S, Power Factor), frontend-local, with a generic
-  V<sub>LL</sub> subscript added to the shared formatter.
+- **Calculator (DEC-164, DEC-200).** Line / Phase Voltage plus **Power & Current**
+  (Current, P-Q-S, Power Factor, **V-I Phasors** — four tabs). Current/P-Q-S/Power Factor
+  are frontend-local. V-I Phasors calls `POST /api/v1/calculator/power/single-phase`
+  (DEC-200, Slice 1); backed by `app.domain.power_calculation` (DEC-200, Slice 0).
+  Generic V<sub>LL</sub> subscript in the shared formatter from DEC-164.
 - **Branding (DEC-165).** Favicon, Compliance Voltage and Calculator icons
   come from owner SVG assets through the registry.
 - **Test conventions worth knowing.** Static tests locate shared CSS rules

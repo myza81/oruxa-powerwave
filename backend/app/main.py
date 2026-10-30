@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
+from app.api.v1.calculator import router as calculator_v1_router
 from app.api.v1.calculated_channels import router as calculated_channels_v1_router
 from app.api.v1.compliance import router as compliance_v1_router
 from app.api.v1.engineering_contexts import router as engineering_contexts_v1_router
@@ -224,6 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
         return await call_next(request)
 
+    app.include_router(calculator_v1_router)
     app.include_router(sources_v1_router)
     app.include_router(workspaces_v1_router)
     app.include_router(calculated_channels_v1_router)

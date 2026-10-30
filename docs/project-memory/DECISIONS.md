@@ -28070,3 +28070,52 @@ Status: Phase 3A implemented on `feature/remaining-relay-imports` (not merged, n
 * **New test file** `backend/tests/test_relay_trip_capability.py` (36 tests): enum coverage, 7SA613 PICKUP_ONLY / TIMED_TRIP proof, GRZ100 proof, production isolation (iter_sourced exclusion, DELAY_INFINITE unchanged, GRZ100 still blocked, no Apply change from trip_capability), backward compatibility (existing catalogs have no rules; all zones unresolved), catalog validation (unknown zone id, invalid capability, bad timer_condition, missing key, duplicate rule id).
 
 **Results (2026-10-22):** backend full suite **10029 passed, 321 skipped, 0 failed** (0:30:41) (owner sheets skipped — RELAY_SAMPLE_PDF_DIR not set; all new Phase 3A tests pass: 36/36 in test_relay_trip_capability, 7sa613/grz100 conformance 182 passed 34 skipped, shipped-catalog 5/5, catalog capabilities 8/8, relay upload 48/48; all existing suite tests unaffected). Stopped after Phase 3A; pickup-only plotting and Apply-eligibility changes not started, as instructed. Not pushed.
+
+---
+
+## DEC-200 — Complex Power Calculation domain module and V-I Phasors Calculator tab (Slices 0 and 1)
+
+Date: 2026-10-30
+Status: Approved — Slice 0 (domain module) and Slice 1 (V-I Phasors tab + API endpoint) implemented and tested; deployed to DEV for owner UAT.
+
+### Context
+
+The existing Power & Current calculator (`DEC-164`) is frontend-local: Current, P-Q-S and Power Factor tabs run entirely in JavaScript with no backend call. A fourth "V-I Phasors" tab requires a true phasor calculation (P, Q, S, power angle, power factor from RMS phasor inputs) that belongs in the backend domain layer — consistent with `DEC-007` (backend authority over engineering calculations) and the precedent set by the sequence-components and phasor-diagram domain modules.
+
+### Decision
+
+**Slice 0 — Power Calculation domain module** (`app/domain/power_calculation.py`)
+
+A new pure Python domain module, stdlib-only (cmath, math, dataclasses), zero NumPy / registry / I/O access — mirroring the layering convention of `app.domain.sequence_components`. Provides:
+
+- `single_phase_power(v_mag, v_angle, i_mag, i_angle) → SinglePhasePowerResult`
+- `three_phase_power(v_r_mag, v_r_angle, i_r_mag, i_r_angle, ...) → ThreePhasePowerResult`
+
+Plus input validation predicates and frozen result dataclasses. Shared engine for the Calculator Page V-I Phasors tab (Slice 1) and future Calculated Channels time-series path (Slice 3+, deferred).
+
+Engineering sub-decisions (DEC-PWR series), all approved:
+
+- **DEC-PWR-001 — Operation structure:** One call computes P, Q, S, power angle and PF together; callers extract the scalar they need. No separate per-quantity entry point.
+- **DEC-PWR-002 — Apparent power definition:** Geometric (`S = |S_total| = sqrt(P² + Q²)`) not IEEE 1459 arithmetic (`S_A = sum(|S_phase|)`). Every result carries `apparent_power_definition = "geometric_fundamental_complex"` so consumers never need to infer the convention.
+- **DEC-PWR-003 — Sign convention:** Passive sign convention throughout (`S = V × conj(I) = P + jQ`). P > 0 = absorbed (load); Q > 0 = inductive/lagging; Q < 0 = capacitive/leading. Power factor is signed (P / S ∈ [−1, 1]); negative PF means reverse active power flow. Every result carries `sign_convention = "passive"`.
+- **DEC-PWR-005 — Eligible inputs (Slice 0/1):** Single-phase (one V/I phasor pair) and three-phase (three paired V/I phasors, R/Y/B order). DEFERRED: balanced three-phase estimation from one phase (requires explicit user selection and "Estimated" labelling — pending owner scope decision). DEFERRED: RMS-phasor input from pre-computed magnitude/angle channels (pending DEC-PWR-004 architecture decision).
+
+**Slice 1 — V-I Phasors Calculator tab and API endpoint**
+
+- `POST /api/v1/calculator/power/single-phase` — stateless, no workspace scope, no persistence. Accepts `SinglePhasePowerIn` (V magnitude in V, V angle in degrees, I magnitude in A, I angle in degrees; all in SI base units — unit conversion is the caller's responsibility). Returns `SinglePhasePowerOut` (P, Q, S, power angle, PF, PF sign, provenance fields).
+- Frontend: a fourth "V-I Phasors" tab added to the existing Power & Current calculator tool (`wwPcTabViBtn` / `wwPcViPanel`). Inputs: V magnitude + unit selector (V/kV), V angle; I magnitude + unit selector (A/mA), I angle. Unit conversion to SI is done by the frontend before the API call. Results table: P, Q, S in user-selectable units (W/kW/MW/GW, var/kvar/Mvar/Gvar, VA/kVA/MVA/GVA), power angle (degrees), power factor (signed), power factor direction (lagging/leading/unity). Debounced API call on any input change (200 ms); "Calculating…" state while awaiting; graceful display of zero-voltage / zero-current (open circuit) cases.
+- Arrow-key keyboard navigation extended to the fourth tab; End/Home wrapping updated; ARIA roles and controls consistent with the other three tabs.
+- `calculator-power-current.spec.js` updated: tab list, keyboard navigation, overflow at 1366/1024/390 px now covers all four tabs.
+
+### Alternatives considered
+
+- **Frontend-local calculation (JavaScript only, no API call):** Rejected. Electrical engineering calculations belong in the backend domain layer (DEC-007). A backend implementation is testable to engineering precision and reusable for the future Calculated Channels path.
+- **Extending an existing calculator endpoint:** No existing endpoint; the stateless `POST /api/v1/calculator/power/single-phase` is a clean first entry in this namespace.
+
+### Tests
+
+- `backend/tests/test_power_calculation_domain.py` (94 tests): exhaustive mathematical verification of `single_phase_power` and `three_phase_power` — golden vectors derived independently from closed-form physics, covering unit circle, resistive, inductive, capacitive, mixed, unity PF, reverse flow, zero-V, zero-I, angle wrapping, three-phase balance/imbalance, and provenance fields.
+- `backend/tests/test_calculator_power_api.py` (42 tests): HTTP contract for `POST /api/v1/calculator/power/single-phase` — routing, request/response shape, validation (non-finite values, negative magnitudes), golden-vector spot checks against the same first-principles expected values.
+- `browser-tests/calculator-vi-phasors.spec.js` — browser integration: tab navigation, initial API call on load, input → API → result round-trips (unit conversions, lagging/leading/unity/open-circuit), result row content, no NaN/Infinity display, zero-V / zero-I graceful display, PF colour coding, debounce, overflow at multiple widths, both themes.
+
+**Results (2026-10-30):** 136 new backend tests pass (94 domain + 42 API). Full browser suite deferred to DEV UAT (requires live backend). Existing Power & Current calculator (`DEC-164`) behaviour unchanged.
