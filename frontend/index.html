@@ -39145,8 +39145,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 label: "Line-to-Line Voltage (L-L)",
                 arity: "context", glyph: "VA−VB",
             },
+            // DEC-202: Single-phase power calculated channels -- exactly 2
+            // inputs: [voltage, current]; output fixed at MW/Mvar/MVA.
+            active_power: { label: "Active Power", arity: "power", glyph: "P(t)" },
+            reactive_power: { label: "Reactive Power", arity: "power", glyph: "Q(t)" },
+            apparent_power: { label: "Apparent Power", arity: "power", glyph: "|S|(t)" },
         };
-        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "rocof", "line_to_line_voltage"];
+        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "rocof", "line_to_line_voltage", "active_power", "reactive_power", "apparent_power"];
 
         // DEC-115: Line-to-Line output options -- wire values match
         // app.domain.line_to_line_voltage.KNOWN_OUTPUTS exactly.
@@ -39558,6 +39563,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             else if (b.operation === "rocof") {
                 joined = "ROCOF (" + labels[0] + ", " + (WW_CC_ROCOF_METHODS[b.rocofMethod] || {}).nameTag + b.rocofWindowMs + " ms)";
             }
+            else if (b.operation === "active_power") joined = "P (" + labels[0] + ", " + (labels[1] || "?") + ")";
+            else if (b.operation === "reactive_power") joined = "Q (" + labels[0] + ", " + (labels[1] || "?") + ")";
+            else if (b.operation === "apparent_power") joined = "|S| (" + labels[0] + ", " + (labels[1] || "?") + ")";
             else if (b.operation === "addition") joined = labels.join(" + ");
             else joined = labels.join(" − ");
             // Section 34: "if expression is too long, generate a concise
@@ -39595,6 +39603,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (b.operation === "addition") return "Result = " + labels.join(" + ");
             if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
+            if (b.operation === "active_power" && b.inputs.length >= 2) return "Result = Re(V₁ × conj(I₁)) / 1e6  [MW]";
+            if (b.operation === "reactive_power" && b.inputs.length >= 2) return "Result = Im(V₁ × conj(I₁)) / 1e6  [Mvar]";
+            if (b.operation === "apparent_power" && b.inputs.length >= 2) return "Result = |V₁ × conj(I₁)| / 1e6  [MVA]";
             return "";
         }
 
@@ -40005,6 +40016,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcLlValidate(errors);
             } else if (meta.arity === "unary") {
                 if (b.inputs.length !== 1) errors.push("Select exactly 1 input channel.");
+            } else if (meta.arity === "power") {
+                if (!b.inputs[0]) errors.push("Select a Voltage Channel.");
+                if (!b.inputs[1]) errors.push("Select a Current Channel.");
             } else if (b.inputs.length < 2) {
                 errors.push("Select at least 2 input channels.");
             }
@@ -40533,6 +40547,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 if (wwCcBuilder.operation === "rms") wwCcRenderRmsEligibilityStatus();
                 if (wwCcBuilder.operation === "rocof") wwCcRenderRocofStatus();
+            } else if (meta.arity === "power") {
+                const vInput = wwCcBuilder.inputs[0] || null;
+                const iInput = wwCcBuilder.inputs[1] || null;
+                const vKey = vInput ? (vInput.kind + "::" + (vInput.kind === "source" ? vInput.sourceId + "::" + vInput.channelName : vInput.calculatedChannelId)) : "";
+                const iKey = iInput ? (iInput.kind + "::" + (iInput.kind === "source" ? iInput.sourceId + "::" + iInput.channelName : iInput.calculatedChannelId)) : "";
+                fieldsEl.innerHTML =
+                    '<label class="ww-cc-field"><span>Voltage Channel</span>' +
+                    '<select id="wwCcPowerVoltageSelect">' + wwCcCandidateOptionsHtml(null) + '</select></label>' +
+                    '<label class="ww-cc-field"><span>Current Channel</span>' +
+                    '<select id="wwCcPowerCurrentSelect">' + wwCcCandidateOptionsHtml(null) + '</select></label>';
+                const vSel = document.getElementById("wwCcPowerVoltageSelect");
+                const iSel = document.getElementById("wwCcPowerCurrentSelect");
+                if (vSel && vKey) vSel.value = vKey;
+                if (iSel && iKey) iSel.value = iKey;
             } else {
                 let html = '<ol class="ww-cc-input-list" id="wwCcInputList">';
                 wwCcBuilder.inputs.forEach((input, index) => {
@@ -40584,6 +40612,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (wwCcBuilder.operation === "rocof") { // DEC-190: fixed output unit, whatever the input's unit string
                 unitInput.value = "Hz/s";
+                return;
+            }
+            const _POWER_OUTPUT_UNITS = { active_power: "MW", reactive_power: "Mvar", apparent_power: "MVA" };
+            if (_POWER_OUTPUT_UNITS[wwCcBuilder.operation]) { // DEC-202: fixed output unit regardless of input units
+                unitInput.value = _POWER_OUTPUT_UNITS[wwCcBuilder.operation];
                 return;
             }
             const units = wwCcBuilder.inputs.map((i) => i.unit || "");
@@ -41959,6 +41992,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwCcBuilderFields").addEventListener("change", (event) => {
             if (event.target.id === "wwCcUnaryInputSelect") {
                 wwCcAddInputByKey(event.target.value);
+            } else if (event.target.id === "wwCcPowerVoltageSelect" || event.target.id === "wwCcPowerCurrentSelect") {
+                const slotIndex = event.target.id === "wwCcPowerVoltageSelect" ? 0 : 1;
+                const candidate = wwCcCandidateFromKey(event.target.value);
+                if (candidate) {
+                    wwCcBuilder.inputs[slotIndex] = candidate;
+                } else {
+                    wwCcBuilder.inputs[slotIndex] = undefined;
+                }
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
             } else if (event.target.id === "wwCcConstantInput") {
                 wwCcBuilder.constant = event.target.value;
                 wwCcSyncNameAndUnitFields();

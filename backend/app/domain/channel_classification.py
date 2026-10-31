@@ -200,6 +200,10 @@ def derive_waveform_form(operation: str, input_forms: list[str]) -> str:
     """
     if operation == "rms":
         return WAVEFORM_FORM_RMS
+    if operation in {"active_power", "reactive_power", "apparent_power"}:
+        # DEC-202: output is derived from fundamental RMS phasors -- same
+        # "RMS by construction" status as the rms operation above.
+        return WAVEFORM_FORM_RMS
     if operation == "absolute_value":
         return WAVEFORM_FORM_UNKNOWN
     if operation in _WAVEFORM_FORM_PASSTHROUGH_OPERATIONS:

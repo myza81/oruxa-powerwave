@@ -255,6 +255,26 @@ class InvalidRocofParametersError(ImportServiceError):
     code = "invalid_rocof_parameters"
 
 
+# ---- DEC-202 (Slice 3): Single-Phase Power Calculated Channels ----
+
+
+class InvalidPowerInputTypeError(ImportServiceError):
+    """A power operation's voltage or current slot received a channel with
+    an incompatible engineering type (e.g. a Current channel in the voltage
+    slot, or a Frequency channel in either slot)."""
+
+    code = "invalid_power_input_type"
+
+
+class InvalidPowerInputUnitError(ImportServiceError):
+    """A power operation's voltage or current input carries a unit that
+    cannot be resolved to SI base units (V or A) via the engineering-unit
+    alias table -- blank units, unrecognised prefixes, or the wrong
+    quantity family are all rejected here."""
+
+    code = "invalid_power_input_unit"
+
+
 # ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----
 
 

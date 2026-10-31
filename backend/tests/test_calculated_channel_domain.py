@@ -8,6 +8,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+import math
+
 from app.domain.calculated_channel import (
     ALL_ESTIMATION_METHODS,
     ALL_MAX_GAP_UNITS,
@@ -24,6 +26,7 @@ from app.domain.calculated_channel import (
     NULL_POLICY_PROPAGATE,
     NULL_POLICY_REQUIRE_MANUAL,
     NULL_POLICY_ZERO,
+    TIME_ALIGNMENT_TOLERANCE_SECONDS,
     UNIMPLEMENTED_ESTIMATION_METHODS,
     UNIMPLEMENTED_NULL_POLICIES,
     apply_null_policy_to_values,
@@ -260,8 +263,103 @@ class TestTimebasesAligned:
 
     def test_beyond_tolerance_rejected(self):
         t_a = np.array([0.0, 0.1, 0.2])
-        t_b = t_a + 1e-6  # 1 microsecond -- beyond the 1e-9 tolerance
+        t_b = t_a + 1e-6  # 1 microsecond -- beyond TIME_ALIGNMENT_TOLERANCE_SECONDS
         assert timebases_aligned("src-a", t_a, 1000.0, "src-b", t_b, 1000.0) is False
+
+
+class TestTimebasesAlignedAtUnixEpochMagnitude:
+    """Float64 precision tests at realistic Unix-epoch magnitudes (~1.7e9 s).
+
+    At epoch ~1.7e9 s, float64 ULP ≈ 238 ns.  The naive formula
+    `start_epoch + elapsed` loses sub-ULP elapsed precision.  The corrected
+    formula `elapsed_diff + epoch_diff` computes elapsed differences with
+    sub-femtosecond precision and confines the ~238 ns limitation to the
+    epoch component only.  TIME_ALIGNMENT_TOLERANCE_SECONDS = 3e-7 (300 ns)
+    is the minimum honest tolerance: just above the float64 ULP bound.
+
+    Slice 3 Engineering Verification Item 1 — per owner request 2026-10-31.
+    """
+
+    # Unix epoch for 2024-01-15T00:00:00Z — realistic recording timestamp
+    EPOCH = 1_705_276_800.0
+
+    def _elapsed_5khz(self, n: int) -> np.ndarray:
+        return np.arange(n, dtype=np.float64) / 5000.0
+
+    def test_unix_epoch_identical_sources_aligned(self):
+        """Two sources with same start_time and elapsed at realistic epoch."""
+        t = self._elapsed_5khz(100)
+        assert timebases_aligned("src-a", t, self.EPOCH, "src-b", t.copy(), self.EPOCH) is True
+
+    def test_unix_epoch_50us_misalignment_rejected(self):
+        """50 μs elapsed offset at Unix epoch is rejected (far > tolerance)."""
+        t_a = self._elapsed_5khz(100)
+        t_b = t_a + 50e-6
+        assert timebases_aligned("src-a", t_a, self.EPOCH, "src-b", t_b, self.EPOCH) is False
+
+    def test_unix_epoch_200us_misalignment_rejected(self):
+        """200 μs = 1 sample at 5 kHz — sub-millisecond, still rejected."""
+        t_a = self._elapsed_5khz(100)
+        t_b = t_a + 200e-6
+        assert timebases_aligned("src-a", t_a, self.EPOCH, "src-b", t_b, self.EPOCH) is False
+
+    def test_unix_epoch_1ms_misalignment_rejected(self):
+        """1 ms misalignment — well above tolerance, rejected."""
+        t_a = self._elapsed_5khz(100)
+        t_b = t_a + 1e-3
+        assert timebases_aligned("src-a", t_a, self.EPOCH, "src-b", t_b, self.EPOCH) is False
+
+    def test_unix_epoch_different_epoch_50us_rejected(self):
+        """epoch_b starts 50 μs later than epoch_a, same elapsed — rejected."""
+        t = self._elapsed_5khz(100)
+        assert timebases_aligned("src-a", t, self.EPOCH, "src-b", t.copy(), self.EPOCH + 50e-6) is False
+
+    def test_unix_epoch_different_epoch_1ms_rejected(self):
+        """epoch_b starts 1 ms later — sub-millisecond epoch offset, rejected."""
+        t = self._elapsed_5khz(100)
+        assert timebases_aligned("src-a", t, self.EPOCH, "src-b", t.copy(), self.EPOCH + 1e-3) is False
+
+    def test_unix_epoch_equal_count_different_sampling_interval_rejected(self):
+        """Same sample count, different sampling interval: 5 kHz vs 1 kHz, 10 samples."""
+        t_a = np.arange(10, dtype=np.float64) / 5000.0   # 0.2 ms spacing
+        t_b = np.arange(10, dtype=np.float64) / 1000.0   # 1.0 ms spacing
+        assert timebases_aligned("src-a", t_a, self.EPOCH, "src-b", t_b, self.EPOCH) is False
+
+    def test_unix_epoch_sub_ulp_epoch_within_tolerance(self):
+        """epoch_b differs by exactly 1 ULP (~238 ns) from epoch_a, same elapsed.
+
+        The improved formula isolates this as a pure epoch_diff; since
+        238 ns < TIME_ALIGNMENT_TOLERANCE_SECONDS (300 ns), it is accepted.
+        This ensures genuine float64 rounding noise in the epoch representation
+        does not cause false rejections.
+        """
+        t = self._elapsed_5khz(10)
+        epoch_b = np.nextafter(self.EPOCH, np.inf)  # epoch_a + 1 ULP ≈ 238 ns
+        actual_ulp = epoch_b - self.EPOCH
+        assert actual_ulp < TIME_ALIGNMENT_TOLERANCE_SECONDS, (
+            f"Precondition: 1 ULP ({actual_ulp*1e9:.1f} ns) must be < tolerance ({TIME_ALIGNMENT_TOLERANCE_SECONDS*1e9:.0f} ns)"
+        )
+        assert timebases_aligned("src-a", t, self.EPOCH, "src-b", t.copy(), epoch_b) is True
+
+    def test_unix_epoch_two_ulp_epoch_still_within_tolerance(self):
+        """epoch_b differs by 2 ULPs (~476 ns) — still within 300 ns? No — 476 > 300 → rejected."""
+        t = self._elapsed_5khz(10)
+        epoch_b = np.nextafter(np.nextafter(self.EPOCH, np.inf), np.inf)  # +2 ULPs ≈ 476 ns
+        actual_diff = epoch_b - self.EPOCH
+        assert actual_diff > TIME_ALIGNMENT_TOLERANCE_SECONDS, (
+            f"Precondition: 2 ULPs ({actual_diff*1e9:.1f} ns) must be > tolerance ({TIME_ALIGNMENT_TOLERANCE_SECONDS*1e9:.0f} ns)"
+        )
+        assert timebases_aligned("src-a", t, self.EPOCH, "src-b", t.copy(), epoch_b) is False
+
+    def test_same_source_fast_path_bypasses_epoch_at_unix_magnitude(self):
+        """Same reference_source_id returns True immediately with no arithmetic.
+
+        This verifies the fast path is immune to any float64 precision issues
+        since it performs no comparison at all.
+        """
+        t = self._elapsed_5khz(1000)
+        # Even with a different epoch value on the 'b' side, same ref id -> True
+        assert timebases_aligned("src-1", t, self.EPOCH, "src-1", t, self.EPOCH + 999.0) is True
 
 
 class TestCycleDetection:

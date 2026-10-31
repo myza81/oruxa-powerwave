@@ -114,7 +114,8 @@ class CalculatedChannelCreateRequest(BaseModel):
 
     name: str
     operation: Literal[
-        "reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction", "rms", "rocof"
+        "reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction", "rms", "rocof",
+        "active_power", "reactive_power", "apparent_power",
     ]
     inputs: list[ChannelRefIn]
     parameters: dict = {}

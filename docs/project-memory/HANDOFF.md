@@ -4,7 +4,45 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-31** (Sliding Phasor domain, DEC-201, Slice 2 complete — engineering-verified and committed; earlier **2026-10-30** - Power Calculation domain + V-I Phasors Calculator tab, DEC-200, Slices 0 and 1; see sections below.)
+Last updated: **2026-10-31** (Slice 3 — Single-Phase Power Calculated Channels, DEC-202, engineering-verified and approved for owner UAT; earlier Slice 2 — Sliding Phasor domain, DEC-201; Slices 0/1 — Power Calculation domain + V-I Phasors Calculator, DEC-200.)
+
+## Slice 3: Single-Phase Power Calculated Channels (DEC-202) — 2026-10-31
+
+**Status: APPROVED — committed and deployed to DEV for owner UAT.**
+
+Three new Calculated Channel operations: Active Power (MW), Reactive Power (Mvar),
+Apparent Power (MVA). Integrated into the existing Calculated Channels UI (no new tab).
+
+**Backend:**
+- `app/domain/calculated_channel.py`: `OP_ACTIVE_POWER`, `OP_REACTIVE_POWER`, `OP_APPARENT_POWER`, `POWER_OPERATIONS`, `POWER_OUTPUT_UNITS`, `evaluate_power_channel()`. Also: `timebases_aligned()` formula corrected (improved `elapsed_diff + epoch_diff` formula; tolerance raised to 300 ns — the minimum honest value for float64 at Unix-epoch magnitude ~1.7e9 s; see Item 1 of engineering verification).
+- `app/domain/channel_classification.py`: `derive_waveform_form()` returns `WAVEFORM_FORM_RMS` for power ops.
+- `app/services/errors.py`: `InvalidPowerInputTypeError`, `InvalidPowerInputUnitError`.
+- `app/services/calculated_channel_service.py`: arity guard (exactly 2), timebase alignment, type guard (V/UNDEFINED + I/UNDEFINED), unit guard (via `parse_engineering_unit()`), data-quality guards (same as RMS), evaluation branch, output_parameters.
+- `app/schemas/calculated_channel.py`: three new values in `operation: Literal[...]`.
+- `app/api/v1/calculated_channels.py`: two new error codes in `_STATUS_BY_ERROR_CODE`.
+- `tests/test_calculated_channel_power.py`: 40 tests (35 core + 5 `single_phase_power()` equivalence). All pass.
+- `tests/test_calculated_channel_domain.py`: +10 `TestTimebasesAlignedAtUnixEpochMagnitude` tests confirming precision fix at realistic epoch magnitudes. All pass.
+
+**Frontend (`frontend/index.html`):**
+- Three operation cards with `arity: "power"` added to `WW_CC_OPERATIONS` and `WW_CC_OPERATION_ORDER`.
+- Builder renders two fixed labeled selects (Voltage Channel / Current Channel) instead of the generic multi picker.
+- Validation, name suggestion, unit display (fixed MW/Mvar/MVA), expression preview, and event handlers all handle `meta.arity === "power"`.
+
+**Key design points:**
+- S = V × conj(I) / 1e6 — passive sign convention (DEC-PWR-003). Re(S) → MW, Im(S) → Mvar, |S| → MVA.
+- Unit scaling via `parse_engineering_unit()` (kV → 1000 V, kA → 1000 A).
+- engineering_type = POWER, waveform_form = WAVEFORM_FORM_RMS always.
+- Nominal frequency hard-coded 50.0 Hz (stored in parameters for future extension).
+- Not included: three-phase, balanced estimation, V-I Phasors Calculator changes, user-configurable frequency.
+
+**Engineering verification (Items 1–5):**
+1. Timestamp alignment — `timebases_aligned()` same-source fast path proven correct for all calculated-channel types; cross-source formula fixed for float64 precision at Unix-epoch magnitude.
+2. `evaluate_power_channel()` vs `single_phase_power()` — non-reuse justified (interface/output/vectorisation mismatch); numerical equivalence confirmed to rtol=1e-10.
+3. `WAVEFORM_FORM_RMS` — correct and safe; no incorrect downstream processing; no new waveform form needed.
+4. Full regression: 10,531 passed, 320 skipped, exit code 0.
+5. No corrections to service/API/frontend code required.
+
+**DEC-202** added to DECISIONS.md.
 
 ## Slice 2: Sliding Phasor domain (DEC-201) — 2026-10-31
 
@@ -26,9 +64,7 @@ Engineering verification completed (Amendment 1 to DEC-201):
 - Power convention confirmed: S = V × conj(I) = P + jQ (passive sign). Reversing
   current phasor negates both P and Q.
 
-DEC-201 status: Approved (Amendment 1). Slice 3 (Calculated Channels integration)
-not started. No waveform viewer, no phasor trajectory/animation, no positive-sequence
-estimation in scope.
+DEC-201 status: Approved (Amendment 1). Slice 3 implemented (see above).
 
 ## DEV UAT: Time Group UTC header (2026-10-26)
 

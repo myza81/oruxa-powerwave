@@ -28296,3 +28296,148 @@ No changes to `power_calculation.py`. Test added: `TestPowerCalculationCompatibi
 2. **Three-phase power uses the three corresponding V and I phasor pairs independently** (one per phase). Positive-sequence-only power and balanced three-phase estimation from a single phase are outside scope.
 3. **DEC-PWR-003 is confirmed** (S = V × conj(I)); no changes to the approved sign convention are authorized.
 4. **Balanced three-phase estimation** (DEC-PWR-005 deferred item) remains deferred.
+
+---
+
+## DEC-202 — Single-Phase Power Calculated Channels (Slice 3)
+
+Date: 2026-10-31
+Status: Approved and deployed to DEV for owner UAT (2026-10-31).
+
+### Context
+
+Slice 2 (DEC-201) delivered `compute_sliding_phasor()` as a vectorised domain primitive. Slice 3 exposes single-phase active, reactive, and apparent power to the engineer as three new Calculated Channel operations: Active Power (MW), Reactive Power (Mvar), Apparent Power (MVA). These integrate into the existing Calculated Channels UI (Section 4 of the spec) — no new tab or visualization surface is added.
+
+### Decision
+
+#### DEC-202-A — Three new operation constants
+
+`OP_ACTIVE_POWER = "active_power"`, `OP_REACTIVE_POWER = "reactive_power"`, `OP_APPARENT_POWER = "apparent_power"` added to `app/domain/calculated_channel.py`. Grouped as `POWER_OPERATIONS = frozenset({...})`, distinct from `UNARY_OPERATIONS` and `MULTI_OPERATIONS`. `ALL_OPERATIONS = UNARY_OPERATIONS | MULTI_OPERATIONS | POWER_OPERATIONS`.
+
+#### DEC-202-B — New arity class: POWER_OPERATIONS
+
+Power operations require exactly 2 inputs in a fixed [voltage, current] order. This is intentionally different from `MULTI_OPERATIONS` (which requires matching units and calls `units_compatible()`): voltage and current have different units by definition. `units_compatible()` is never called for power operations.
+
+#### DEC-202-C — evaluate_power_channel() domain function
+
+`evaluate_power_channel(operation, v_time, v_values, v_scale_to_si, i_values, i_scale_to_si, nominal_frequency_hz=50.0) → np.ndarray` in `app/domain/calculated_channel.py`:
+
+1. Scale V and I to SI base units (V and A) using the supplied scale factors.
+2. Call `compute_sliding_phasor()` on both V (with `v_time`) and I (with `v_time` — same timebase, guaranteed by the service-layer alignment check).
+3. Compute `S_complex = V_phasor × conj(I_phasor)` — passive sign convention (DEC-PWR-003).
+4. Extract Re(S) for Active Power, Im(S) for Reactive Power, |S| for Apparent Power.
+5. Divide by 1 000 000.0 to convert W/VAR/VA → MW/Mvar/MVA.
+
+NaN propagation is implicit: `compute_sliding_phasor()` marks windows containing non-finite samples as unavailable (`phasor = nan + nan*j`), so NaN propagates to the output array without any extra logic.
+
+#### DEC-202-D — Unit scaling via parse_engineering_unit()
+
+The existing `app/domain/engineering_units.parse_engineering_unit()` resolves V, kV, MV, A, kA → SI scale factors. Blank units and unrecognized units reject with `InvalidPowerInputUnitError`. No new lookup table is added.
+
+#### DEC-202-E — Validation guards in create_calculated_channel()
+
+Applied before evaluation:
+1. **Arity**: exactly 2 inputs → `InvalidOperationArityError`.
+2. **Timebase alignment**: `timebases_aligned()` (shared with MULTI_OPERATIONS) → `IncompatibleTimeBaseError`.
+3. **Slot type**: slot 0 must be VOLTAGE or UNDEFINED; slot 1 must be CURRENT or UNDEFINED → `InvalidPowerInputTypeError`.
+4. **Unit parseability**: both input units must resolve → `InvalidPowerInputUnitError`.
+5. **Data quality**: `rms_recording_long_enough()` and `rms_sampling_dense_enough()` on the voltage channel → `RmsRecordingTooShortError` / `RmsSamplingTooSparseError`. Not overridable (same hard constraint as RMS).
+
+No override flag is exposed for power channels in Slice 3.
+
+#### DEC-202-F — Output metadata
+
+- `unit`: fixed MW / Mvar / MVA (from `POWER_OUTPUT_UNITS` dict), regardless of input units.
+- `engineering_type`: POWER — set explicitly after `derive_engineering_type()` (which would return UNDEFINED for mixed V+I).
+- `waveform_form`: WAVEFORM_FORM_RMS — added as explicit case in `derive_waveform_form()`.
+- `parameters`: `{"nominal_frequency_hz": 50.0, "window_mode": "trailing", "sign_convention": "passive"}`.
+- `reference_source_id`: the voltage input's `reference_source_id`.
+
+#### DEC-202-G — Nominal frequency hard-coded to 50 Hz in Slice 3
+
+The service passes `nominal_frequency_hz=50.0` to `evaluate_power_channel()`. User-configurable DFT frequency is deferred; the 50 Hz value is stored in `parameters.nominal_frequency_hz` so future slices can change it without ambiguity.
+
+#### DEC-202-H — Frontend arity "power"
+
+Three new operation cards (`active_power`, `reactive_power`, `apparent_power`) with `arity: "power"` added to `WW_CC_OPERATIONS`. The builder renders two fixed labeled selects (Voltage Channel, Current Channel) instead of the unary/multi generic pickers. Validation, name suggestion, unit display, and expression preview all handle `meta.arity === "power"` explicitly. Output unit is displayed as the fixed string (MW/Mvar/MVA) — same pattern as ROCOF's fixed `Hz/s`.
+
+### Scope exclusions (Slice 3)
+
+- No three-phase power; no balanced estimation.
+- No modification to the V-I Phasors Calculator.
+- No RMS-phasor input channels.
+- No user-configurable nominal frequency (deferred).
+- Automatic Measurement Group integration not added for power channels (POWER type is not integrated into per-unit assignment; `derive_per_unit_profile_id()` already returns None for POWER inputs).
+
+### New errors
+
+- `InvalidPowerInputTypeError` (code `"invalid_power_input_type"`, HTTP 400)
+- `InvalidPowerInputUnitError` (code `"invalid_power_input_unit"`, HTTP 400)
+
+### Files changed
+
+- `backend/app/domain/calculated_channel.py` — new constants, `POWER_OPERATIONS`, `POWER_OUTPUT_UNITS`, `evaluate_power_channel()`
+- `backend/app/domain/channel_classification.py` — `derive_waveform_form()` explicit case for power ops
+- `backend/app/services/errors.py` — two new error classes
+- `backend/app/services/calculated_channel_service.py` — arity check, validation guards, evaluation branch, output_parameters branch
+- `backend/app/schemas/calculated_channel.py` — three new operation values in `Literal[...]`
+- `backend/app/api/v1/calculated_channels.py` — two new error codes in `_STATUS_BY_ERROR_CODE`
+- `frontend/index.html` — `WW_CC_OPERATIONS`, `WW_CC_OPERATION_ORDER`, builder fields, validation, name suggestion, unit display, expression preview, event handlers
+- `backend/tests/test_calculated_channel_power.py` — 35 new tests (domain-level + service-level)
+
+### Tests
+
+| Scenario | Test class |
+|---|---|
+| Active power in-phase sinusoid — numerical correctness | `TestEvaluatePowerChannelNumerics.test_active_power_in_phase` |
+| Active power 90° — should be ~0 | `TestEvaluatePowerChannelNumerics.test_active_power_quadrature_zero` |
+| Reactive power in-phase — should be ~0 | `TestEvaluatePowerChannelNumerics.test_reactive_power_in_phase_zero` |
+| Reactive power 90° inductive — Q > 0 | `TestEvaluatePowerChannelNumerics.test_reactive_power_quadrature` |
+| Apparent power invariant w.r.t. phase angle | `TestEvaluatePowerChannelNumerics.test_apparent_power_matches_s_magnitude` |
+| P² + Q² = |S|² sample-by-sample | `TestEvaluatePowerChannelNumerics.test_p_q_s_triangle_relationship` |
+| Passive sign convention (I leads → Q < 0) | `TestEvaluatePowerChannelNumerics.test_passive_sign_convention` |
+| kV × kA → MW unit scaling | `TestEvaluatePowerChannelNumerics.test_unit_scale_kv_ka_to_mw` |
+| NaN propagation | `TestEvaluatePowerChannelNumerics.test_nan_propagation_in_output` |
+| Arity guard (0/1/3 inputs) | `TestPowerChannelArityGuard` (3 tests) |
+| Type guard (Current in V slot, Voltage in I slot, Undefined accepted) | `TestPowerChannelTypeGuard` (4 tests) |
+| Unit guard (blank V, blank I, unknown V, unknown I, kV/kA accepted) | `TestPowerChannelUnitGuard` (5 tests) |
+| Data quality guards (too short, too sparse) | `TestPowerChannelDataQualityGuard` (2 tests) |
+| Cross-source timebase guard | `TestPowerChannelCrossSourceGuard` (1 test) |
+| Output unit MW/Mvar/MVA | `TestPowerChannelSuccessfulCreation` (3 tests) |
+| engineering_type=POWER, waveform_form=RMS | `TestPowerChannelSuccessfulCreation` (2 tests) |
+| parameters stored correctly | `TestPowerChannelSuccessfulCreation` (1 test) |
+| reference_source_id = voltage source | `TestPowerChannelSuccessfulCreation` (1 test) |
+| Values shape and finiteness | `TestPowerChannelSuccessfulCreation` (2 tests) |
+| kV × kA magnitude (0.5 MW) | `TestPowerChannelSuccessfulCreation` (1 test) |
+| P ≠ Q ≠ S at 36.87° (non-trivial angle) | `TestPowerChannelSuccessfulCreation` (1 test) |
+
+**Results (2026-10-31):** 35 new tests pass. Full backend suite (10 507+ tests): **exit code 0, zero failures.** No regressions.
+
+### Amendment 1 — Engineering Verification (2026-10-31)
+
+Following owner engineering-verification request (Items 1–5):
+
+#### Item 1 — Timestamp alignment: `timebases_aligned()` precision fix
+
+**Finding:** `TIME_ALIGNMENT_TOLERANCE_SECONDS = 1e-9` (1 ns) was unachievable. At Unix-epoch magnitude ~1.7 × 10⁹ s, float64 ULP ≈ 238 ns. The original formula `np.allclose(start_epoch + elapsed_a, start_epoch + elapsed_b, atol=1e-9)` loses sub-238 ns elapsed precision — adding a small elapsed to a large epoch quantizes the result to 238 ns multiples.
+
+**Correction applied:**
+- Formula changed to `np.allclose(elapsed_diff + epoch_diff, 0.0, atol=3e-7)`, where `elapsed_diff = elapsed_a - elapsed_b` (sub-femtosecond precision) and `epoch_diff = start_epoch_a - start_epoch_b` (precision limited to ~238 ns).
+- `TIME_ALIGNMENT_TOLERANCE_SECONDS` raised from `1e-9` to `3e-7` (300 ns) — the minimum honest value: just above the float64 ULP bound at 1.7 × 10⁹ s, well below any real COMTRADE timing difference (GPS accuracy ~1 μs; 1 sample at 5 kHz = 200 μs).
+- Same-source fast path (`ref_a == ref_b → True`) confirmed valid for all calculated-channel types — no arithmetic, immune to float64 precision.
+
+**New tests:** `TestTimebasesAlignedAtUnixEpochMagnitude` (10 tests in `test_calculated_channel_domain.py`) — sub-millisecond misalignments, same-count/different-interval rejection, 1-ULP epoch acceptance, 2-ULP epoch rejection.
+
+#### Item 2 — Power calculation engine reuse
+
+**Finding:** `evaluate_power_channel()` correctly does not call `single_phase_power()`. Interface mismatch (scalar vs array), output mismatch (SinglePhasePowerResult vs np.ndarray), and vectorisation requirement (1000× speed difference) are independent disqualifying reasons. Both functions implement S = V × conj(I) identically.
+
+**New tests:** `TestEvaluatePowerVsSinglePhasePower` (5 tests) — pointwise agreement at rtol=1e-10 for P, Q, |S| across multiple phase angles and unit-scaled inputs.
+
+#### Item 3 — Waveform classification
+
+**Finding:** `WAVEFORM_FORM_RMS` is the correct classification for MW/Mvar/MVA channels. All five downstream consumers (`check_rms_eligibility`, compliance service, oscillation service, overcurrent service, phasor service) produce correct or zero effect on power channels. No incorrect downstream processing. No new waveform form needed.
+
+#### Items 4–5 — Regression and deliverables
+
+**Final test counts:** 40 power tests (`test_calculated_channel_power.py`) + 10 alignment tests added to `test_calculated_channel_domain.py`. Full suite: **10,531 passed, 320 skipped, exit code 0.** No corrections to service, API, or frontend code required.

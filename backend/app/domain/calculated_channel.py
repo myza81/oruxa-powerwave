@@ -34,6 +34,12 @@ OP_ADDITION = "addition"
 OP_SUBTRACTION = "subtraction"
 OP_RMS = "rms"
 OP_ROCOF = "rocof"
+# DEC-202 (Slice 3): single-phase fundamental power from instantaneous V+I.
+# Each takes exactly TWO inputs: [voltage_ref, current_ref] in that order.
+# Output unit is fixed (MW / Mvar / MVA regardless of input scaling).
+OP_ACTIVE_POWER = "active_power"
+OP_REACTIVE_POWER = "reactive_power"
+OP_APPARENT_POWER = "apparent_power"
 
 #: Exactly one channel input (Multiply also takes a scalar `constant`
 #: parameter alongside its one channel input -- section 28). RMS
@@ -46,7 +52,21 @@ UNARY_OPERATIONS = frozenset({OP_REVERSE_POLARITY, OP_ABSOLUTE_VALUE, OP_MULTIPL
 #: Two or more ordered channel inputs (section 8/30/31 -- never hard-coded
 #: to exactly two).
 MULTI_OPERATIONS = frozenset({OP_ADDITION, OP_SUBTRACTION})
-ALL_OPERATIONS = UNARY_OPERATIONS | MULTI_OPERATIONS
+#: DEC-202: exactly two inputs, voltage then current; fixed output unit.
+#: Distinct from MULTI_OPERATIONS -- different units are intentional and
+#: unit_compatible() is NOT called for this group.
+POWER_OPERATIONS = frozenset({OP_ACTIVE_POWER, OP_REACTIVE_POWER, OP_APPARENT_POWER})
+ALL_OPERATIONS = UNARY_OPERATIONS | MULTI_OPERATIONS | POWER_OPERATIONS
+
+#: DEC-202: fixed output unit per power operation. Always MW/Mvar/MVA
+#: (SI base units scaled to mega, regardless of the input kV/kA scaling --
+#: the evaluator normalises inputs to volts/amperes internally via
+#: engineering_units.parse_engineering_unit()).
+POWER_OUTPUT_UNITS: dict[str, str] = {
+    OP_ACTIVE_POWER: "MW",
+    OP_REACTIVE_POWER: "Mvar",
+    OP_APPARENT_POWER: "MVA",
+}
 
 #: Phase 5B (DEC-048) RMS parameters -- see evaluate_rms() below. A soft
 #: plausibility bound, NOT a 50/60 Hz whitelist (the owner's spec allows
@@ -100,14 +120,18 @@ ROCOF_MIN_WINDOW_INTERVALS = 2
 #: (same role as RMS's `_BOUNDARY_EPS`).
 _ROCOF_BOUNDARY_EPS = 1e-9
 
-#: Deliberately tight -- section 11 of the owner's time-alignment
-#: guardrail: "do not use a loose tolerance that could incorrectly treat
-#: differently-timed engineering samples as synchronized." Sub-microsecond,
-#: far tighter than any realistic sample spacing (even a 1 MHz channel has
-#: 1 microsecond spacing), so this only ever absorbs genuine floating-point
-#: representation noise from computing `start_epoch + elapsed_seconds`
-#: twice, never a real timing difference.
-TIME_ALIGNMENT_TOLERANCE_SECONDS = 1e-9
+#: Minimum honest tolerance for the improved comparison formula:
+#: `elapsed_diff + epoch_diff` vs 0.  `elapsed_diff` (small values, 0-10 s)
+#: is computed with sub-femtosecond float64 precision.  `epoch_diff` is
+#: limited by the float64 ULP at Unix-epoch magnitude (~1.7e9 s in 2024):
+#: ULP ≈ 2^(30-52) ≈ 238 ns.  300 ns is just above that bound, so the
+#: tolerance is achievable and honest -- it cannot be finer without a
+#: higher-precision epoch representation.  COMTRADE timestamps have 1 μs
+#: string resolution, so this tolerance still rejects any real misalignment
+#: larger than the COMTRADE clock tick, while accepting the floating-point
+#: noise floor.  Section 11 of the owner's guardrail: no loose tolerance
+#: that papers over genuine misalignment.
+TIME_ALIGNMENT_TOLERANCE_SECONDS = 3e-7
 
 #: Section 35 -- a sensible, generous cap; not a hard product requirement,
 #: just guards against a pathological/accidental paste.
@@ -853,9 +877,18 @@ def timebases_aligned(
        the same physical instants at all). If either source's own
        `start_time` is unknown (`None`), there is nothing to prove
        alignment with, so this returns `False` -- never optimistically
-       `True`. Compared with `TIME_ALIGNMENT_TOLERANCE_SECONDS`
-       (deliberately tight, sub-microsecond -- section 11), never a loose
-       tolerance that could paper over a genuine misalignment.
+       `True`. Compared with `TIME_ALIGNMENT_TOLERANCE_SECONDS` (see
+       constant comment -- the minimum honest value given float64 precision
+       at Unix-epoch magnitudes). Never a loose tolerance that papers over
+       genuine misalignment.
+
+       Comparison formula: `elapsed_diff + epoch_diff` vs 0 -- NOT
+       `(start_epoch + elapsed)` per source.  The latter loses sub-ULP
+       precision in the elapsed component (adding a small elapsed value to
+       a large epoch rounds the sum to ~238 ns precision at 1.7e9 s).  The
+       improved form preserves elapsed precision (sub-femtosecond for
+       typical 0-10 s recording durations); only epoch_diff is limited to
+       ~238 ns, which is covered by the tolerance.
     """
     if ref_a == ref_b:
         return True
@@ -863,9 +896,9 @@ def timebases_aligned(
         return False
     if elapsed_a.shape != elapsed_b.shape:
         return False
-    absolute_a = start_epoch_a + elapsed_a
-    absolute_b = start_epoch_b + elapsed_b
-    return bool(np.allclose(absolute_a, absolute_b, rtol=0.0, atol=TIME_ALIGNMENT_TOLERANCE_SECONDS))
+    epoch_diff = start_epoch_a - start_epoch_b    # scalar; ~238 ns precision at 1.7e9 s
+    elapsed_diff = elapsed_a - elapsed_b           # array; sub-femtosecond precision
+    return bool(np.allclose(elapsed_diff + epoch_diff, 0.0, rtol=0.0, atol=TIME_ALIGNMENT_TOLERANCE_SECONDS))
 
 
 def would_create_cycle(dependency_map: dict[str, list[str]], candidate_id: str, new_dependency_ids: list[str]) -> bool:
@@ -900,3 +933,61 @@ def would_create_cycle(dependency_map: dict[str, list[str]], candidate_id: str, 
         visited.add(node)
         stack.extend(dependency_map.get(node, []))
     return False
+
+
+# ---------------------------------------------------------------------------
+# DEC-202 (Slice 3): single-phase fundamental power evaluator
+# ---------------------------------------------------------------------------
+
+def evaluate_power_channel(
+    operation: str,
+    v_time: np.ndarray,
+    v_values: np.ndarray,
+    v_scale_to_si: float,
+    i_values: np.ndarray,
+    i_scale_to_si: float,
+    nominal_frequency_hz: float = 50.0,
+) -> np.ndarray:
+    """Time-varying P(t) [MW], Q(t) [Mvar] or |S|(t) [MVA] from
+    instantaneous voltage and current waveforms.
+
+    Algorithm (DEC-201 + DEC-PWR-003):
+      1. Scale both waveforms to SI base units (V, A) using the supplied
+         scale factors (from engineering_units.parse_engineering_unit).
+      2. Compute sliding fundamental RMS phasors V_1(t) and I_1(t) via
+         the trailing one-cycle DFT window (compute_sliding_phasor).
+         Both share the same time array -- alignment was proven by the
+         service layer before this is ever called.
+      3. Compute complex power S(t) = V_1(t) × conj(I_1(t)) element-wise.
+      4. Extract Re(S) / Im(S) / |S| and convert to MW / Mvar / MVA by
+         dividing by 1e6.
+
+    NaN propagation: wherever either phasor is unavailable (NaN+NaN*j), the
+    power output is also NaN -- the sliding phasor's own availability mask
+    already handles the leading warm-up region and non-finite input samples.
+
+    Sign convention: passive (DEC-PWR-003).
+      P > 0 = element absorbs active power.
+      Q > 0 = inductive load (lagging).
+    Reversing the current phasor negates both P and Q (the conjugate
+    operand is always I, never V -- reversing I reverses the phasor,
+    not the conjugate side).
+    """
+    from app.domain.sliding_phasor import compute_sliding_phasor
+
+    v_si = v_values * v_scale_to_si if v_scale_to_si != 1.0 else v_values
+    i_si = i_values * i_scale_to_si if i_scale_to_si != 1.0 else i_values
+
+    vr = compute_sliding_phasor(v_time, v_si, nominal_frequency_hz)
+    ir = compute_sliding_phasor(v_time, i_si, nominal_frequency_hz)
+
+    s_complex = vr.phasor * np.conj(ir.phasor)
+
+    if operation == OP_ACTIVE_POWER:
+        raw = np.real(s_complex)
+    elif operation == OP_REACTIVE_POWER:
+        raw = np.imag(s_complex)
+    else:
+        raw = np.abs(s_complex)
+
+    return raw / 1_000_000.0

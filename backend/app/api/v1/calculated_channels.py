@@ -104,6 +104,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "engineering_context_not_found": status.HTTP_404_NOT_FOUND,
     "invalid_line_to_line_output": status.HTTP_400_BAD_REQUEST,
     "line_to_line_inputs_unavailable": status.HTTP_400_BAD_REQUEST,
+    "invalid_power_input_type": status.HTTP_400_BAD_REQUEST,
+    "invalid_power_input_unit": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 

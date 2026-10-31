@@ -34,12 +34,17 @@ from app.domain.calculated_channel import (
     NULL_POLICY_REQUIRE_MANUAL,
     NULL_POLICY_ZERO,
     OP_ABSOLUTE_VALUE,
+    OP_ACTIVE_POWER,
     OP_ADDITION,
+    OP_APPARENT_POWER,
     OP_MULTIPLY_CONSTANT,
+    OP_REACTIVE_POWER,
     OP_REVERSE_POLARITY,
     OP_RMS,
     OP_ROCOF,
     OP_SUBTRACTION,
+    POWER_OPERATIONS,
+    POWER_OUTPUT_UNITS,
     UNARY_OPERATIONS,
     UNIMPLEMENTED_ESTIMATION_METHODS,
     UNIMPLEMENTED_NULL_POLICIES,
@@ -51,6 +56,7 @@ from app.domain.calculated_channel import (
     evaluate_absolute_value,
     evaluate_addition,
     evaluate_multiply_constant,
+    evaluate_power_channel,
     evaluate_reverse_polarity,
     evaluate_rms,
     evaluate_rocof,
@@ -79,14 +85,24 @@ from app.domain.calculated_channel import (
 )
 from app.domain.missing_data_estimation import apply_estimation
 from app.domain.channel_classification import (
+    CURRENT,
     FREQUENCY,
+    POWER,
     ROCOF as ROCOF_ENGINEERING_TYPE,
     UNDEFINED,
+    VOLTAGE,
     WAVEFORM_FORM_INSTANTANEOUS,
     WAVEFORM_FORM_MAGNITUDE,
     WAVEFORM_FORM_RMS,
     WAVEFORM_FORM_UNKNOWN,
     derive_waveform_form,
+)
+from app.domain.engineering_units import (
+    ENGINEERING_QUANTITY_CURRENT as EQ_CURRENT,
+    ENGINEERING_QUANTITY_VOLTAGE as EQ_VOLTAGE,
+    NORMALIZATION_UNSUPPORTED,
+    NORMALIZATION_AMBIGUOUS,
+    parse_engineering_unit,
 )
 from app.domain.per_unit import (
     PerUnitBaseProfile,
@@ -128,6 +144,8 @@ from app.services.errors import (
     InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
     InvalidNullPolicyError,
+    InvalidPowerInputTypeError,
+    InvalidPowerInputUnitError,
     InvalidRocofParametersError,
     InvalidOperationArityError,
     NullPolicyNotImplementedError,
@@ -613,6 +631,9 @@ def create_calculated_channel(
     if operation in UNARY_OPERATIONS:
         if len(inputs) != 1:
             raise InvalidOperationArityError(f"{operation} requires exactly 1 input channel.")
+    elif operation in POWER_OPERATIONS:
+        if len(inputs) != 2:
+            raise InvalidOperationArityError(f"{operation} requires exactly 2 input channels: [voltage, current].")
     else:
         if len(inputs) < 2:
             raise InvalidOperationArityError(f"{operation} requires at least 2 input channels.")
@@ -648,6 +669,57 @@ def create_calculated_channel(
                 "These channels cannot be combined because their sample times are not aligned."
             )
 
+    # DEC-202: power operations validate engineering types and resolve SI
+    # scale factors BEFORE the evaluation call below.  These checks are
+    # placed here (after timebase alignment, before output-unit assignment)
+    # to mirror the established operation-specific validation order.
+    power_v_scale: float = 1.0
+    power_i_scale: float = 1.0
+    if operation in POWER_OPERATIONS:
+        v_res = resolved[0]
+        i_res = resolved[1]
+        # Engineering-type guard: slot 0 must be Voltage, slot 1 must be
+        # Current.  UNDEFINED is allowed (blanket coverage from a file
+        # that carries no engineering metadata), but a KNOWN wrong type is
+        # rejected outright -- the engineer can rename and retry.
+        if v_res.engineering_type not in (VOLTAGE, UNDEFINED):
+            raise InvalidPowerInputTypeError(
+                f"The voltage input must be a Voltage channel, but '{inputs[0].channel_name or inputs[0].calculated_channel_id}' "
+                f"is classified as {v_res.engineering_type}."
+            )
+        if i_res.engineering_type not in (CURRENT, UNDEFINED):
+            raise InvalidPowerInputTypeError(
+                f"The current input must be a Current channel, but '{inputs[1].channel_name or inputs[1].calculated_channel_id}' "
+                f"is classified as {i_res.engineering_type}."
+            )
+        # Unit guard: both inputs must carry a recognised unit so the
+        # evaluator can normalise to SI (V, A).  Blank units are rejected --
+        # the product V×I has no defined magnitude without confirmed units.
+        parsed_v = parse_engineering_unit(EQ_VOLTAGE, v_res.unit)
+        if parsed_v.normalization_status in (NORMALIZATION_UNSUPPORTED, NORMALIZATION_AMBIGUOUS):
+            raise InvalidPowerInputUnitError(
+                f"Voltage input unit {v_res.unit!r} is not recognised (expected V, kV, or MV). "
+                "Set the channel unit before creating a power channel."
+            )
+        parsed_i = parse_engineering_unit(EQ_CURRENT, i_res.unit)
+        if parsed_i.normalization_status in (NORMALIZATION_UNSUPPORTED, NORMALIZATION_AMBIGUOUS):
+            raise InvalidPowerInputUnitError(
+                f"Current input unit {i_res.unit!r} is not recognised (expected A or kA). "
+                "Set the channel unit before creating a power channel."
+            )
+        power_v_scale = parsed_v.scale_to_canonical  # volts per declared unit
+        power_i_scale = parsed_i.scale_to_canonical  # amperes per declared unit
+        # Sampling density: same guard as RMS to ensure at least one valid
+        # phasor window exists (DEC-201: PHASOR_MIN_SAMPLES_PER_CYCLE = 8).
+        if not rms_recording_long_enough(v_res.time, 50.0):
+            raise RmsRecordingTooShortError(
+                "Recording is shorter than one complete phasor window (1 cycle at nominal frequency)."
+            )
+        if not rms_sampling_dense_enough(v_res.time, 50.0):
+            raise RmsSamplingTooSparseError(
+                "Sample rate is too low relative to the phasor window to produce a meaningful power estimate."
+            )
+
     if operation in MULTI_OPERATIONS:
         input_units = [r.unit for r in resolved]
         input_engineering_types = [r.engineering_type for r in resolved]
@@ -667,6 +739,9 @@ def create_calculated_channel(
                 f"engineering types differ ({' vs '.join(conflicting_types)})."
             )
         output_unit = next((r.unit for r in resolved if r.unit), "") or ""
+    elif operation in POWER_OPERATIONS:
+        # Fixed output unit regardless of input scaling (DEC-202).
+        output_unit = POWER_OUTPUT_UNITS[operation]
     elif operation == OP_ROCOF:
         output_unit = ROCOF_UNIT
     else:
@@ -682,6 +757,11 @@ def create_calculated_channel(
         # The output is a rate of change of frequency, never a Frequency
         # (nor the input's type, even when an override accepted one).
         output_engineering_type = ROCOF_ENGINEERING_TYPE
+    elif operation in POWER_OPERATIONS:
+        # Power operations always produce a Power output regardless of
+        # whether V/I inputs were identified (UNDEFINED inputs are still
+        # valid for power -- the unit check above already proved them safe).
+        output_engineering_type = POWER
     # Phase 5B (DEC-048): same "classification/grouping only" status as
     # engineering_type above -- derive_waveform_form() never blocks or
     # alters a calculation itself; the RMS-specific eligibility/override
@@ -826,6 +906,15 @@ def create_calculated_channel(
                 f"No ROCOF could be calculated: no complete centered {rocof_window_ms} ms window fits inside a "
                 "continuous run of valid samples. Use a shorter window, or check the input for gaps."
             )
+    elif operation in POWER_OPERATIONS:
+        values = evaluate_power_channel(
+            operation,
+            v_time=first.time,
+            v_values=effective_values[0],
+            v_scale_to_si=power_v_scale,
+            i_values=effective_values[1],
+            i_scale_to_si=power_i_scale,
+        )
     elif operation == OP_ADDITION:
         values = evaluate_addition(effective_values)
     else:
@@ -852,6 +941,12 @@ def create_calculated_channel(
             "window_ms": rocof_window_ms,
             "alignment": ROCOF_ALIGNMENT_CENTERED,
             "edge_policy": ROCOF_EDGE_POLICY,
+        }
+    elif operation in POWER_OPERATIONS:
+        output_parameters = {
+            "nominal_frequency_hz": 50.0,
+            "window_mode": "trailing",
+            "sign_convention": "passive",
         }
     else:
         output_parameters = {}
