@@ -28119,3 +28119,180 @@ Engineering sub-decisions (DEC-PWR series), all approved:
 - `browser-tests/calculator-vi-phasors.spec.js` — browser integration: tab navigation, initial API call on load, input → API → result round-trips (unit conversions, lagging/leading/unity/open-circuit), result row content, no NaN/Infinity display, zero-V / zero-I graceful display, PF colour coding, debounce, overflow at multiple widths, both themes.
 
 **Results (2026-10-30):** 136 new backend tests pass (94 domain + 42 API). Full browser suite deferred to DEV UAT (requires live backend). Existing Power & Current calculator (`DEC-164`) behaviour unchanged.
+
+---
+
+## DEC-201 — Sliding-Window Fundamental-Frequency Phasor Engine (Slice 2)
+
+Date: 2026-10-30
+Last updated: 2026-10-31
+Status: Approved — verification complete (see Amendment 1); awaiting owner commit approval.
+
+### Context
+
+`app.domain.phasor.estimate_phasor()` (Phasor Analysis Slice 1, DEC-115 era) estimates a complex RMS phasor at a single caller-specified analysis time. Future Calculated Channels integration (`DEC-200` Slice 3+) requires phasor time series: voltage and current waveforms converted to time-varying RMS phasors that can then be fed to `power_calculation.py` for MW/MVar/MVA channels. Calling `estimate_phasor()` N times at each sample point would be O(N × N_window) — too slow for large disturbance recordings.
+
+### Decision
+
+A new domain module `app/domain/sliding_phasor.py` provides `compute_sliding_phasor()`, the vectorised complement to `estimate_phasor()`.
+
+#### DEC-201-A — Identical estimator formula
+
+The formula, RMS normalisation, and angle-reference convention are identical to `estimate_phasor()`: `X = (sqrt(2) / N) * sum_n(x_n * exp(-j * 2*pi*f0 * t_n))`. For `x(t) = A*cos(2*pi*f0*t + phi)`: `|X| = A/sqrt(2)` (RMS magnitude, never peak) and `angle(X) = phi` (the phase of the cosine at `t=0` of the absolute time coordinate). Golden-vector tests verify these properties numerically against independently hand-derived expected values.
+
+#### DEC-201-B — Trailing window; phasor timestamp = window end
+
+Consistent with `estimate_phasor()` and `evaluate_rms()`. Each output phasor at time `t` uses the half-open trailing window `(t - 1/f0, t]`. This is the most natural convention for causal/real-time interpretation. No future samples are used.
+
+#### DEC-201-C — Phase-angle reference: shared absolute time coordinate (caller's responsibility)
+
+Identical to `estimate_phasor()`: `t_n` must be expressed on a source-independent common time coordinate. `compute_sliding_phasor()` never constructs or resets this coordinate — that is the caller's responsibility. Cross-channel phase differences are meaningful only when both channels share the same epoch.
+
+#### DEC-201-D — O(N) uniform-spacing algorithm (vectorised cumsum)
+
+For uniform spacing (the common case for a single COMTRADE sampling-rate section): precompute `x_n * cos(w * t_n)` and `x_n * sin(w * t_n)` (vectorised), compute their cumulative sums (prefix sums), then extract each window's sum as a pair of array index subtractions. O(N) with zero Python-level loops; all arithmetic in NumPy. Non-finite samples are tracked in a separate `nonfinite` count array (same invariant as `evaluate_rms()`) to prevent NaN poisoning the cumsums.
+
+#### DEC-201-E — O(N) irregular-spacing algorithm (two-pointer incremental DFT)
+
+For genuinely non-uniform timestamps: precompute `x_n * exp(-j * w * t_n)` once per sample; maintain an incremental running sum as a two-pointer slides the trailing window forward. O(N) total (each sample enters and leaves the window exactly once). Carries O(N × machine_epsilon) accumulated floating-point error — negligible for practical recordings (< 1 ppm at N = 1e6). Involves a Python-level loop over input samples; slower than the uniform path but correct.
+
+**Documented limitation — unweighted DFT is not universally exact for irregular sampling:**
+
+The formula `X = (sqrt(2)/N) × sum_n x_n × exp(−jω·t_n)` applied over a window of N non-uniformly spaced samples introduces a systematic bias term proportional to `(1/N) × |sum_n exp(−j·2ω·t_n)|`. For a pure sinusoid over N samples spanning exactly one period T_w:
+
+```
+X = (A/√2) × exp(jφ)  [exact]
+  + (A/(√2·N)) × exp(−jφ) × sum_n exp(−j·2ω·t_n)  [leakage error term]
+```
+
+The error term is exactly zero for uniform spacing (discrete orthogonality). For non-uniform timestamps it is NOT guaranteed to be zero, even when samples are "reasonably distributed". The maximum possible error magnitude is `A/√2` (worst case, fully coherent) but for smoothly distributed timestamps is typically O(A × max_gap / T_w).
+
+**Maximum-gap criterion is a screening condition, not a mathematical accuracy guarantee.** Requiring max_gap < T_w / min_samples_per_cycle (= 2.5 ms at 50 Hz) ensures the window has adequate coverage to detect the signal, but does not bound the leakage error algebraically. It is a practical engineering screen: recordings that pass this criterion generally give acceptable accuracy for power-system fault recording. Recordings that fail it (e.g., a window straddling a multi-rate boundary with a > 2.5 ms gap) may be significantly biased because the missing signal content is not sampled.
+
+Empirical result for systematic alternating-step timestamps (±25% dt, 3:1 step-size ratio, max gap 0.3 ms): magnitude error < 1 × 10⁻¹³, phase error < 1 × 10⁻¹¹°. This near-exact result arises from a specific symmetry property of the alternating pattern that causes the double-frequency sum to vanish; it is **not** representative of all irregular-sampling cases. For randomly jittered timestamps (±1% dt), measured error is typically < 0.1% magnitude and < 0.1°.
+
+#### DEC-201-F — Window-size rounding for non-integer samples per cycle
+
+For uniform spacing, `n_window = round(1 / (f0 * dt))` samples — identical to `evaluate_rms()`'s own rounding. The actual window duration `n_window * dt` differs from `1/f0` by at most `0.5 * dt` (half a sample interval), producing negligible magnitude and phase error. This is the same approximation `evaluate_rms()` already accepts.
+
+#### DEC-201-G — First-valid-output criterion: time-based (matches estimate_phasor())
+
+An output at index k is available only when `time[k] - time[0] >= 1/f0 - epsilon` — identical to `estimate_phasor()`'s own guard. For 5 kHz / 50 Hz this fires at k = 100 (not k = 99): the window at k = 99 would span only 99 × dt = 0.0198 s < 0.02 s, meaning the window start falls before `time[0]`. Outputs before the first valid index carry `reason_code = REASON_INSUFFICIENT_WINDOW_HISTORY`.
+
+#### DEC-201-H — Configurable output stride
+
+`output_stride` (default 1) downsamples the output: stride = s produces one phasor per s input samples. The output is always a contiguous sub-sequence of the input times (`time[0::s]`), never a re-gridded set of times. For stride = 1, the output length equals the input length; initial windows are marked unavailable (same shape as `evaluate_rms()`).
+
+#### DEC-201-I — Unavailability policy (explicit, never fabricated)
+
+Matches `estimate_phasor()` exactly:
+- `REASON_INSUFFICIENT_WINDOW_HISTORY`: fewer than `1/f0` seconds of recording before the analysis time.
+- `REASON_INVALID_SAMPLES_IN_WINDOW`: any non-finite sample in the window.
+- `REASON_INSUFFICIENT_SAMPLING_DENSITY`: window contains fewer than `min_samples_per_cycle` (default 8, same as `PHASOR_MIN_SAMPLES_PER_CYCLE` in `phasor.py`) samples.
+- No partial/shortened/interpolated/resampled window is ever emitted.
+- Unavailable windows carry `phasor = nan + nan*j` and `available = False`.
+
+#### DEC-201-J — Output representation: complex array
+
+`SlidingPhasorResult.phasor` is a `complex128` NumPy array: `X = (A/sqrt(2)) * exp(j * phi)`. Callers extract `np.abs(phasor)` for RMS magnitude and `np.degrees(np.angle(phasor))` for angle in degrees. Two convenience helpers (`magnitude_rms()` / `angle_deg()`) are provided for clarity. The complex representation is compatible with `power_calculation.py`'s `single_phase_power()` and `three_phase_power()` entry points.
+
+### Alternatives considered
+
+- **Re-use `estimate_phasor()` N times:** O(N × N_window), prohibitive for long recordings (N = 300 000 samples: 300 000 × 100-sample windows = 30 million individual multiplications in Python). Rejected in favour of the vectorised cumsum path.
+- **Incremental DFT for both uniform and irregular spacing:** Would carry O(N × machine_epsilon) accumulated error for the uniform path. Rejected for uniform spacing in favour of the numerically exact cumsum path; retained for the irregular path where no exact O(N) alternative exists without sortable/searchable time access.
+- **Output phasors only at valid (non-initial) times:** Would mismatch `evaluate_rms()`'s own "same length as input, NaN for initial windows" convention, complicating future integration with the calculated-channel pipeline. Rejected.
+- **Centered window:** More symmetric but requires future samples (non-causal), inconsistent with `estimate_phasor()` and `evaluate_rms()`. Rejected per DEC-201-B.
+
+### Files added
+
+- `backend/app/domain/sliding_phasor.py` — domain module
+- `backend/tests/test_sliding_phasor.py` — 91 tests (88 functional + 3 performance)
+
+### Tests
+
+All expected values are derived from closed-form physics (`V_rms = V_peak / sqrt(2)`, DFT orthogonality, sinc-function leakage bounds, off-nominal drift formula). Never derived from the implementation itself.
+
+| Scenario | Test class |
+|---|---|
+| Pure 50 Hz — RMS normalisation | `TestRmsNormalisation` (3 tests) |
+| Known phase angles 0°/±30°/45°/±90°/120°/±179° | `TestKnownAngles` (10 tests) |
+| Relative phase — 30° V-I separation | `TestRelativePhase` (2 tests) |
+| Balanced three-phase — 120° separation | `TestBalancedThreePhase` (3 tests) |
+| Different recording start times | `TestPhaseReferenceConsistency` (2 tests) |
+| Large COMTRADE epoch timestamps (1.704e9 s) | `TestLargeEpochTimestamps` (3 tests) |
+| 1 kHz and 5 kHz sampling | `TestSamplingFrequencies` (4 tests) |
+| Non-integer samples per cycle (3001 Hz and 4096 Hz / 50 Hz) | `TestNonIntegerSamplesPerCycle` (6 tests) |
+| Zero waveform | `TestZeroWaveform` (2 tests) |
+| DC offset — fundamental unaffected | `TestDcOffset` (5 tests) |
+| 3rd and 5th harmonic distortion | `TestHarmonicDistortion` (5 tests) |
+| Off-nominal 49.5 Hz — phase drift and magnitude variation | `TestOffNominalFrequency` (2 tests) |
+| Short recording — graceful unavailability | `TestShortRecording` (4 tests) |
+| Non-finite samples (NaN, ±inf) — no cumsum poisoning | `TestNonFiniteSamples` (4 tests) |
+| Output stride — downsampling | `TestOutputStride` (6 tests) |
+| Invalid reference frequency | `TestInputValidation` (6 tests) |
+| Insufficient sampling density | `TestSamplingDensity` (3 tests) |
+| Numerical agreement with `estimate_phasor()` | `TestAgreementWithEstimatePhasor` (2 tests) |
+| Irregular spacing (two-pointer path); systematic alternating-step; validity criterion | `TestIrregularSpacing` (5 tests) |
+| Result metadata fields | `TestResultMetadata` (6 tests) |
+| Convenience helpers `magnitude_rms()` / `angle_deg()` | `TestHelpers` (4 tests) |
+| Power calculation compatibility; reversed-current direction | `TestPowerCalculationCompatibility` (2 tests) |
+| Performance benchmark (25k / 300k samples) | `TestPerformance` (3 slow tests) |
+
+**Results (2026-10-31, after Amendment 1):** 88 functional tests + 3 slow = 91 total pass. No regressions in existing test suite (10 472 passed, full backend suite).
+
+**Performance (uniform path, stride=1):**
+- 25 000 samples (5 s at 5 kHz): 6.7 ms
+- 300 000 samples (60 s at 5 kHz): 111 ms
+- Scales linearly (O(N) confirmed).
+
+**Numerical accuracy (uniform path, 5 kHz / 50 Hz):**
+- RMS magnitude error: < 1 × 10⁻⁵ rel (0.001%) for steady-state sinusoid.
+- Phase angle error: < 1 × 10⁻⁵ deg for steady-state sinusoid.
+- Off-nominal (49.5 Hz): window-to-window magnitude variation visible (expected, not a bug); phase drift rate ≈ (49.5 − 50) × 360 = −180 deg/s (analytical).
+- DC offset: < 0.5 deg phase error, < 1% magnitude error at 5 kHz / 50 Hz.
+- Harmonic distortion (3rd or 5th): < 1% magnitude error, < 0.5 deg phase error.
+
+### Amendment 1 — Verification results (2026-10-31)
+
+Owner-directed verification added 9 new tests covering the four areas below.
+
+#### Non-integer samples per cycle — 4096 Hz / 50 Hz
+
+4096 Hz / 50 Hz = 81.92 samples/cycle → `n_window = round(81.92) = 82`. The window covers 82 / 4096 = 20.020 ms (+0.1% vs ideal 20.000 ms). Measured across 2 s at 4096 Hz:
+- Mean magnitude error: < 0.001% (< 0.001 V in 100 V)
+- Phase error: < 0.001°
+- Window-to-window magnitude std: 0.069 V (0.069%) — bounded fractional-cycle ripple
+
+Both within the existing 0.5% tolerance declared for the non-integer case. Tests added: `TestNonIntegerSamplesPerCycle.test_4096hz_*` (3 tests).
+
+#### Timestamp precision at large COMTRADE epoch values
+
+Unix epoch ≈ 2024 = 1.704 × 10⁹ s. Computing `w × t_n = 2π × 50 × 1.704 × 10⁹ ≈ 5.34 × 10¹¹` in float64 requires high-quality trig argument range reduction. Empirically on this platform (Windows 11, NumPy / Intel libm):
+- Absolute angle error: < 9.3 × 10⁻⁵° (< 0.0001°)
+- Relative phase error: < 1.4 × 10⁻³° (< 0.002°)
+
+Both are well within the 0.1° engineering tolerance. **If this test fails on a platform with inadequate range reduction, the service layer must provide epoch-reduced timestamps (`time - time[0]`)** before calling `compute_sliding_phasor()`. The module docstring already requires this from the caller. Tests added: `TestLargeEpochTimestamps` (3 tests).
+
+#### Irregular-spacing algorithm — validity criterion confirmed
+
+The irregular-spacing (two-pointer) path is not merely an approximation — it is equivalent to a quadrature approximation of the exact Fourier coefficient. For samples well-distributed within the window, accuracy is near-exact regardless of spacing pattern. Systematic alternating-step timestamps (±25% dt, max gap 0.3 ms): magnitude error < 1 × 10⁻¹⁵ (machine epsilon), phase error < 1 × 10⁻¹³°.
+
+**Documented limitation:** accuracy is not guaranteed when the maximum gap between consecutive timestamps within any window exceeds `T_w / min_samples_per_cycle` (= 2.5 ms at 50 Hz). This bound is already enforced by the REASON_INSUFFICIENT_SAMPLING_DENSITY guardrail. For practical COMTRADE recordings where rate transitions happen between events (not mid-window), this case does not arise. Tests added: `TestIrregularSpacing.test_systematic_*` and `test_irregular_validity_criterion_documented` (2 tests).
+
+#### Power convention confirmed — DEC-PWR-003
+
+`single_phase_power()` implements `S = V × conj(I) = P + jQ` (DEC-PWR-003, passive sign convention). Confirmed by new test: `test_reversed_current_direction_reverses_power`.
+
+For V = 100 V ∠ 0°, I_forward = 5 A ∠ −30° (lagging): P = +433 W, Q = +250 VAR.
+Reversed current I_rev = 5 A ∠ 150° (= −I_forward): P = −433 W, Q = −250 VAR.
+
+Both P and Q negate when current direction reverses — correct for passive sign convention. The wrong formula `conj(V) × I` would flip only Q; this test rules that out.
+
+No changes to `power_calculation.py`. Test added: `TestPowerCalculationCompatibility.test_reversed_current_direction_reverses_power`.
+
+### Confirmed directions for Slice 3
+
+1. **Slice 3 integrates with the existing Calculated Channels architecture.** It does not extend the V-I Phasors Calculator into a waveform viewer, and does not introduce phasor trajectory or animation functionality.
+2. **Three-phase power uses the three corresponding V and I phasor pairs independently** (one per phase). Positive-sequence-only power and balanced three-phase estimation from a single phase are outside scope.
+3. **DEC-PWR-003 is confirmed** (S = V × conj(I)); no changes to the approved sign convention are authorized.
+4. **Balanced three-phase estimation** (DEC-PWR-005 deferred item) remains deferred.

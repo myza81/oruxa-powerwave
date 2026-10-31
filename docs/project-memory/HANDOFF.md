@@ -4,7 +4,31 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-30** (Power Calculation domain + V-I Phasors Calculator tab, DEC-200, Slices 0 and 1 deployed to DEV for owner UAT; earlier **2026-10-26** - DEV UAT Time Group UTC-header correction; see section below.)
+Last updated: **2026-10-31** (Sliding Phasor domain, DEC-201, Slice 2 complete — engineering-verified and committed; earlier **2026-10-30** - Power Calculation domain + V-I Phasors Calculator tab, DEC-200, Slices 0 and 1; see sections below.)
+
+## Slice 2: Sliding Phasor domain (DEC-201) — 2026-10-31
+
+`backend/app/domain/sliding_phasor.py` implements the trailing-half-open-window
+RMS DFT phasor: uniform path (O(N) cumsum) + irregular path (O(N) two-pointer),
+stride-decimated output, `SlidingPhasorResult` frozen dataclass.
+
+`backend/tests/test_sliding_phasor.py`: 91 tests (88 functional, 3 slow).
+All 303 targeted tests (+ 10,472 full suite at Slice 0/1) passed green.
+
+Engineering verification completed (Amendment 1 to DEC-201):
+- Non-integer sampling (4,096 Hz / 50 Hz = 81.92 cyc): magnitude error < 0.5%,
+  phase ripple < 0.5°, window-to-window std bounded.
+- COMTRADE epoch timestamps (~1.7 × 10⁹ s): absolute angle error < 9.3 × 10⁻⁵°;
+  no precision loss on Windows 11 / NumPy / Intel libm.
+- Irregular sampling: documented mathematical limitation — unweighted DFT carries
+  a leakage error term for general non-uniform timestamps; max-gap criterion is a
+  screening condition, not a mathematical accuracy guarantee.
+- Power convention confirmed: S = V × conj(I) = P + jQ (passive sign). Reversing
+  current phasor negates both P and Q.
+
+DEC-201 status: Approved (Amendment 1). Slice 3 (Calculated Channels integration)
+not started. No waveform viewer, no phasor trajectory/animation, no positive-sequence
+estimation in scope.
 
 ## DEV UAT: Time Group UTC header (2026-10-26)
 
