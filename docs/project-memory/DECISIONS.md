@@ -28441,3 +28441,399 @@ Following owner engineering-verification request (Items 1–5):
 #### Items 4–5 — Regression and deliverables
 
 **Final test counts:** 40 power tests (`test_calculated_channel_power.py`) + 10 alignment tests added to `test_calculated_channel_domain.py`. Full suite: **10,531 passed, 320 skipped, exit code 0.** No corrections to service, API, or frontend code required.
+
+---
+
+## DEC-203 — V-I Pairing Phase A: Type-aware Voltage/Current Dropdown Grouping
+
+Status: Implemented (2026-10-31). Awaiting owner review before commit.
+
+### Context
+
+Power calculated channels (Active Power, Reactive Power, Apparent Power — DEC-202) take exactly two inputs: a Voltage channel and a Current channel. The previous implementation used `wwCcCandidateOptionsHtml(null)` for both dropdowns — the generic function that groups all candidates by source name, with no type-based ordering. This gave engineers no visual guidance about which channels are appropriate for each slot.
+
+The owner approved a Hybrid Automatic–Manual Pairing model (approval document 2026-10-31, Phase A only). Phase A addresses the manual interface only; automatic pairing, session memory, and cross-source confirmation (Phases B–D) are deferred.
+
+### Approved decisions applied in Phase A
+
+- **OD-1 (Approved):** Type-filtered manual dropdowns — Voltage channels listed first in the voltage slot, Current channels listed first in the current slot.
+- **OD-4 (Exclude channels without reliable context identifier from automatic pairing):** Manual fallback (all channels accessible) preserved — no channel is hidden.
+- **OD-5 (Modified):** Cross-source confirmation deferred to Phase B.
+- **OD-6 (Deferred):** Inline-vs-dialog decision deferred to UI UAT.
+- **OD-7/OD-8 (Deferred):** Session memory deferred to Phase B.
+
+### Changes
+
+**`frontend/index.html`**
+
+`wwCcCandidateOptionsHtml(selectedFilterReferenceId)` gains an optional second parameter `typeHint`:
+- `"voltage"`: candidates reordered Voltage → Undefined → Other; `<optgroup>` labels "Voltage channels", "Undefined channels", "Other channels".
+- `"current"`: candidates reordered Current → Undefined → Other; `<optgroup>` labels "Current channels", "Undefined channels", "Other channels".
+- `null` / omitted: existing behaviour unchanged (groups by source name, ROCOF frequency-first logic unchanged).
+
+The power arity rendering branch in `wwCcRenderBuilderFields` now calls:
+- `wwCcCandidateOptionsHtml(null, "voltage")` for `#wwCcPowerVoltageSelect`
+- `wwCcCandidateOptionsHtml(null, "current")` for `#wwCcPowerCurrentSelect`
+
+No other call site is affected. `wwCcCandidateFromKey()` is unchanged (key lookup is type-independent).
+
+**`browser-tests/calculated-channel-power.spec.js`** (new file)
+
+9 browser tests covering:
+- Voltage dropdown: Voltage channels first, Undefined second, IA in Other (not hidden)
+- Current dropdown: Current channels first, Undefined second, VA in Other (not hidden)
+- Undefined channel accessible and not disabled in both dropdowns
+- Create Active Power / Reactive Power / Apparent Power channels end-to-end
+- Grouping consistent across all three power operations
+- Unary dropdown for other operations unaffected by power grouping
+
+Fixture: inline 1000 Hz ASCII COMTRADE with VA (kV → Voltage), IA (kA → Current), SIG (pu → Undefined).
+
+### Invariants preserved
+
+- All channels remain accessible — none hidden or silently reinterpreted.
+- Channel type labels ("Voltage channels", "Undefined channels", "Other channels") are display groupings only; the submitted `channel_name` / `source_id` is unchanged.
+- Existing ROCOF frequency-first grouping, unary dropdowns, and multi-input dropdowns are unaffected.
+- No change to calculation validation, power mathematics, or synchronisation behaviour.
+- No change to Measurement Group persistence or per-unit remediation work.
+
+### Test results (2026-10-31)
+
+- Backend: targeted tests (calculated_channel_domain, calculated_channel_power, calculated_channel_service, power_calculation_domain, channel_classification) — all pass.
+- Browser: 9/9 new tests pass. 24/24 existing calculated-channel tests pass (null-handling, presentation, preview, rocof).
+- Not yet committed or deployed.
+
+---
+
+## DEC-204 — V-I Pairing Phase B: Automatic V-I Pair Resolver Domain Function
+
+Status: Implemented (2026-10-31). Awaiting owner review before commit.
+
+### Context
+
+Phase A (DEC-203) improved manual V-I selection with type-aware dropdown ordering. Phase B adds an automatic pairing layer: a pure domain function `find_vi_pairs()` that analyses a flat list of source channels and returns unambiguous automatic V-I pairs alongside candidates that require explicit user confirmation.
+
+The owner approved the Phase B specification on 2026-10-31 (same approval document). Phase B covers only the domain function and tests — no API endpoint, no frontend UI, no session storage, and no three-phase calculations are included.
+
+### Approved decisions applied in Phase B
+
+- **Stateless pure domain function:** `find_vi_pairs(channels)` in `backend/app/domain/vi_pair_resolution.py`. No I/O, no registry, no service dependency.
+- **Reuses existing grammar:** `resolve_channel_engineering_identity()` and its fields (`kind`, `context_hint`, `name_raw_token`, `name_token_kind`, `has_role`, `has_conflict`). No new name-parsing grammar introduced.
+- **Matching key:** `(context_hint, name_raw_token)` applied separately for Voltage and Current buckets; the resolver intersects the two key sets.
+- **Automatic pairing** requires all five conditions: exactly 1V, exactly 1I, same `source_id`, no `has_conflict`, and voltage `name_token_kind != "pair"` (line-to-line voltage exclusion).
+- **Needs-confirmation** returned for: `conflict` (priority 1) > `multiple_voltage` (priority 2) > `multiple_current` (priority 3) > `cross_source` (priority 4).
+- **Silently ignored:** channels with no engineering role (`has_role == False`), channels with non-V/I engineering type, and line-to-line voltages.
+- **Output is deterministic** — sorted by `(context_hint, phase_token, source_id, channel_name)`.
+
+### New file: `backend/app/domain/vi_pair_resolution.py`
+
+Public surface:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ChannelPairingInput:
+    source_id: str
+    channel_name: str
+    engineering_type: str
+    unit: str | None = None
+    phase_label: str | None = None
+
+@dataclass(frozen=True, slots=True)
+class VIChannelRef:
+    source_id: str
+    channel_name: str
+
+@dataclass(frozen=True, slots=True)
+class MatchedVIPair:
+    source_id: str
+    voltage_channel_name: str
+    current_channel_name: str
+    context_hint: str | None
+    phase_token: str
+    phase_token_kind: str
+
+@dataclass(frozen=True, slots=True)
+class VIPairCandidate:
+    context_hint: str | None
+    phase_token: str
+    voltage_refs: tuple[VIChannelRef, ...]
+    current_refs: tuple[VIChannelRef, ...]
+    reason: str  # REASON_CONFLICT | REASON_MULTIPLE_VOLTAGE | REASON_MULTIPLE_CURRENT | REASON_CROSS_SOURCE
+
+@dataclass
+class VIPairResolution:
+    automatic_pairs: list[MatchedVIPair]
+    candidates_needing_confirmation: list[VIPairCandidate]
+
+def find_vi_pairs(channels: list[ChannelPairingInput]) -> VIPairResolution: ...
+```
+
+### New file: `backend/tests/test_vi_pair_resolution.py`
+
+30 unit tests covering all 14 specified scenario categories:
+1. Empty input
+2. Single V+I, same source, matching phase → automatic pair
+3. Cross-source → `cross_source` candidate
+4. Multiple voltage candidates → `multiple_voltage` candidate
+5. Multiple current candidates → `multiple_current` candidate
+6. Conflict flag on voltage → `conflict` candidate
+7. Conflict flag on current → `conflict` candidate (conflict > cross_source priority)
+8. Line-to-line voltage (PAIR token) excluded from pairing
+9. Channels with no role token silently ignored
+10. Non-V/I engineering types (Frequency, Undefined, Power) silently ignored
+11. Mixed: auto pairs + candidates + ignored channels co-exist correctly
+12. Context-hint mismatch → no pairing across different equipment contexts
+13. Deterministic sort order for pairs, candidates, and refs within candidates
+14. Undefined channels (Phase A fixture: SIG/pu) produce no resolver output
+
+### Invariants
+
+- Undefined channels are not included in resolver output — they remain available for manual selection through Phase A's dropdowns only.
+- The resolver never writes to any service, registry, or session store.
+- Phase A browser tests and existing backend test suites are unaffected.
+- No change to DEC-050 per-unit remediation work in the working tree.
+
+### Test results (2026-10-31)
+
+- 30/30 `test_vi_pair_resolution.py` tests pass.
+- Not yet committed or deployed.
+
+---
+
+## DEC-205 — V-I Pairing Phase C: V-I Pair Discovery API Endpoint
+
+Status: Implemented (2026-10-31). Awaiting owner review before commit.
+
+### Context
+
+Phase B (DEC-204) delivered `find_vi_pairs()` as a pure domain function. Phase C exposes it through a workspace-scoped, read-only API endpoint. The frontend will use this endpoint in a later phase to pre-populate the V-I selector in the Power Calculated Channels builder.
+
+### Approved endpoint
+
+```
+GET /api/v1/workspaces/{workspace_id}/vi-pairs
+```
+
+Read-only. No workspace mutation, no persistence, no Measurement Group changes, no power-calculation mathematics, no waveform-array transfers.
+
+### Response schema
+
+```json
+{
+  "automatic_pairs": [
+    {
+      "pair_id": "auto:<12-hex>",
+      "status": "automatic",
+      "display_label": "VA / IA (IBT1 HV)",
+      "source_id": "<source_id>",
+      "voltage_channel": { "source_id": "...", "channel_name": "VA", "engineering_type": "Voltage", "unit": "kV" },
+      "current_channel": { "source_id": "...", "channel_name": "IA", "engineering_type": "Current", "unit": "kA" },
+      "matching_evidence": { "context_hint": "IBT1 HV", "phase_token": "A", "phase_token_kind": "single" }
+    }
+  ],
+  "candidates_needing_confirmation": [
+    {
+      "pair_id": "cand:<12-hex>",
+      "status": "needs_confirmation",
+      "display_label": "Phase A — cross-source",
+      "reason": "cross_source",
+      "voltage_refs": [...],
+      "current_refs": [...],
+      "matching_evidence": { "context_hint": null, "phase_token": "A", "phase_token_kind": null }
+    }
+  ],
+  "total_input_channel_count": 6
+}
+```
+
+**`pair_id`** is a stable, deterministic 12-character SHA-256 prefix over the channel identity tuple, prefixed with `"auto:"` or `"cand:"`. Unambiguous even when different sources carry channels with the same name (source_id is included in the hash input).
+
+**`phase_token_kind`** is populated for automatic pairs (from the voltage channel's identity) and `null` for candidates (may span mixed kinds).
+
+**`total_input_channel_count`** counts all analog channels offered to the resolver (including channels silently excluded), for caller diagnostics.
+
+**Empty/unknown workspace** returns `{"automatic_pairs": [], "candidates_needing_confirmation": [], "total_input_channel_count": 0}`, not 404.
+
+**Blank `workspace_id`** returns HTTP 400 `code="invalid_workspace"`.
+
+### New files
+
+| File | Description |
+|---|---|
+| `backend/app/schemas/vi_pairs.py` | Pydantic response schemas: `VIPairChannelOut`, `VIPairMatchEvidenceOut`, `AutomaticVIPairOut`, `CandidateVIPairOut`, `VIPairsOut` |
+| `backend/app/api/v1/vi_pairs.py` | FastAPI router — `GET ""` handler, `_validate_workspace_id`, `_stable_id`, display-label helpers |
+| `backend/tests/test_vi_pairs_api.py` | 37 API-level tests (12 specified + performance) |
+
+**`backend/app/main.py`** updated: imports `vi_pairs_v1_router` and calls `app.include_router(vi_pairs_v1_router)`.
+
+### Architecture notes
+
+- All pairing logic lives in `find_vi_pairs()` (DEC-204) — the API layer contains no pairing logic.
+- `pair_id` includes `source_id` in the hash, ensuring globally unambiguous identifiers when multiple sources carry identically named channels.
+- `phase_token_kind` is `null` for candidates because a candidate may contain voltage refs of mixed token kinds (e.g., a `multiple_voltage` candidate could include both `single` and `l123` channels).
+
+### Test results (2026-10-31)
+
+- 37/37 `test_vi_pairs_api.py` tests pass.
+- Performance: 200-channel GET: 266 ms; 2000-channel GET: 308 ms (includes COMTRADE parse and TestClient upload overhead; pure resolver call is sub-millisecond).
+- Not yet committed or deployed.
+
+---
+
+## DEC-206 — OD-4 Final Interpretation: Null-Context Exclusion Scope
+
+Date: 2026-10-31
+Status: Approved
+
+### Context
+
+Phase C Final API Verification (2026-10-31) raised the question of whether OD-4's
+null-context exclusion — which was initially applied only to `REASON_CROSS_SOURCE`
+candidates — should also apply to other ambiguous candidate reason codes
+(`REASON_MULTIPLE_VOLTAGE`, `REASON_MULTIPLE_CURRENT`, `REASON_CONFLICT`) when
+`context_hint = None`.
+
+Separately, the owner asked whether same-source, unambiguous, null-context channels
+(plain "VA"/"IA" on one source) should also be excluded from automatic pair suggestions.
+
+### Approved policy (Option A)
+
+**Same-source automatic pairs with null context: permitted.**
+
+`source_id` itself is a reliable pairing anchor when both channels originate from the same
+recording file. For unambiguous single-bay recordings without an equipment-context prefix,
+`context_hint = None` is expected and correct. Conditions for a valid null-context auto pair:
+- Both channels share the same `source_id`.
+- Exactly one voltage and one current candidate exist for the `(None, phase_token)` key.
+- Neither channel carries a conflicting engineering identity.
+- The voltage is not a line-to-line (PAIR) token.
+
+This preserves common COMTRADE naming conventions (`VA`/`IA`, `VB`/`IB`, `VC`/`IC`)
+without requiring equipment-context prefixes.
+
+**All ambiguous candidates with null context: suppressed.**
+
+For any `candidates_needing_confirmation` entry, a reliable equipment-context identifier
+(`context_hint ≠ None`) is mandatory. Without it, the ambiguity cannot be resolved from
+context alone. All four reason codes are subject to this rule:
+`REASON_CONFLICT`, `REASON_MULTIPLE_VOLTAGE`, `REASON_MULTIPLE_CURRENT`,
+`REASON_CROSS_SOURCE`.
+
+**Manual fallback preserved.** Channels suppressed from the candidate list remain
+accessible through the Phase A type-aware dropdown (all channels visible; no channel
+hidden from the user).
+
+### Implementation
+
+`backend/app/domain/vi_pair_resolution.py` — Step 3 candidate block:
+
+```python
+# Previous guard (cross-source only):
+if reason == REASON_CROSS_SOURCE and context_hint is None:
+    continue
+
+# Approved guard (all reason codes):
+if context_hint is None:
+    continue
+```
+
+The sort of `all_keys` (line 225) was also corrected to handle mixed `(None, str)` /
+`(str, str)` tuples that arise when both null-context and context-scoped channels share a
+workspace: `sorted(all_keys, key=lambda k: (k[0] or "", k[1]))`.
+
+### Test coverage
+
+- `test_vi_pair_resolution.py`: added `test_null_context_multiple_voltage_is_suppressed`
+  and `test_null_context_multiple_current_is_suppressed`; converted `TestMultipleVoltageCandidates`
+  and `TestMultipleCurrentCandidates` to use context-scoped channel names.
+- `test_vi_pairs_api.py`: added `test_null_context_multiple_voltage_is_suppressed`;
+  converted `TestAmbiguousCandidates` and the affected `TestResponseSchema` entries to
+  context-scoped channel names.
+
+---
+
+## DEC-207 — Phase D: Hybrid Automatic–Manual V-I Pairing UI
+
+Date: 2026-10-31
+Status: Prototype implemented — awaiting owner UAT approval
+
+### Context
+
+Phase D extends the Calculated Channels power builder (active_power / reactive_power /
+apparent_power) with a hybrid pair-picker UI that surfaces the Phase C API results
+(`GET /api/v1/workspaces/{id}/vi-pairs`) directly in the builder, while preserving the
+Phase A manual-fallback dropdowns for cases where automatic pairing is unavailable or
+insufficient.
+
+### Approved design (from owner Phase D specification)
+
+**Three operating modes, unified in one render function (`wwCcRenderPowerFields`):**
+
+1. **Locked summary** — a pair has been explicitly selected (auto or confirmed candidate).
+   Shows a compact one-line summary (`VA · IA`) and a "Change" button.
+   Builder inputs (`wwCcBuilder.inputs[0/1]`) are set from the locked pair so the
+   expression preview, unit display, name suggestion, and Create button all reflect it.
+
+2. **Picker mode** — API resolved but no pair selected yet (or "Change" was clicked).
+   Shows `#wwCcPairSelect` with three optgroups: Automatic / Needs Confirmation / Manual.
+   Manual dropdowns (`#wwCcPowerVoltageSelect`, `#wwCcPowerCurrentSelect`) are shown below
+   as a fallback whenever `selectedPairId` is null or `"__manual__"`.
+
+3. **Manual fallback only** — API error, no pairs found, or "Manual selection…" chosen.
+   The Phase A type-grouped dropdowns are shown directly (no picker above them).
+
+**Workspace-scoped pairing memory (`wwCcPairing` state object):**
+- `status`: `"idle" | "loading" | "ok" | "error"`
+- `data`: raw API response (null when not yet fetched)
+- `fetchSeq`: stale-response guard (incremented on invalidate/reset)
+- `selectedPairId`: pair_id string, `"__manual__"`, or null
+- `isEditing`: true while "Change" is active
+
+**Lifecycle hooks:**
+- `wwCcPairingInvalidate()` — called inside `wwRenderWorkspaceRecordings()` alongside
+  `wwTableSyncSourceOptions()`. Discards `data`, resets `status` to `"idle"`, increments
+  `fetchSeq`. Preserves `selectedPairId` so a pair that re-resolves identically stays
+  selected without user interaction.
+- `wwCcPairingReset()` — called inside `wwClearWorkspace()` after `wwCcResetBuilder()`,
+  only in the `resetSourceBounds: true` branch (Start New Workspace). Clears all state
+  including `selectedPairId`.
+
+**AbortController integration:** `wwCcPairingFetch()` passes
+`wwAnalysisFetchAbortController.signal` so an in-flight pair fetch is automatically
+cancelled when the workspace is cleared.
+
+### Files changed
+
+- `frontend/index.html`:
+  - CSS: `.ww-cc-pair-status`, `.ww-cc-pair-summary`, `.ww-cc-pair-summary-text`,
+    `.ww-cc-pair-manual-label`, `.ww-cc-pair-confirm-note`
+  - State: `wwCcPairing` object (near `wwCcRmsEligibility`)
+  - Functions: `wwCcPairingReset()`, `wwCcPairingInvalidate()`, `wwCcPairingFetch()`,
+    `wwCcRenderPowerFields(fieldsEl)` (all inserted before `wwCcRenderBuilderFields`)
+  - `wwCcRenderBuilderFields()`: power arity block replaced with `wwCcRenderPowerFields(fieldsEl)`
+  - Change handler: `wwCcPairSelect` added before existing power select handlers
+  - Click handler: `wwCcPairChangeBtn` / `wwCcPairCancelBtn` added at top
+  - `wwRenderWorkspaceRecordings()`: `wwCcPairingInvalidate()` added
+  - `wwClearWorkspace()`: `wwCcPairingReset()` added
+
+- `browser-tests/calculated-channel-power.spec.js`:
+  - Added `test.describe("Phase D: Hybrid V-I Pair Picker")` with 11 tests (20 total)
+
+### Test results
+
+- Phase A browser tests: 9/9 pass (no regressions)
+- Phase D browser tests: 11/11 pass
+- Backend suite: exit code 0 (34 domain tests + 43 API tests + full regression)
+
+### Outstanding decisions
+
+- **DEC-207-A**: Candidate confirmation UX — currently candidates are selectable from the
+  picker like auto pairs. The owner may want a separate inline "Confirm" prompt rather than
+  silent selection. Deferred to UAT.
+- **DEC-207-B**: `selectedPairId` is preserved across `wwCcPairingInvalidate()` (source
+  add/remove). If the pair re-resolves identically, the locked summary reappears without
+  user action. If it no longer resolves, the picker reappears. Owner UAT will determine
+  whether "always re-confirm after a source change" is preferred.
+- **DEC-207-C**: Phase A manual-fallback dropdowns are always shown below the picker when
+  no pair is selected. Once a pair is locked, manual dropdowns are hidden. Owner to confirm
+  whether they should remain visible in locked mode as an override mechanism.

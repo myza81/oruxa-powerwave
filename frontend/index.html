@@ -3043,6 +3043,14 @@
         .ww-cc-field input[readonly] { color: var(--text-dim); background: var(--bg); cursor: default; }
         .ww-cc-field .hint { margin-top: 4px; }
 
+        /* Phase D (DEC-207): Hybrid V-I Pair Picker */
+        .ww-cc-pair-status { font-size: 0.85em; color: var(--text-dim); margin-bottom: 4px; }
+        .ww-cc-pair-status.error { color: #c0392b; }
+        .ww-cc-pair-summary { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 4px; }
+        .ww-cc-pair-summary-text { flex: 1; font-size: 0.9em; }
+        .ww-cc-pair-manual-label { font-size: 0.8em; color: var(--text-dim); margin: 6px 0 2px; }
+        .ww-cc-pair-confirm-note { font-size: 0.8em; color: #b8770a; margin-top: 2px; }
+
         /* Phase 5C-UAT (DEC-049 addendum, section 4): a wide numeric
            field plus a fixed, non-editable unit suffix -- replaces the
            old cramped-number/wide-dropdown Voltage Base layout. The
@@ -28408,6 +28416,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // upload/removal/workspace-reset, whether or not Table View
             // is currently active.
             wwTableSyncSourceOptions(sources);
+            // Phase D (DEC-207): source list changed -- discard cached
+            // V-I pair data so the power builder re-fetches on next render.
+            wwCcPairingInvalidate();
 
             if (sources.length === 0) {
                 panel.innerHTML = '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
@@ -39283,6 +39294,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         let wwCcRmsEligibilityGeneration = 0;
         let wwCcRmsEligibilityDebounceTimer = null;
 
+        // Phase D (DEC-207): workspace-scoped V-I pairing state. Cleared on
+        // Start New Workspace; invalidated (re-fetched) on every source
+        // add/remove. selectedPairId survives invalidation so a pair that
+        // re-resolves identically stays selected without user interaction.
+        const wwCcPairing = {
+            status: "idle",        // "idle" | "loading" | "ok" | "error"
+            data: null,            // raw GET /vi-pairs response
+            fetchSeq: 0,           // stale-response guard
+            selectedPairId: null,  // pair_id string, "__manual__", or null
+            isEditing: false,      // true while Change button is active
+        };
+
         function wwCcResetBuilder() {
             wwCcBuilder.operation = null;
             wwCcBuilder.inputs = [];
@@ -40460,19 +40483,48 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             container.innerHTML = html;
         }
 
-        function wwCcCandidateOptionsHtml(selectedFilterReferenceId) {
+        function wwCcCandidateOptionsHtml(selectedFilterReferenceId, typeHint) {
             let candidates = wwCcAvailableCandidates();
             const isRocof = wwCcBuilder.operation === "rocof";
+            const isPowerVoltage = typeHint === "voltage";
+            const isPowerCurrent = typeHint === "current";
             // DEC-190: ROCOF lists metadata-identified frequency channels
             // first and separately; everything else stays selectable (a
             // channel with missing metadata may still be frequency) but is
             // clearly marked as needing the explicit override.
-            const groupOf = (c) => (isRocof
-                ? (c.engineeringType === "Frequency" ? "Frequency channels (Hz)" : "Other channels (not identified as frequency)")
-                : c.group);
+            // Phase A (V-I pairing): power arity dropdowns group the
+            // target type first, then Undefined channels, then anything
+            // else -- all channels remain selectable; none are hidden or
+            // silently reinterpreted as Voltage or Current.
+            const groupOf = (c) => {
+                if (isRocof) return c.engineeringType === "Frequency" ? "Frequency channels (Hz)" : "Other channels (not identified as frequency)";
+                if (isPowerVoltage) {
+                    if (c.engineeringType === "Voltage") return "Voltage channels";
+                    if (c.engineeringType === "Undefined") return "Undefined channels";
+                    return "Other channels";
+                }
+                if (isPowerCurrent) {
+                    if (c.engineeringType === "Current") return "Current channels";
+                    if (c.engineeringType === "Undefined") return "Undefined channels";
+                    return "Other channels";
+                }
+                return c.group;
+            };
             if (isRocof) {
                 candidates = candidates.filter((c) => c.engineeringType === "Frequency")
                     .concat(candidates.filter((c) => c.engineeringType !== "Frequency"));
+            } else if (isPowerVoltage) {
+                candidates = [
+                    ...candidates.filter((c) => c.engineeringType === "Voltage"),
+                    ...candidates.filter((c) => c.engineeringType === "Undefined"),
+                    ...candidates.filter((c) => c.engineeringType !== "Voltage" && c.engineeringType !== "Undefined"),
+                ];
+            } else if (isPowerCurrent) {
+                candidates = [
+                    ...candidates.filter((c) => c.engineeringType === "Current"),
+                    ...candidates.filter((c) => c.engineeringType === "Undefined"),
+                    ...candidates.filter((c) => c.engineeringType !== "Current" && c.engineeringType !== "Undefined"),
+                ];
             }
             const groups = new Map();
             for (const c of candidates) {
@@ -40509,6 +40561,191 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (k === key) return c;
             }
             return null;
+        }
+
+        function wwCcPairingReset() {
+            wwCcPairing.fetchSeq += 1;
+            wwCcPairing.status = "idle";
+            wwCcPairing.data = null;
+            wwCcPairing.selectedPairId = null;
+            wwCcPairing.isEditing = false;
+        }
+
+        function wwCcPairingInvalidate() {
+            // Source list changed: discard cached pair data so next render
+            // re-fetches. selectedPairId is preserved; it will be validated
+            // against the fresh API response and cleared if no longer found.
+            wwCcPairing.fetchSeq += 1;
+            wwCcPairing.status = "idle";
+            wwCcPairing.data = null;
+            wwCcPairing.isEditing = false;
+        }
+
+        async function wwCcPairingFetch() {
+            const workspaceId = currentWorkspaceId();
+            if (!workspaceId) {
+                wwCcPairing.status = "error";
+                wwCcRenderBuilderFields();
+                return;
+            }
+            wwCcPairing.status = "loading";
+            const seq = ++wwCcPairing.fetchSeq;
+            try {
+                const resp = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/vi-pairs",
+                    { signal: wwAnalysisFetchAbortController.signal }
+                );
+                if (seq !== wwCcPairing.fetchSeq) return;
+                if (!resp.ok) throw new Error("HTTP " + resp.status);
+                const json = await resp.json();
+                if (seq !== wwCcPairing.fetchSeq) return;
+                wwCcPairing.data = json;
+                wwCcPairing.status = "ok";
+                // Validate selectedPairId against fresh data; clear if gone.
+                if (wwCcPairing.selectedPairId && wwCcPairing.selectedPairId !== "__manual__") {
+                    const allIds = [
+                        ...(json.automatic_pairs || []).map(function(p) { return p.pair_id; }),
+                        ...(json.candidates_needing_confirmation || []).map(function(c) { return c.pair_id; }),
+                    ];
+                    if (!allIds.includes(wwCcPairing.selectedPairId)) {
+                        wwCcPairing.selectedPairId = null;
+                        wwCcPairing.isEditing = false;
+                    }
+                }
+            } catch (e) {
+                if (seq !== wwCcPairing.fetchSeq) return;
+                wwCcPairing.status = "error";
+            }
+            wwCcRenderBuilderFields();
+        }
+
+        function wwCcRenderPowerFields(fieldsEl) {
+            const st = wwCcPairing.status;
+            const data = wwCcPairing.data;
+            const selId = wwCcPairing.selectedPairId;
+            const editing = wwCcPairing.isEditing;
+
+            // Kick off fetch on first render; re-render fires when done.
+            if (st === "idle") { wwCcPairingFetch(); }
+
+            const autopairs = (data && data.automatic_pairs) || [];
+            const candidates = (data && data.candidates_needing_confirmation) || [];
+            const hasPairs = autopairs.length > 0 || candidates.length > 0;
+
+            // --- Locked summary mode ---
+            const lockedPair = (st === "ok" && selId && selId !== "__manual__" && !editing)
+                ? [].concat(autopairs, candidates).find(function(p) { return p.pair_id === selId; })
+                : null;
+
+            if (lockedPair) {
+                const isAuto = lockedPair.status === "automatic";
+                const vName = isAuto
+                    ? (lockedPair.voltage_channel || {}).channel_name || "?"
+                    : (((lockedPair.voltage_refs || [])[0]) || {}).channel_name || "?";
+                const iName = isAuto
+                    ? (lockedPair.current_channel || {}).channel_name || "?"
+                    : (((lockedPair.current_refs || [])[0]) || {}).channel_name || "?";
+                const vSrcId = isAuto
+                    ? lockedPair.source_id
+                    : (((lockedPair.voltage_refs || [])[0]) || {}).source_id || "";
+                const iSrcId = isAuto
+                    ? lockedPair.source_id
+                    : (((lockedPair.current_refs || [])[0]) || {}).source_id || "";
+                const evidence = lockedPair.matching_evidence || {};
+                const ctx = evidence.context_hint ? evidence.context_hint + " · " : "";
+                const badge = !isAuto ? " [" + lockedPair.reason + "]" : "";
+                const vCand = wwCcCandidateFromKey("source::" + vSrcId + "::" + vName);
+                const iCand = wwCcCandidateFromKey("source::" + iSrcId + "::" + iName);
+                if (vCand) wwCcBuilder.inputs[0] = vCand;
+                if (iCand) wwCcBuilder.inputs[1] = iCand;
+                fieldsEl.innerHTML =
+                    '<div class="ww-cc-pair-summary">' +
+                        '<span class="ww-cc-pair-summary-text">' + escapeHtml(ctx + vName + " · " + iName + badge) + '</span>' +
+                        '<button type="button" id="wwCcPairChangeBtn" class="secondary">Change</button>' +
+                    '</div>';
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+                return;
+            }
+
+            // --- Picker + optional manual fallback mode ---
+            let html = "";
+
+            if (st === "idle" || st === "loading") {
+                html += '<p class="ww-cc-pair-status">Detecting V-I pairs…</p>';
+            } else if (st === "error") {
+                html += '<p class="ww-cc-pair-status error">Auto-pairing unavailable.</p>';
+            }
+
+            if (st === "ok" && hasPairs) {
+                let opts = '<option value="">Select a V-I pairing…</option>';
+                if (autopairs.length > 0) {
+                    opts += '<optgroup label="Automatic">';
+                    autopairs.forEach(function(p) {
+                        opts += '<option value="' + escapeHtml(p.pair_id) + '">' +
+                            escapeHtml(p.display_label) + '</option>';
+                    });
+                    opts += '</optgroup>';
+                }
+                if (candidates.length > 0) {
+                    opts += '<optgroup label="Needs Confirmation">';
+                    candidates.forEach(function(c) {
+                        opts += '<option value="' + escapeHtml(c.pair_id) + '">' +
+                            escapeHtml(c.display_label) + '</option>';
+                    });
+                    opts += '</optgroup>';
+                }
+                opts += '<optgroup label="Manual"><option value="__manual__">Manual selection…</option></optgroup>';
+                html += '<label class="ww-cc-field"><span>V-I Pairing</span>' +
+                    '<select id="wwCcPairSelect">' + opts + '</select></label>';
+                if (editing) {
+                    html += '<button type="button" id="wwCcPairCancelBtn" class="secondary">Cancel</button>';
+                }
+                if (candidates.length > 0) {
+                    html += '<p class="ww-cc-pair-confirm-note">Highlighted pairings need confirmation before use.</p>';
+                }
+            }
+
+            // Manual dropdowns: shown when manual selected, no pairs, or no
+            // pair chosen yet (error/loading fall through to show them too).
+            const showManual = selId === "__manual__" || (st === "ok" && !hasPairs) || !selId;
+            if (showManual) {
+                const vInput = wwCcBuilder.inputs[0] || null;
+                const iInput = wwCcBuilder.inputs[1] || null;
+                const vKey = vInput ? (vInput.kind + "::" + (vInput.kind === "source"
+                    ? vInput.sourceId + "::" + vInput.channelName
+                    : vInput.calculatedChannelId)) : "";
+                const iKey = iInput ? (iInput.kind + "::" + (iInput.kind === "source"
+                    ? iInput.sourceId + "::" + iInput.channelName
+                    : iInput.calculatedChannelId)) : "";
+                if (st === "ok" && hasPairs) {
+                    html += '<div class="ww-cc-pair-manual-label">or select manually:</div>';
+                }
+                html +=
+                    '<label class="ww-cc-field"><span>Voltage Channel</span>' +
+                    '<select id="wwCcPowerVoltageSelect">' + wwCcCandidateOptionsHtml(null, "voltage") + '</select></label>' +
+                    '<label class="ww-cc-field"><span>Current Channel</span>' +
+                    '<select id="wwCcPowerCurrentSelect">' + wwCcCandidateOptionsHtml(null, "current") + '</select></label>';
+                fieldsEl.innerHTML = html;
+                const vSel = document.getElementById("wwCcPowerVoltageSelect");
+                const iSel = document.getElementById("wwCcPowerCurrentSelect");
+                if (vSel && vKey) vSel.value = vKey;
+                if (iSel && iKey) iSel.value = iKey;
+                const pairSel = document.getElementById("wwCcPairSelect");
+                if (pairSel && selId) pairSel.value = selId;
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+                return;
+            }
+
+            fieldsEl.innerHTML = html;
+            const pairSel = document.getElementById("wwCcPairSelect");
+            if (pairSel && selId) pairSel.value = selId;
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
         }
 
         function wwCcRenderBuilderFields() {
@@ -40548,19 +40785,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (wwCcBuilder.operation === "rms") wwCcRenderRmsEligibilityStatus();
                 if (wwCcBuilder.operation === "rocof") wwCcRenderRocofStatus();
             } else if (meta.arity === "power") {
-                const vInput = wwCcBuilder.inputs[0] || null;
-                const iInput = wwCcBuilder.inputs[1] || null;
-                const vKey = vInput ? (vInput.kind + "::" + (vInput.kind === "source" ? vInput.sourceId + "::" + vInput.channelName : vInput.calculatedChannelId)) : "";
-                const iKey = iInput ? (iInput.kind + "::" + (iInput.kind === "source" ? iInput.sourceId + "::" + iInput.channelName : iInput.calculatedChannelId)) : "";
-                fieldsEl.innerHTML =
-                    '<label class="ww-cc-field"><span>Voltage Channel</span>' +
-                    '<select id="wwCcPowerVoltageSelect">' + wwCcCandidateOptionsHtml(null) + '</select></label>' +
-                    '<label class="ww-cc-field"><span>Current Channel</span>' +
-                    '<select id="wwCcPowerCurrentSelect">' + wwCcCandidateOptionsHtml(null) + '</select></label>';
-                const vSel = document.getElementById("wwCcPowerVoltageSelect");
-                const iSel = document.getElementById("wwCcPowerCurrentSelect");
-                if (vSel && vKey) vSel.value = vKey;
-                if (iSel && iKey) iSel.value = iKey;
+                wwCcRenderPowerFields(fieldsEl);
             } else {
                 let html = '<ol class="ww-cc-input-list" id="wwCcInputList">';
                 wwCcBuilder.inputs.forEach((input, index) => {
@@ -41992,6 +42217,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwCcBuilderFields").addEventListener("change", (event) => {
             if (event.target.id === "wwCcUnaryInputSelect") {
                 wwCcAddInputByKey(event.target.value);
+            } else if (event.target.id === "wwCcPairSelect") {
+                const val = event.target.value;
+                if (!val) return;
+                wwCcPairing.selectedPairId = val;
+                wwCcPairing.isEditing = false;
+                wwCcRenderBuilderFields();
             } else if (event.target.id === "wwCcPowerVoltageSelect" || event.target.id === "wwCcPowerCurrentSelect") {
                 const slotIndex = event.target.id === "wwCcPowerVoltageSelect" ? 0 : 1;
                 const candidate = wwCcCandidateFromKey(event.target.value);
@@ -42061,6 +42292,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         });
         document.getElementById("wwCcBuilderFields").addEventListener("click", (event) => {
+            if (event.target.id === "wwCcPairChangeBtn") {
+                wwCcPairing.isEditing = true;
+                wwCcRenderBuilderFields();
+                return;
+            }
+            if (event.target.id === "wwCcPairCancelBtn") {
+                wwCcPairing.isEditing = false;
+                wwCcRenderBuilderFields();
+                return;
+            }
             if (event.target.id === "wwCcAddInputBtn") {
                 const select = document.getElementById("wwCcAddInputSelect");
                 if (select && select.value) {
@@ -42437,6 +42678,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // overwriting the new, empty session with a stale
                 // response).
                 wwCcResetBuilder();
+                wwCcPairingReset();
                 wwCcListErrors.clear();
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelsPage();

@@ -23,6 +23,7 @@ from app.api.v1.preparation_sources import router as preparation_sources_v1_rout
 from app.api.v1.reference_profiles import router as reference_profiles_v1_router
 from app.api.v1.relay_import import RELAY_IMPORT_UPLOAD_PATH, router as relay_import_v1_router
 from app.api.v1.sources import router as sources_v1_router
+from app.api.v1.vi_pairs import router as vi_pairs_v1_router
 from app.api.v1.synchronization import router as synchronization_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
@@ -239,6 +240,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reference_profiles_v1_router)
     app.include_router(oscillation_v1_router)
     app.include_router(relay_import_v1_router)
+    app.include_router(vi_pairs_v1_router)
 
     @app.get("/health")
     def health():

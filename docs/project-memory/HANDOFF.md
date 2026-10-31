@@ -4,7 +4,84 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-31** (Slice 3 — Single-Phase Power Calculated Channels, DEC-202, engineering-verified and approved for owner UAT; earlier Slice 2 — Sliding Phasor domain, DEC-201; Slices 0/1 — Power Calculation domain + V-I Phasors Calculator, DEC-200.)
+Last updated: **2026-10-31** (V-I Pairing Phase D — Hybrid V-I Pair Picker UI; Phase C API, Phase B domain, Phase A dropdowns; earlier Slice 3 — Single-Phase Power Calculated Channels, DEC-202.)
+
+## V-I Pairing Phase D: Hybrid Automatic–Manual V-I Pairing UI (DEC-207) — 2026-10-31
+
+**Status: Prototype implemented. Awaiting owner UAT before commit.**
+
+Extends the Calculated Channels power builder (active_power / reactive_power / apparent_power)
+with a hybrid pair-picker UI that surfaces Phase C API results directly in the builder.
+
+**Three operating modes** in `wwCcRenderPowerFields(fieldsEl)`:
+1. **Locked summary** — pair selected, shows `VA · IA` + "Change" button. Builder inputs set from locked pair so formula, unit, name and Create button all reflect it.
+2. **Picker mode** — `#wwCcPairSelect` with Automatic / Needs Confirmation / Manual optgroups. Manual Phase A dropdowns always shown below when no pair selected.
+3. **Manual fallback only** — API error, no pairs, or "Manual selection…" chosen. Phase A dropdowns shown directly.
+
+**State object `wwCcPairing`:** `status`, `data`, `fetchSeq` (stale guard), `selectedPairId`, `isEditing`.
+
+**Lifecycle:** `wwCcPairingInvalidate()` called in `wwRenderWorkspaceRecordings()` (source add/remove — re-fetches on next render); `wwCcPairingReset()` called in `wwClearWorkspace()` Start New Workspace branch.
+
+**Files changed:** `frontend/index.html` (CSS + state + 4 new functions + event handlers + lifecycle hooks), `browser-tests/calculated-channel-power.spec.js` (+11 Phase D tests, 20 total / 20 pass).
+
+**OD-4 (DEC-206) fix also in this branch:** All null-context ambiguous candidates suppressed; same-source null-context auto pairs permitted. 34/34 domain tests, 43/43 API tests pass.
+
+See DEC-207 in DECISIONS.md for full design, outstanding decisions, and UAT instructions.
+
+## V-I Pairing Phase C: V-I Pair Discovery API (DEC-205) — 2026-10-31
+
+**Status: Implemented. Awaiting owner review before commit.**
+
+New read-only endpoint `GET /api/v1/workspaces/{workspace_id}/vi-pairs`.  Exposes Phase B's `find_vi_pairs()` through the workspace API — no pairing logic in the API layer.
+
+**Response fields:** `automatic_pairs` (deterministic `pair_id`, `status="automatic"`, display label, `source_id`, `voltage_channel`, `current_channel`, `matching_evidence`), `candidates_needing_confirmation` (same shape + `reason` + `voltage_refs`/`current_refs` lists), `total_input_channel_count`.
+
+`pair_id` is a SHA-256 prefix of the channel identity tuple including `source_id` — unambiguous even when different sources carry identically named channels.
+
+**Files changed:**
+- `backend/app/schemas/vi_pairs.py` — new Pydantic schemas
+- `backend/app/api/v1/vi_pairs.py` — new router
+- `backend/app/main.py` — +1 import + `include_router`
+- `backend/tests/test_vi_pairs_api.py` — new, 37 tests / 37 pass
+
+**Performance:** 200 channels 266 ms, 2000 channels 308 ms (TestClient overhead included; pure resolver sub-ms).
+
+See DEC-205 in DECISIONS.md for full schema and API contract.
+
+## V-I Pairing Phase B: Automatic V-I Pair Resolver (DEC-204) — 2026-10-31
+
+**Status: Implemented. Awaiting owner review before commit.**
+
+New pure domain function `find_vi_pairs()` in `backend/app/domain/vi_pair_resolution.py`.
+Takes a flat list of `ChannelPairingInput` (source_id, channel_name, engineering_type, unit, phase_label)
+and returns a `VIPairResolution` with:
+- `automatic_pairs: list[MatchedVIPair]` — deterministically auto-paired V-I channels
+- `candidates_needing_confirmation: list[VIPairCandidate]` — ambiguous/cross-source pairs needing user selection
+
+Matching key: `(context_hint, phase_token)` from `resolve_channel_engineering_identity()`.
+Automatic requires: exactly 1V, 1I, same source, no conflict, no line-to-line voltage.
+Candidates carry reason code: `conflict` > `multiple_voltage` > `multiple_current` > `cross_source`.
+
+**Files changed:**
+- `backend/app/domain/vi_pair_resolution.py` — new
+- `backend/tests/test_vi_pair_resolution.py` — new, 30 tests / 30 pass
+
+**Not included:** API endpoint, frontend UI, session storage, three-phase calculations.
+**Not modified:** Phase A browser tests, Per-Unit Slice 1 changes, any existing domain module.
+
+See DEC-204 in DECISIONS.md for the full specification and test coverage summary.
+
+## V-I Pairing Phase A: Type-aware Dropdown Grouping (DEC-203) — 2026-10-31
+
+**Status: Implemented. Awaiting owner review before commit.**
+
+Voltage dropdown: Voltage first → Undefined → Other. Current dropdown: Current first → Undefined → Other.
+`wwCcCandidateOptionsHtml(ref, typeHint)` gains optional `typeHint` parameter; power arity
+calls pass `"voltage"` / `"current"`. All channels remain accessible — none hidden.
+
+**Files changed:** `frontend/index.html`, `browser-tests/calculated-channel-power.spec.js` (new, 9 tests / 9 pass).
+See DEC-203 in DECISIONS.md.
+
 
 ## Slice 3: Single-Phase Power Calculated Channels (DEC-202) — 2026-10-31
 
@@ -21998,3 +22075,41 @@ sources actually get imported during a shared-DEV session.
   real decision on the abandoned-session TTL question, and ideally the
   ~100 MB real-file memory validation, rather than continuing to rely on
   the manual DEV stopgap.
+
+
+## V-I Pairing Phase A: Type-aware power dropdown grouping (2026-10-31)
+
+### What was done
+
+Implemented Phase A of the approved V-I Pairing Architecture (owner approval 2026-10-31).
+
+**Scope:** manual Voltage/Current selection interface for Active Power, Reactive Power and Apparent Power calculated channels.
+
+**Changes (not yet committed):**
+
+1. `frontend/index.html` — `wwCcCandidateOptionsHtml` gains optional `typeHint` parameter ("voltage" / "current"). When set, candidates are reordered and grouped: target type first, Undefined second, Other third. All channels remain selectable. The power rendering branch now passes the appropriate hint to each dropdown. No other call site affected; ROCOF frequency-first logic unchanged.
+
+2. `browser-tests/calculated-channel-power.spec.js` (new) — 9 tests: dropdown grouping assertions for both slots across all three power operations, selectability of Undefined channels, end-to-end create for all three operations, regression on unary dropdowns.
+
+**Test results:**
+- Targeted backend tests (domain, service, classification): all pass.
+- New browser tests: 9/9 pass.
+- Existing calculated-channel browser tests (null-handling, presentation, preview, rocof): 24/24 pass.
+
+**Not done (Phase B–D, deferred per approval):**
+- Automatic pairing (context_hint + name_raw_token matching)
+- Same-source preference / cross-source confirmation prompt
+- Per-workspace session memory for confirmed associations
+- Stable source/channel ID storage
+
+### What comes next
+
+1. Owner reviews and approves Phase A implementation.
+2. Commit Phase A (do not commit until reviewed).
+3. Owner defines scope for Phase B (automatic pairing resolver, cross-source confirmation, session memory).
+
+### Files modified
+- `frontend/index.html` (wwCcCandidateOptionsHtml and wwCcRenderBuilderFields power branch)
+- `browser-tests/calculated-channel-power.spec.js` (new)
+- `docs/project-memory/DECISIONS.md` (DEC-203 added)
+- `docs/project-memory/HANDOFF.md` (this entry)
