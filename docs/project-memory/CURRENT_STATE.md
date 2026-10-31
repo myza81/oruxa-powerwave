@@ -3601,6 +3601,20 @@ re-confirmed by the TG-FINAL audit):
   channels outside any detected group — a deliberate coexistence, not a
   bug. See [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)
   (authoritative) and [DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
+  **Audit remediation Slice 1 (2026-10-31, local):** PU-001 Voltage
+  configuration saves validate nominal voltage and reference before one
+  replacement. PU-002 group PATCH validates metadata and membership before
+  publishing the group and reverse index together. Rejected edits preserve
+  bases, review status and live Voltage/linked-Current PU results; overlapping
+  partial edits preserve omitted fields. Mathematics, inheritance and fallback
+  policy are unchanged. All 45 new backend regressions pass within a **1,014
+  passed / zero skipped** compatibility run. The real editor rejection/save
+  browser regression passes within a final **28/28** selected run (zero retries);
+  full backend: **10,576 passed / 320 skipped / zero failures or errors** (20
+  warnings, exit 0). Owner-approved adjacent test maintenance
+  updates only the operation-picker title/list from eight to the eleven approved
+  DEC-202 cards; every other assertion remains. No push or deployment.
+  Details and limits: [PER_UNIT_AUDIT_SLICE_1.md](PER_UNIT_AUDIT_SLICE_1.md).
   **DEC-078 (2026-09-04) adds one additive guardrail on top of both
   paths**: `app.services.waveform_service._resolve_effective_per_unit()`
   (the one dispatch point both the group-aware and legacy paths already

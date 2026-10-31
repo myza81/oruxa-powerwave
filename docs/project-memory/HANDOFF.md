@@ -4,7 +4,36 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-31** (Slice 3 — Single-Phase Power Calculated Channels, DEC-202, engineering-verified and approved for owner UAT; earlier Slice 2 — Sliding Phasor domain, DEC-201; Slices 0/1 — Power Calculation domain + V-I Phasors Calculator, DEC-200.)
+Last updated: **2026-10-31** (Per-Unit audit remediation Slice 1 — PU-001/002,
+local implementation and validation; existing DEC-202/201/200 work retained below.)
+
+## Per-Unit audit remediation Slice 1 — PU-001/002 (2026-10-31)
+
+Owner-authorized scope: atomic rejected Voltage saves and combined group
+metadata/membership edits only. Both defects reproduced on current `58f4964`,
+which already includes the later Power Calculated Channel work. The API now
+uses one validated service edit per request. Existing registry locks cover
+merging omitted fields and publishing independent candidates; group and
+reverse-index dictionaries are staged together before publication. No PU math,
+calculated inheritance, Source Default, Power Calculator or frontend changes.
+
+Original-code regressions: **15 failed / 21 passed**. Corrected initial targets:
+**177 passed**; publication/overlap cases: **9 passed**; broader compatibility:
+**1,014 passed / zero skipped**, including all 45 new backend tests. Selected
+browser run, final: **28 passed / zero failures or skips**, two workers, zero
+retries, including the new real editor rejection followed by accepted save.
+An initial eight-versus-eleven operation-card expectation failure reproduced
+against committed HEAD HTML. The owner approved a test-only title/list correction
+after DEC-202 verification; every other assertion remains intact. Full backend:
+**10,576 passed / 320 skipped / zero failures or errors**, 20 warnings, exit 0,
+20.1 minutes. The approved test maintenance has a separate local commit from
+the dedicated PU Slice 1 changes; neither is pushed or deployed.
+No push/deployment. Preserve the existing frontend
+edit, concurrent `calculated-channel-power.spec.js`, and original `.audit/`.
+
+See [PER_UNIT_AUDIT_SLICE_1.md](PER_UNIT_AUDIT_SLICE_1.md) for exact atomicity,
+coverage and lifecycle limits. PU-003 through PU-008 and PC-001 are excluded.
+Stop after Slice 1; do not start Slice 2 without owner direction.
 
 ## Slice 3: Single-Phase Power Calculated Channels (DEC-202) — 2026-10-31
 

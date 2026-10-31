@@ -52,15 +52,12 @@ from app.services.measurement_group_service import (
     create_group,
     delete_group,
     generate_suggested_groups_for_source,
-    update_group_membership,
-    update_group_metadata,
+    update_group,
 )
 from app.services.measurement_group_view_service import MeasurementGroupView, build_group_view, build_group_views_for_source
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.voltage_group_config_service import (
-    return_voltage_reference_to_auto,
-    set_manual_voltage_reference,
-    set_voltage_base,
+    update_voltage_configuration,
 )
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -305,26 +302,20 @@ def update_measurement_group(
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> MeasurementGroupOut:
-    """Partial update -- `display_name`/`status` via
-    `update_group_metadata()`, `channel_refs` (full replace) via
-    `update_group_membership()`. This is how a `suggested` group is
+    """Atomic partial update of metadata and replacement membership.
+    This is how a `suggested` group is
     promoted to `confirmed` (setting `status`), and the ONLY way this
     router lets an engineer correct membership -- move/split/merge as
     distinct operations remain deferred (task section 19)."""
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     try:
-        if body.display_name is not None or body.status is not None:
-            update_group_metadata(
-                workspace_id=workspace_id, measurement_group_id=measurement_group_id, registry=group_registry,
-                display_name=body.display_name, status=body.status,
-            )
-        if body.channel_refs is not None:
-            update_group_membership(
-                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
-                channel_refs=_channel_refs_from_in(body.channel_refs),
-                registry=group_registry, source_registry=source_registry,
-            )
+        update_group(
+            workspace_id=workspace_id, measurement_group_id=measurement_group_id, registry=group_registry,
+            display_name=body.display_name, status=body.status,
+            channel_refs=_channel_refs_from_in(body.channel_refs) if body.channel_refs is not None else None,
+            source_registry=source_registry,
+        )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
@@ -375,34 +366,19 @@ def put_voltage_config(
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> MeasurementGroupOut:
-    """Combines Slice 3's THREE independent setters
-    (`set_voltage_base`/`set_manual_voltage_reference`/
-    `return_voltage_reference_to_auto`) behind one form-shaped PUT, so
-    the frontend's single "Nominal voltage + Reference" form can Save
-    once -- no validation is duplicated here, each call goes straight
-    into its own already-tested setter. `KIND_VOLTAGE`-only (Slice 3's
-    own `VoltageConfigurationNotApplicableError` rejects a Current
-    group id, translated to 400 below)."""
+    """Validate nominal voltage and reference together, then publish once.
+    Omitted/null nominal voltage preserves the existing base; default auto
+    reference mode clears the override. Voltage groups only.
+    """
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     try:
-        if body.nominal_voltage_ll_kv is not None:
-            set_voltage_base(
-                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
-                nominal_voltage_ll_kv=body.nominal_voltage_ll_kv,
-                group_registry=group_registry, voltage_config_registry=voltage_config_registry,
-            )
-        if body.reference_mode == "manual":
-            set_manual_voltage_reference(
-                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
-                reference=body.reference_override,
-                group_registry=group_registry, voltage_config_registry=voltage_config_registry,
-            )
-        else:
-            return_voltage_reference_to_auto(
-                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
-                group_registry=group_registry, voltage_config_registry=voltage_config_registry,
-            )
+        update_voltage_configuration(
+            workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+            nominal_voltage_ll_kv=body.nominal_voltage_ll_kv,
+            reference_mode=body.reference_mode, reference_override=body.reference_override,
+            group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+        )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)

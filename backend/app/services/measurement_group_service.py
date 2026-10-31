@@ -176,14 +176,10 @@ def update_group_metadata(
     changes go through `update_group_membership` below, which needs the
     source registry to re-validate references. Section 8: display name
     is never identity, so renaming never affects `id`/membership."""
-    group = get_group(workspace_id, measurement_group_id, registry=registry)
-    if status is not None:
-        _validate_status(status)
-        group.status = status
-    if display_name is not None:
-        group.display_name = display_name
-    registry.update(group)
-    return group
+    return update_group(
+        workspace_id=workspace_id, measurement_group_id=measurement_group_id, registry=registry,
+        display_name=display_name, status=status,
+    )
 
 
 def update_group_membership(
@@ -200,13 +196,37 @@ def update_group_membership(
     owned by THIS group is correctly treated as available (see
     `MeasurementGroupRegistry.update()`'s own docstring); a channel owned
     by a different group is still rejected."""
-    group = get_group(workspace_id, measurement_group_id, registry=registry)
-    _validate_channel_refs_for_group(
-        workspace_id=workspace_id, source_id=group.source_id, kind=group.kind, channel_refs=channel_refs, source_registry=source_registry
+    return update_group(
+        workspace_id=workspace_id, measurement_group_id=measurement_group_id, registry=registry,
+        channel_refs=channel_refs, source_registry=source_registry,
     )
-    group.channel_refs = list(channel_refs)
-    registry.update(group)
-    return group
+
+
+def update_group(
+    *, workspace_id: str, measurement_group_id: str, registry: MeasurementGroupRegistry,
+    display_name: str | None = None, status: str | None = None,
+    channel_refs: list[ChannelRef] | None = None,
+    source_registry: WorkspaceRegistry | None = None,
+) -> MeasurementGroup:
+    """Validate metadata and replacement membership before publishing either.
+
+    Source and kind are immutable for this edit. The registry merges the fields
+    into its latest stored group and rechecks channel claims under its lock.
+    Type-specific base configurations stay associated with the unchanged id.
+    """
+    group = get_group(workspace_id, measurement_group_id, registry=registry)
+    if status is not None:
+        _validate_status(status)
+    if channel_refs is not None:
+        if source_registry is None:
+            raise TypeError("source_registry is required to update group membership")
+        _validate_channel_refs_for_group(
+            workspace_id=workspace_id, source_id=group.source_id, kind=group.kind,
+            channel_refs=channel_refs, source_registry=source_registry,
+        )
+    return registry.update_fields(
+        workspace_id, measurement_group_id, display_name=display_name, status=status, channel_refs=channel_refs,
+    )
 
 
 def delete_group(

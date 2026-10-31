@@ -88,6 +88,35 @@ class VoltageGroupConfigRegistry:
         with self._lock:
             self._configs[(config.workspace_id, config.measurement_group_id)] = _copy_config(config)
 
+    def update_fields(
+        self, workspace_id: str, measurement_group_id: str, *,
+        nominal_voltage_ll_kv: float | None = None,
+        reference_mode: str | None = None,
+        reference_override: str | None = None,
+    ) -> VoltageBaseConfiguration:
+        """Publish service-validated fields as one configuration replacement.
+
+        Merge omitted fields under the existing lock, so concurrent reference
+        and nominal-base edits cannot overwrite each other's accepted fields.
+        A supplied reference mode replaces the mode/override pair together.
+        All copies (including the return value) are prepared before publication.
+        """
+        with self._lock:
+            key = (workspace_id, measurement_group_id)
+            previous = self._configs.get(key)
+            candidate = _copy_config(previous) if previous is not None else VoltageBaseConfiguration(
+                measurement_group_id=measurement_group_id, workspace_id=workspace_id,
+                nominal_voltage_ll_kv=None,
+            )
+            if nominal_voltage_ll_kv is not None:
+                candidate.nominal_voltage_ll_kv = nominal_voltage_ll_kv
+            if reference_mode is not None:
+                candidate.reference_mode = reference_mode
+                candidate.reference_override = reference_override
+            result = _copy_config(candidate)
+            self._configs[key] = candidate
+            return result
+
     def get(self, workspace_id: str, measurement_group_id: str) -> VoltageBaseConfiguration | None:
         """Returns a defensive COPY of the stored configuration -- the
         caller mutating the returned object has no effect on registry

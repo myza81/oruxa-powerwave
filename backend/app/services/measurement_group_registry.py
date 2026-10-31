@@ -76,6 +76,7 @@ from app.services.errors import (
     ChannelAlreadyGroupedError,
     DuplicateChannelReferenceError,
     MeasurementGroupAlreadyExistsError,
+    MeasurementGroupNotFoundError,
 )
 
 
@@ -197,16 +198,54 @@ class MeasurementGroupRegistry:
         `KeyError` if it does not, since it is never meant to be called
         directly as a create path."""
         with self._lock:
-            key = (group.workspace_id, group.id)
-            if key not in self._groups:
-                raise KeyError(f"No existing measurement group {group.id!r} in workspace {group.workspace_id!r} to update.")
-            self._assert_no_duplicates_within(group.channel_refs)
-            self._assert_channels_unclaimed(group.workspace_id, group.channel_refs, owning_group_id=group.id)
-            previous = self._groups[key]  # the registry's OWN stored object -- never the caller's
-            self._deindex_channels(group.workspace_id, previous.channel_refs)
-            stored = _copy_group(group)
-            self._groups[key] = stored
-            self._index_channels(stored.workspace_id, stored.id, stored.channel_refs)
+            self._replace_group(group)
+
+    def _replace_group(self, group: MeasurementGroup) -> None:
+        """Lock held by caller. Stage both views of ownership before publishing.
+
+        Copies, allocations and hashing can fail: none may touch authoritative
+        state. Once staged, the two reference assignments cannot raise through
+        user code and all registry readers remain excluded by the same lock.
+        """
+        key = (group.workspace_id, group.id)
+        if key not in self._groups:
+            raise KeyError(f"No existing measurement group {group.id!r} in workspace {group.workspace_id!r} to update.")
+        self._assert_no_duplicates_within(group.channel_refs)
+        self._assert_channels_unclaimed(group.workspace_id, group.channel_refs, owning_group_id=group.id)
+        stored = _copy_group(group)
+        groups = self._groups.copy()
+        channel_index = self._channel_index.copy()
+        for ref in groups[key].channel_refs:
+            channel_index.pop((group.workspace_id, ref), None)
+        groups[key] = stored
+        for ref in stored.channel_refs:
+            channel_index[(stored.workspace_id, ref)] = stored.id
+        self._groups, self._channel_index = groups, channel_index
+
+    def update_fields(
+        self, workspace_id: str, measurement_group_id: str, *,
+        display_name: str | None = None, status: str | None = None,
+        channel_refs: list[ChannelRef] | None = None,
+    ) -> MeasurementGroup:
+        """Merge a service-validated partial edit into the latest group.
+
+        One lock covers the merge, uniqueness checks and group/index publication.
+        Omitted fields cannot restore an obsolete value from a concurrent edit.
+        Identity/source/kind/creation time are taken only from the stored group.
+        """
+        with self._lock:
+            previous = self._groups.get((workspace_id, measurement_group_id))
+            if previous is None:
+                raise MeasurementGroupNotFoundError(f"No measurement group '{measurement_group_id}' in this workspace.")
+            candidate = _copy_group(previous)
+            if display_name is not None:
+                candidate.display_name = display_name
+            if status is not None:
+                candidate.status = status
+            if channel_refs is not None:
+                candidate.channel_refs = list(channel_refs)
+            self._replace_group(candidate)
+            return candidate
 
     def remove(self, workspace_id: str, measurement_group_id: str) -> bool:
         with self._lock:

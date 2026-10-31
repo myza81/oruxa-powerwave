@@ -76,15 +76,34 @@ def _get_voltage_group(
     return group
 
 
-def _existing_or_default_config(
-    workspace_id: str, measurement_group_id: str, *, voltage_config_registry: VoltageGroupConfigRegistry
+def update_voltage_configuration(
+    *, workspace_id: str, measurement_group_id: str,
+    group_registry: MeasurementGroupRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry,
+    nominal_voltage_ll_kv: float | None = None,
+    reference_mode: str | None = None,
+    reference_override: str | None = None,
 ) -> VoltageBaseConfiguration:
-    existing = voltage_config_registry.get(workspace_id, measurement_group_id)
-    if existing is not None:
-        return existing
-    return VoltageBaseConfiguration(
-        measurement_group_id=measurement_group_id, workspace_id=workspace_id, nominal_voltage_ll_kv=None,
-        reference_mode=VOLTAGE_REFERENCE_MODE_AUTO, reference_override=None,
+    """Validate the entire requested edit before one registry replacement.
+
+    None nominal means preserve the base. None mode (individual service
+    setters only) preserves the reference pair; the API supplies its existing
+    default 'auto'. Auto clears overrides, manual requires a valid override.
+    No live configuration object is modified while validating.
+    """
+    _get_voltage_group(workspace_id, measurement_group_id, group_registry=group_registry)
+    if nominal_voltage_ll_kv is not None and not voltage_base_valid(nominal_voltage_ll_kv):
+        raise InvalidVoltageBaseValueError(
+            f"nominal_voltage_ll_kv={nominal_voltage_ll_kv!r} must be a finite, positive number."
+        )
+    if reference_mode is not None and reference_mode not in KNOWN_VOLTAGE_REFERENCE_MODES:
+        raise InvalidVoltageReferenceOverrideError(f"Unknown voltage reference mode {reference_mode!r}.")
+    if reference_mode == VOLTAGE_REFERENCE_MODE_MANUAL and not voltage_reference_value_valid(reference_override):
+        raise InvalidVoltageReferenceOverrideError(f"Unknown voltage reference {reference_override!r}.")
+    return voltage_config_registry.update_fields(
+        workspace_id, measurement_group_id, nominal_voltage_ll_kv=nominal_voltage_ll_kv,
+        reference_mode=reference_mode,
+        reference_override=reference_override if reference_mode == VOLTAGE_REFERENCE_MODE_MANUAL else None,
     )
 
 
@@ -110,10 +129,11 @@ def set_voltage_base(
         raise InvalidVoltageBaseValueError(
             f"nominal_voltage_ll_kv={nominal_voltage_ll_kv!r} must be a finite, positive number."
         )
-    config = _existing_or_default_config(workspace_id, measurement_group_id, voltage_config_registry=voltage_config_registry)
-    config.nominal_voltage_ll_kv = nominal_voltage_ll_kv
-    voltage_config_registry.upsert(config)
-    return config
+    return update_voltage_configuration(
+        workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+        nominal_voltage_ll_kv=nominal_voltage_ll_kv,
+        group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+    )
 
 
 def set_manual_voltage_reference(
@@ -127,14 +147,11 @@ def set_manual_voltage_reference(
     """Switches this group to `reference_mode="manual"` with an explicit
     override -- the engineer's own authority always wins over automatic
     detection (canonical document section 7/16)."""
-    _get_voltage_group(workspace_id, measurement_group_id, group_registry=group_registry)
-    if not voltage_reference_value_valid(reference):
-        raise InvalidVoltageReferenceOverrideError(f"Unknown voltage reference {reference!r}.")
-    config = _existing_or_default_config(workspace_id, measurement_group_id, voltage_config_registry=voltage_config_registry)
-    config.reference_mode = VOLTAGE_REFERENCE_MODE_MANUAL
-    config.reference_override = reference
-    voltage_config_registry.upsert(config)
-    return config
+    return update_voltage_configuration(
+        workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+        reference_mode=VOLTAGE_REFERENCE_MODE_MANUAL, reference_override=reference,
+        group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+    )
 
 
 def return_voltage_reference_to_auto(
@@ -152,12 +169,11 @@ def return_voltage_reference_to_auto(
     channel membership rather than reading a cached value, this alone
     is sufficient to make "Return to Auto" correct -- there is no
     separate re-detection step to remember to run."""
-    _get_voltage_group(workspace_id, measurement_group_id, group_registry=group_registry)
-    config = _existing_or_default_config(workspace_id, measurement_group_id, voltage_config_registry=voltage_config_registry)
-    config.reference_mode = VOLTAGE_REFERENCE_MODE_AUTO
-    config.reference_override = None
-    voltage_config_registry.upsert(config)
-    return config
+    return update_voltage_configuration(
+        workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+        reference_mode=VOLTAGE_REFERENCE_MODE_AUTO,
+        group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+    )
 
 
 def get_effective_voltage_reference(
