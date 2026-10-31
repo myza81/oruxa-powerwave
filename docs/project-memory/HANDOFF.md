@@ -4,11 +4,33 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-01** (V-I Pairing Phase A–D deployed to DEV for owner UAT — commit c0a4870; Per-Unit Slice 1 retained below.)
+Last updated: **2026-11-01** (Phase D typography correction deployed to DEV — commit 054be43 / merge 8b70f36; CI green, health `8b70f36`, 20/20 browser tests pass.)
+
+## Phase D typography correction (DEC-207 CSS) — 2026-11-01
+
+**Status: DEPLOYED to DEV — merge commit 8b70f36, deployed 2026-11-01.**
+
+Corrects Phase D Hybrid V-I Pair Picker CSS to use `rem` units and project-wide
+design token variables:
+
+| Selector | Before | After |
+|---|---|---|
+| `.ww-cc-pair-status` | `font-size: 0.85em` | `font-size: 0.72rem` |
+| `.ww-cc-pair-summary-text` | `font-size: 0.9em` | `font-size: 0.75rem` |
+| `.ww-cc-pair-manual-label` | `font-size: 0.8em` | `font-size: 0.72rem` |
+| `.ww-cc-pair-confirm-note` | `font-size: 0.8em` | `font-size: 0.70rem` |
+| `.ww-cc-pair-summary` | `var(--border)`, `border-radius: 4px` | `var(--panel-border)`, `var(--radius)` |
+
+**Commit:** `054be43` (typography fix) + `8b70f36` (merge with origin/main c0a4870)
+**CI:** Green (run 41251417244)
+**Health:** `https://api.dev.powerwave.oruxa.uk/health` → `"version":"8b70f36"` ✓
+**CSS served:** All 5 rules verified in served HTML ✓
+**Browser tests:** 20/20 pass (Phase A Phase D spec) ✓
+**Per-Unit Slice 1:** commits 0f751b2 and 498e8cd preserved ✓
 
 ## V-I Pairing Phase D: Hybrid Automatic–Manual V-I Pairing UI (DEC-207) — 2026-11-01
 
-**Status: DEPLOYED to DEV for owner UAT — commit c0a4870, deployed 2026-11-01.**
+**Status: DEPLOYED to DEV for owner UAT — commit c0a4870 / typography correction 054be43, deployed 2026-11-01.**
 
 Extends the Calculated Channels power builder (active_power / reactive_power / apparent_power)
 with a hybrid pair-picker UI that surfaces Phase C API results directly in the builder.
