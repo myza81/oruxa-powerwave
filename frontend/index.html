@@ -33098,28 +33098,72 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return name !== calc.name ? name : null;
         }
 
-        // Plain-text display name (native <option>, title / aria-label,
-        // textContent): user display name, else the canonical name.
-        function wwCalculatedChannelDisplayText(calc) {
-            return wwCalculatedChannelUserName(calc) || (calc ? calc.name : "");
+        // Compact label glyphs for power operations — display-only, no (t).
+        const WW_POWER_COMPACT_GLYPHS = {
+            active_power: "P", reactive_power: "Q", apparent_power: "|S|",
+            three_phase_active_power: "P₃", three_phase_reactive_power: "Q₃", three_phase_apparent_power: "|S₃|",
+        };
+
+        // Returns a plain-text compact label for single- or three-phase power
+        // calculated channels (e.g. "P₃ · PMJY1 · IBT1 HV VA"), or null when no
+        // compact label is appropriate. Null causes callers to fall through to
+        // the full calc.name. Rules applied in order:
+        //   (1) power operation only;
+        //   (2) user alias suppressed by caller (wwCalculatedChannelUserName);
+        //   (3) multi-source inputs → null (cannot identify by V source alone);
+        //   (4) source inventory not loaded → null;
+        //   (5) collision with another loaded calc's label → null (both get full name).
+        function wwPowerCompactLabel(calc) {
+            if (!calc) return null;
+            const glyph = WW_POWER_COMPACT_GLYPHS[calc.operation];
+            if (!glyph) return null;
+            const v1 = calc.inputs && calc.inputs[0];
+            if (!v1 || v1.kind !== "source") return null;
+            // All inputs must be source refs from the same recording.
+            if (calc.inputs.some((inp) => inp.kind !== "source" || inp.source_id !== v1.source_id)) return null;
+            const inv = ww.sourceChannelInventory.get(calc.reference_source_id);
+            if (!inv) return null;
+            const raw = glyph + " · " + inv.sourceName + " · " + wwChannelDisplayName(v1.source_id, v1.channel_name);
+            // Collision check: if another loaded calc would produce the same label, both fall back.
+            for (const [id, other] of ww.calculatedChannels) {
+                if (id === calc.id) continue;
+                if (!WW_POWER_COMPACT_GLYPHS[other.operation]) continue;
+                const ov1 = other.inputs && other.inputs[0];
+                if (!ov1 || ov1.kind !== "source") continue;
+                if (other.inputs.some((inp) => inp.kind !== "source" || inp.source_id !== ov1.source_id)) continue;
+                const oinv = ww.sourceChannelInventory.get(other.reference_source_id);
+                if (!oinv) continue;
+                if (WW_POWER_COMPACT_GLYPHS[other.operation] + " · " + oinv.sourceName + " · " + wwChannelDisplayName(ov1.source_id, ov1.channel_name) === raw) return null;
+            }
+            return raw;
         }
 
-        // Calculated-channel name for HTML surfaces. A user display name wins
-        // verbatim; otherwise system L-L names get the notation.
+        // Plain-text display name (native <option>, title / aria-label,
+        // textContent): user alias, then compact power label, else canonical name.
+        function wwCalculatedChannelDisplayText(calc) {
+            return wwCalculatedChannelUserName(calc) || wwPowerCompactLabel(calc) || (calc ? calc.name : "");
+        }
+
+        // Calculated-channel name for HTML surfaces. Priority: user alias →
+        // compact power label → L-L notation → canonical name.
         function wwCalculatedChannelNameHtml(calc) {
             const userName = wwCalculatedChannelUserName(calc);
             if (userName) return escapeHtml(userName);
+            const powerLabel = wwPowerCompactLabel(calc);
+            if (powerLabel) return escapeHtml(powerLabel);
             const parts = wwLineToLineSystemName(calc);
             return parts ? wwRichLabelHtml(escapeHtml(parts.prefix) + wwLineToLinePairHtml(parts.pair, parts.phaseDisplay)) : escapeHtml(calc ? calc.name : "");
         }
 
         // Plotly trace-name variant: Plotly renders its own <sub> pseudo-HTML
         // (legend/hover) but not class attributes; non-L-L names are passed
-        // through unchanged, exactly as before. Trace identity stays in
-        // uid/meta, never the display name.
+        // through unchanged. Trace identity stays in uid/meta, never the display name.
+        // Priority: user alias → compact power label → L-L notation → canonical name.
         function wwCalculatedChannelNamePlotly(calc) {
             const userName = wwCalculatedChannelUserName(calc);
             if (userName) return userName;
+            const powerLabel = wwPowerCompactLabel(calc);
+            if (powerLabel) return powerLabel;
             const parts = wwLineToLineSystemName(calc);
             return parts ? parts.prefix + wwLineToLinePairPlotly(parts.pair, parts.phaseDisplay) : (calc ? calc.name : "");
         }
@@ -41384,14 +41428,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const color = wwColorForChannel(calc.id, calc.name);
                 const error = wwCcListErrors.get(calc.id) || (calc.timing_status === "incompatible" ? calc.timing_error : null);
                 const meta = WW_CC_OPERATIONS[calc.operation];
-                const inputNamesHtml = calc.inputs.map(wwCcInputDisplayNameHtml).join(", ");
                 const selected = calc.id === wwCcSelectedCalculatedChannelId;
                 html += '<div class="ww-cc-list-row' + (selected ? " ww-cc-list-row--selected" : "") + '" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
                         '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span></div>' +
                         '<div class="ww-cc-list-row-expr">' + wwCcExpressionHtmlFor(calc) + '</div>' +
-                        '<div class="ww-cc-list-row-summary">' + wwRichLabelHtml(escapeHtml((meta ? meta.label : calc.operation) + " · ") + inputNamesHtml + escapeHtml(" · " + wwCcNullPolicySummaryText(calc))) + '</div>' +
+                        '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
                     '<div class="ww-cc-list-row-class"><span class="ww-cc-type-badge">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
