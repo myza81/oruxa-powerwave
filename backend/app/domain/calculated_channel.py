@@ -991,3 +991,84 @@ def evaluate_power_channel(
         raw = np.abs(s_complex)
 
     return raw / 1_000_000.0
+
+
+# ---------------------------------------------------------------------------
+# DEC-208 (Phase E-2A): three-phase fundamental power evaluator
+# ---------------------------------------------------------------------------
+
+def evaluate_three_phase_power_channel(
+    operation: str,
+    time: np.ndarray,
+    v1_values: np.ndarray,
+    v1_scale_to_si: float,
+    i1_values: np.ndarray,
+    i1_scale_to_si: float,
+    v2_values: np.ndarray,
+    v2_scale_to_si: float,
+    i2_values: np.ndarray,
+    i2_scale_to_si: float,
+    v3_values: np.ndarray,
+    v3_scale_to_si: float,
+    i3_values: np.ndarray,
+    i3_scale_to_si: float,
+    nominal_frequency_hz: float = 50.0,
+) -> np.ndarray:
+    """Time-varying three-phase P(t) [MW], Q(t) [Mvar] or |S|(t) [MVA].
+
+    Algorithm (DEC-208, DEC-PWR-002/003):
+      1. Scale each waveform to SI (V, A) with its supplied scale factor.
+      2. Compute six sliding fundamental RMS phasors — V1(t), I1(t), V2(t),
+         I2(t), V3(t), I3(t) — via the trailing one-cycle DFT window.
+         All share one `time` array; caller proves alignment (timebases_aligned)
+         before invoking this function.
+      3. S_total(t) = Σ V_k(t) · conj(I_k(t))  (complex, element-wise sum).
+      4. P = Re(S_total), Q = Im(S_total), |S| = abs(S_total) (geometric, DEC-PWR-002).
+      5. Convert to MW / Mvar / MVA by dividing by 1e6.
+
+    Null policy (DEC-208 propagate):
+      If ANY of the six phasors is unavailable (NaN+NaN·j) at sample t, the
+      output is NaN at t.  The sliding phasor engine sets phasor to NaN+NaN·j
+      wherever .available is False, so NaN arithmetic propagates automatically
+      through step 3-4; no partial sum of <3 phases is ever silently returned.
+
+    Sign convention: passive (DEC-PWR-003).
+      P > 0 = three-phase element absorbs active power.
+      Q > 0 = inductive (lagging) load.
+
+    Inputs:
+      operation         -- OP_ACTIVE_POWER | OP_REACTIVE_POWER | OP_APPARENT_POWER
+      time              -- shared elapsed-time array (seconds)
+      v1/i1, v2/i2, v3/i3 -- phase 1/2/3 voltage and current raw sample arrays,
+                             each paired with its SI scale factor
+      nominal_frequency_hz -- fundamental frequency for the DFT window (default 50 Hz)
+
+    Returns:
+      np.ndarray, same length as `time`, in MW/Mvar/MVA.
+    """
+    from app.domain.sliding_phasor import compute_sliding_phasor
+
+    def _si(values: np.ndarray, scale: float) -> np.ndarray:
+        return values * scale if scale != 1.0 else values
+
+    v1r = compute_sliding_phasor(time, _si(v1_values, v1_scale_to_si), nominal_frequency_hz)
+    i1r = compute_sliding_phasor(time, _si(i1_values, i1_scale_to_si), nominal_frequency_hz)
+    v2r = compute_sliding_phasor(time, _si(v2_values, v2_scale_to_si), nominal_frequency_hz)
+    i2r = compute_sliding_phasor(time, _si(i2_values, i2_scale_to_si), nominal_frequency_hz)
+    v3r = compute_sliding_phasor(time, _si(v3_values, v3_scale_to_si), nominal_frequency_hz)
+    i3r = compute_sliding_phasor(time, _si(i3_values, i3_scale_to_si), nominal_frequency_hz)
+
+    s_total = (
+        v1r.phasor * np.conj(i1r.phasor)
+        + v2r.phasor * np.conj(i2r.phasor)
+        + v3r.phasor * np.conj(i3r.phasor)
+    )
+
+    if operation == OP_ACTIVE_POWER:
+        raw = np.real(s_total)
+    elif operation == OP_REACTIVE_POWER:
+        raw = np.imag(s_total)
+    else:
+        raw = np.abs(s_total)
+
+    return raw / 1_000_000.0
