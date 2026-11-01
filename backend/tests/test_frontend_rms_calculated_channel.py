@@ -6,6 +6,7 @@ browser/DOM test runner for the single-file frontend.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -24,7 +25,12 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
 
 def test_rms_operation_is_registered():
     source = _source()
-    assert '"reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction"' in source
+    # Extract WW_CC_OPERATION_ORDER and collapse whitespace so the assertion
+    # is insensitive to array literals being split across multiple lines.
+    order_start = source.index("const WW_CC_OPERATION_ORDER")
+    order_end = source.index("];", order_start)
+    order_flat = re.sub(r'\s+', ' ', source[order_start:order_end])
+    assert '"reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction"' in order_flat
     ops_body = _function_body(source, "const WW_CC_OPERATIONS = {", "const WW_CC_OPERATION_ORDER")
     assert 'rms: { label: "RMS"' in ops_body
     # Owner UAT: operation cards show the name only -- no secondary
