@@ -9,6 +9,7 @@
 // Fixtures:
 //   power: SYNTH_POWER, VA (kV) + IA (kA) — single-phase power
 //   threep: SYNTH_3P_LG, VA/VB/VC (kV) + IA/IB/IC (kA) — three-phase power
+//   vi2: SYNTH_VI2, VA (kV) + IA + IB (kA) — shared-voltage collision scenario
 
 const { test, expect } = require("./support/test");
 const { routeConfig } = require("./support/relay_import_helpers");
@@ -285,6 +286,115 @@ test.describe("Three-phase power compact label", () => {
     await expect(summary).toContainText("Null: Propagate");
     const summaryText = await summary.textContent();
     expect(summaryText).not.toContain("VA·SYNTH_3P_LG");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fixture — shared voltage, two different currents (collision scenario)
+// ---------------------------------------------------------------------------
+
+function vi2Fixture() {
+  const cfg = [
+    "SYNTH_VI2,SYNTH_DEV,1999",
+    "3,3A,0D",
+    "1,VA,,,kV,1.0,0.0,0,-999999,999999,1.0,1.0,P",
+    "2,IA,,,kA,1.0,0.0,0,-999999,999999,1.0,1.0,P",
+    "3,IB,,,kA,1.0,0.0,0,-999999,999999,1.0,1.0,P",
+    "50",
+    "1",
+    `${SAMPLE_RATE},${SAMPLES}`,
+    "06/03/2026,10:00:00.000000",
+    "06/03/2026,10:00:00.000000",
+    "ASCII",
+    "1.0",
+  ].join("\r\n") + "\r\n";
+  const spc = SAMPLE_RATE / 50;
+  const usps = 1_000_000 / SAMPLE_RATE;
+  const rows = [];
+  for (let i = 0; i < SAMPLES; i++) {
+    const t = (2 * Math.PI * i) / spc;
+    rows.push([
+      `${i + 1}`, `${Math.round(i * usps)}`,
+      (110 * Math.sin(t)).toFixed(6),
+      (1.5 * Math.sin(t - 0.3)).toFixed(6),
+      (1.2 * Math.sin(t - 0.5)).toFixed(6),
+    ].join(","));
+  }
+  return { cfg: Buffer.from(cfg, "latin1"), dat: Buffer.from(rows.join("\r\n") + "\r\n", "latin1") };
+}
+
+// ---------------------------------------------------------------------------
+// Tests — engineering-identity safety
+// ---------------------------------------------------------------------------
+
+test.describe("Engineering-identity safety", () => {
+  test("manually entered Output Name is shown over compact label in CC manager and waveform sidebar", async ({ page }) => {
+    await uploadAndGoToCC(page, powerFixture(), "power.cfg");
+
+    // Create an active-power channel with a user-supplied Output Name.
+    await page.locator("#wwCcNewChannelBtn").click();
+    await expect(page.locator("#wwCcDrawer")).toHaveClass(/ww-cc-drawer--open/);
+    await page.locator('.ww-cc-operation-card[data-operation="active_power"]').click();
+    await selectOptionByLabel(page, "#wwCcPowerVoltageSelect", "VA");
+    await selectOptionByLabel(page, "#wwCcPowerCurrentSelect", "IA");
+    // Override the auto-suggested name before creating.
+    await page.locator("#wwCcNameInput").fill("Custom Power Name");
+    await page.locator("#wwCcCreateBtn").click();
+    await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+
+    // CC manager: custom name visible; compact label absent.
+    await expect(page.locator(".ww-cc-list-row-name", { hasText: "Custom Power Name" })).toBeVisible();
+    await expect(page.locator(".ww-cc-list-row-name", { hasText: "P · SYNTH_POWER · VA" })).toHaveCount(0);
+
+    // Verify calc.name was stored as the custom name.
+    const calc = await page.evaluate(() =>
+      Array.from(ww.calculatedChannels.values()).find((c) => c.operation === "active_power"));
+    expect(calc, "active_power calc not found").toBeTruthy();
+    expect(calc.name).toBe("Custom Power Name");
+
+    // Waveform sidebar: custom name displayed.
+    await page.locator("#mainNavWaveformBtn").click();
+    const calcRow = page.locator(
+      `#calculatedChannelsSidebarBody tr[data-calculated-channel-id][data-channel-name="Custom Power Name"]`);
+    await expect(calcRow).toBeVisible();
+    await calcRow.click();
+    await expect(calcRow).toHaveAttribute("aria-pressed", "true");
+    await expect(calcRow.locator(".channel-name-text")).toContainText("Custom Power Name");
+  });
+
+  test("shared-voltage calcs with different currents are distinguishable after collision detection", async ({ page }) => {
+    await uploadAndGoToCC(page, vi2Fixture(), "vi2.cfg");
+
+    // Create P(VA · IA) — should show compact label while it is the only power calc.
+    await page.locator("#wwCcNewChannelBtn").click();
+    await expect(page.locator("#wwCcDrawer")).toHaveClass(/ww-cc-drawer--open/);
+    await page.locator('.ww-cc-operation-card[data-operation="active_power"]').click();
+    await selectOptionByLabel(page, "#wwCcPowerVoltageSelect", "VA");
+    await selectOptionByLabel(page, "#wwCcPowerCurrentSelect", "IA");
+    await page.locator("#wwCcCreateBtn").click();
+    await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+    await expect(mgrRow(page, "P · SYNTH_VI2 · VA")).toBeVisible();
+
+    // Create P(VA · IB) — same voltage channel, different current.
+    await page.locator("#wwCcNewChannelBtn").click();
+    await expect(page.locator("#wwCcDrawer")).toHaveClass(/ww-cc-drawer--open/);
+    await page.locator('.ww-cc-operation-card[data-operation="active_power"]').click();
+    await selectOptionByLabel(page, "#wwCcPowerVoltageSelect", "VA");
+    await selectOptionByLabel(page, "#wwCcPowerCurrentSelect", "IB");
+    await page.locator("#wwCcCreateBtn").click();
+    await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+
+    // After the second calc is added, the compact label "P · SYNTH_VI2 · VA" must
+    // have been retired (it would be identical for both — collision detected).
+    await expect(page.locator(".ww-cc-list-row-name", { hasText: "P · SYNTH_VI2 · VA" })).toHaveCount(0);
+
+    // Both calcs must appear under their canonical names, which differ.
+    const calcs = await page.evaluate(() =>
+      Array.from(ww.calculatedChannels.values()).filter((c) => c.operation === "active_power"));
+    expect(calcs.length).toBe(2);
+    expect(calcs[0].name, "canonical names must differ").not.toBe(calcs[1].name);
+    await expect(page.locator(".ww-cc-list-row-name", { hasText: calcs[0].name })).toBeVisible();
+    await expect(page.locator(".ww-cc-list-row-name", { hasText: calcs[1].name })).toBeVisible();
   });
 });
 
