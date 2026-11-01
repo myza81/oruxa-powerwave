@@ -40,6 +40,12 @@ OP_ROCOF = "rocof"
 OP_ACTIVE_POWER = "active_power"
 OP_REACTIVE_POWER = "reactive_power"
 OP_APPARENT_POWER = "apparent_power"
+# DEC-208 (Phase E): three-phase fundamental power from instantaneous V+I.
+# Exactly SIX inputs: [V1, I1, V2, I2, V3, I3] in phase order.
+# Output unit is fixed (MW / Mvar / MVA regardless of input scaling).
+OP_THREE_PHASE_ACTIVE_POWER = "three_phase_active_power"
+OP_THREE_PHASE_REACTIVE_POWER = "three_phase_reactive_power"
+OP_THREE_PHASE_APPARENT_POWER = "three_phase_apparent_power"
 
 #: Exactly one channel input (Multiply also takes a scalar `constant`
 #: parameter alongside its one channel input -- section 28). RMS
@@ -56,7 +62,14 @@ MULTI_OPERATIONS = frozenset({OP_ADDITION, OP_SUBTRACTION})
 #: Distinct from MULTI_OPERATIONS -- different units are intentional and
 #: unit_compatible() is NOT called for this group.
 POWER_OPERATIONS = frozenset({OP_ACTIVE_POWER, OP_REACTIVE_POWER, OP_APPARENT_POWER})
-ALL_OPERATIONS = UNARY_OPERATIONS | MULTI_OPERATIONS | POWER_OPERATIONS
+#: DEC-208: exactly six inputs, alternating voltage/current per phase;
+#: fixed output unit. Distinct from POWER_OPERATIONS (two-input single-phase).
+THREE_PHASE_POWER_OPERATIONS = frozenset({
+    OP_THREE_PHASE_ACTIVE_POWER,
+    OP_THREE_PHASE_REACTIVE_POWER,
+    OP_THREE_PHASE_APPARENT_POWER,
+})
+ALL_OPERATIONS = UNARY_OPERATIONS | MULTI_OPERATIONS | POWER_OPERATIONS | THREE_PHASE_POWER_OPERATIONS
 
 #: DEC-202: fixed output unit per power operation. Always MW/Mvar/MVA
 #: (SI base units scaled to mega, regardless of the input kV/kA scaling --
@@ -66,6 +79,9 @@ POWER_OUTPUT_UNITS: dict[str, str] = {
     OP_ACTIVE_POWER: "MW",
     OP_REACTIVE_POWER: "Mvar",
     OP_APPARENT_POWER: "MVA",
+    OP_THREE_PHASE_ACTIVE_POWER: "MW",
+    OP_THREE_PHASE_REACTIVE_POWER: "Mvar",
+    OP_THREE_PHASE_APPARENT_POWER: "MVA",
 }
 
 #: Phase 5B (DEC-048) RMS parameters -- see evaluate_rms() below. A soft
@@ -1038,6 +1054,7 @@ def evaluate_three_phase_power_channel(
 
     Inputs:
       operation         -- OP_ACTIVE_POWER | OP_REACTIVE_POWER | OP_APPARENT_POWER
+                           or their THREE_PHASE_POWER_OPERATIONS equivalents
       time              -- shared elapsed-time array (seconds)
       v1/i1, v2/i2, v3/i3 -- phase 1/2/3 voltage and current raw sample arrays,
                              each paired with its SI scale factor
@@ -1064,9 +1081,9 @@ def evaluate_three_phase_power_channel(
         + v3r.phasor * np.conj(i3r.phasor)
     )
 
-    if operation == OP_ACTIVE_POWER:
+    if operation in (OP_ACTIVE_POWER, OP_THREE_PHASE_ACTIVE_POWER):
         raw = np.real(s_total)
-    elif operation == OP_REACTIVE_POWER:
+    elif operation in (OP_REACTIVE_POWER, OP_THREE_PHASE_REACTIVE_POWER):
         raw = np.imag(s_total)
     else:
         raw = np.abs(s_total)

@@ -275,6 +275,54 @@ class InvalidPowerInputUnitError(ImportServiceError):
     code = "invalid_power_input_unit"
 
 
+# ---- DEC-208 (Phase E): Three-Phase Power Calculated Channels ----
+
+
+class InvalidThreePhasePhaseMismatchError(ImportServiceError):
+    """Two channels in the same V/I pair carry recognizable phase tokens from
+    the same convention but the tokens differ (e.g. V_R paired with I_B).
+    Confirmed mismatch — creation is rejected."""
+
+    code = "invalid_three_phase_phase_mismatch"
+
+
+class LineToLineVoltageRejectedError(ImportServiceError):
+    """One or more voltage inputs carry line-to-line (phase-to-phase) naming
+    evidence. Line-to-line voltage inputs are not supported for three-phase
+    power calculations (DEC-208-D)."""
+
+    code = "line_to_line_voltage_rejected"
+
+
+class UnconfirmedVoltageReferenceError(ImportServiceError):
+    """Voltage reference is unknown or conflicting. Three-phase power
+    requires an explicit ``voltage_reference_confirmed=True`` to proceed
+    when reference detection is inconclusive (DEC-208-D)."""
+
+    code = "unconfirmed_voltage_reference"
+
+
+class UnconfirmedPhasePairingError(ImportServiceError):
+    """A (V, I) pair could not be confirmed as representing the same physical
+    phase from channel names alone (one or both phase tokens absent, tokens
+    from different naming conventions, or same token from different equipment
+    contexts). Three-phase power requires an explicit
+    ``phase_pairing_confirmed=True`` to proceed with manually assigned phase
+    channels (DEC-208)."""
+
+    code = "unconfirmed_phase_pairing"
+
+
+class DuplicatePhaseAssignmentError(ImportServiceError):
+    """The same channel reference or deterministically identified phase
+    identity appears in more than one phase slot of a three-phase power
+    operation. Each slot must represent a physically distinct channel.
+    This is unconditionally rejected and cannot be overridden by
+    ``phase_pairing_confirmed=True`` (DEC-208)."""
+
+    code = "duplicate_phase_assignment"
+
+
 # ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----
 
 

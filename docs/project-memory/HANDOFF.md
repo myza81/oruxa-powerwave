@@ -4,7 +4,103 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-01** (Phase D typography correction deployed to DEV — commit 054be43 / merge 8b70f36; CI green, health `8b70f36`, 20/20 browser tests pass.)
+Last updated: **2026-11-01** (Phase E-2B three-phase power service integration committed on
+`feature/calculator-vi-phasors` — 43 service tests, full backend regression clean. Not yet
+pushed; E-2C and E-3 not started.)
+
+## Phase E-2B: Three-Phase Power Service Integration (DEC-208) — 2026-11-01
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.**
+
+Implements `create_calculated_channel()` validation for `THREE_PHASE_POWER_OPERATIONS`
+(`three_phase_active_power`, `three_phase_reactive_power`, `three_phase_apparent_power`).
+
+### What was implemented
+
+**Validation steps (in order):**
+1. Type guard — all 6 inputs must be voltage (slots 1–3) or current (slots 4–6)
+2. Unit guard — accepted units: V/kV (voltage), A/kA (current)
+3. Per-channel L-L guard (unconditional) — `LineToLineVoltageRejectedError` for any L-L
+   voltage name; fires before phase-pairing checks; does not require `phase_pairing_confirmed`
+4. Duplicate reference guard — `DuplicatePhaseAssignmentError` if same `reference_id` in
+   multiple V-slots or multiple I-slots (unconditional, cannot be bypassed)
+5. Duplicate token guard — same phase token in multiple slots
+6a. Multi-source guard — >1 distinct `reference_source_id` → `UnconfirmedPhasePairingError`
+    unless `phase_pairing_confirmed: true`
+6b. Convention-level detection — `_detect_convention()` on complete 3-token V/I tuples;
+    per-pair mismatch only if both sides resolve to the same convention
+6c. Per-pair token mismatch — `InvalidThreePhasePhaseMismatchError` (unconditional within
+    a confirmed same-convention pairing)
+6d. Cross-pair context consistency — >1 distinct non-null context across all 6 inputs →
+    `UnconfirmedPhasePairingError` unless `phase_pairing_confirmed: true`
+7. Voltage-reference group gate — DEC-208-D: LINE_TO_LINE rejected, UNKNOWN/CONFLICTING
+   require `voltage_reference_confirmed: true`
+8. Sampling density check — timebase alignment, 300 ns tolerance
+
+**New error codes (all in `errors.py`):**
+- `invalid_three_phase_phase_mismatch` — confirmed same-convention per-pair token mismatch
+- `line_to_line_voltage_rejected` — unconditional L-L rejection
+- `unconfirmed_voltage_reference` — uncertain voltage reference without confirmation flag
+- `unconfirmed_phase_pairing` — uncertain phase pairing without confirmation flag
+- `duplicate_phase_assignment` — same reference or token in multiple slots (unconditional)
+
+**New API fields on `create_calculated_channel()`:**
+- `voltage_reference_confirmed: bool = False`
+- `phase_pairing_confirmed: bool = False`
+
+**Test coverage (43 tests, `test_three_phase_power_service.py`):**
+
+| Class | Tests | Coverage |
+|-------|-------|----------|
+| A–C | 3 | MW/Mvar/MVA creation |
+| D | 1 | Arity guard |
+| E–F | 2 | Type slot guards |
+| G | 1 | Unit guard |
+| H–K | 4 | Phase pairing (mismatch, cross-convention, generic, confirmed generic) |
+| L | 1 | L-L unconditional rejection |
+| M–O | 3 | RYB/ABC/L1L2L3 auto-detection |
+| P | 1 | kV + A scaling |
+| Q | 1 | Short recording |
+| R | 1 | Timebase misalignment |
+| S | 1 | NaN propagation |
+| T | 1 | Atomicity |
+| U | 1 | Deletion |
+| V | 1 | Single-phase regression |
+| W | 2 | Parameters recording |
+| X | 1 | Mixed L-L guard (VR+VY+VBR) without `phase_pairing_confirmed` |
+| Y | 1 | Sixth-channel misalignment + atomicity |
+| Z | 1 | V + kA scaling |
+| AA | 2 | Cross-convention sets (RYB vs ABC) |
+| BB | 2 | Cross-context pairing (TBIN VR + TKBR IR) |
+| CC | 3 | Duplicate assignments |
+| DD | 7 | Source identity safety (multi-source, per-pair cross-source, inconsistent contexts) |
+
+**Full backend regression:** clean (all pre-existing tests pass; 4 expected harmless
+deprecation warnings from StarletteDeprecationWarning and PytestRemovedIn10Warning).
+
+### Files changed in this commit
+
+- `backend/app/domain/calculated_channel.py` — +3 OP constants, `THREE_PHASE_POWER_OPERATIONS`,
+  updated `ALL_OPERATIONS`, extended `POWER_OUTPUT_UNITS`, evaluation dispatch
+- `backend/app/services/errors.py` — 5 new error classes
+- `backend/app/services/calculated_channel_service.py` — validation block, helper
+  constants/functions, evaluation dispatch for three-phase ops
+- `backend/tests/test_three_phase_power_service.py` — new, 43 tests
+- `docs/project-memory/DECISIONS.md` — DEC-208-D marked implemented; DEC-208-F through J
+  added; Phase E status table added
+- `docs/project-memory/HANDOFF.md` — this update
+
+### Outstanding work for next session
+
+| Slice | Work required |
+|-------|---------------|
+| E-2C | Decide DEC-208-B (operation model) and DEC-208-C (API schema) — extend `GET /vi-pairs` vs new endpoint for three-phase set discovery |
+| E-3 | Frontend: three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override |
+
+**Branch:** `feature/calculator-vi-phasors` — 3 commits ahead of origin/main after this commit.
+**Unrelated untracked files to preserve:** `.audit/`, `.slice1-evidence/`, `test-results/` (per-unit remediation work — not staged, not committed here).
+
+---
 
 ## Phase D typography correction (DEC-207 CSS) — 2026-11-01
 

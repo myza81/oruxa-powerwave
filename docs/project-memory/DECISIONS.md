@@ -28932,11 +28932,72 @@ See Phase E investigation report deliverable G and the corrected supplemental in
   in Slice E-1; atomic group deferred.
 - **DEC-208-C (API schema)**: Three-phase sets added to existing `GET /vi-pairs` endpoint
   vs new endpoint. Recommendation: extend existing endpoint.
-- **DEC-208-D (voltage reference gate)**: Confirmed architecture — (1) LINE_TO_GROUND
-  confident: auto-proceed; (2) LINE_TO_LINE: reject at backend service layer; (3) UNKNOWN
-  or CONFLICTING: require `voltage_reference_confirmed: true` in create request, enforced
-  at backend service layer (frontend checkbox enables Create button; backend validates
-  independently). Name-based detection is engineering evidence, not proof of actual VT
-  wiring. Owner approval of gate mechanism requested before Slice E-2 implementation.
+- **DEC-208-D (voltage reference gate)**: **Confirmed and implemented in Phase E-2B
+  (2026-11-01).** Architecture: (1) LINE_TO_GROUND confident: auto-proceed; (2) LINE_TO_LINE:
+  reject unconditionally at backend service layer (`LineToLineVoltageRejectedError`, code
+  `line_to_line_voltage_rejected`) — rejection fires before phase-pairing checks, does not
+  require `phase_pairing_confirmed`; (3) UNKNOWN or CONFLICTING: require
+  `voltage_reference_confirmed: true` in create request, enforced at backend service layer.
+  Name-based detection is engineering evidence, not proof of actual VT wiring.
 - **DEC-208-E (L1/L2/L3 grammar)**: Do not expand `voltage_reference.py` token sets
   without impact assessment on per-unit and all other existing consumers. Pending assessment.
+
+### Phase E-2B implementation decisions (2026-11-01)
+
+These decisions were made and implemented during Phase E-2B (three-phase power service
+integration). They extend DEC-208 and are authoritative for `create_calculated_channel()`
+validation of `THREE_PHASE_POWER_OPERATIONS`.
+
+- **DEC-208-F (phase identity validation — convention-level detection)**: Replaced
+  per-pair token comparison with convention-level detection using `_detect_convention()`.
+  The function operates on the complete 3-token tuple for V and I independently; returns
+  the unique `frozenset` convention set only when all non-None tokens belong to exactly one
+  of `{R,Y,B}`, `{A,B,C}`, or `{L1,L2,L3}`. Rationale: per-pair comparison cannot
+  distinguish a same-convention mismatch (e.g. VR+IB — genuine phase swap) from a shared-
+  token ambiguity (e.g. "B" is in both {R,Y,B} and {A,B,C}). If both V and I resolve to
+  the same convention, per-pair token mismatch is checked and raises
+  `InvalidThreePhasePhaseMismatchError` (unconditional). If conventions differ or detection
+  returns None, raises `UnconfirmedPhasePairingError` unless
+  `phase_pairing_confirmed: true` is provided.
+
+- **DEC-208-G (duplicate phase assignment guard)**: `DuplicatePhaseAssignmentError`
+  (code `duplicate_phase_assignment`) fires when the same phase reference (`reference_id`)
+  or the same phase token appears in multiple V-slots or multiple I-slots. This check is
+  unconditional and cannot be bypassed with `phase_pairing_confirmed`. Rationale: a
+  duplicated reference is a definitional error — it implies the same physical channel is
+  counted twice, producing arithmetically wrong power regardless of pairing intent.
+
+- **DEC-208-H (multi-source guard)**: If the 6 resolved channels come from more than one
+  distinct `reference_source_id`, the pairing is treated as uncertain. Raises
+  `UnconfirmedPhasePairingError` unless `phase_pairing_confirmed: true`. Rationale:
+  matching phase tokens or aligned timebases do not establish common electrical identity
+  (same CT/VT circuit, same neutral reference) across sources.
+
+- **DEC-208-I (cross-pair context consistency guard)**: After convention-level detection
+  passes, all non-None `context_hint` values across the 6 inputs are collected. If more
+  than one distinct context is present (e.g. TBIN for voltages and TKBR for currents),
+  raises `UnconfirmedPhasePairingError` unless `phase_pairing_confirmed: true`. Rationale:
+  same-convention same-token matching (e.g. VR from TBIN + IR from TKBR) does not imply
+  the same physical three-phase circuit.
+
+- **DEC-208-J (validation precedence / ordering)**: The 8-step validation order is fixed:
+  (1) type guard, (2) unit guard, (3) per-channel L-L guard, (4) duplicate ref guard,
+  (5) duplicate token guard, (6a) multi-source guard, (6b) convention detection + per-pair
+  mismatch check, (6c) per-pair context mismatch check, (6d) cross-pair context consistency,
+  (7) voltage-reference group gate, (8) sampling density check. The per-channel L-L guard
+  (step 3) is unconditional and fires before phase-pairing checks — it must never require
+  `phase_pairing_confirmed` as a precondition.
+
+### Phase E implementation status (2026-11-01)
+
+| Slice | Description | Status |
+|-------|-------------|--------|
+| E-1 | Domain function `evaluate_three_phase_power_channel()`, constants, unit dispatch | **Complete** — committed 7592e7a |
+| E-2A | (Part of E-1 commit) VI measurement-set resolution, `THREE_PHASE_POWER_OPERATIONS` | **Complete** — committed ff8a0a7 |
+| E-2B | Service integration — `create_calculated_channel()` validation (voltage-reference gate, phase identity, source identity safety), 43 service tests, full backend regression | **Complete** — committed (this commit) |
+| E-2C | API schema — extend `GET /vi-pairs` or new endpoint for three-phase set discovery (DEC-208-B, DEC-208-C outstanding) | **Pending owner approval** |
+| E-3 | Frontend UI — three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override | **Not started** |
+
+Note (TestDD test-count): the Phase E-2B source-identity safety report referenced "8 test
+methods" in TestDD; the actual implementation has 7 test methods. The report text was a
+documentation error — the code and test suite are correct.
