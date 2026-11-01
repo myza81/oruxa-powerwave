@@ -116,6 +116,7 @@ class CalculatedChannelCreateRequest(BaseModel):
     operation: Literal[
         "reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction", "rms", "rocof",
         "active_power", "reactive_power", "apparent_power",
+        "three_phase_active_power", "three_phase_reactive_power", "three_phase_apparent_power",
     ]
     inputs: list[ChannelRefIn]
     parameters: dict = {}
@@ -127,6 +128,12 @@ class CalculatedChannelCreateRequest(BaseModel):
     max_gap_value: int | None = None
     max_gap_unit: Literal["samples"] | None = None
     local_mean_radius: int | None = None
+    # Phase E-2C (DEC-208): three-phase power confirmation flags.  Both
+    # default False.  Passed unchanged to create_calculated_channel(); the
+    # service independently re-validates them -- these are engineering
+    # confirmations, never a bypass of service-layer checks.
+    voltage_reference_confirmed: bool = False
+    phase_pairing_confirmed: bool = False
 
 
 class RmsEligibilityRequest(BaseModel):

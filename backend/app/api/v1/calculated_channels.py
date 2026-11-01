@@ -106,6 +106,12 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "line_to_line_inputs_unavailable": status.HTTP_400_BAD_REQUEST,
     "invalid_power_input_type": status.HTTP_400_BAD_REQUEST,
     "invalid_power_input_unit": status.HTTP_400_BAD_REQUEST,
+    # Phase E-2B/2C (DEC-208): three-phase power validation errors.
+    "invalid_three_phase_phase_mismatch": status.HTTP_400_BAD_REQUEST,
+    "line_to_line_voltage_rejected": status.HTTP_400_BAD_REQUEST,
+    "unconfirmed_voltage_reference": status.HTTP_400_BAD_REQUEST,
+    "unconfirmed_phase_pairing": status.HTTP_400_BAD_REQUEST,
+    "duplicate_phase_assignment": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -231,6 +237,8 @@ def create_channel(
             max_gap_value=body.max_gap_value,
             max_gap_unit=body.max_gap_unit,
             local_mean_radius=body.local_mean_radius,
+            voltage_reference_confirmed=body.voltage_reference_confirmed,
+            phase_pairing_confirmed=body.phase_pairing_confirmed,
         )
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)

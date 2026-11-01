@@ -98,6 +98,92 @@ class CandidateVIPairOut(BaseModel):
     matching_evidence: VIPairMatchEvidenceOut
 
 
+class ThreePhasePairRefOut(BaseModel):
+    """One V-I pair slot within a three-phase set (Phase E-2C, DEC-208).
+
+    ``phase`` is the phase token that belongs to this slot (e.g. ``"R"``,
+    ``"Y"``, ``"B"``).  ``voltage_channel`` and ``current_channel`` carry the
+    same wire shape as a single-phase automatic pair's channel fields --
+    the frontend can build a six-channel create request directly from
+    three consecutive ``ThreePhasePairRefOut`` entries.
+    """
+
+    phase: str
+    voltage_channel: VIPairChannelOut
+    current_channel: VIPairChannelOut
+
+
+class ThreePhaseIncompletePhaseOut(BaseModel):
+    """Why one expected phase token is absent from an incomplete set.
+
+    ``reason`` is ``"not_found"`` when no channel with that phase token
+    exists in the workspace at all, or ``"needs_confirmation"`` when a
+    candidate exists but requires explicit user confirmation before it can
+    be used.
+    """
+
+    phase: str
+    reason: str  # "not_found" | "needs_confirmation"
+
+
+class ThreePhaseCompleteSetOut(BaseModel):
+    """A complete, automatically resolved three-phase V-I measurement set.
+
+    The three pairs are listed in fixed phase order (phase_1/phase_2/
+    phase_3 = R/Y/B, A/B/C, or L1/L2/L3 depending on ``phase_convention``).
+
+    ``voltage_reference`` is the result of running ``detect_voltage_reference``
+    over the three voltage channel names:
+
+    - ``"line_to_ground"``  — confident phase-to-neutral; auto-proceed.
+    - ``"line_to_line"``    — line-to-line voltages; set will be rejected.
+    - ``None``              — no recognizable evidence; confirmation required.
+
+    ``voltage_reference_confirmation_required`` is ``True`` whenever
+    ``voltage_reference`` is not ``"line_to_ground"``, signalling that the
+    frontend must show the confirmation checkbox before enabling Create.
+
+    ``voltage_reference_evidence_names`` carries the channel name(s) the
+    detector used as evidence, verbatim, for display in the UI.
+    """
+
+    set_id: str
+    status: Literal["complete"] = "complete"
+    display_label: str
+    source_id: str
+    context_hint: str | None
+    phase_convention: str  # "RYB" | "ABC" | "L123"
+    pairs: list[ThreePhasePairRefOut]
+    voltage_reference: str | None
+    voltage_reference_reason: str
+    voltage_reference_evidence_names: list[str]
+    voltage_reference_confirmation_required: bool
+
+
+class ThreePhaseIncompleteSetOut(BaseModel):
+    """A partial three-phase group — one or more phases are absent.
+
+    ``phase_convention`` is ``None`` when the present tokens are ambiguous
+    (e.g. only phase ``"B"`` is present, which belongs to both RYB and ABC).
+
+    ``incomplete_reason`` is one of:
+
+    - ``"missing_phases"``           — phases simply not found.
+    - ``"phases_need_confirmation"`` — at least one absent phase has a
+      candidate that requires confirmation.
+    - ``"ambiguous_convention"``     — the present tokens do not uniquely
+      identify a convention.
+    """
+
+    status: Literal["incomplete"] = "incomplete"
+    source_id: str
+    context_hint: str | None
+    phase_convention: str | None
+    incomplete_reason: str
+    present_pairs: list[ThreePhasePairRefOut]
+    missing_phases: list[ThreePhaseIncompletePhaseOut]
+
+
 class VIPairsOut(BaseModel):
     """Top-level response for GET .../vi-pairs.
 
@@ -107,8 +193,14 @@ class VIPairsOut(BaseModel):
     line-to-line voltage) are NOT subtracted -- this is the raw input
     count, so callers can sanity-check that the workspace has the channels
     they expect before acting on the pairing results.
+
+    ``three_phase_complete_sets`` and ``three_phase_incomplete_sets`` are
+    Phase E-2C additions (DEC-208).  Both default to empty lists -- existing
+    callers that do not read these fields are unaffected.
     """
 
     automatic_pairs: list[AutomaticVIPairOut]
     candidates_needing_confirmation: list[CandidateVIPairOut]
     total_input_channel_count: int
+    three_phase_complete_sets: list[ThreePhaseCompleteSetOut] = []
+    three_phase_incomplete_sets: list[ThreePhaseIncompleteSetOut] = []

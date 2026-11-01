@@ -28930,8 +28930,11 @@ See Phase E investigation report deliverable G and the corrected supplemental in
 - **DEC-208-B (operation model)**: One-at-a-time create calls (existing pattern) vs atomic
   three-channel group. Recommendation: one-at-a-time with "Create All Three" UI shortcut
   in Slice E-1; atomic group deferred.
-- **DEC-208-C (API schema)**: Three-phase sets added to existing `GET /vi-pairs` endpoint
-  vs new endpoint. Recommendation: extend existing endpoint.
+- **DEC-208-C (API schema)**: **Confirmed and implemented in Phase E-2C (2026-11-01).**
+  Three-phase sets added to existing `GET /vi-pairs` response backward-compatibly.
+  `three_phase_complete_sets` and `three_phase_incomplete_sets` added as new top-level
+  fields defaulting to `[]`. Existing `automatic_pairs` / `candidates_needing_confirmation`
+  / `total_input_channel_count` fields unchanged.
 - **DEC-208-D (voltage reference gate)**: **Confirmed and implemented in Phase E-2B
   (2026-11-01).** Architecture: (1) LINE_TO_GROUND confident: auto-proceed; (2) LINE_TO_LINE:
   reject unconditionally at backend service layer (`LineToLineVoltageRejectedError`, code
@@ -28995,9 +28998,31 @@ validation of `THREE_PHASE_POWER_OPERATIONS`.
 | E-1 | Domain function `evaluate_three_phase_power_channel()`, constants, unit dispatch | **Complete** — committed 7592e7a |
 | E-2A | (Part of E-1 commit) VI measurement-set resolution, `THREE_PHASE_POWER_OPERATIONS` | **Complete** — committed ff8a0a7 |
 | E-2B | Service integration — `create_calculated_channel()` validation (voltage-reference gate, phase identity, source identity safety), 43 service tests, full backend regression | **Complete** — committed (this commit) |
-| E-2C | API schema — extend `GET /vi-pairs` or new endpoint for three-phase set discovery (DEC-208-B, DEC-208-C outstanding) | **Pending owner approval** |
+| E-2C | API schema — `GET /vi-pairs` extended backward-compatibly; `CalculatedChannelCreateRequest` extended with 3 new ops and 2 confirmation flags; 5 new error codes mapped; 38 API integration tests | **Complete** — committed (this commit) |
 | E-3 | Frontend UI — three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override | **Not started** |
 
 Note (TestDD test-count): the Phase E-2B source-identity safety report referenced "8 test
 methods" in TestDD; the actual implementation has 7 test methods. The report text was a
 documentation error — the code and test suite are correct.
+
+### Phase E-2C implementation decisions (2026-11-01)
+
+These decisions were made during Phase E-2C (three-phase power API integration).
+
+- **DEC-208-K (vi-pairs three-phase field name)**: The boolean flag in
+  `ThreePhaseCompleteSetOut` that signals whether a `voltage_reference_confirmed`
+  override is required is named `voltage_reference_confirmation_required` (not
+  `voltage_reference_confirmed_required`). Owner approved 2026-11-01.
+
+- **DEC-208-L (incomplete-set threshold)**: Incomplete three-phase sets are only
+  reported in `three_phase_incomplete_sets` when at least 2 of the 3 required
+  automatic V-I pairs are present in the same `(context_hint, source_id)` group.
+  A single isolated automatic pair is not reported as an incomplete set — it
+  remains in `automatic_pairs` only and is available for manual single-phase
+  power channel creation. Owner confirmed threshold retained 2026-11-01.
+
+- **DEC-208-M (same-source-only automatic three-phase sets)**: `three_phase_complete_sets`
+  only contains sets where all 6 channels share the same `source_id`. Cross-source
+  three-phase selection requires the engineer to assemble the 6-channel input
+  manually and supply `phase_pairing_confirmed=true`, subject to the E-2B
+  multi-source guard. Owner confirmed same-source scope retained 2026-11-01.

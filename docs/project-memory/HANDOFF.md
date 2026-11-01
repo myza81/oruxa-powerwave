@@ -4,13 +4,71 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-01** (Phase E-2B three-phase power service integration committed on
-`feature/calculator-vi-phasors` — 43 service tests, full backend regression clean. Not yet
-pushed; E-2C and E-3 not started.)
+Last updated: **2026-11-01** (Phase E-2C three-phase power API integration committed on
+`feature/calculator-vi-phasors` — 38 API tests, 210 targeted + full backend regression clean.
+Not yet pushed; E-3 not started.)
+
+## Phase E-2C: Three-Phase Power API Integration (DEC-208) — 2026-11-01
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.**
+
+Extends the `/vi-pairs` endpoint and `CalculatedChannelCreateRequest` for three-phase power
+channel creation.
+
+### What was implemented
+
+**`GET /vi-pairs` — new fields (backward-compatible, both default to `[]`):**
+- `three_phase_complete_sets` — complete V-I triplets ready for creation:
+  - `set_id`, `display_label`, `source_id`, `context_hint`, `phase_convention`
+  - `pairs` (3 × `ThreePhasePairRefOut` in phase order)
+  - `voltage_reference`, `voltage_reference_reason`, `voltage_reference_evidence_names`
+  - `voltage_reference_confirmation_required` (True when reference ≠ `line_to_ground`)
+- `three_phase_incomplete_sets` — partial sets (≥2 phases present); carry `missing_phases`
+  with `reason` = `not_found` or `needs_confirmation`
+
+**`POST /calculated-channels` — schema extension:**
+- `operation` Literal now includes `three_phase_active_power`, `three_phase_reactive_power`,
+  `three_phase_apparent_power`
+- New optional fields (both default `false`):
+  - `voltage_reference_confirmed: bool = False`
+  - `phase_pairing_confirmed: bool = False`
+
+**5 new error codes → HTTP 400:**
+`invalid_three_phase_phase_mismatch`, `line_to_line_voltage_rejected`,
+`unconfirmed_voltage_reference`, `unconfirmed_phase_pairing`, `duplicate_phase_assignment`
+
+**Test coverage:** 38 API integration tests (classes A–T), all passing.
+Full backend regression (exit 0, all tests pass).
+
+### Owner-confirmed E-3 decisions (DEC-208-K/L/M)
+- Field name: `voltage_reference_confirmation_required` (not `..._required`)
+- Incomplete-set threshold: ≥2 automatic pairs — retained
+- Three-phase set scope: same-source only — retained; cross-source stays manual
+
+### Files changed in this commit
+- `backend/app/schemas/vi_pairs.py` — 4 new Pydantic models; `VIPairsOut` extended
+- `backend/app/api/v1/vi_pairs.py` — calls `find_three_phase_vi_sets()`, serializes sets
+- `backend/app/schemas/calculated_channel.py` — 3 new ops in Literal; 2 new flags
+- `backend/app/api/v1/calculated_channels.py` — 5 new error codes; 2 flags forwarded
+- `backend/tests/test_three_phase_power_api.py` — new, 38 tests
+- `docs/project-memory/DECISIONS.md` — E-2C/DEC-208-C/K/L/M recorded
+- `docs/project-memory/HANDOFF.md` — this update
+
+### Branch state
+`feature/calculator-vi-phasors` — 4 commits ahead of origin/main after this commit.
+**Unrelated untracked files preserved:** `.audit/`, `.slice1-evidence/`, `test-results/`.
+
+### Outstanding work for next session
+
+| Slice | Work required |
+|-------|---------------|
+| E-3 | Frontend: three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override, "Create All Three" shortcut |
+
+---
 
 ## Phase E-2B: Three-Phase Power Service Integration (DEC-208) — 2026-11-01
 
-**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.**
+**Status: COMMITTED on `feature/calculator-vi-phasors` (commit b0e1fbc) — not yet pushed.**
 
 Implements `create_calculated_channel()` validation for `THREE_PHASE_POWER_OPERATIONS`
 (`three_phase_active_power`, `three_phase_reactive_power`, `three_phase_apparent_power`).
