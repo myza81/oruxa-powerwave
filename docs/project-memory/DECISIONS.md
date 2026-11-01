@@ -28837,3 +28837,220 @@ cancelled when the workspace is cleared.
 - **DEC-207-C**: Phase A manual-fallback dropdowns are always shown below the picker when
   no pair is selected. Once a pair is locked, manual dropdowns are hidden. Owner to confirm
   whether they should remain visible in locked mode as an override mechanism.
+
+---
+
+## DEC-208 — Phase E Owner Scope Decision: Three-Phase Power Calculated Channels
+
+Date: 2026-11-01
+Status: Approved (owner direction)
+Source: Owner pasted scope decision, 2026-11-01.
+
+### Approved scope
+
+1. Phase E initial implementation shall support three-phase power calculations using
+   **phase-to-neutral voltages** and corresponding phase currents.
+
+2. The engine must support both **balanced and unbalanced** three-phase conditions.
+
+3. Reuse the existing:
+   - Sliding-phasor calculation engine (`compute_sliding_phasor()`)
+   - Single-phase complex-power mathematics (`power_calculation.py`)
+   - Automatic V-I channel matching architecture (`find_vi_pairs()` + pairing resolver)
+
+4. Investigate how the system can reliably establish that the selected voltage channels
+   represent phase-to-neutral measurements. If voltage reference identity is uncertain,
+   the system must **not** silently assume the channels are phase-to-neutral — an
+   appropriate user-confirmation mechanism must be proposed.
+
+5. Investigate **alternative definitions of three-phase apparent power** for unbalanced
+   systems. Present recommendations before implementation.
+
+6. Investigate line-to-line voltage support **separately**. Do not include line-to-line
+   calculations in the first implementation slice.
+
+7. **Preserve throughout:**
+   - Existing single-phase power operations (DEC-202)
+   - Manual channel-selection fallback (Phase A)
+   - DEC-050 Measurement Group architecture
+   - Existing per-unit functionality
+   - DEC-PWR sign conventions (DEC-PWR-002/003)
+
+### Investigation deliverables
+
+The Phase E investigation report (produced 2026-11-01, pre-implementation) covers:
+
+- **A. Existing architecture findings** — `three_phase_power()` already correct in
+  `power_calculation.py`; `evaluate_power_channel()` is single-phase only; `find_vi_pairs()`
+  is the correct building block for three-phase set grouping.
+- **B. Mathematical model** — reuse `compute_sliding_phasor()` × 6; element-wise complex
+  sum; geometric apparent power (DEC-PWR-002).
+- **C. UI/UX workflow** — three-phase set picker; context-grouped automatic detection;
+  six-channel manual fallback.
+- **D. Edge cases and safeguards** — incomplete sets, line-to-line exclusion, cross-source,
+  CT polarity, unit conversion, long recordings.
+- **E. Phased implementation plan** — Slice E-1 (set resolver), E-2 (evaluation engine),
+  E-3 (frontend UI).
+- **F. Verification strategy** — closed-form golden vectors; consistency checks;
+  scalar `three_phase_power()` agreement.
+- **G. Decisions requiring owner approval** — operation model, apparent power definition,
+  API schema, voltage reference confirmation.
+
+Supplemental investigation (2026-11-01) covers: voltage reference detection mechanism
+(reuse of `voltage_reference.py`; proposed `LINE_TO_GROUND`/uncertain confirmation gate),
+and apparent power definition comparison (vector vs IEEE 1459 arithmetic vs effective).
+
+Supplemental investigation correction (2026-11-01, owner review): four engineering errors
+corrected — (1) S_e formula factor (`3 × V_e × I_e`, not `sqrt(3)`); (2) IEEE 1459
+recommendation and thermal-loading claim overstated; (3) fundamental vector apparent power
+terminology clarified; (4) artificial-neutral reconstruction V_AN' = (V_AB − V_CA)/3 is
+exact for three-wire systems, not approximate — four-wire distinction added. Backend service
+validation added as authoritative enforcement layer for voltage-reference gate. L1/L2/L3
+grammar expansion deferred pending impact assessment on existing consumers.
+
+### First-slice scope (confirmed by owner, 2026-11-01)
+
+- Three-phase **active power** (P = Re(S_total))
+- Three-phase **reactive power** (Q = Im(S_total))
+- Three-phase **fundamental vector apparent power** (|S_total| = √(P²+Q²), DEC-PWR-002)
+- Complete six-channel selection (3V + 3I, fixed phase order R/Y/B)
+- Manual fallback (six independent channel dropdowns)
+- Balanced and unbalanced numerical verification
+
+Not in first slice: IEEE 1459 arithmetic S_A, effective S_e, balanced estimation from one
+phase, line-to-line voltage support, atomic three-channel group creation.
+
+### Outstanding decisions requiring owner approval
+
+See Phase E investigation report deliverable G and the corrected supplemental investigation.
+
+- **DEC-208-A (apparent power)**: Fundamental vector apparent power only for Slice E-1
+  (DEC-PWR-002). IEEE 1459 arithmetic S_A and effective S_e as future separate operations.
+  First-slice scope confirmed by owner.
+- **DEC-208-B (operation model)**: One-at-a-time create calls (existing pattern) vs atomic
+  three-channel group. Recommendation: one-at-a-time with "Create All Three" UI shortcut
+  in Slice E-1; atomic group deferred.
+- **DEC-208-C (API schema)**: **Confirmed and implemented in Phase E-2C (2026-11-01).**
+  Three-phase sets added to existing `GET /vi-pairs` response backward-compatibly.
+  `three_phase_complete_sets` and `three_phase_incomplete_sets` added as new top-level
+  fields defaulting to `[]`. Existing `automatic_pairs` / `candidates_needing_confirmation`
+  / `total_input_channel_count` fields unchanged.
+- **DEC-208-D (voltage reference gate)**: **Confirmed and implemented in Phase E-2B
+  (2026-11-01).** Architecture: (1) LINE_TO_GROUND confident: auto-proceed; (2) LINE_TO_LINE:
+  reject unconditionally at backend service layer (`LineToLineVoltageRejectedError`, code
+  `line_to_line_voltage_rejected`) — rejection fires before phase-pairing checks, does not
+  require `phase_pairing_confirmed`; (3) UNKNOWN or CONFLICTING: require
+  `voltage_reference_confirmed: true` in create request, enforced at backend service layer.
+  Name-based detection is engineering evidence, not proof of actual VT wiring.
+- **DEC-208-E (L1/L2/L3 grammar)**: Do not expand `voltage_reference.py` token sets
+  without impact assessment on per-unit and all other existing consumers. Pending assessment.
+
+### Phase E-2B implementation decisions (2026-11-01)
+
+These decisions were made and implemented during Phase E-2B (three-phase power service
+integration). They extend DEC-208 and are authoritative for `create_calculated_channel()`
+validation of `THREE_PHASE_POWER_OPERATIONS`.
+
+- **DEC-208-F (phase identity validation — convention-level detection)**: Replaced
+  per-pair token comparison with convention-level detection using `_detect_convention()`.
+  The function operates on the complete 3-token tuple for V and I independently; returns
+  the unique `frozenset` convention set only when all non-None tokens belong to exactly one
+  of `{R,Y,B}`, `{A,B,C}`, or `{L1,L2,L3}`. Rationale: per-pair comparison cannot
+  distinguish a same-convention mismatch (e.g. VR+IB — genuine phase swap) from a shared-
+  token ambiguity (e.g. "B" is in both {R,Y,B} and {A,B,C}). If both V and I resolve to
+  the same convention, per-pair token mismatch is checked and raises
+  `InvalidThreePhasePhaseMismatchError` (unconditional). If conventions differ or detection
+  returns None, raises `UnconfirmedPhasePairingError` unless
+  `phase_pairing_confirmed: true` is provided.
+
+- **DEC-208-G (duplicate phase assignment guard)**: `DuplicatePhaseAssignmentError`
+  (code `duplicate_phase_assignment`) fires when the same phase reference (`reference_id`)
+  or the same phase token appears in multiple V-slots or multiple I-slots. This check is
+  unconditional and cannot be bypassed with `phase_pairing_confirmed`. Rationale: a
+  duplicated reference is a definitional error — it implies the same physical channel is
+  counted twice, producing arithmetically wrong power regardless of pairing intent.
+
+- **DEC-208-H (multi-source guard)**: If the 6 resolved channels come from more than one
+  distinct `reference_source_id`, the pairing is treated as uncertain. Raises
+  `UnconfirmedPhasePairingError` unless `phase_pairing_confirmed: true`. Rationale:
+  matching phase tokens or aligned timebases do not establish common electrical identity
+  (same CT/VT circuit, same neutral reference) across sources.
+
+- **DEC-208-I (cross-pair context consistency guard)**: After convention-level detection
+  passes, all non-None `context_hint` values across the 6 inputs are collected. If more
+  than one distinct context is present (e.g. TBIN for voltages and TKBR for currents),
+  raises `UnconfirmedPhasePairingError` unless `phase_pairing_confirmed: true`. Rationale:
+  same-convention same-token matching (e.g. VR from TBIN + IR from TKBR) does not imply
+  the same physical three-phase circuit.
+
+- **DEC-208-J (validation precedence / ordering)**: The 8-step validation order is fixed:
+  (1) type guard, (2) unit guard, (3) per-channel L-L guard, (4) duplicate ref guard,
+  (5) duplicate token guard, (6a) multi-source guard, (6b) convention detection + per-pair
+  mismatch check, (6c) per-pair context mismatch check, (6d) cross-pair context consistency,
+  (7) voltage-reference group gate, (8) sampling density check. The per-channel L-L guard
+  (step 3) is unconditional and fires before phase-pairing checks — it must never require
+  `phase_pairing_confirmed` as a precondition.
+
+### Phase E implementation status (2026-11-01)
+
+| Slice | Description | Status |
+|-------|-------------|--------|
+| E-1 | Domain function `evaluate_three_phase_power_channel()`, constants, unit dispatch | **Complete** — committed 7592e7a |
+| E-2A | (Part of E-1 commit) VI measurement-set resolution, `THREE_PHASE_POWER_OPERATIONS` | **Complete** — committed ff8a0a7 |
+| E-2B | Service integration — `create_calculated_channel()` validation (voltage-reference gate, phase identity, source identity safety), 43 service tests, full backend regression | **Complete** — committed (this commit) |
+| E-2C | API schema — `GET /vi-pairs` extended backward-compatibly; `CalculatedChannelCreateRequest` extended with 3 new ops and 2 confirmation flags; 5 new error codes mapped; 38 API integration tests | **Complete** — committed (this commit) |
+| E-3B | Frontend UI — three-phase set picker, locked summary, manual six-channel selection, `voltage_reference_confirmed` confirmation block, `phase_pairing_confirmed` checkbox, source-removal invalidation, incomplete-set notice, 28 browser tests | **Complete** — pending owner UAT (2026-11-01) |
+
+Note (TestDD test-count): the Phase E-2B source-identity safety report referenced "8 test
+methods" in TestDD; the actual implementation has 7 test methods. The report text was a
+documentation error — the code and test suite are correct.
+
+### Phase E-2C implementation decisions (2026-11-01)
+
+These decisions were made during Phase E-2C (three-phase power API integration).
+
+- **DEC-208-K (vi-pairs three-phase field name)**: The boolean flag in
+  `ThreePhaseCompleteSetOut` that signals whether a `voltage_reference_confirmed`
+  override is required is named `voltage_reference_confirmation_required` (not
+  `voltage_reference_confirmed_required`). Owner approved 2026-11-01.
+
+- **DEC-208-L (incomplete-set threshold)**: Incomplete three-phase sets are only
+  reported in `three_phase_incomplete_sets` when at least 2 of the 3 required
+  automatic V-I pairs are present in the same `(context_hint, source_id)` group.
+  A single isolated automatic pair is not reported as an incomplete set — it
+  remains in `automatic_pairs` only and is available for manual single-phase
+  power channel creation. Owner confirmed threshold retained 2026-11-01.
+
+- **DEC-208-M (same-source-only automatic three-phase sets)**: `three_phase_complete_sets`
+  only contains sets where all 6 channels share the same `source_id`. Cross-source
+  three-phase selection requires the engineer to assemble the 6-channel input
+  manually and supply `phase_pairing_confirmed=true`, subject to the E-2B
+  multi-source guard. Owner confirmed same-source scope retained 2026-11-01.
+
+### Phase E-3B implementation decisions (2026-11-01)
+
+These decisions were made and implemented during Phase E-3B (three-phase power frontend).
+
+- **DEC-208-N (three-phase UI model — set picker + locked summary)**: The three-phase
+  builder uses a two-state UI: (1) picker mode — a `<select>` (`#wwCcThreePhaseSetSelect`)
+  with a "Complete Sets" optgroup (auto-detected sets) and a "Manual" optgroup
+  (`__manual__`); (2) locked-summary mode — a compact three-row phase display with a
+  "Change" button (`#wwCcThreePhaseChangeBtn`) that returns to picker. Selecting `__manual__`
+  shows six phase channel dropdowns (V1/I1/V2/I2/V3/I3) directly. This is consistent with
+  the Phase D single-phase hybrid pair picker (DEC-207) and the one-at-a-time creation
+  model (DEC-208-B). Pending owner UAT 2026-11-01.
+
+- **DEC-208-O (source-removal invalidation — three-phase state)**: When the workspace
+  source list changes (source upload, removal, or workspace reset), `wwCcPairingInvalidate()`
+  clears `selectedThreePhaseSetId`, `isEditingThreePhase`, `voltageReferenceConfirmed`, and
+  `phasePairingConfirmed` immediately. `wwCcPairingFetch()` also validates `selectedThreePhaseSetId`
+  against the fresh API response and clears it if the set is no longer present. Implemented
+  via the existing Phase D invalidation hook (same `wwCcPairingInvalidate()` call site in
+  `wwRenderWorkspaceRecordings()`). Browser-tested (test 27 of 28).
+
+- **DEC-208-P (three-phase operation model — one-at-a-time create, DEC-208-B confirmed)**:
+  The three separate power operations (active, reactive, apparent) each require a separate
+  "Create Channel" click via the standard `wwCcCreateChannel()` flow. No "Create All Three"
+  shortcut is implemented in E-3B. This is consistent with DEC-208-B (one-at-a-time
+  recommended for Slice E-1; atomic group deferred). Browser-tested: tests 7–9 of 28
+  (each creates one channel in a fresh fixture upload).

@@ -4,7 +4,250 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-01** (Phase D typography correction deployed to DEV — commit 054be43 / merge 8b70f36; CI green, health `8b70f36`, 20/20 browser tests pass.)
+Last updated: **2026-11-01** (Phase E-3B three-phase power frontend committed on
+`feature/calculator-vi-phasors` — 28 browser tests, 20 regression tests clean.
+Not yet pushed. Pending owner UAT.)
+
+## Phase E-3B: Three-Phase Power Frontend (DEC-208) — 2026-11-01
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.
+Pending owner UAT.**
+
+Implements the three-phase power calculated-channel frontend in `frontend/index.html`,
+building on the E-2B service layer and E-2C API schema already committed.
+
+### What was implemented
+
+**`wwCcRenderThreePhasePowerFields(fieldsEl)` — complete three-phase builder UI:**
+
+- **Set picker mode**: `#wwCcThreePhaseSetSelect` — a `<select>` with a "Complete Sets"
+  optgroup (populated from `/vi-pairs` `three_phase_complete_sets`) and a "Manual" optgroup
+  (`__manual__`). Shown while no set is selected or after clicking "Change".
+- **Locked summary mode**: Three-row phase display (Phase A/B/C or L1/L2/L3) with
+  channel names (e.g. VA·IA) and a "Change" button (`#wwCcThreePhaseChangeBtn`).
+  Shown after selecting a complete set from the picker.
+- **Voltage-reference confirmation block**: Shown when `voltage_reference_confirmation_required`
+  is true (e.g. VL1/VL2/VL3 — unknown reference). Contains `#wwCcVoltRefConfirm` checkbox
+  ("I confirm these voltages are phase-to-neutral (line-to-ground) references.").
+  Create is disabled until checked.
+- **L-L blocked state**: Shown when `voltage_reference === "line_to_line"`. Non-bypassable;
+  user must select different channels.
+- **Manual six-channel mode**: Six phase dropdowns (V1/I1/V2/I2/V3/I3) shown when
+  `__manual__` is selected. Two confirmation checkboxes gate Create:
+  - `#wwCcVoltRefConfirm`: "I confirm all voltage channels are phase-to-neutral (line-to-ground) references."
+  - `#wwCcPhasePairConfirm`: "I confirm the voltage and current channels are correctly paired by phase (V1↔I1, V2↔I2, V3↔I3)."
+- **Incomplete-set notice** (`.ww-cc-pair-notice`): Shown above manual dropdowns when no
+  complete sets exist but incomplete sets are detected. Shows missing phase(s).
+- **Operation card section labels**: "SINGLE-PHASE POWER" and "THREE-PHASE POWER" section
+  headers separate the card groups in the operation picker.
+- **Source-removal invalidation**: `wwCcPairingInvalidate()` (existing Phase D hook) clears
+  all three-phase state on any workspace source-list change. `wwCcPairingFetch()` also
+  re-validates `selectedThreePhaseSetId` against fresh API data.
+- **Output fields**: Auto-suggested names (P₃, Q₃, |S₃|), units (MW/Mvar/MVA), and formula
+  display (`Result = Re(Σ Vₖ × conj(Iₖ)) / 1e6 [MW]` etc.).
+
+**State variables added to `wwCcPairing`:**
+- `selectedThreePhaseSetId` — selected complete set ID or `"__manual__"` or null
+- `isEditingThreePhase` — true while in picker mode after previously selecting a set
+
+**State variables added to `wwCcBuilder`:**
+- `voltageReferenceConfirmed` — tracks `#wwCcVoltRefConfirm` checkbox
+- `phasePairingConfirmed` — tracks `#wwCcPhasePairConfirm` checkbox
+
+### Test coverage (28 browser tests — `browser-tests/three-phase-power.spec.js`)
+
+| Category | Tests |
+|---|---|
+| Section label cards (Single-Phase / Three-Phase headings) | 2 |
+| Automatic set detection (L-G fixture) | 6 |
+| Create all three operations (L-G fixture) | 3 |
+| Manual selection (dropdowns, groups, confirmations) | 6 |
+| Confirmation flag resets (manual input change, set re-select) | 2 |
+| Incomplete set notice | 3 |
+| Single-phase regression | 1 |
+| Unknown voltage reference (VL1/VL2/VL3) | 3 |
+| Source-removal invalidation | 1 |
+| L-L manual mode backend rejection | 1 |
+| **Total** | **28** |
+
+Phase D + single-phase regression (`calculated-channel-power.spec.js`): **20/20 passed**.
+
+### Files changed in this commit
+- `frontend/index.html` — three-phase builder fields, confirmation blocks, section labels,
+  auto-name/unit/formula logic, event handlers for three-phase drawer interaction
+- `browser-tests/three-phase-power.spec.js` — new, 28 browser tests
+- `docs/project-memory/DECISIONS.md` — E-3B status updated; DEC-208-N/O/P recorded
+- `docs/project-memory/HANDOFF.md` — this update
+
+### Branch state
+`feature/calculator-vi-phasors` — 5 commits ahead of origin/main after this commit.
+**Unrelated untracked files preserved:** `.audit/`, `.slice1-evidence/`, `test-results/`,
+`browser-tests/e3b-screenshots.spec.js`.
+
+### Outstanding work for next session
+
+| Item | Work required |
+|------|---------------|
+| Owner UAT | Three-phase power frontend hands-on verification (DEC-208-N pending UAT) |
+| "Create All Three" shortcut | Deferred per DEC-208-B / DEC-208-P (atomic group not in E-3B) |
+| IEEE 1459 / S_e apparent power | Deferred per DEC-208-A (future separate operation) |
+| L-L voltage support | Deferred per DEC-208 scope (separate investigation) |
+| DEC-208-E (L1/L2/L3 grammar) | Impact assessment on per-unit consumers pending |
+| Push & deploy | `feature/calculator-vi-phasors` not yet pushed |
+
+---
+
+## Phase E-2C: Three-Phase Power API Integration (DEC-208) — 2026-11-01
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.**
+
+Extends the `/vi-pairs` endpoint and `CalculatedChannelCreateRequest` for three-phase power
+channel creation.
+
+### What was implemented
+
+**`GET /vi-pairs` — new fields (backward-compatible, both default to `[]`):**
+- `three_phase_complete_sets` — complete V-I triplets ready for creation:
+  - `set_id`, `display_label`, `source_id`, `context_hint`, `phase_convention`
+  - `pairs` (3 × `ThreePhasePairRefOut` in phase order)
+  - `voltage_reference`, `voltage_reference_reason`, `voltage_reference_evidence_names`
+  - `voltage_reference_confirmation_required` (True when reference ≠ `line_to_ground`)
+- `three_phase_incomplete_sets` — partial sets (≥2 phases present); carry `missing_phases`
+  with `reason` = `not_found` or `needs_confirmation`
+
+**`POST /calculated-channels` — schema extension:**
+- `operation` Literal now includes `three_phase_active_power`, `three_phase_reactive_power`,
+  `three_phase_apparent_power`
+- New optional fields (both default `false`):
+  - `voltage_reference_confirmed: bool = False`
+  - `phase_pairing_confirmed: bool = False`
+
+**5 new error codes → HTTP 400:**
+`invalid_three_phase_phase_mismatch`, `line_to_line_voltage_rejected`,
+`unconfirmed_voltage_reference`, `unconfirmed_phase_pairing`, `duplicate_phase_assignment`
+
+**Test coverage:** 38 API integration tests (classes A–T), all passing.
+Full backend regression (exit 0, all tests pass).
+
+### Owner-confirmed E-3 decisions (DEC-208-K/L/M)
+- Field name: `voltage_reference_confirmation_required` (not `..._required`)
+- Incomplete-set threshold: ≥2 automatic pairs — retained
+- Three-phase set scope: same-source only — retained; cross-source stays manual
+
+### Files changed in this commit
+- `backend/app/schemas/vi_pairs.py` — 4 new Pydantic models; `VIPairsOut` extended
+- `backend/app/api/v1/vi_pairs.py` — calls `find_three_phase_vi_sets()`, serializes sets
+- `backend/app/schemas/calculated_channel.py` — 3 new ops in Literal; 2 new flags
+- `backend/app/api/v1/calculated_channels.py` — 5 new error codes; 2 flags forwarded
+- `backend/tests/test_three_phase_power_api.py` — new, 38 tests
+- `docs/project-memory/DECISIONS.md` — E-2C/DEC-208-C/K/L/M recorded
+- `docs/project-memory/HANDOFF.md` — this update
+
+### Branch state
+`feature/calculator-vi-phasors` — 4 commits ahead of origin/main after this commit.
+**Unrelated untracked files preserved:** `.audit/`, `.slice1-evidence/`, `test-results/`.
+
+### Outstanding work for next session
+
+| Slice | Work required |
+|-------|---------------|
+| E-3 | Frontend: three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override, "Create All Three" shortcut |
+
+---
+
+## Phase E-2B: Three-Phase Power Service Integration (DEC-208) — 2026-11-01
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` (commit b0e1fbc) — not yet pushed.**
+
+Implements `create_calculated_channel()` validation for `THREE_PHASE_POWER_OPERATIONS`
+(`three_phase_active_power`, `three_phase_reactive_power`, `three_phase_apparent_power`).
+
+### What was implemented
+
+**Validation steps (in order):**
+1. Type guard — all 6 inputs must be voltage (slots 1–3) or current (slots 4–6)
+2. Unit guard — accepted units: V/kV (voltage), A/kA (current)
+3. Per-channel L-L guard (unconditional) — `LineToLineVoltageRejectedError` for any L-L
+   voltage name; fires before phase-pairing checks; does not require `phase_pairing_confirmed`
+4. Duplicate reference guard — `DuplicatePhaseAssignmentError` if same `reference_id` in
+   multiple V-slots or multiple I-slots (unconditional, cannot be bypassed)
+5. Duplicate token guard — same phase token in multiple slots
+6a. Multi-source guard — >1 distinct `reference_source_id` → `UnconfirmedPhasePairingError`
+    unless `phase_pairing_confirmed: true`
+6b. Convention-level detection — `_detect_convention()` on complete 3-token V/I tuples;
+    per-pair mismatch only if both sides resolve to the same convention
+6c. Per-pair token mismatch — `InvalidThreePhasePhaseMismatchError` (unconditional within
+    a confirmed same-convention pairing)
+6d. Cross-pair context consistency — >1 distinct non-null context across all 6 inputs →
+    `UnconfirmedPhasePairingError` unless `phase_pairing_confirmed: true`
+7. Voltage-reference group gate — DEC-208-D: LINE_TO_LINE rejected, UNKNOWN/CONFLICTING
+   require `voltage_reference_confirmed: true`
+8. Sampling density check — timebase alignment, 300 ns tolerance
+
+**New error codes (all in `errors.py`):**
+- `invalid_three_phase_phase_mismatch` — confirmed same-convention per-pair token mismatch
+- `line_to_line_voltage_rejected` — unconditional L-L rejection
+- `unconfirmed_voltage_reference` — uncertain voltage reference without confirmation flag
+- `unconfirmed_phase_pairing` — uncertain phase pairing without confirmation flag
+- `duplicate_phase_assignment` — same reference or token in multiple slots (unconditional)
+
+**New API fields on `create_calculated_channel()`:**
+- `voltage_reference_confirmed: bool = False`
+- `phase_pairing_confirmed: bool = False`
+
+**Test coverage (43 tests, `test_three_phase_power_service.py`):**
+
+| Class | Tests | Coverage |
+|-------|-------|----------|
+| A–C | 3 | MW/Mvar/MVA creation |
+| D | 1 | Arity guard |
+| E–F | 2 | Type slot guards |
+| G | 1 | Unit guard |
+| H–K | 4 | Phase pairing (mismatch, cross-convention, generic, confirmed generic) |
+| L | 1 | L-L unconditional rejection |
+| M–O | 3 | RYB/ABC/L1L2L3 auto-detection |
+| P | 1 | kV + A scaling |
+| Q | 1 | Short recording |
+| R | 1 | Timebase misalignment |
+| S | 1 | NaN propagation |
+| T | 1 | Atomicity |
+| U | 1 | Deletion |
+| V | 1 | Single-phase regression |
+| W | 2 | Parameters recording |
+| X | 1 | Mixed L-L guard (VR+VY+VBR) without `phase_pairing_confirmed` |
+| Y | 1 | Sixth-channel misalignment + atomicity |
+| Z | 1 | V + kA scaling |
+| AA | 2 | Cross-convention sets (RYB vs ABC) |
+| BB | 2 | Cross-context pairing (TBIN VR + TKBR IR) |
+| CC | 3 | Duplicate assignments |
+| DD | 7 | Source identity safety (multi-source, per-pair cross-source, inconsistent contexts) |
+
+**Full backend regression:** clean (all pre-existing tests pass; 4 expected harmless
+deprecation warnings from StarletteDeprecationWarning and PytestRemovedIn10Warning).
+
+### Files changed in this commit
+
+- `backend/app/domain/calculated_channel.py` — +3 OP constants, `THREE_PHASE_POWER_OPERATIONS`,
+  updated `ALL_OPERATIONS`, extended `POWER_OUTPUT_UNITS`, evaluation dispatch
+- `backend/app/services/errors.py` — 5 new error classes
+- `backend/app/services/calculated_channel_service.py` — validation block, helper
+  constants/functions, evaluation dispatch for three-phase ops
+- `backend/tests/test_three_phase_power_service.py` — new, 43 tests
+- `docs/project-memory/DECISIONS.md` — DEC-208-D marked implemented; DEC-208-F through J
+  added; Phase E status table added
+- `docs/project-memory/HANDOFF.md` — this update
+
+### Outstanding work for next session
+
+| Slice | Work required |
+|-------|---------------|
+| E-2C | Decide DEC-208-B (operation model) and DEC-208-C (API schema) — extend `GET /vi-pairs` vs new endpoint for three-phase set discovery |
+| E-3 | Frontend: three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override |
+
+**Branch:** `feature/calculator-vi-phasors` — 3 commits ahead of origin/main after this commit.
+**Unrelated untracked files to preserve:** `.audit/`, `.slice1-evidence/`, `test-results/` (per-unit remediation work — not staged, not committed here).
+
+---
 
 ## Phase D typography correction (DEC-207 CSS) — 2026-11-01
 

@@ -39,13 +39,19 @@ from app.domain.vi_pair_resolution import (
     REASON_MULTIPLE_VOLTAGE,
     ChannelPairingInput,
     MatchedVIPair,
+    ThreePhaseAutomaticSet,
+    ThreePhaseIncompleteSet,
     VIPairCandidate,
-    find_vi_pairs,
+    find_three_phase_vi_sets,
 )
 from app.schemas.source import ErrorOut
 from app.schemas.vi_pairs import (
     AutomaticVIPairOut,
     CandidateVIPairOut,
+    ThreePhaseCompleteSetOut,
+    ThreePhaseIncompletePhaseOut,
+    ThreePhaseIncompleteSetOut,
+    ThreePhasePairRefOut,
     VIPairChannelOut,
     VIPairMatchEvidenceOut,
     VIPairsOut,
@@ -105,6 +111,15 @@ def _candidate_display_label(cand: VIPairCandidate) -> str:
     return f"Phase {cand.phase_token} — {reason_text}"
 
 
+def _three_phase_complete_label(s: ThreePhaseAutomaticSet) -> str:
+    v_names = "/".join(p.voltage_channel_name for p in (s.phase_1, s.phase_2, s.phase_3))
+    i_names = "/".join(p.current_channel_name for p in (s.phase_1, s.phase_2, s.phase_3))
+    label = f"{v_names} / {i_names}"
+    if s.context_hint:
+        label += f" ({s.context_hint})"
+    return label
+
+
 @router.get("", response_model=VIPairsOut)
 def get_vi_pairs(
     workspace_id: str,
@@ -141,7 +156,8 @@ def get_vi_pairs(
                 )
             )
 
-    resolution = find_vi_pairs(pairing_inputs)
+    three_phase_resolution = find_three_phase_vi_sets(pairing_inputs)
+    resolution = three_phase_resolution.single_phase_pairs
 
     # --- Automatic pairs ------------------------------------------------
     auto_out: list[AutomaticVIPairOut] = []
@@ -219,8 +235,85 @@ def get_vi_pairs(
             )
         )
 
+    # --- Three-phase complete sets (Phase E-2C) ----------------------------
+    complete_sets_out: list[ThreePhaseCompleteSetOut] = []
+    for s in three_phase_resolution.complete_sets:
+        pairs_out = [
+            ThreePhasePairRefOut(
+                phase=ph.phase_token,
+                voltage_channel=VIPairChannelOut(
+                    source_id=ph.source_id,
+                    channel_name=ph.voltage_channel_name,
+                    engineering_type=unit_type_map.get((ph.source_id, ph.voltage_channel_name), ("", "Voltage"))[1],
+                    unit=unit_type_map.get((ph.source_id, ph.voltage_channel_name), ("", ""))[0],
+                ),
+                current_channel=VIPairChannelOut(
+                    source_id=ph.source_id,
+                    channel_name=ph.current_channel_name,
+                    engineering_type=unit_type_map.get((ph.source_id, ph.current_channel_name), ("", "Current"))[1],
+                    unit=unit_type_map.get((ph.source_id, ph.current_channel_name), ("", ""))[0],
+                ),
+            )
+            for ph in (s.phase_1, s.phase_2, s.phase_3)
+        ]
+        label = _three_phase_complete_label(s)
+        complete_sets_out.append(
+            ThreePhaseCompleteSetOut(
+                set_id=s.set_id,
+                display_label=label,
+                source_id=s.source_id,
+                context_hint=s.context_hint,
+                phase_convention=s.phase_convention,
+                pairs=pairs_out,
+                voltage_reference=s.voltage_reference,
+                voltage_reference_reason=s.voltage_reference_reason,
+                voltage_reference_evidence_names=list(s.voltage_reference_evidence_names),
+                voltage_reference_confirmation_required=(
+                    s.voltage_reference != "line_to_ground"
+                ),
+            )
+        )
+
+    # --- Three-phase incomplete sets (Phase E-2C) --------------------------
+    incomplete_sets_out: list[ThreePhaseIncompleteSetOut] = []
+    for s in three_phase_resolution.incomplete_sets:
+        present_out = [
+            ThreePhasePairRefOut(
+                phase=ph.phase_token,
+                voltage_channel=VIPairChannelOut(
+                    source_id=ph.source_id,
+                    channel_name=ph.voltage_channel_name,
+                    engineering_type=unit_type_map.get((ph.source_id, ph.voltage_channel_name), ("", "Voltage"))[1],
+                    unit=unit_type_map.get((ph.source_id, ph.voltage_channel_name), ("", ""))[0],
+                ),
+                current_channel=VIPairChannelOut(
+                    source_id=ph.source_id,
+                    channel_name=ph.current_channel_name,
+                    engineering_type=unit_type_map.get((ph.source_id, ph.current_channel_name), ("", "Current"))[1],
+                    unit=unit_type_map.get((ph.source_id, ph.current_channel_name), ("", ""))[0],
+                ),
+            )
+            for ph in s.present_pairs
+        ]
+        missing_out = [
+            ThreePhaseIncompletePhaseOut(phase=mp.phase_token, reason=mp.reason)
+            for mp in s.missing_phases
+        ]
+        incomplete_sets_out.append(
+            ThreePhaseIncompleteSetOut(
+                source_id=s.source_id,
+                context_hint=s.context_hint,
+                phase_convention=s.phase_convention,
+                incomplete_reason=s.incomplete_reason,
+                present_pairs=present_out,
+                missing_phases=missing_out,
+            )
+        )
+
     return VIPairsOut(
         automatic_pairs=auto_out,
         candidates_needing_confirmation=cand_out,
         total_input_channel_count=len(pairing_inputs),
+        three_phase_complete_sets=complete_sets_out,
+        three_phase_incomplete_sets=incomplete_sets_out,
     )

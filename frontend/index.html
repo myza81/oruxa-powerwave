@@ -2943,6 +2943,49 @@
         @media (max-width: 360px) {
             .ww-cc-operation-cards { grid-template-columns: minmax(0, 1fr); }
         }
+        /* Phase E-3B (DEC-208): three-phase power UI additions */
+        .ww-cc-operation-section-label {
+            grid-column: 1 / -1;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            padding: 6px 2px 2px;
+            user-select: none;
+        }
+        .ww-cc-pair-summary--three-phase { display: flex; flex-direction: column; gap: 4px; }
+        .ww-cc-phase-pair-row { display: flex; gap: 6px; align-items: baseline; font-size: var(--text-sm); }
+        .ww-cc-phase-pair-label { color: var(--text-secondary); font-size: 11px; min-width: 52px; flex-shrink: 0; }
+        .ww-cc-pair-notice {
+            margin-top: 10px;
+            padding: 8px 10px;
+            border-left: 3px solid var(--warning, var(--accent-dim));
+            background: var(--surface-tint);
+            border-radius: 0 4px 4px 0;
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+        }
+        .ww-cc-confirmation-block {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--warning, var(--accent-dim));
+            border-radius: 6px;
+            background: var(--surface-tint);
+        }
+        .ww-cc-confirmation-block--blocked { border-color: var(--error, #c0392b); }
+        .ww-cc-confirmation-block p { margin: 0 0 8px; font-size: var(--text-sm); color: var(--text-secondary); }
+        .ww-cc-confirmation-block p:last-child { margin-bottom: 0; }
+        .ww-cc-confirmation-label {
+            display: flex; gap: 8px; align-items: flex-start;
+            font-size: var(--text-sm); cursor: pointer; margin-top: 8px;
+        }
+        .ww-cc-confirmation-label input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+        .ww-cc-phase-inputs-group { margin-top: 12px; }
+        .ww-cc-phase-inputs-group-label {
+            font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+            color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase;
+        }
 
         .ww-cc-field { margin-top: 12px; }
         /* The global `label { display: block }` otherwise overrides the UA
@@ -39161,8 +39204,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             active_power: { label: "Active Power", arity: "power", glyph: "P(t)" },
             reactive_power: { label: "Reactive Power", arity: "power", glyph: "Q(t)" },
             apparent_power: { label: "Apparent Power", arity: "power", glyph: "|S|(t)" },
+            // DEC-208 (Phase E-3B): three-phase fundamental power from instantaneous V+I.
+            // Exactly SIX inputs: [V1,I1,V2,I2,V3,I3] in phase order. Fixed output: MW/Mvar/MVA.
+            three_phase_active_power: { label: "Active Power (3φ)", arity: "three_phase_power", glyph: "P₃(t)" },
+            three_phase_reactive_power: { label: "Reactive Power (3φ)", arity: "three_phase_power", glyph: "Q₃(t)" },
+            three_phase_apparent_power: { label: "Apparent Power (3φ)", arity: "three_phase_power", glyph: "|S₃|(t)" },
         };
-        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "rocof", "line_to_line_voltage", "active_power", "reactive_power", "apparent_power"];
+        const WW_CC_OPERATION_ORDER = [
+            "reverse_polarity", "absolute_value", "multiply_constant", "rms",
+            "addition", "subtraction", "rocof", "line_to_line_voltage",
+            "--section-single-phase-power--",
+            "active_power", "reactive_power", "apparent_power",
+            "--section-three-phase-power--",
+            "three_phase_active_power", "three_phase_reactive_power", "three_phase_apparent_power",
+        ];
 
         // DEC-115: Line-to-Line output options -- wire values match
         // app.domain.line_to_line_voltage.KNOWN_OUTPUTS exactly.
@@ -39280,6 +39335,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             maxGapValue: "",
             maxGapUnit: "samples",
             localMeanRadius: "",
+            // Phase E-3B (DEC-208): three-phase power confirmation flags.
+            // Reset on every operation switch, input change, or pairing
+            // invalidation -- a stale acknowledgement must never carry over.
+            voltageReferenceConfirmed: false,
+            phasePairingConfirmed: false,
         };
         const wwCcListErrors = new Map(); // calculatedChannelId -> inline delete-error message, cleared on next successful action
 
@@ -39304,6 +39364,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             fetchSeq: 0,           // stale-response guard
             selectedPairId: null,  // pair_id string, "__manual__", or null
             isEditing: false,      // true while Change button is active
+            selectedThreePhaseSetId: null, // set_id string, "__manual__", or null (Phase E-3B)
+            isEditingThreePhase: false,    // true while three-phase Change button is active
         };
 
         function wwCcResetBuilder() {
@@ -39331,6 +39393,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.maxGapUnit = "samples";
             wwCcBuilder.localMeanRadius = "";
             wwCcResetRmsEligibility();
+            wwCcBuilder.voltageReferenceConfirmed = false;
+            wwCcBuilder.phasePairingConfirmed = false;
         }
 
         // Phase 5B UAT (DEC-048 clarification): the ONE authority for
@@ -39589,6 +39653,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             else if (b.operation === "active_power") joined = "P (" + labels[0] + ", " + (labels[1] || "?") + ")";
             else if (b.operation === "reactive_power") joined = "Q (" + labels[0] + ", " + (labels[1] || "?") + ")";
             else if (b.operation === "apparent_power") joined = "|S| (" + labels[0] + ", " + (labels[1] || "?") + ")";
+            else if (b.operation === "three_phase_active_power") joined = "P₃ (" + labels.slice(0, 6).filter(Boolean).join(", ") + ")";
+            else if (b.operation === "three_phase_reactive_power") joined = "Q₃ (" + labels.slice(0, 6).filter(Boolean).join(", ") + ")";
+            else if (b.operation === "three_phase_apparent_power") joined = "|S₃| (" + labels.slice(0, 6).filter(Boolean).join(", ") + ")";
             else if (b.operation === "addition") joined = labels.join(" + ");
             else joined = labels.join(" − ");
             // Section 34: "if expression is too long, generate a concise
@@ -39626,9 +39693,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (b.operation === "addition") return "Result = " + labels.join(" + ");
             if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
-            if (b.operation === "active_power" && b.inputs.length >= 2) return "Result = Re(V₁ × conj(I₁)) / 1e6  [MW]";
-            if (b.operation === "reactive_power" && b.inputs.length >= 2) return "Result = Im(V₁ × conj(I₁)) / 1e6  [Mvar]";
-            if (b.operation === "apparent_power" && b.inputs.length >= 2) return "Result = |V₁ × conj(I₁)| / 1e6  [MVA]";
+            if (b.operation === "active_power" && b.inputs.length >= 2) return "Result = Re(V₁ \xd7 conj(I₁)) / 1e6  [MW]";
+            if (b.operation === "reactive_power" && b.inputs.length >= 2) return "Result = Im(V₁ \xd7 conj(I₁)) / 1e6  [Mvar]";
+            if (b.operation === "apparent_power" && b.inputs.length >= 2) return "Result = |V₁ \xd7 conj(I₁)| / 1e6  [MVA]";
+            if (b.operation === "three_phase_active_power" && b.inputs.filter(Boolean).length >= 6) return "Result = Re(Σ Vₖ \xd7 conj(Iₖ)) / 1e6  [MW]";
+            if (b.operation === "three_phase_reactive_power" && b.inputs.filter(Boolean).length >= 6) return "Result = Im(Σ Vₖ \xd7 conj(Iₖ)) / 1e6  [Mvar]";
+            if (b.operation === "three_phase_apparent_power" && b.inputs.filter(Boolean).length >= 6) return "Result = |Σ Vₖ \xd7 conj(Iₖ)| / 1e6  [MVA]";
             return "";
         }
 
@@ -40042,6 +40112,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else if (meta.arity === "power") {
                 if (!b.inputs[0]) errors.push("Select a Voltage Channel.");
                 if (!b.inputs[1]) errors.push("Select a Current Channel.");
+            } else if (meta.arity === "three_phase_power") {
+                if (b.inputs.filter(Boolean).length !== 6) errors.push("Select all six phase channels (three voltage, three current).");
+                const _selSetId = wwCcPairing.selectedThreePhaseSetId;
+                const _selSet = (_selSetId && _selSetId !== "__manual__" && wwCcPairing.data)
+                    ? (wwCcPairing.data.three_phase_complete_sets || []).find(function(s) { return s.set_id === _selSetId; })
+                    : null;
+                if (_selSetId === "__manual__") {
+                    if (!b.voltageReferenceConfirmed) errors.push("Confirm the voltage reference before creating.");
+                    if (!b.phasePairingConfirmed) errors.push("Confirm the phase pairing before creating.");
+                } else if (_selSet) {
+                    if (_selSet.voltage_reference === "line_to_line") {
+                        errors.push("Line-to-line voltages cannot be used for three-phase power — select phase-to-neutral channels.");
+                    } else if (_selSet.voltage_reference_confirmation_required && !b.voltageReferenceConfirmed) {
+                        errors.push("Confirm the voltage reference before creating.");
+                    }
+                }
             } else if (b.inputs.length < 2) {
                 errors.push("Select at least 2 input channels.");
             }
@@ -40475,6 +40561,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!container) return;
             let html = "";
             for (const operation of WW_CC_OPERATION_ORDER) {
+                if (operation.startsWith("--section-")) {
+                    const sectionLabel = operation === "--section-single-phase-power--"
+                        ? "Single-Phase Power"
+                        : "Three-Phase Power";
+                    html += '<div class="ww-cc-operation-section-label" aria-hidden="true">' + escapeHtml(sectionLabel) + '</div>';
+                    continue;
+                }
                 const meta = WW_CC_OPERATIONS[operation];
                 const pressed = wwCcBuilder.operation === operation;
                 html += '<button type="button" class="ww-cc-operation-card" data-operation="' + operation + '" aria-pressed="' + pressed + '">' +
@@ -40569,6 +40662,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcPairing.data = null;
             wwCcPairing.selectedPairId = null;
             wwCcPairing.isEditing = false;
+            wwCcPairing.selectedThreePhaseSetId = null;
+            wwCcPairing.isEditingThreePhase = false;
+            wwCcBuilder.voltageReferenceConfirmed = false;
+            wwCcBuilder.phasePairingConfirmed = false;
         }
 
         function wwCcPairingInvalidate() {
@@ -40579,6 +40676,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcPairing.status = "idle";
             wwCcPairing.data = null;
             wwCcPairing.isEditing = false;
+            wwCcPairing.selectedThreePhaseSetId = null;
+            wwCcPairing.isEditingThreePhase = false;
+            wwCcBuilder.voltageReferenceConfirmed = false;
+            wwCcBuilder.phasePairingConfirmed = false;
         }
 
         async function wwCcPairingFetch() {
@@ -40610,6 +40711,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     if (!allIds.includes(wwCcPairing.selectedPairId)) {
                         wwCcPairing.selectedPairId = null;
                         wwCcPairing.isEditing = false;
+                    }
+                }
+                // Phase E-3B: validate selectedThreePhaseSetId against fresh data.
+                if (wwCcPairing.selectedThreePhaseSetId && wwCcPairing.selectedThreePhaseSetId !== "__manual__") {
+                    const allSetIds = (json.three_phase_complete_sets || []).map(function(s) { return s.set_id; });
+                    if (!allSetIds.includes(wwCcPairing.selectedThreePhaseSetId)) {
+                        wwCcPairing.selectedThreePhaseSetId = null;
+                        wwCcPairing.isEditingThreePhase = false;
+                        wwCcBuilder.voltageReferenceConfirmed = false;
+                        wwCcBuilder.phasePairingConfirmed = false;
                     }
                 }
             } catch (e) {
@@ -40748,6 +40859,191 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcSyncCreateButtonState();
         }
 
+        function wwCcInputsFromThreePhaseSet(set) {
+            // Returns a 6-element inputs array [V1,I1,V2,I2,V3,I3] built from the
+            // API's three_phase_complete_sets entry (pairs in phase order).
+            var result = [null, null, null, null, null, null];
+            (set.pairs || []).forEach(function(pair, idx) {
+                if (idx >= 3) return;
+                var v = pair.voltage_channel;
+                var ic = pair.current_channel;
+                if (v) result[idx * 2] = wwCcCandidateFromKey("source::" + v.source_id + "::" + v.channel_name);
+                if (ic) result[idx * 2 + 1] = wwCcCandidateFromKey("source::" + ic.source_id + "::" + ic.channel_name);
+            });
+            return result;
+        }
+
+        function wwCcRenderThreePhasePowerFields(fieldsEl) {
+            const st = wwCcPairing.status;
+            const data = wwCcPairing.data;
+            const selSetId = wwCcPairing.selectedThreePhaseSetId;
+            const isEditing = wwCcPairing.isEditingThreePhase;
+
+            if (st === "idle") { wwCcPairingFetch(); }
+
+            const completeSets = (data && data.three_phase_complete_sets) || [];
+            const incompleteSets = (data && data.three_phase_incomplete_sets) || [];
+
+            // --- Locked summary mode ---
+            const selSet = (st === "ok" && selSetId && selSetId !== "__manual__" && !isEditing)
+                ? completeSets.find(function(s) { return s.set_id === selSetId; })
+                : null;
+
+            if (selSet) {
+                const setInputs = wwCcInputsFromThreePhaseSet(selSet);
+                for (var si = 0; si < 6; si++) {
+                    if (setInputs[si]) wwCcBuilder.inputs[si] = setInputs[si];
+                }
+                let pairRows = "";
+                (selSet.pairs || []).forEach(function(pair) {
+                    pairRows +=
+                        '<div class="ww-cc-phase-pair-row">' +
+                            '<span class="ww-cc-phase-pair-label">Phase ' + escapeHtml(pair.phase) + '</span>' +
+                            '<span>' + escapeHtml((pair.voltage_channel || {}).channel_name || "?") +
+                            ' &middot; ' + escapeHtml((pair.current_channel || {}).channel_name || "?") + '</span>' +
+                        '</div>';
+                });
+                let html =
+                    '<div class="ww-cc-pair-summary">' +
+                        '<div class="ww-cc-pair-summary--three-phase">' + pairRows + '</div>' +
+                        '<button type="button" id="wwCcThreePhaseChangeBtn" class="secondary">Change</button>' +
+                    '</div>';
+                const vref = selSet.voltage_reference;
+                if (vref === "line_to_line") {
+                    html +=
+                        '<div class="ww-cc-confirmation-block ww-cc-confirmation-block--blocked">' +
+                            '<strong>Line-to-line voltages — cannot proceed</strong>' +
+                            '<p style="margin:6px 0 0;font-size:var(--text-sm);">These voltages appear to be line-to-line (phase-to-phase). ' +
+                            'Three-phase power requires phase-to-neutral (line-to-ground) references. ' +
+                            'Select a different set or use manual selection with the correct channels.</p>' +
+                        '</div>';
+                } else if (selSet.voltage_reference_confirmation_required) {
+                    const evNames = (selSet.voltage_reference_evidence_names || []).join(", ");
+                    html +=
+                        '<div class="ww-cc-confirmation-block">' +
+                            '<strong>Voltage reference not identified</strong>' +
+                            '<p style="margin:6px 0 0;font-size:var(--text-sm);">No phase-to-neutral markers were found' +
+                            (evNames ? ' in these channel names (' + escapeHtml(evNames) + ')' : '') + '. ' +
+                            'Three-phase power requires phase-to-neutral (line-to-ground) voltages.</p>' +
+                            '<label class="ww-cc-confirmation-label">' +
+                                '<input type="checkbox" id="wwCcVoltRefConfirm"' + (wwCcBuilder.voltageReferenceConfirmed ? " checked" : "") + '> ' +
+                                'I confirm these voltages are phase-to-neutral (line-to-ground) references.' +
+                            '</label>' +
+                        '</div>';
+                }
+                fieldsEl.innerHTML = html;
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+                return;
+            }
+
+            // --- Picker / manual mode ---
+            let html = "";
+            if (st === "idle" || st === "loading") {
+                html += '<p class="ww-cc-pair-status">Detecting three-phase sets…</p>';
+            } else if (st === "error") {
+                html += '<p class="ww-cc-pair-status error">Auto-detection unavailable.</p>';
+            }
+
+            if (st === "ok") {
+                let opts = '<option value="">Select a three-phase set…</option>';
+                if (completeSets.length > 0) {
+                    opts += '<optgroup label="Complete Sets">';
+                    completeSets.forEach(function(s) {
+                        opts += '<option value="' + escapeHtml(s.set_id) + '">' + escapeHtml(s.display_label) + '</option>';
+                    });
+                    opts += '</optgroup>';
+                }
+                opts += '<optgroup label="Manual"><option value="__manual__">Manual selection (specify channels)…</option></optgroup>';
+                html += '<label class="ww-cc-field"><span>Three-Phase Set</span>' +
+                    '<select id="wwCcThreePhaseSetSelect">' + opts + '</select></label>';
+                if (isEditing) {
+                    html += '<button type="button" id="wwCcThreePhaseCancelBtn" class="secondary">Cancel</button>';
+                }
+            }
+
+            const showManualInputs = selSetId === "__manual__" || (st === "ok" && completeSets.length === 0);
+            if (showManualInputs) {
+                // Incomplete set notices shown above the manual dropdowns when there
+                // are no complete sets (the auto-fallback path). Not shown when the
+                // user explicitly chose __manual__ while complete sets do exist.
+                if (st === "ok" && completeSets.length === 0 && incompleteSets.length > 0) {
+                    html += '<div class="ww-cc-pair-notice"><strong>' +
+                        incompleteSets.length + ' incomplete set' + (incompleteSets.length > 1 ? 's' : '') + ' detected</strong>';
+                    incompleteSets.forEach(function(inc) {
+                        const ctx = inc.context_hint ? inc.context_hint + ': ' : '';
+                        const missing = (inc.missing_phases || []).map(function(m) { return m.phase; }).join(', ');
+                        html += '<div style="font-size:var(--text-sm);margin-top:4px;">' +
+                            escapeHtml(ctx) + 'Missing: ' + escapeHtml(missing) + '</div>';
+                    });
+                    html += '</div>';
+                }
+                if (st === "ok" && completeSets.length > 0) {
+                    html += '<div class="ww-cc-pair-manual-label">Specify six channels in phase order:</div>';
+                }
+                const manualIds = ["wwCcThreePhaseV1", "wwCcThreePhaseI1", "wwCcThreePhaseV2", "wwCcThreePhaseI2", "wwCcThreePhaseV3", "wwCcThreePhaseI3"];
+                for (var gi = 0; gi < 3; gi++) {
+                    html += '<div class="ww-cc-phase-inputs-group"><div class="ww-cc-phase-inputs-group-label">Phase ' + (gi + 1) + '</div>' +
+                        '<label class="ww-cc-field"><span>Voltage</span>' +
+                            '<select id="' + manualIds[gi * 2] + '">' + wwCcCandidateOptionsHtml(null, "voltage") + '</select></label>' +
+                        '<label class="ww-cc-field"><span>Current</span>' +
+                            '<select id="' + manualIds[gi * 2 + 1] + '">' + wwCcCandidateOptionsHtml(null, "current") + '</select></label>' +
+                    '</div>';
+                }
+                html +=
+                    '<div class="ww-cc-confirmation-block">' +
+                        '<strong>Manual phase assignment — confirmation required</strong>' +
+                        '<label class="ww-cc-confirmation-label">' +
+                            '<input type="checkbox" id="wwCcVoltRefConfirm"' + (wwCcBuilder.voltageReferenceConfirmed ? " checked" : "") + '> ' +
+                            'I confirm all voltage channels are phase-to-neutral (line-to-ground) references.' +
+                        '</label>' +
+                        '<label class="ww-cc-confirmation-label">' +
+                            '<input type="checkbox" id="wwCcPhasePairConfirm"' + (wwCcBuilder.phasePairingConfirmed ? " checked" : "") + '> ' +
+                            'I confirm the voltage and current channels are correctly paired by phase (V1↔I1, V2↔I2, V3↔I3).' +
+                        '</label>' +
+                    '</div>';
+                fieldsEl.innerHTML = html;
+                const manualInputs = wwCcBuilder.inputs;
+                for (var ri = 0; ri < 6; ri++) {
+                    const sel = document.getElementById(manualIds[ri]);
+                    const inp = manualInputs[ri];
+                    if (sel && inp) {
+                        const key = inp.kind + "::" + (inp.kind === "source"
+                            ? inp.sourceId + "::" + inp.channelName
+                            : inp.calculatedChannelId);
+                        sel.value = key;
+                    }
+                }
+                const setSelEl2 = document.getElementById("wwCcThreePhaseSetSelect");
+                if (setSelEl2 && selSetId) setSelEl2.value = selSetId;
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+                return;
+            }
+
+            // Incomplete set notices (picker mode only — no set selected yet)
+            if (incompleteSets.length > 0) {
+                html += '<div class="ww-cc-pair-notice"><strong>' +
+                    incompleteSets.length + ' incomplete set' + (incompleteSets.length > 1 ? 's' : '') + ' detected</strong>';
+                incompleteSets.forEach(function(inc) {
+                    const ctx = inc.context_hint ? inc.context_hint + ': ' : '';
+                    const missing = (inc.missing_phases || []).map(function(m) { return m.phase; }).join(', ');
+                    html += '<div style="font-size:var(--text-sm);margin-top:4px;">' +
+                        escapeHtml(ctx) + 'Missing: ' + escapeHtml(missing) + '</div>';
+                });
+                html += '</div>';
+            }
+
+            fieldsEl.innerHTML = html;
+            const setSelEl = document.getElementById("wwCcThreePhaseSetSelect");
+            if (setSelEl && selSetId) setSelEl.value = selSetId;
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
+        }
+
         function wwCcRenderBuilderFields() {
             const fieldsEl = document.getElementById("wwCcBuilderFields");
             const titleEl = document.getElementById("wwCcBuilderTitle");
@@ -40786,6 +41082,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (wwCcBuilder.operation === "rocof") wwCcRenderRocofStatus();
             } else if (meta.arity === "power") {
                 wwCcRenderPowerFields(fieldsEl);
+            } else if (meta.arity === "three_phase_power") {
+                wwCcRenderThreePhasePowerFields(fieldsEl);
             } else {
                 let html = '<ol class="ww-cc-input-list" id="wwCcInputList">';
                 wwCcBuilder.inputs.forEach((input, index) => {
@@ -40839,7 +41137,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 unitInput.value = "Hz/s";
                 return;
             }
-            const _POWER_OUTPUT_UNITS = { active_power: "MW", reactive_power: "Mvar", apparent_power: "MVA" };
+            const _POWER_OUTPUT_UNITS = { active_power: "MW", reactive_power: "Mvar", apparent_power: "MVA",
+                three_phase_active_power: "MW", three_phase_reactive_power: "Mvar", three_phase_apparent_power: "MVA" };
             if (_POWER_OUTPUT_UNITS[wwCcBuilder.operation]) { // DEC-202: fixed output unit regardless of input units
                 unitInput.value = _POWER_OUTPUT_UNITS[wwCcBuilder.operation];
                 return;
@@ -40878,6 +41177,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.llOutput = "all_three";
             wwCcBuilder.llNames = { AB: "", BC: "", CA: "" };
             wwCcBuilder.llNamesEditedByUser = false;
+            wwCcBuilder.voltageReferenceConfirmed = false;
+            wwCcBuilder.phasePairingConfirmed = false;
+            wwCcPairing.selectedThreePhaseSetId = null;
+            wwCcPairing.isEditingThreePhase = false;
             document.getElementById("wwCcBuilderPanel").hidden = false;
             if (operation === "line_to_line_voltage") wwCcFetchLineToLineReadiness();
             wwCcRenderOperationCards();
@@ -41000,6 +41303,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const formula = html ? wwLineToLineFormulaHtml(calc.phase_member, pd) : wwLineToLineFormulaText(calc.phase_member, pd);
                 return formula + " (" + names.join(" − ") + ")";
             }
+            if (calc.operation === "active_power" && names.length >= 2) return "Re(V₁ \xd7 conj(I₁)) / 1e6 (" + names[0] + ", " + names[1] + ")";
+            if (calc.operation === "reactive_power" && names.length >= 2) return "Im(V₁ \xd7 conj(I₁)) / 1e6 (" + names[0] + ", " + names[1] + ")";
+            if (calc.operation === "apparent_power" && names.length >= 2) return "|V₁ \xd7 conj(I₁)| / 1e6 (" + names[0] + ", " + names[1] + ")";
+            if (calc.operation === "three_phase_active_power" && names.length >= 6) return "Re(Σ Vₖ \xd7 conj(Iₖ)) / 1e6 (" + names.slice(0, 6).join(", ") + ")";
+            if (calc.operation === "three_phase_reactive_power" && names.length >= 6) return "Im(Σ Vₖ \xd7 conj(Iₖ)) / 1e6 (" + names.slice(0, 6).join(", ") + ")";
+            if (calc.operation === "three_phase_apparent_power" && names.length >= 6) return "|Σ Vₖ \xd7 conj(Iₖ)| / 1e6 (" + names.slice(0, 6).join(", ") + ")";
             const meta = WW_CC_OPERATIONS[calc.operation];
             return esc(meta ? meta.label : calc.operation);
         }
@@ -42061,6 +42370,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 inputs: inputsPayload, parameters: parameters, override: override,
                 null_policy: wwCcBuilder.nullPolicy,
             };
+            // DEC-208 (Phase E-3B): three-phase confirmation flags must accompany
+            // the create request for three-phase power operations. Sending them
+            // for other operations is harmless (backend ignores extra fields); we
+            // restrict them here to keep the payload clean and to make intent
+            // explicit.
+            const _isThreePhaseOp = wwCcBuilder.operation === "three_phase_active_power" ||
+                wwCcBuilder.operation === "three_phase_reactive_power" ||
+                wwCcBuilder.operation === "three_phase_apparent_power";
+            if (_isThreePhaseOp) {
+                requestBody.voltage_reference_confirmed = !!wwCcBuilder.voltageReferenceConfirmed;
+                requestBody.phase_pairing_confirmed = !!wwCcBuilder.phasePairingConfirmed;
+            }
             if (wwCcBuilder.nullPolicy === "estimate_missing_data") {
                 requestBody.estimation_method = wwCcBuilder.estimationMethod;
                 requestBody.max_gap_value = Number(wwCcBuilder.maxGapValue);
@@ -42282,6 +42603,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcRenderExpressionPreview();
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcThreePhaseSetSelect") {
+                // DEC-208 (Phase E-3B): new set selection — reset both confirmation
+                // flags unconditionally (owner requirement #1).
+                const newSetId = event.target.value || null;
+                wwCcPairing.selectedThreePhaseSetId = newSetId;
+                wwCcPairing.isEditingThreePhase = false;
+                wwCcBuilder.voltageReferenceConfirmed = false;
+                wwCcBuilder.phasePairingConfirmed = false;
+                wwCcRenderBuilderFields();
+            } else if (event.target.id === "wwCcVoltRefConfirm") {
+                wwCcBuilder.voltageReferenceConfirmed = event.target.checked;
+                wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcPhasePairConfirm") {
+                wwCcBuilder.phasePairingConfirmed = event.target.checked;
+                wwCcSyncCreateButtonState();
+            } else {
+                // DEC-208 (Phase E-3B): six manual three-phase channel dropdowns.
+                const _3pSlot = { wwCcThreePhaseV1: 0, wwCcThreePhaseI1: 1,
+                    wwCcThreePhaseV2: 2, wwCcThreePhaseI2: 3,
+                    wwCcThreePhaseV3: 4, wwCcThreePhaseI3: 5 }[event.target.id];
+                if (_3pSlot !== undefined) {
+                    const cand = wwCcCandidateFromKey(event.target.value);
+                    wwCcBuilder.inputs[_3pSlot] = cand || undefined;
+                    // Reset both confirmation flags on any input change (owner requirement #1).
+                    wwCcBuilder.voltageReferenceConfirmed = false;
+                    wwCcBuilder.phasePairingConfirmed = false;
+                    wwCcRenderBuilderFields();
+                }
             }
         });
         document.getElementById("wwCcBuilderFields").addEventListener("input", (event) => {
@@ -42299,6 +42648,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (event.target.id === "wwCcPairCancelBtn") {
                 wwCcPairing.isEditing = false;
+                wwCcRenderBuilderFields();
+                return;
+            }
+            if (event.target.id === "wwCcThreePhaseChangeBtn") {
+                wwCcPairing.isEditingThreePhase = true;
+                wwCcRenderBuilderFields();
+                return;
+            }
+            if (event.target.id === "wwCcThreePhaseCancelBtn") {
+                wwCcPairing.isEditingThreePhase = false;
                 wwCcRenderBuilderFields();
                 return;
             }

@@ -43,8 +43,12 @@ from app.domain.calculated_channel import (
     OP_RMS,
     OP_ROCOF,
     OP_SUBTRACTION,
+    OP_THREE_PHASE_ACTIVE_POWER,
+    OP_THREE_PHASE_APPARENT_POWER,
+    OP_THREE_PHASE_REACTIVE_POWER,
     POWER_OPERATIONS,
     POWER_OUTPUT_UNITS,
+    THREE_PHASE_POWER_OPERATIONS,
     UNARY_OPERATIONS,
     UNIMPLEMENTED_ESTIMATION_METHODS,
     UNIMPLEMENTED_NULL_POLICIES,
@@ -61,6 +65,7 @@ from app.domain.calculated_channel import (
     evaluate_rms,
     evaluate_rocof,
     evaluate_subtraction,
+    evaluate_three_phase_power_channel,
     local_mean_radius_valid,
     max_gap_unit_valid,
     max_gap_value_valid,
@@ -97,12 +102,22 @@ from app.domain.channel_classification import (
     WAVEFORM_FORM_UNKNOWN,
     derive_waveform_form,
 )
+from app.domain.channel_engineering_identity import (
+    ChannelEngineeringIdentityInput,
+    resolve_channel_engineering_identity,
+)
 from app.domain.engineering_units import (
     ENGINEERING_QUANTITY_CURRENT as EQ_CURRENT,
     ENGINEERING_QUANTITY_VOLTAGE as EQ_VOLTAGE,
     NORMALIZATION_UNSUPPORTED,
     NORMALIZATION_AMBIGUOUS,
     parse_engineering_unit,
+)
+from app.domain.voltage_reference import (
+    LINE_TO_GROUND as VREF_LINE_TO_GROUND,
+    LINE_TO_LINE as VREF_LINE_TO_LINE,
+    VoltageReferenceDetection,
+    detect_voltage_reference,
 )
 from app.domain.per_unit import (
     PerUnitBaseProfile,
@@ -131,6 +146,7 @@ from app.services.errors import (
     CalculatedChannelNotFoundError,
     CyclicDependencyError,
     DuplicateCalculatedChannelNameError,
+    DuplicatePhaseAssignmentError,
     EstimationFieldsNotApplicableError,
     EstimationMethodNotImplementedError,
     IncompatibleTimeBaseError,
@@ -144,10 +160,12 @@ from app.services.errors import (
     InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
     InvalidNullPolicyError,
+    InvalidOperationArityError,
     InvalidPowerInputTypeError,
     InvalidPowerInputUnitError,
     InvalidRocofParametersError,
-    InvalidOperationArityError,
+    InvalidThreePhasePhaseMismatchError,
+    LineToLineVoltageRejectedError,
     NullPolicyNotImplementedError,
     RequireManualValueNullError,
     RmsOverrideRequiredError,
@@ -156,6 +174,8 @@ from app.services.errors import (
     RmsRecordingTooShortError,
     RmsSamplingTooSparseError,
     SourceNotFoundError,
+    UnconfirmedPhasePairingError,
+    UnconfirmedVoltageReferenceError,
 )
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
@@ -197,6 +217,58 @@ def _unique_ordered(items: list[str]) -> list[str]:
             seen.add(item)
             out.append(item)
     return out
+
+
+# DEC-208 (Phase E): phase-matching helpers for three-phase power validation.
+_PHASE_CONVENTION_SETS: tuple[frozenset[str], ...] = (
+    frozenset({"R", "Y", "B"}),
+    frozenset({"A", "B", "C"}),
+    frozenset({"L1", "L2", "L3"}),
+)
+
+
+def _raw_channel_name_for_phase(
+    ref: ChannelRef,
+    calc_registry: "CalculatedChannelRegistry",
+    workspace_id: str,
+) -> str:
+    """Bare channel name for phase-token extraction (not for error messages)."""
+    if ref.kind == "source":
+        return ref.channel_name or ""
+    ch = calc_registry.get(workspace_id, ref.calculated_channel_id or "")
+    return ch.name if ch else ""
+
+
+def _extract_phase_info(
+    name: str, engineering_type: str | None
+) -> tuple[str | None, str | None]:
+    """Return (phase_raw_token, context_hint) from a channel name."""
+    if not name:
+        return None, None
+    identity = resolve_channel_engineering_identity(
+        ChannelEngineeringIdentityInput(name=name, engineering_type=engineering_type)
+    )
+    return identity.phase_raw_token, identity.context_hint
+
+
+def _detect_convention(
+    tokens: tuple[str | None, str | None, str | None],
+) -> frozenset[str] | None:
+    """Return the unique convention set all non-None tokens belong to.
+
+    Returns None when:
+    - no tokens are present,
+    - tokens span more than one convention (including the shared 'B' token
+      that exists in both RYB and ABC), or
+    - tokens span no recognised convention.
+
+    A unique match means the three tokens unambiguously identify one set.
+    """
+    present = {t for t in tokens if t is not None}
+    if not present:
+        return None
+    matched = [s for s in _PHASE_CONVENTION_SETS if present <= s]
+    return matched[0] if len(matched) == 1 else None
 
 
 def _join_and(items: list[str]) -> str:
@@ -583,6 +655,8 @@ def create_calculated_channel(
     max_gap_value: int | None = None,
     max_gap_unit: str | None = None,
     local_mean_radius: int | None = None,
+    voltage_reference_confirmed: bool = False,
+    phase_pairing_confirmed: bool = False,
 ) -> CalculatedChannel:
     """Validate, evaluate, and store one new calculated channel.
 
@@ -634,6 +708,11 @@ def create_calculated_channel(
     elif operation in POWER_OPERATIONS:
         if len(inputs) != 2:
             raise InvalidOperationArityError(f"{operation} requires exactly 2 input channels: [voltage, current].")
+    elif operation in THREE_PHASE_POWER_OPERATIONS:
+        if len(inputs) != 6:
+            raise InvalidOperationArityError(
+                f"{operation} requires exactly 6 input channels: [V1, I1, V2, I2, V3, I3] in phase order."
+            )
     else:
         if len(inputs) < 2:
             raise InvalidOperationArityError(f"{operation} requires at least 2 input channels.")
@@ -720,6 +799,226 @@ def create_calculated_channel(
                 "Sample rate is too low relative to the phasor window to produce a meaningful power estimate."
             )
 
+    # DEC-208 (Phase E): three-phase power validation.
+    # Validation order:
+    #   1. Engineering-type guard (slot roles)
+    #   2. Unit guard (SI scale factors collected)
+    #   3. Per-channel L-L guard (DEC-208-D; BEFORE phase matching so L-L
+    #      evidence produces the dedicated error without requiring unrelated
+    #      confirmation flags)
+    #   4. Duplicate reference guard (same channel in multiple slots)
+    #   5. Duplicate phase-token guard (same token in multiple V or I slots)
+    #   6. Convention-aware phase matching:
+    #      6a. Multi-source guard (multiple recording sources → uncertain)
+    #      6b. Convention-level detection (cross-convention → uncertain)
+    #      6c. Per-pair token mismatch (same convention, different tokens → reject)
+    #      6d. Per-pair context-hint mismatch (same token, different contexts → uncertain)
+    #      6e. Cross-pair context consistency (inconsistent contexts across pairs → uncertain)
+    #   7. Group-level voltage-reference gate (DEC-208-D)
+    #   8. Sampling density
+    # All checks precede any array computation; failure atomicity inherited
+    # (calc_registry is never touched until after this block).
+    power_3ph_scales: list[float] = []
+    _3ph_vref: VoltageReferenceDetection | None = None
+    if operation in THREE_PHASE_POWER_OPERATIONS:
+        _3PH_SLOT_INFO = [
+            (VOLTAGE, "voltage"),
+            (CURRENT, "current"),
+            (VOLTAGE, "voltage"),
+            (CURRENT, "current"),
+            (VOLTAGE, "voltage"),
+            (CURRENT, "current"),
+        ]
+        # 1. Engineering-type guard: slots 0/2/4 = Voltage, 1/3/5 = Current.
+        for idx, (r, (expected_et, slot_label)) in enumerate(zip(resolved, _3PH_SLOT_INFO)):
+            if r.engineering_type not in (expected_et, UNDEFINED):
+                raise InvalidPowerInputTypeError(
+                    f"Input {idx + 1} ({slot_label} slot) must be a {expected_et} channel, "
+                    f"but '{_describe_calculated_channel_input(inputs[idx])}' "
+                    f"is classified as {r.engineering_type}."
+                )
+
+        # 2. Unit guard: every input must carry a recognised unit.
+        _3PH_UNIT_EQ = [EQ_VOLTAGE, EQ_CURRENT, EQ_VOLTAGE, EQ_CURRENT, EQ_VOLTAGE, EQ_CURRENT]
+        _3PH_UNIT_LABEL = ["Voltage", "Current", "Voltage", "Current", "Voltage", "Current"]
+        for idx, (r, eq, label) in enumerate(zip(resolved, _3PH_UNIT_EQ, _3PH_UNIT_LABEL)):
+            parsed = parse_engineering_unit(eq, r.unit)
+            if parsed.normalization_status in (NORMALIZATION_UNSUPPORTED, NORMALIZATION_AMBIGUOUS):
+                raise InvalidPowerInputUnitError(
+                    f"Input {idx + 1} ({label}) unit {r.unit!r} is not recognised. "
+                    "Set the channel unit before creating a three-phase power channel."
+                )
+            power_3ph_scales.append(parsed.scale_to_canonical)
+
+        # 3. Per-channel L-L guard (DEC-208-D) — runs BEFORE phase matching so
+        # a deterministic L-L evidence finding produces LineToLineVoltageRejectedError
+        # without requiring phase_pairing_confirmed first (Finding 4).
+        voltage_names = [
+            _raw_channel_name_for_phase(inputs[0], calc_registry, workspace_id),
+            _raw_channel_name_for_phase(inputs[2], calc_registry, workspace_id),
+            _raw_channel_name_for_phase(inputs[4], calc_registry, workspace_id),
+        ]
+        for v_name_single in voltage_names:
+            single_vref = detect_voltage_reference([v_name_single])
+            if single_vref.reference == VREF_LINE_TO_LINE:
+                raise LineToLineVoltageRejectedError(
+                    f"Voltage channel '{v_name_single}' carries line-to-line naming "
+                    "evidence (DEC-208-D). Line-to-line voltage inputs are not "
+                    "supported for three-phase power calculations."
+                )
+
+        # 4. Duplicate reference guard: each slot must reference a distinct channel.
+        # Checked unconditionally — phase_pairing_confirmed cannot override.
+        _ref_keys: list[tuple] = []
+        for ref in inputs:
+            if ref.kind == "source":
+                _ref_keys.append(("source", ref.source_id, ref.channel_name))
+            else:
+                _ref_keys.append(("calculated", ref.calculated_channel_id))
+        _seen_refs: set[tuple] = set()
+        for _rk in _ref_keys:
+            if _rk in _seen_refs:
+                raise DuplicatePhaseAssignmentError(
+                    "The same channel reference appears in more than one phase slot. "
+                    "Each of the six slots [V1, I1, V2, I2, V3, I3] must reference a "
+                    "distinct channel (DEC-208)."
+                )
+            _seen_refs.add(_rk)
+
+        # 5. Duplicate phase-token guard: same deterministic phase token must not
+        # appear in multiple voltage slots or multiple current slots.
+        # Checked unconditionally — phase_pairing_confirmed cannot override.
+        input_names = [_raw_channel_name_for_phase(ref, calc_registry, workspace_id) for ref in inputs]
+        _v_infos = [_extract_phase_info(input_names[s], resolved[s].engineering_type) for s in (0, 2, 4)]
+        _i_infos = [_extract_phase_info(input_names[s], resolved[s].engineering_type) for s in (1, 3, 5)]
+        _v_tokens_raw = tuple(info[0] for info in _v_infos)
+        _i_tokens_raw = tuple(info[0] for info in _i_infos)
+        _present_v = [t for t in _v_tokens_raw if t is not None]
+        if len(_present_v) != len(set(_present_v)):
+            raise DuplicatePhaseAssignmentError(
+                f"Duplicate phase token in voltage inputs {_present_v}. "
+                "Each voltage slot must represent a distinct phase (DEC-208)."
+            )
+        _present_i = [t for t in _i_tokens_raw if t is not None]
+        if len(_present_i) != len(set(_present_i)):
+            raise DuplicatePhaseAssignmentError(
+                f"Duplicate phase token in current inputs {_present_i}. "
+                "Each current slot must represent a distinct phase (DEC-208)."
+            )
+
+        # 6. Convention-aware phase matching.
+        # The voltage and current sets are assessed at the complete-set level first:
+        # - If both sets resolve to the same named convention (RYB, ABC, L1/L2/L3),
+        #   per-pair token mismatch detection applies (confirmed wrong-phase pairs
+        #   are always rejected) and context-hint mismatches require confirmation.
+        # - If the sets resolve to different conventions, or either set is ambiguous,
+        #   the pairing is uncertain and requires phase_pairing_confirmed=True.
+        # This avoids the false-mismatch trap where 'B' (shared by RYB and ABC) would
+        # cause VY+IB (RYB voltages, ABC currents) to be rejected as a confirmed
+        # mismatch rather than classified as an uncertain cross-convention pairing.
+        _v_ctxs = tuple(info[1] for info in _v_infos)
+        _i_ctxs = tuple(info[1] for info in _i_infos)
+
+        # 6a. Multi-source guard: channels from more than one recording source
+        # carry unresolved electrical-identity uncertainty. Matching phase tokens
+        # and aligned timebases are not proof of common electrical circuit origin.
+        # Single-source sets (all six channels from the same recording) are exempt.
+        _distinct_source_ids = {r.reference_source_id for r in resolved}
+        if len(_distinct_source_ids) > 1 and not phase_pairing_confirmed:
+            raise UnconfirmedPhasePairingError(
+                f"The six input channels originate from "
+                f"{len(_distinct_source_ids)} distinct recording sources. Matching "
+                "phase tokens and aligned timebases are not proof of common electrical "
+                "circuit origin. Pass phase_pairing_confirmed=True to confirm the "
+                "multi-source three-phase assignment."
+            )
+
+        v_convention = _detect_convention(_v_tokens_raw)
+        i_convention = _detect_convention(_i_tokens_raw)
+
+        if v_convention is None or i_convention is None or v_convention != i_convention:
+            # Cross-convention or unrecognised convention: uncertain.
+            if not phase_pairing_confirmed:
+                raise UnconfirmedPhasePairingError(
+                    f"The voltage and current channels do not share a recognisable "
+                    f"phase naming convention (voltage tokens: {_v_tokens_raw}, "
+                    f"current tokens: {_i_tokens_raw}). Pass "
+                    "phase_pairing_confirmed=True to confirm cross-convention or "
+                    "unknown phase assignments."
+                )
+        else:
+            # Same convention: per-pair mismatch and context-hint checks.
+            _v_names_3 = [input_names[s] for s in (0, 2, 4)]
+            _i_names_3 = [input_names[s] for s in (1, 3, 5)]
+            for pair_idx, (vt, it, vc, ic, vn, in_n) in enumerate(
+                zip(_v_tokens_raw, _i_tokens_raw, _v_ctxs, _i_ctxs, _v_names_3, _i_names_3)
+            ):
+                if vt is None or it is None:
+                    if not phase_pairing_confirmed:
+                        raise UnconfirmedPhasePairingError(
+                            f"Phase pair {pair_idx + 1}: voltage '{vn}' "
+                            f"(phase token: {vt!r}) and current '{in_n}' "
+                            f"(phase token: {it!r}) — token absent, pairing uncertain. "
+                            "Pass phase_pairing_confirmed=True to proceed."
+                        )
+                elif vt != it:
+                    raise InvalidThreePhasePhaseMismatchError(
+                        f"Phase pair {pair_idx + 1}: voltage '{vn}' (phase {vt!r}) "
+                        f"and current '{in_n}' (phase {it!r}) are from the same "
+                        "convention but different phases — confirmed mismatch."
+                    )
+                elif vc and ic and vc != ic:
+                    # Same phase token, different equipment contexts within a pair.
+                    if not phase_pairing_confirmed:
+                        raise UnconfirmedPhasePairingError(
+                            f"Phase pair {pair_idx + 1}: voltage '{vn}' "
+                            f"(context: {vc!r}) and current '{in_n}' "
+                            f"(context: {ic!r}) share phase token {vt!r} but come "
+                            "from different equipment contexts (DEC-208). Pass "
+                            "phase_pairing_confirmed=True to confirm this "
+                            "cross-context pairing."
+                        )
+
+            # 6b. Cross-pair context consistency: the three phase pairs must share
+            # one established equipment context (or carry no context hints at all).
+            # Inconsistent contexts across pairs indicate channels from different
+            # equipment that would form an incoherent three-phase measurement.
+            _all_ctxs = {ctx for ctx in _v_ctxs + _i_ctxs if ctx}
+            if len(_all_ctxs) > 1 and not phase_pairing_confirmed:
+                raise UnconfirmedPhasePairingError(
+                    f"The three phase pairs carry inconsistent equipment-context hints "
+                    f"({sorted(_all_ctxs)!r}). A coherent three-phase measurement "
+                    "expects channels from one equipment context. Pass "
+                    "phase_pairing_confirmed=True to confirm this multi-context "
+                    "three-phase assignment."
+                )
+
+        # 7. Voltage reference gate (DEC-208-D).
+        # Per-channel guard already ran above (step 3). Group-level check here.
+        _3ph_vref = detect_voltage_reference(voltage_names)
+        if _3ph_vref.reference == VREF_LINE_TO_LINE:
+            raise LineToLineVoltageRejectedError(
+                "Line-to-line voltage inputs are not supported for three-phase power "
+                f"calculations (DEC-208-D). Detection evidence: {_3ph_vref.evidence_names}."
+            )
+        if _3ph_vref.reference != VREF_LINE_TO_GROUND and not voltage_reference_confirmed:
+            raise UnconfirmedVoltageReferenceError(
+                f"Voltage reference could not be determined from channel names "
+                f"(reason: {_3ph_vref.reason}). Pass voltage_reference_confirmed=True "
+                "to proceed when the reference is known but not named in the channels."
+            )
+
+        # 8. Sampling density: same guard as single-phase power.
+        if not rms_recording_long_enough(resolved[0].time, 50.0):
+            raise RmsRecordingTooShortError(
+                "Recording is shorter than one complete phasor window (1 cycle at nominal frequency)."
+            )
+        if not rms_sampling_dense_enough(resolved[0].time, 50.0):
+            raise RmsSamplingTooSparseError(
+                "Sample rate is too low relative to the phasor window to produce a "
+                "meaningful three-phase power estimate."
+            )
+
     if operation in MULTI_OPERATIONS:
         input_units = [r.unit for r in resolved]
         input_engineering_types = [r.engineering_type for r in resolved]
@@ -742,6 +1041,9 @@ def create_calculated_channel(
     elif operation in POWER_OPERATIONS:
         # Fixed output unit regardless of input scaling (DEC-202).
         output_unit = POWER_OUTPUT_UNITS[operation]
+    elif operation in THREE_PHASE_POWER_OPERATIONS:
+        # Fixed output unit regardless of input scaling (DEC-208).
+        output_unit = POWER_OUTPUT_UNITS[operation]
     elif operation == OP_ROCOF:
         output_unit = ROCOF_UNIT
     else:
@@ -761,6 +1063,8 @@ def create_calculated_channel(
         # Power operations always produce a Power output regardless of
         # whether V/I inputs were identified (UNDEFINED inputs are still
         # valid for power -- the unit check above already proved them safe).
+        output_engineering_type = POWER
+    elif operation in THREE_PHASE_POWER_OPERATIONS:
         output_engineering_type = POWER
     # Phase 5B (DEC-048): same "classification/grouping only" status as
     # engineering_type above -- derive_waveform_form() never blocks or
@@ -915,6 +1219,23 @@ def create_calculated_channel(
             i_values=effective_values[1],
             i_scale_to_si=power_i_scale,
         )
+    elif operation in THREE_PHASE_POWER_OPERATIONS:
+        values = evaluate_three_phase_power_channel(
+            operation,
+            time=first.time,
+            v1_values=effective_values[0],
+            v1_scale_to_si=power_3ph_scales[0],
+            i1_values=effective_values[1],
+            i1_scale_to_si=power_3ph_scales[1],
+            v2_values=effective_values[2],
+            v2_scale_to_si=power_3ph_scales[2],
+            i2_values=effective_values[3],
+            i2_scale_to_si=power_3ph_scales[3],
+            v3_values=effective_values[4],
+            v3_scale_to_si=power_3ph_scales[4],
+            i3_values=effective_values[5],
+            i3_scale_to_si=power_3ph_scales[5],
+        )
     elif operation == OP_ADDITION:
         values = evaluate_addition(effective_values)
     else:
@@ -947,6 +1268,18 @@ def create_calculated_channel(
             "nominal_frequency_hz": 50.0,
             "window_mode": "trailing",
             "sign_convention": "passive",
+        }
+    elif operation in THREE_PHASE_POWER_OPERATIONS:
+        assert _3ph_vref is not None  # always set when THREE_PHASE_POWER_OPERATIONS reaches here
+        output_parameters = {
+            "nominal_frequency_hz": 50.0,
+            "window_mode": "trailing",
+            "sign_convention": "passive",
+            "voltage_reference": _3ph_vref.reference,
+            "voltage_reference_reason": _3ph_vref.reason,
+            "voltage_reference_confirmed": voltage_reference_confirmed,
+            "voltage_reference_evidence_names": list(_3ph_vref.evidence_names),
+            "phase_pairing_confirmed": phase_pairing_confirmed,
         }
     else:
         output_parameters = {}
