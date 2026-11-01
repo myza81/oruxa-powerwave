@@ -28837,3 +28837,106 @@ cancelled when the workspace is cleared.
 - **DEC-207-C**: Phase A manual-fallback dropdowns are always shown below the picker when
   no pair is selected. Once a pair is locked, manual dropdowns are hidden. Owner to confirm
   whether they should remain visible in locked mode as an override mechanism.
+
+---
+
+## DEC-208 — Phase E Owner Scope Decision: Three-Phase Power Calculated Channels
+
+Date: 2026-11-01
+Status: Approved (owner direction)
+Source: Owner pasted scope decision, 2026-11-01.
+
+### Approved scope
+
+1. Phase E initial implementation shall support three-phase power calculations using
+   **phase-to-neutral voltages** and corresponding phase currents.
+
+2. The engine must support both **balanced and unbalanced** three-phase conditions.
+
+3. Reuse the existing:
+   - Sliding-phasor calculation engine (`compute_sliding_phasor()`)
+   - Single-phase complex-power mathematics (`power_calculation.py`)
+   - Automatic V-I channel matching architecture (`find_vi_pairs()` + pairing resolver)
+
+4. Investigate how the system can reliably establish that the selected voltage channels
+   represent phase-to-neutral measurements. If voltage reference identity is uncertain,
+   the system must **not** silently assume the channels are phase-to-neutral — an
+   appropriate user-confirmation mechanism must be proposed.
+
+5. Investigate **alternative definitions of three-phase apparent power** for unbalanced
+   systems. Present recommendations before implementation.
+
+6. Investigate line-to-line voltage support **separately**. Do not include line-to-line
+   calculations in the first implementation slice.
+
+7. **Preserve throughout:**
+   - Existing single-phase power operations (DEC-202)
+   - Manual channel-selection fallback (Phase A)
+   - DEC-050 Measurement Group architecture
+   - Existing per-unit functionality
+   - DEC-PWR sign conventions (DEC-PWR-002/003)
+
+### Investigation deliverables
+
+The Phase E investigation report (produced 2026-11-01, pre-implementation) covers:
+
+- **A. Existing architecture findings** — `three_phase_power()` already correct in
+  `power_calculation.py`; `evaluate_power_channel()` is single-phase only; `find_vi_pairs()`
+  is the correct building block for three-phase set grouping.
+- **B. Mathematical model** — reuse `compute_sliding_phasor()` × 6; element-wise complex
+  sum; geometric apparent power (DEC-PWR-002).
+- **C. UI/UX workflow** — three-phase set picker; context-grouped automatic detection;
+  six-channel manual fallback.
+- **D. Edge cases and safeguards** — incomplete sets, line-to-line exclusion, cross-source,
+  CT polarity, unit conversion, long recordings.
+- **E. Phased implementation plan** — Slice E-1 (set resolver), E-2 (evaluation engine),
+  E-3 (frontend UI).
+- **F. Verification strategy** — closed-form golden vectors; consistency checks;
+  scalar `three_phase_power()` agreement.
+- **G. Decisions requiring owner approval** — operation model, apparent power definition,
+  API schema, voltage reference confirmation.
+
+Supplemental investigation (2026-11-01) covers: voltage reference detection mechanism
+(reuse of `voltage_reference.py`; proposed `LINE_TO_GROUND`/uncertain confirmation gate),
+and apparent power definition comparison (vector vs IEEE 1459 arithmetic vs effective).
+
+Supplemental investigation correction (2026-11-01, owner review): four engineering errors
+corrected — (1) S_e formula factor (`3 × V_e × I_e`, not `sqrt(3)`); (2) IEEE 1459
+recommendation and thermal-loading claim overstated; (3) fundamental vector apparent power
+terminology clarified; (4) artificial-neutral reconstruction V_AN' = (V_AB − V_CA)/3 is
+exact for three-wire systems, not approximate — four-wire distinction added. Backend service
+validation added as authoritative enforcement layer for voltage-reference gate. L1/L2/L3
+grammar expansion deferred pending impact assessment on existing consumers.
+
+### First-slice scope (confirmed by owner, 2026-11-01)
+
+- Three-phase **active power** (P = Re(S_total))
+- Three-phase **reactive power** (Q = Im(S_total))
+- Three-phase **fundamental vector apparent power** (|S_total| = √(P²+Q²), DEC-PWR-002)
+- Complete six-channel selection (3V + 3I, fixed phase order R/Y/B)
+- Manual fallback (six independent channel dropdowns)
+- Balanced and unbalanced numerical verification
+
+Not in first slice: IEEE 1459 arithmetic S_A, effective S_e, balanced estimation from one
+phase, line-to-line voltage support, atomic three-channel group creation.
+
+### Outstanding decisions requiring owner approval
+
+See Phase E investigation report deliverable G and the corrected supplemental investigation.
+
+- **DEC-208-A (apparent power)**: Fundamental vector apparent power only for Slice E-1
+  (DEC-PWR-002). IEEE 1459 arithmetic S_A and effective S_e as future separate operations.
+  First-slice scope confirmed by owner.
+- **DEC-208-B (operation model)**: One-at-a-time create calls (existing pattern) vs atomic
+  three-channel group. Recommendation: one-at-a-time with "Create All Three" UI shortcut
+  in Slice E-1; atomic group deferred.
+- **DEC-208-C (API schema)**: Three-phase sets added to existing `GET /vi-pairs` endpoint
+  vs new endpoint. Recommendation: extend existing endpoint.
+- **DEC-208-D (voltage reference gate)**: Confirmed architecture — (1) LINE_TO_GROUND
+  confident: auto-proceed; (2) LINE_TO_LINE: reject at backend service layer; (3) UNKNOWN
+  or CONFLICTING: require `voltage_reference_confirmed: true` in create request, enforced
+  at backend service layer (frontend checkbox enables Create button; backend validates
+  independently). Name-based detection is engineering evidence, not proof of actual VT
+  wiring. Owner approval of gate mechanism requested before Slice E-2 implementation.
+- **DEC-208-E (L1/L2/L3 grammar)**: Do not expand `voltage_reference.py` token sets
+  without impact assessment on per-unit and all other existing consumers. Pending assessment.

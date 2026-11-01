@@ -36,6 +36,7 @@ sorted by the same key.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 from app.domain.channel_engineering_identity import (
@@ -44,6 +45,7 @@ from app.domain.channel_engineering_identity import (
     resolve_channel_engineering_identity,
 )
 from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE
+from app.domain.voltage_reference import detect_voltage_reference
 
 # Reason codes for candidates_needing_confirmation.  Listed in priority
 # order — when multiple reasons apply to a single key, the first one in
@@ -306,4 +308,241 @@ def find_vi_pairs(channels: list[ChannelPairingInput]) -> VIPairResolution:
     return VIPairResolution(
         automatic_pairs=automatic_pairs,
         candidates_needing_confirmation=candidates,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Three-phase V-I set resolution (Phase E-1, DEC-208)
+# ---------------------------------------------------------------------------
+
+THREE_PHASE_CONV_RYB  = "RYB"
+THREE_PHASE_CONV_ABC  = "ABC"
+THREE_PHASE_CONV_L123 = "L123"
+
+INCOMPLETE_REASON_MISSING_PHASES       = "missing_phases"
+INCOMPLETE_REASON_PHASES_NEED_CONFIRM  = "phases_need_confirmation"
+INCOMPLETE_REASON_AMBIGUOUS_CONVENTION = "ambiguous_convention"
+
+MISSING_REASON_NOT_FOUND          = "not_found"
+MISSING_REASON_NEEDS_CONFIRMATION = "needs_confirmation"
+
+# Phase tokens that exclusively indicate a specific convention.
+# The "B" token is shared between RYB and ABC — it is deliberately absent
+# from all exclusive sets so a B-only group is treated as ambiguous.
+_RYB_EXCLUSIVE  = frozenset({"R", "Y"})
+_ABC_EXCLUSIVE  = frozenset({"A", "C"})
+_L123_EXCLUSIVE = frozenset({"L1", "L2", "L3"})
+
+# All three tokens required for a complete set, in fixed phase order.
+_REQUIRED: dict[str, tuple[str, str, str]] = {
+    THREE_PHASE_CONV_RYB:  ("R", "Y", "B"),
+    THREE_PHASE_CONV_ABC:  ("A", "B", "C"),
+    THREE_PHASE_CONV_L123: ("L1", "L2", "L3"),
+}
+
+# Exclusive tokens of OTHER conventions; any of these block a confident
+# complete-set extraction (mixed-convention group → ambiguous).
+_BLOCKERS: dict[str, frozenset[str]] = {
+    THREE_PHASE_CONV_RYB:  _ABC_EXCLUSIVE | _L123_EXCLUSIVE,
+    THREE_PHASE_CONV_ABC:  _RYB_EXCLUSIVE | _L123_EXCLUSIVE,
+    THREE_PHASE_CONV_L123: _RYB_EXCLUSIVE | _ABC_EXCLUSIVE,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class MissingPhaseInfo:
+    """Why one expected phase token is absent from a three-phase group."""
+
+    phase_token: str
+    reason: str  # MISSING_REASON_*
+
+
+@dataclass(frozen=True, slots=True)
+class ThreePhaseAutomaticSet:
+    """A complete, deterministically matched three-phase V-I measurement set."""
+
+    set_id: str
+    source_id: str
+    context_hint: str | None
+    phase_convention: str               # THREE_PHASE_CONV_*
+    phase_1: MatchedVIPair              # R | A | L1
+    phase_2: MatchedVIPair              # Y | B | L2
+    phase_3: MatchedVIPair              # B | C | L3
+    voltage_reference: str | None       # LINE_TO_GROUND / LINE_TO_LINE / None
+    voltage_reference_reason: str
+    voltage_reference_evidence_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ThreePhaseIncompleteSet:
+    """Partial or ambiguous three-phase group — not yet actionable."""
+
+    source_id: str
+    context_hint: str | None
+    phase_convention: str | None        # None when ambiguous
+    incomplete_reason: str              # INCOMPLETE_REASON_*
+    present_pairs: tuple[MatchedVIPair, ...]
+    missing_phases: tuple[MissingPhaseInfo, ...]
+
+
+@dataclass
+class ThreePhaseVISetResolution:
+    """Output of find_three_phase_vi_sets()."""
+
+    complete_sets: list[ThreePhaseAutomaticSet]
+    incomplete_sets: list[ThreePhaseIncompleteSet]
+    single_phase_pairs: VIPairResolution
+
+
+def _make_set_id(context_hint: str | None, source_id: str, convention: str) -> str:
+    key = f"{context_hint or ''}:{source_id}:{convention}"
+    digest = hashlib.sha256(key.encode()).hexdigest()[:12]
+    return f"3ph:{digest}"
+
+
+def _infer_convention(tokens: frozenset[str]) -> str | None:
+    """Return the convention inferred from exclusive token evidence, or None if ambiguous."""
+    indicators: list[str] = []
+    if _RYB_EXCLUSIVE & tokens:
+        indicators.append(THREE_PHASE_CONV_RYB)
+    if _ABC_EXCLUSIVE & tokens:
+        indicators.append(THREE_PHASE_CONV_ABC)
+    if _L123_EXCLUSIVE & tokens:
+        indicators.append(THREE_PHASE_CONV_L123)
+    return indicators[0] if len(indicators) == 1 else None
+
+
+def _build_missing_phases(
+    context_hint: str | None,
+    source_id: str,
+    missing_tokens: frozenset[str],
+    candidate_index: dict[tuple, list[VIPairCandidate]],
+) -> list[MissingPhaseInfo]:
+    """Build per-phase missing info, checking source-specific candidate presence."""
+    result = []
+    for token in sorted(missing_tokens):
+        key = (context_hint, token)
+        candidates = candidate_index.get(key, [])
+        has_source_candidate = any(
+            any(vr.source_id == source_id for vr in c.voltage_refs)
+            and any(cr.source_id == source_id for cr in c.current_refs)
+            for c in candidates
+        )
+        reason = (
+            MISSING_REASON_NEEDS_CONFIRMATION
+            if has_source_candidate
+            else MISSING_REASON_NOT_FOUND
+        )
+        result.append(MissingPhaseInfo(phase_token=token, reason=reason))
+    return result
+
+
+def _incomplete_reason_code(missing_phases: list[MissingPhaseInfo]) -> str:
+    if any(mp.reason == MISSING_REASON_NEEDS_CONFIRMATION for mp in missing_phases):
+        return INCOMPLETE_REASON_PHASES_NEED_CONFIRM
+    return INCOMPLETE_REASON_MISSING_PHASES
+
+
+def find_three_phase_vi_sets(
+    channels: list[ChannelPairingInput],
+) -> ThreePhaseVISetResolution:
+    """Identify complete and incomplete three-phase V-I measurement sets.
+
+    Calls find_vi_pairs() for single-phase resolution, then groups the
+    automatic pairs by (context_hint, source_id).  Null-context groups
+    are included when all pairs are individually auto-resolved from the
+    same source (DEC-206 null-context exclusion applies only to
+    candidates, not automatic pairs).
+
+    The single_phase_pairs field carries the unmodified VIPairResolution
+    — existing single-phase behaviour is entirely preserved.
+    """
+    pair_resolution = find_vi_pairs(channels)
+
+    # Build candidate index keyed by (context_hint, phase_token) — O(N) once,
+    # O(1) per missing-phase lookup with source_id filtering.
+    candidate_index: dict[tuple, list[VIPairCandidate]] = {}
+    for cand in pair_resolution.candidates_needing_confirmation:
+        k = (cand.context_hint, cand.phase_token)
+        candidate_index.setdefault(k, []).append(cand)
+
+    # Group automatic pairs by (context_hint, source_id).
+    groups: dict[tuple, list[MatchedVIPair]] = {}
+    for pair in pair_resolution.automatic_pairs:
+        gk = (pair.context_hint, pair.source_id)
+        groups.setdefault(gk, []).append(pair)
+
+    complete_sets: list[ThreePhaseAutomaticSet] = []
+    incomplete_sets: list[ThreePhaseIncompleteSet] = []
+
+    for (context_hint, source_id), group_pairs in groups.items():
+        tokens: frozenset[str] = frozenset(p.phase_token for p in group_pairs)
+        pair_by_token: dict[str, MatchedVIPair] = {p.phase_token: p for p in group_pairs}
+
+        extracted_conv: str | None = None
+
+        if len(group_pairs) >= 3:
+            for conv, (t1, t2, t3) in _REQUIRED.items():
+                required = frozenset((t1, t2, t3))
+                if required <= tokens and not (_BLOCKERS[conv] & tokens):
+                    ph1, ph2, ph3 = pair_by_token[t1], pair_by_token[t2], pair_by_token[t3]
+                    det = detect_voltage_reference([
+                        ph1.voltage_channel_name,
+                        ph2.voltage_channel_name,
+                        ph3.voltage_channel_name,
+                    ])
+                    complete_sets.append(ThreePhaseAutomaticSet(
+                        set_id=_make_set_id(context_hint, source_id, conv),
+                        source_id=source_id,
+                        context_hint=context_hint,
+                        phase_convention=conv,
+                        phase_1=ph1,
+                        phase_2=ph2,
+                        phase_3=ph3,
+                        voltage_reference=det.reference,
+                        voltage_reference_reason=det.reason,
+                        voltage_reference_evidence_names=tuple(det.evidence_names),
+                    ))
+                    extracted_conv = conv
+                    break  # At most one convention satisfies both conditions.
+
+        if extracted_conv is not None:
+            # Extra pairs beyond the 3-phase set remain in single_phase_pairs only.
+            continue
+
+        # Incomplete set — determine convention and missing-phase details.
+        conv = _infer_convention(tokens)
+        if conv is not None:
+            required_set: frozenset[str] = frozenset(_REQUIRED[conv])
+            missing = _build_missing_phases(
+                context_hint, source_id,
+                required_set - tokens,
+                candidate_index,
+            )
+            reason = _incomplete_reason_code(missing)
+            incomplete_sets.append(ThreePhaseIncompleteSet(
+                source_id=source_id,
+                context_hint=context_hint,
+                phase_convention=conv,
+                incomplete_reason=reason,
+                present_pairs=tuple(sorted(group_pairs, key=lambda p: p.phase_token)),
+                missing_phases=tuple(missing),
+            ))
+        else:
+            incomplete_sets.append(ThreePhaseIncompleteSet(
+                source_id=source_id,
+                context_hint=context_hint,
+                phase_convention=None,
+                incomplete_reason=INCOMPLETE_REASON_AMBIGUOUS_CONVENTION,
+                present_pairs=tuple(sorted(group_pairs, key=lambda p: p.phase_token)),
+                missing_phases=(),
+            ))
+
+    complete_sets.sort(key=lambda s: (s.context_hint or "", s.source_id, s.phase_convention))
+    incomplete_sets.sort(key=lambda s: (s.context_hint or "", s.source_id, s.phase_convention or ""))
+
+    return ThreePhaseVISetResolution(
+        complete_sets=complete_sets,
+        incomplete_sets=incomplete_sets,
+        single_phase_pairs=pair_resolution,
     )
