@@ -4,9 +4,98 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-01** (Phase E-2C three-phase power API integration committed on
-`feature/calculator-vi-phasors` — 38 API tests, 210 targeted + full backend regression clean.
-Not yet pushed; E-3 not started.)
+Last updated: **2026-11-01** (Phase E-3B three-phase power frontend committed on
+`feature/calculator-vi-phasors` — 28 browser tests, 20 regression tests clean.
+Not yet pushed. Pending owner UAT.)
+
+## Phase E-3B: Three-Phase Power Frontend (DEC-208) — 2026-11-01
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.
+Pending owner UAT.**
+
+Implements the three-phase power calculated-channel frontend in `frontend/index.html`,
+building on the E-2B service layer and E-2C API schema already committed.
+
+### What was implemented
+
+**`wwCcRenderThreePhasePowerFields(fieldsEl)` — complete three-phase builder UI:**
+
+- **Set picker mode**: `#wwCcThreePhaseSetSelect` — a `<select>` with a "Complete Sets"
+  optgroup (populated from `/vi-pairs` `three_phase_complete_sets`) and a "Manual" optgroup
+  (`__manual__`). Shown while no set is selected or after clicking "Change".
+- **Locked summary mode**: Three-row phase display (Phase A/B/C or L1/L2/L3) with
+  channel names (e.g. VA·IA) and a "Change" button (`#wwCcThreePhaseChangeBtn`).
+  Shown after selecting a complete set from the picker.
+- **Voltage-reference confirmation block**: Shown when `voltage_reference_confirmation_required`
+  is true (e.g. VL1/VL2/VL3 — unknown reference). Contains `#wwCcVoltRefConfirm` checkbox
+  ("I confirm these voltages are phase-to-neutral (line-to-ground) references.").
+  Create is disabled until checked.
+- **L-L blocked state**: Shown when `voltage_reference === "line_to_line"`. Non-bypassable;
+  user must select different channels.
+- **Manual six-channel mode**: Six phase dropdowns (V1/I1/V2/I2/V3/I3) shown when
+  `__manual__` is selected. Two confirmation checkboxes gate Create:
+  - `#wwCcVoltRefConfirm`: "I confirm all voltage channels are phase-to-neutral (line-to-ground) references."
+  - `#wwCcPhasePairConfirm`: "I confirm the voltage and current channels are correctly paired by phase (V1↔I1, V2↔I2, V3↔I3)."
+- **Incomplete-set notice** (`.ww-cc-pair-notice`): Shown above manual dropdowns when no
+  complete sets exist but incomplete sets are detected. Shows missing phase(s).
+- **Operation card section labels**: "SINGLE-PHASE POWER" and "THREE-PHASE POWER" section
+  headers separate the card groups in the operation picker.
+- **Source-removal invalidation**: `wwCcPairingInvalidate()` (existing Phase D hook) clears
+  all three-phase state on any workspace source-list change. `wwCcPairingFetch()` also
+  re-validates `selectedThreePhaseSetId` against fresh API data.
+- **Output fields**: Auto-suggested names (P₃, Q₃, |S₃|), units (MW/Mvar/MVA), and formula
+  display (`Result = Re(Σ Vₖ × conj(Iₖ)) / 1e6 [MW]` etc.).
+
+**State variables added to `wwCcPairing`:**
+- `selectedThreePhaseSetId` — selected complete set ID or `"__manual__"` or null
+- `isEditingThreePhase` — true while in picker mode after previously selecting a set
+
+**State variables added to `wwCcBuilder`:**
+- `voltageReferenceConfirmed` — tracks `#wwCcVoltRefConfirm` checkbox
+- `phasePairingConfirmed` — tracks `#wwCcPhasePairConfirm` checkbox
+
+### Test coverage (28 browser tests — `browser-tests/three-phase-power.spec.js`)
+
+| Category | Tests |
+|---|---|
+| Section label cards (Single-Phase / Three-Phase headings) | 2 |
+| Automatic set detection (L-G fixture) | 6 |
+| Create all three operations (L-G fixture) | 3 |
+| Manual selection (dropdowns, groups, confirmations) | 6 |
+| Confirmation flag resets (manual input change, set re-select) | 2 |
+| Incomplete set notice | 3 |
+| Single-phase regression | 1 |
+| Unknown voltage reference (VL1/VL2/VL3) | 3 |
+| Source-removal invalidation | 1 |
+| L-L manual mode backend rejection | 1 |
+| **Total** | **28** |
+
+Phase D + single-phase regression (`calculated-channel-power.spec.js`): **20/20 passed**.
+
+### Files changed in this commit
+- `frontend/index.html` — three-phase builder fields, confirmation blocks, section labels,
+  auto-name/unit/formula logic, event handlers for three-phase drawer interaction
+- `browser-tests/three-phase-power.spec.js` — new, 28 browser tests
+- `docs/project-memory/DECISIONS.md` — E-3B status updated; DEC-208-N/O/P recorded
+- `docs/project-memory/HANDOFF.md` — this update
+
+### Branch state
+`feature/calculator-vi-phasors` — 5 commits ahead of origin/main after this commit.
+**Unrelated untracked files preserved:** `.audit/`, `.slice1-evidence/`, `test-results/`,
+`browser-tests/e3b-screenshots.spec.js`.
+
+### Outstanding work for next session
+
+| Item | Work required |
+|------|---------------|
+| Owner UAT | Three-phase power frontend hands-on verification (DEC-208-N pending UAT) |
+| "Create All Three" shortcut | Deferred per DEC-208-B / DEC-208-P (atomic group not in E-3B) |
+| IEEE 1459 / S_e apparent power | Deferred per DEC-208-A (future separate operation) |
+| L-L voltage support | Deferred per DEC-208 scope (separate investigation) |
+| DEC-208-E (L1/L2/L3 grammar) | Impact assessment on per-unit consumers pending |
+| Push & deploy | `feature/calculator-vi-phasors` not yet pushed |
+
+---
 
 ## Phase E-2C: Three-Phase Power API Integration (DEC-208) — 2026-11-01
 

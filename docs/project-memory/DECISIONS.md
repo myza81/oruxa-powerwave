@@ -28999,7 +28999,7 @@ validation of `THREE_PHASE_POWER_OPERATIONS`.
 | E-2A | (Part of E-1 commit) VI measurement-set resolution, `THREE_PHASE_POWER_OPERATIONS` | **Complete** — committed ff8a0a7 |
 | E-2B | Service integration — `create_calculated_channel()` validation (voltage-reference gate, phase identity, source identity safety), 43 service tests, full backend regression | **Complete** — committed (this commit) |
 | E-2C | API schema — `GET /vi-pairs` extended backward-compatibly; `CalculatedChannelCreateRequest` extended with 3 new ops and 2 confirmation flags; 5 new error codes mapped; 38 API integration tests | **Complete** — committed (this commit) |
-| E-3 | Frontend UI — three-phase set picker, `voltage_reference_confirmed` checkbox, `phase_pairing_confirmed` override | **Not started** |
+| E-3B | Frontend UI — three-phase set picker, locked summary, manual six-channel selection, `voltage_reference_confirmed` confirmation block, `phase_pairing_confirmed` checkbox, source-removal invalidation, incomplete-set notice, 28 browser tests | **Complete** — pending owner UAT (2026-11-01) |
 
 Note (TestDD test-count): the Phase E-2B source-identity safety report referenced "8 test
 methods" in TestDD; the actual implementation has 7 test methods. The report text was a
@@ -29026,3 +29026,31 @@ These decisions were made during Phase E-2C (three-phase power API integration).
   three-phase selection requires the engineer to assemble the 6-channel input
   manually and supply `phase_pairing_confirmed=true`, subject to the E-2B
   multi-source guard. Owner confirmed same-source scope retained 2026-11-01.
+
+### Phase E-3B implementation decisions (2026-11-01)
+
+These decisions were made and implemented during Phase E-3B (three-phase power frontend).
+
+- **DEC-208-N (three-phase UI model — set picker + locked summary)**: The three-phase
+  builder uses a two-state UI: (1) picker mode — a `<select>` (`#wwCcThreePhaseSetSelect`)
+  with a "Complete Sets" optgroup (auto-detected sets) and a "Manual" optgroup
+  (`__manual__`); (2) locked-summary mode — a compact three-row phase display with a
+  "Change" button (`#wwCcThreePhaseChangeBtn`) that returns to picker. Selecting `__manual__`
+  shows six phase channel dropdowns (V1/I1/V2/I2/V3/I3) directly. This is consistent with
+  the Phase D single-phase hybrid pair picker (DEC-207) and the one-at-a-time creation
+  model (DEC-208-B). Pending owner UAT 2026-11-01.
+
+- **DEC-208-O (source-removal invalidation — three-phase state)**: When the workspace
+  source list changes (source upload, removal, or workspace reset), `wwCcPairingInvalidate()`
+  clears `selectedThreePhaseSetId`, `isEditingThreePhase`, `voltageReferenceConfirmed`, and
+  `phasePairingConfirmed` immediately. `wwCcPairingFetch()` also validates `selectedThreePhaseSetId`
+  against the fresh API response and clears it if the set is no longer present. Implemented
+  via the existing Phase D invalidation hook (same `wwCcPairingInvalidate()` call site in
+  `wwRenderWorkspaceRecordings()`). Browser-tested (test 27 of 28).
+
+- **DEC-208-P (three-phase operation model — one-at-a-time create, DEC-208-B confirmed)**:
+  The three separate power operations (active, reactive, apparent) each require a separate
+  "Create Channel" click via the standard `wwCcCreateChannel()` flow. No "Create All Three"
+  shortcut is implemented in E-3B. This is consistent with DEC-208-B (one-at-a-time
+  recommended for Slice E-1; atomic group deferred). Browser-tested: tests 7–9 of 28
+  (each creates one channel in a fresh fixture upload).
