@@ -215,8 +215,8 @@ test.describe("Three-Phase Power: automatic set detection (L-G fixture)", () => 
     await waitForSetPicker(page);
     await selectFirstCompleteSet(page);
 
-    // Three phase pair rows should be visible in the summary.
-    const pairRows = await page.locator(".ww-cc-phase-pair-row").count();
+    // Three phase pair rows: one phase cell per pair in the table grid.
+    const pairRows = await page.locator(".ww-cc-3p-phase-cell").count();
     expect(pairRows).toBe(3);
   });
 
