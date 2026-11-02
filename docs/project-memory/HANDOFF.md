@@ -4,8 +4,58 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-02** (Phase E-3B UI/UX continued — table-grid locked summary,
-shared name helper, text-overflow Output Name. Not yet pushed. Pending owner UAT.)
+Last updated: **2026-11-02** (DEC-208 three-phase power notation P₃ₚₕ/Q₃ₚₕ/|S₃ₚₕ| —
+committed `02b1a68`, pushed to origin, pending DEV deployment.)
+
+## Three-Phase Power Notation — P₃ₚₕ/Q₃ₚₕ/|S₃ₚₕ| (DEC-208) — 2026-11-02 (session 3)
+
+**Status: PUSHED to `origin/feature/calculator-vi-phasors` (commit `02b1a68`).
+DEV deployment trigger is PENDING — owner action required (see below).**
+
+### What changed (commit `02b1a68`)
+
+1. **`WW_POWER_DISPLAY_GLYPHS` added to `frontend/index.html`** — a new map
+   parallel to `WW_POWER_COMPACT_GLYPHS` that holds the display-only glyph.
+   Three-phase: `P₃ₚₕ`, `Q₃ₚₕ`, `|S₃ₚₕ|`. Single-phase: unchanged (`P`, `Q`, `|S|`).
+2. **`wwPowerCompactLabel` updated** — uses `displayGlyph` (from `WW_POWER_DISPLAY_GLYPHS`)
+   for the `raw` string and collision comparison. Canonical name generation
+   (`wwCcPowerCanonicalName` → `WW_POWER_COMPACT_GLYPHS`) is **untouched**.
+3. **Browser tests updated** — compact-label and three-phase spec assertions updated to
+   `P₃ₚₕ`/`Q₃ₚₕ`/`|S₃ₚₕ|`. 38/38 pass.
+4. **Python static tests updated** — collision-formula/raw-label assertions updated;
+   four new `WW_POWER_DISPLAY_GLYPHS` tests added. 29/29 pass.
+
+Screenshot verified — all three rows in the CC manager render correctly:
+`P₃ₚₕ · SYNTH_3P_LG · VA`, `Q₃ₚₕ · SYNTH_3P_LG · VA`, `|S₃ₚₕ| · SYNTH_3P_LG · VA`.
+
+### Remaining open item — DEV deployment
+
+To deploy `02b1a68` to DEV, trigger **"Deploy Powerwave"** workflow manually:
+
+**Option A — GitHub UI:**
+https://github.com/myza81/oruxa-powerwave/actions/workflows/deploy.yml
+→ "Run workflow" → Branch: `feature/calculator-vi-phasors` → Target: `dev`
+
+**Option B — `gh` CLI (if available):**
+```
+gh workflow run deploy.yml --ref feature/calculator-vi-phasors --field target=dev
+```
+
+**Option C — curl (needs a PAT with `workflow` scope):**
+```
+curl -X POST \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/myza81/oruxa-powerwave/actions/workflows/deploy.yml/dispatches \
+  -d '{"ref":"feature/calculator-vi-phasors","inputs":{"target":"dev"}}'
+```
+
+### Branch state
+`feature/calculator-vi-phasors` — 4 commits ahead of `origin/main`.
+**Unrelated untracked files preserved:** `.audit/`, `.slice1-evidence/`, `test-results/`,
+`browser-tests/compact-label-screenshots.spec.js`, `browser-tests/e3b-screenshots.spec.js`.
+
+---
 
 ## Phase E-3B UI/UX Continued (DEC-208) — 2026-11-02 (session 2)
 
