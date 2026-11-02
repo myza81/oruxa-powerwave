@@ -28999,7 +28999,7 @@ validation of `THREE_PHASE_POWER_OPERATIONS`.
 | E-2A | (Part of E-1 commit) VI measurement-set resolution, `THREE_PHASE_POWER_OPERATIONS` | **Complete** — committed ff8a0a7 |
 | E-2B | Service integration — `create_calculated_channel()` validation (voltage-reference gate, phase identity, source identity safety), 43 service tests, full backend regression | **Complete** — committed (this commit) |
 | E-2C | API schema — `GET /vi-pairs` extended backward-compatibly; `CalculatedChannelCreateRequest` extended with 3 new ops and 2 confirmation flags; 5 new error codes mapped; 38 API integration tests | **Complete** — committed (this commit) |
-| E-3B | Frontend UI — three-phase set picker, locked summary, manual six-channel selection, `voltage_reference_confirmed` confirmation block, `phase_pairing_confirmed` checkbox, source-removal invalidation, incomplete-set notice, 28 browser tests | **Complete** — pending owner UAT (2026-11-01) |
+| E-3B | Frontend UI — three-phase set picker, locked summary, manual six-channel selection, `voltage_reference_confirmed` confirmation block, `phase_pairing_confirmed` checkbox, source-removal invalidation, incomplete-set notice, 28 browser tests | **Complete — UAT PASSED 2026-11-02** |
 
 Note (TestDD test-count): the Phase E-2B source-identity safety report referenced "8 test
 methods" in TestDD; the actual implementation has 7 test methods. The report text was a
@@ -29038,7 +29038,7 @@ These decisions were made and implemented during Phase E-3B (three-phase power f
   "Change" button (`#wwCcThreePhaseChangeBtn`) that returns to picker. Selecting `__manual__`
   shows six phase channel dropdowns (V1/I1/V2/I2/V3/I3) directly. This is consistent with
   the Phase D single-phase hybrid pair picker (DEC-207) and the one-at-a-time creation
-  model (DEC-208-B). Pending owner UAT 2026-11-01.
+  model (DEC-208-B). **Confirmed — UAT PASSED 2026-11-02.**
 
 - **DEC-208-O (source-removal invalidation — three-phase state)**: When the workspace
   source list changes (source upload, removal, or workspace reset), `wwCcPairingInvalidate()`
@@ -29054,3 +29054,12 @@ These decisions were made and implemented during Phase E-3B (three-phase power f
   shortcut is implemented in E-3B. This is consistent with DEC-208-B (one-at-a-time
   recommended for Slice E-1; atomic group deferred). Browser-tested: tests 7–9 of 28
   (each creates one channel in a fresh fixture upload).
+
+- **DEC-208-Q (three-phase display notation — P₃ₚₕ/Q₃ₚₕ/|S₃ₚₕ|)**: The compact label
+  for three-phase power channels uses `P₃ₚₕ`, `Q₃ₚₕ`, `|S₃ₚₕ|` as the display glyph —
+  the full subscript "3ph" rendered as Unicode characters ₃ (U+2083), ₚ (U+209A),
+  ₕ (U+2095). A separate `WW_POWER_DISPLAY_GLYPHS` map (added in `frontend/index.html`)
+  holds the display-only glyphs. `WW_POWER_COMPACT_GLYPHS` (holding `P₃`, `Q₃`, `|S₃|`)
+  is unchanged and remains the sole source for canonical stored channel names — stored
+  names continue to read `P₃ (VA, IA, VB, IB, VC, IC)` etc. Single-phase display labels
+  (`P`, `Q`, `|S|`) are unchanged. Implemented in commit `02b1a68`; UAT PASSED 2026-11-02.

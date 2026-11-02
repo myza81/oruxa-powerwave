@@ -215,8 +215,8 @@ test.describe("Three-Phase Power: automatic set detection (L-G fixture)", () => 
     await waitForSetPicker(page);
     await selectFirstCompleteSet(page);
 
-    // Three phase pair rows should be visible in the summary.
-    const pairRows = await page.locator(".ww-cc-phase-pair-row").count();
+    // Three phase pair rows: one phase cell per pair in the table grid.
+    const pairRows = await page.locator(".ww-cc-3p-phase-cell").count();
     expect(pairRows).toBe(3);
   });
 
@@ -272,8 +272,8 @@ test.describe("Three-Phase Power: create all three operations (L-G fixture)", ()
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    // Auto-suggested name contains P₃.
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃");
+    // Compact label contains P₃ₚₕ (display notation).
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃ₚₕ");
   });
 
   test("create Reactive Power (3φ): output unit Mvar, channel in list", async ({ page }) => {
@@ -287,7 +287,7 @@ test.describe("Three-Phase Power: create all three operations (L-G fixture)", ()
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("Q₃");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("Q₃ₚₕ");
   });
 
   test("create Apparent Power (3φ): output unit MVA, channel in list", async ({ page }) => {
@@ -301,7 +301,7 @@ test.describe("Three-Phase Power: create all three operations (L-G fixture)", ()
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("|S₃|");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("|S₃ₚₕ|");
   });
 });
 
@@ -411,7 +411,7 @@ test.describe("Three-Phase Power: manual selection", () => {
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃ₚₕ");
   });
 });
 
@@ -541,7 +541,12 @@ test.describe("Single-phase power regression (Phase A, same fixture)", () => {
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(ccRow(page, "P \\(VA, IA\\)")).toBeVisible();
+    // Compact label (DEC-202/208): "P · <source> · VA" is shown instead of the
+    // canonical "P (VA, IA)" when the compact label guard passes.
+    const nameEl = page.locator(".ww-cc-list-row-name").first();
+    await expect(nameEl).toBeVisible({ timeout: 5000 });
+    const nameText = await nameEl.textContent();
+    expect(nameText).toMatch(/P\s*·\s*SYNTH_3P_LG\s*·\s*VA/);
   });
 });
 
@@ -677,7 +682,7 @@ test.describe("Three-Phase Power: voltage-reference confirmation (unknown refere
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
     // Channel should now be listed.
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃ₚₕ");
   });
 });
 
