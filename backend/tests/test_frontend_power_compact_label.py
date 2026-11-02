@@ -1,0 +1,353 @@
+"""Static regression checks for the power-channel compact label feature
+(DEC-208 / DEC-202 display improvement).
+
+wwPowerCompactLabel() returns a plain-text compact label for single- and
+three-phase power calculated channels (e.g. "P₃ · PMJY1 · IBT1 HV VA"),
+or null when no compact label is appropriate (multi-source, missing
+inventory, collision, non-power operation, user alias).
+
+All callers (wwCalculatedChannelDisplayText, wwCalculatedChannelNameHtml,
+wwCalculatedChannelNamePlotly) are verified to call the helper and follow
+the same priority order: user alias → compact power label → L-L notation →
+canonical name.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
+
+
+def _source() -> str:
+    return FRONTEND.read_text(encoding="utf-8")
+
+
+def _function_body(source: str, signature: str, next_signature: str) -> str:
+    start = source.index(signature)
+    end = source.index(next_signature, start)
+    return source[start:end]
+
+
+# ------------------------------------------------------------------
+# WW_POWER_COMPACT_GLYPHS — six power operations, no (t)
+# ------------------------------------------------------------------
+
+
+def test_compact_glyphs_defined_for_all_six_power_operations():
+    source = _source()
+    body = _function_body(source, "const WW_POWER_COMPACT_GLYPHS = {", "// Returns a plain-text compact label")
+    for key in ("active_power", "reactive_power", "apparent_power",
+                "three_phase_active_power", "three_phase_reactive_power", "three_phase_apparent_power"):
+        assert key + ":" in body, f"WW_POWER_COMPACT_GLYPHS missing key: {key}"
+
+
+def test_compact_glyphs_have_no_parenthetical_t():
+    source = _source()
+    body = _function_body(source, "const WW_POWER_COMPACT_GLYPHS = {", "// Returns a plain-text compact label")
+    assert "(t)" not in body, "compact glyphs must not contain (t) — display-only form"
+
+
+def test_compact_glyphs_single_phase_values():
+    source = _source()
+    body = _function_body(source, "const WW_POWER_COMPACT_GLYPHS = {", "// Returns a plain-text compact label")
+    assert '"P"' in body
+    assert '"Q"' in body
+    assert '"|S|"' in body
+
+
+def test_compact_glyphs_three_phase_values_use_subscript_three():
+    source = _source()
+    body = _function_body(source, "const WW_POWER_COMPACT_GLYPHS = {", "// Returns a plain-text compact label")
+    # U+2083 is the subscript digit 3 (₃); these must appear literally in the source
+    assert "P₃" in body  # P₃
+    assert "Q₃" in body  # Q₃
+    assert "|S₃|" in body  # |S₃|
+
+
+# ------------------------------------------------------------------
+# wwPowerCompactLabel — safety checks
+# ------------------------------------------------------------------
+
+
+def _compact_label_body(source: str) -> str:
+    return _function_body(source, "function wwPowerCompactLabel(calc)", "// Plain-text display name")
+
+
+def test_power_compact_label_guards_null_calc():
+    source = _source()
+    body = _compact_label_body(source)
+    assert "if (!calc) return null;" in body
+
+
+def test_power_compact_label_returns_null_for_non_power_operation():
+    source = _source()
+    body = _compact_label_body(source)
+    assert "const glyph = WW_POWER_COMPACT_GLYPHS[calc.operation];" in body
+    assert "if (!glyph) return null;" in body
+
+
+def test_power_compact_label_guards_missing_first_input():
+    source = _source()
+    body = _compact_label_body(source)
+    assert "v1.kind !== \"source\"" in body
+
+
+def test_power_compact_label_falls_back_for_multi_source():
+    # Owner requirement: do not identify a multi-source power calculation
+    # solely by its voltage recording.
+    source = _source()
+    body = _compact_label_body(source)
+    assert "inp.source_id !== v1.source_id" in body
+    assert "return null;" in body
+
+
+def test_power_compact_label_falls_back_when_inventory_unavailable():
+    # Owner requirement: when source metadata is unavailable, fall back to calc.name.
+    source = _source()
+    body = _compact_label_body(source)
+    assert "ww.sourceChannelInventory.get(calc.reference_source_id)" in body
+    assert "if (!inv) return null;" in body
+
+
+def test_power_compact_label_collision_check_iterates_loaded_calcs():
+    # Owner requirement: collision-safe fallback — two distinguishable channels
+    # must not receive the same compact label.
+    source = _source()
+    body = _compact_label_body(source)
+    assert "for (const [id, other] of ww.calculatedChannels)" in body
+    assert "if (id === calc.id) continue;" in body
+    # When a collision is found, both fall back to calc.name (return null).
+    assert "=== raw) return null;" in body
+
+
+def test_power_compact_label_label_format():
+    # The label must be: glyph + " · " + sourceName + " · " + channelDisplayName
+    source = _source()
+    body = _compact_label_body(source)
+    assert "inv.sourceName" in body
+    assert "wwChannelDisplayName(v1.source_id, v1.channel_name)" in body
+    # Separator is U+00B7 (middle dot) with spaces
+    assert "·" in body  # ·
+
+
+# ------------------------------------------------------------------
+# Caller integration — priority chain
+# ------------------------------------------------------------------
+
+
+def test_display_text_calls_compact_label():
+    # wwCalculatedChannelDisplayText: user alias → compact power label → canonical name
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwCalculatedChannelDisplayText(calc)",
+        "// Calculated-channel name for HTML surfaces.",
+    )
+    assert "wwCalculatedChannelUserName(calc)" in body
+    assert "wwPowerCompactLabel(calc)" in body
+    assert "calc.name" in body
+    # Explicit priority: user alias checked first
+    assert body.index("wwCalculatedChannelUserName") < body.index("wwPowerCompactLabel")
+
+
+def test_name_html_calls_compact_label():
+    # wwCalculatedChannelNameHtml: user alias → compact power label → L-L → canonical name
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwCalculatedChannelNameHtml(calc)",
+        "// Plotly trace-name variant",
+    )
+    assert "wwPowerCompactLabel(calc)" in body
+    assert "if (powerLabel) return escapeHtml(powerLabel);" in body
+    # Must precede L-L check
+    assert body.index("wwPowerCompactLabel") < body.index("wwLineToLineSystemName")
+
+
+def test_name_plotly_calls_compact_label():
+    # wwCalculatedChannelNamePlotly: user alias → compact power label → L-L → canonical name
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwCalculatedChannelNamePlotly(calc)",
+        "// Any analog channel's display name",
+    )
+    assert "wwPowerCompactLabel(calc)" in body
+    assert "if (powerLabel) return powerLabel;" in body
+    # Must precede L-L check
+    assert body.index("wwPowerCompactLabel") < body.index("wwLineToLineSystemName")
+
+
+def test_user_alias_checked_before_compact_label_in_all_callers():
+    source = _source()
+    for sig, next_sig in [
+        ("function wwCalculatedChannelDisplayText(calc)", "// Calculated-channel name for HTML surfaces."),
+        ("function wwCalculatedChannelNameHtml(calc)", "// Plotly trace-name variant"),
+        ("function wwCalculatedChannelNamePlotly(calc)", "// Any analog channel's display name"),
+    ]:
+        body = _function_body(source, sig, next_sig)
+        assert body.index("wwCalculatedChannelUserName") < body.index("wwPowerCompactLabel"), \
+            f"user alias must be checked before compact label in {sig}"
+
+
+# ------------------------------------------------------------------
+# L-L voltage and non-power operations — unchanged behavior
+# ------------------------------------------------------------------
+
+
+def test_ll_voltage_not_handled_by_compact_label():
+    # line_to_line_voltage is not in WW_POWER_COMPACT_GLYPHS; its display
+    # path is unchanged (wwLineToLineSystemName).
+    source = _source()
+    glyph_body = _function_body(source, "const WW_POWER_COMPACT_GLYPHS = {", "// Returns a plain-text compact label")
+    assert "line_to_line_voltage" not in glyph_body
+
+
+def test_ll_path_still_present_in_name_html_after_compact_label_check():
+    source = _source()
+    body = _function_body(source, "function wwCalculatedChannelNameHtml(calc)", "// Plotly trace-name variant")
+    assert "wwLineToLineSystemName(calc)" in body
+    assert "wwLineToLinePairHtml" in body
+
+
+def test_ll_path_still_present_in_name_plotly_after_compact_label_check():
+    source = _source()
+    body = _function_body(source, "function wwCalculatedChannelNamePlotly(calc)", "// Any analog channel's display name")
+    assert "wwLineToLineSystemName(calc)" in body
+    assert "wwLineToLinePairPlotly" in body
+
+
+# ------------------------------------------------------------------
+# CC list summary row — no repeated input names
+# ------------------------------------------------------------------
+
+
+def test_summary_row_no_longer_contains_input_names_html():
+    # Owner requirement: remove repeated input-channel names from the CC
+    # list summary row. Full expression stays in the expression row.
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwRenderCalculatedChannelManagerList()",
+        "function wwRenderCalculatedChannelsPage()",
+    )
+    # The inputNamesHtml variable must no longer be declared in this function.
+    assert "const inputNamesHtml" not in body
+    # The summary row must not join input display names.
+    assert "wwCcInputDisplayNameHtml).join" not in body
+
+
+def test_summary_row_retains_operation_label_and_null_policy():
+    # After removing input names, the summary must still show the operation
+    # label and null-handling policy summary (e.g. "Active Power · Null: Propagate").
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwRenderCalculatedChannelManagerList()",
+        "function wwRenderCalculatedChannelsPage()",
+    )
+    assert "meta ? meta.label : calc.operation" in body
+    assert "wwCcNullPolicySummaryText(calc)" in body
+
+
+def test_expression_row_still_present_for_full_details():
+    # Full expression (all input channel identities) must remain accessible
+    # in the expression row — the owner's requirement for accessible details.
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwRenderCalculatedChannelManagerList()",
+        "function wwRenderCalculatedChannelsPage()",
+    )
+    assert "ww-cc-list-row-expr" in body
+    assert "wwCcExpressionHtmlFor(calc)" in body
+
+
+# ------------------------------------------------------------------
+# Engineering-identity safety — Scenario 1 (different bays)
+# and Scenario 2 (shared voltage, different currents)
+# ------------------------------------------------------------------
+
+
+def test_collision_comparison_formula_is_symmetric():
+    """The formula used to compute the other-calc raw label must be structurally
+    identical to the formula used for the current calc.  If calc A and calc B share
+    the same (glyph, sourceName, first-V-channel), both will detect the collision and
+    return null — no unilateral compact label survives.
+    Covers scenario 1 (same-bay V-channel collision) and scenario 2 (shared V-channel
+    across different feeder-current calcs).
+    """
+    source = _source()
+    body = _compact_label_body(source)
+    # Current-calc raw label formula:
+    assert 'glyph + " · " + inv.sourceName + " · " + wwChannelDisplayName(v1.source_id, v1.channel_name)' in body
+    # Other-calc label formula used in the collision comparison must be identical in
+    # structure (same glyph map, same sourceName lookup, same channel-display call):
+    assert (
+        'WW_POWER_COMPACT_GLYPHS[other.operation] + " · " + oinv.sourceName + " · " + '
+        "wwChannelDisplayName(ov1.source_id, ov1.channel_name)"
+    ) in body
+
+
+def test_raw_label_uses_only_first_voltage_channel_name():
+    """The compact label is built from the FIRST input (voltage channel) only.
+    Two power calcs that share the same first voltage channel but differ in their
+    current channels — e.g. P(VA·IA) and P(VA·IB) — therefore produce the same raw
+    string.  The collision check then detects this and returns null for both,
+    preventing identical compact labels for distinguishable calculated channels.
+    Covers scenario 2 (shared busbar voltage, different feeder currents).
+    """
+    source = _source()
+    body = _compact_label_body(source)
+    # The raw string is built once, from v1 (first input) only.
+    raw_pos = body.index("const raw = ")
+    raw_line_end = body.index("\n", raw_pos)
+    raw_line = body[raw_pos:raw_line_end]
+    # v1 (first input) contributes to the label:
+    assert "v1.source_id" in raw_line
+    assert "v1.channel_name" in raw_line
+    # No second-input channel (v2 / inputs[1]) contributes to the raw label:
+    assert "v2" not in raw_line
+    assert "inputs[1]" not in raw_line
+
+
+def test_different_first_voltage_channels_produce_distinguishable_labels():
+    """Two power calcs from the same recording that use DIFFERENT first voltage
+    channel names (e.g. different bays: Bay1-VA vs Bay2-VA) will produce distinct
+    raw labels.  The collision check will NOT fire; both receive compact labels that
+    distinguish them without falling back to the canonical name.
+    Covers scenario 1 (different bays, unique per-bay voltage channel names).
+    """
+    source = _source()
+    body = _compact_label_body(source)
+    # The raw label is the concatenation of glyph, sourceName, and the DISPLAY NAME
+    # of the first input channel.  A different channel_name in v1 means a different
+    # display-name call argument, hence a different raw string.
+    raw_pos = body.index("const raw = ")
+    raw_line_end = body.index("\n", raw_pos)
+    raw_line = body[raw_pos:raw_line_end]
+    assert "wwChannelDisplayName(v1.source_id, v1.channel_name)" in raw_line
+
+
+def test_user_entered_output_name_suppresses_compact_label():
+    """An autogenerated canonical name always begins with the power glyph followed
+    by ' (' — e.g. 'P (VA, IA)', 'P₃ (VA, VB, VC, IA, IB, IC)'.
+    A user-edited Output Name in the calculator drawer does not start with that
+    prefix.  The guard must return null so calc.name is shown directly, preserving
+    the engineer's intended channel name across all surfaces.
+    """
+    source = _source()
+    body = _compact_label_body(source)
+    # Guard must be present.
+    guard_snippet = 'calc.name.startsWith(glyph + " (")) return null;'
+    assert guard_snippet in body, "user-entered name guard missing from wwPowerCompactLabel"
+    # Guard must appear after the glyph assignment and before the inputs check.
+    glyph_pos = body.index("const glyph = WW_POWER_COMPACT_GLYPHS[calc.operation];")
+    guard_pos = body.index(guard_snippet)
+    v1_pos = body.index("const v1 = ")
+    assert glyph_pos < guard_pos < v1_pos, (
+        "user-entered name guard must come after glyph check and before inputs check"
+    )

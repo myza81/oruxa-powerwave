@@ -379,7 +379,7 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
 // Owner UAT: the operation picker is name-only, compact, two columns with
 // Line-to-Line full width. Cosmetic only -- selection behaviour unchanged.
 test.describe("Calculated Channel operation picker", () => {
-  test("eleven name-only cards; selection and the L-L workflow still work", async ({ page }) => {
+  test("fourteen name-only cards; selection and the L-L workflow still work", async ({ page }) => {
     await uploadFixture(page);
     await page.locator("#mainNavCalculatedChannelsBtn").click();
     await page.locator("#wwCcNewChannelBtn").click();
@@ -390,6 +390,7 @@ test.describe("Calculated Channel operation picker", () => {
       "Reverse Polarity", "Absolute Value", "Multiply by Constant", "RMS",
       "Addition", "Subtraction", "ROCOF", "Line-to-Line Voltage (L-L)",
       "Active Power", "Reactive Power", "Apparent Power",
+      "Active Power (3φ)", "Reactive Power (3φ)", "Apparent Power (3φ)",
     ]);
     await expect(cards.locator("*")).toHaveCount(0); // no description/arity lines
     await expect(page.locator("#wwCcDrawer")).not.toContainText("Define the operation and inputs");
