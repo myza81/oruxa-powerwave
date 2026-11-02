@@ -4,9 +4,51 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-01** (Phase E-3B three-phase power frontend committed on
-`feature/calculator-vi-phasors` — 28 browser tests, 20 regression tests clean.
-Not yet pushed. Pending owner UAT.)
+Last updated: **2026-11-02** (Phase E-3B UI/UX polish + compact-label guard fix
+committed on `feature/calculator-vi-phasors`. Not yet pushed. Pending owner UAT.)
+
+## Phase E-3B UI/UX Polish (DEC-208) — 2026-11-02
+
+**Status: COMMITTED on `feature/calculator-vi-phasors` — not yet pushed, not yet deployed.
+Pending owner UAT.**
+
+### What changed (commit `3ebddf1`)
+
+1. **CSS font fix** — `.ww-cc-phase-pair-row` now uses `0.75rem` (was `var(--text-sm)`,
+   undefined → inherited body size). Row gap 4 px → 6 px for clearer phase separation.
+2. **Locked summary source header** — `selSet.display_label` shown once above the three
+   phase rows (`.ww-cc-phase-source-label`), removing the need for the recording/set
+   context to appear implicitly in every pair row.
+3. **Compact label guard fix** — `wwPowerCompactLabel` replaced the too-broad
+   `startsWith(glyph + " (")` guard with an exact-match reconstruction:
+   `expectedName = glyph + " (" + inputs.map(i => i.channel_name).join(", ") + ")"`.
+   Addresses the edge case where a user-entered name like `"P (custom)"` would have
+   incorrectly received a compact label under the old guard.
+4. **Static test updated** — `test_user_entered_output_name_suppresses_compact_label`
+   updated; new `test_user_name_starting_with_glyph_paren_suppresses_compact_label` added.
+5. **Browser test updated** — single-phase regression in `three-phase-power.spec.js`
+   now checks for compact label form (DEC-202/208 active on this fixture).
+6. **Before/after screenshots** in `test-results/e3b-screenshots/` (6 scenarios).
+
+Test counts: 26 static + 28 three-phase browser + 10 compact-label browser — all pass.
+
+### Branch state
+`feature/calculator-vi-phasors` — 1 commit ahead of `origin/main` (`3ebddf1`).
+**Unrelated untracked files preserved:** `.audit/`, `.slice1-evidence/`, `test-results/`,
+`browser-tests/compact-label-screenshots.spec.js`, `browser-tests/e3b-screenshots.spec.js`.
+
+### Remaining open items (unchanged from E-3B original)
+
+| Item | Work required |
+|------|---------------|
+| Owner UAT | Three-phase power frontend hands-on verification (DEC-208-N pending UAT) |
+| "Create All Three" shortcut | Deferred per DEC-208-B / DEC-208-P |
+| IEEE 1459 / S_e apparent power | Deferred per DEC-208-A |
+| L-L voltage support | Deferred per DEC-208 scope |
+| DEC-208-E (L1/L2/L3 grammar) | Impact assessment on per-unit consumers pending |
+| Push & deploy | Branch not yet pushed |
+
+---
 
 ## Phase E-3B: Three-Phase Power Frontend (DEC-208) — 2026-11-01
 
