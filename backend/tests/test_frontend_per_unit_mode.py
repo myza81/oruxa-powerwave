@@ -55,13 +55,14 @@ def test_apply_unit_mode_refetches_and_regroups():
     body = _function_body(source, "async function wwApplyUnitMode(mode)", "function wwSyncUnitModeControls()")
     assert "if (ww.unitMode === mode) return;" in body
     assert "ww.unitMode = mode;" in body
-    assert "await wwRefetchAllChannelsAcrossGroups();" in body
-    assert "wwRebuildLayout();" in body
-    assert "wwUpdateUnitModeWarningBadge();" in body
-    # A workspace with an already-configured source from an earlier
-    # session must not be mistaken for "none yet" by the auto-open check
-    # -- source configs are fetched BEFORE ww.unitMode itself flips.
-    assert body.index("await wwFetchPerUnitSourceConfigs()") < body.index("ww.unitMode = mode;")
+    assert "await wwRefreshWaveformDisplayBasis();" in body
+    refresh = _function_body(source, "async function wwRefreshWaveformDisplayBasis(", "// ------------------------------------------------------------------\n        // Slice 6")
+    assert "await wwRefetchAllChannelsAcrossGroups(sourceIds);" in refresh
+    assert "wwRebuildLayout();" in refresh
+    assert "wwUpdateUnitModeWarningBadge();" in refresh
+    # PU-005: optional editor metadata cannot delay publication of the latest intent.
+    assert body.index("ww.unitMode = mode;") < body.index("void wwFetchPerUnitSourceConfigs()")
+    assert "modeGeneration !== wwUnitModeGeneration" in refresh
 
 
 def test_panel_group_key_never_mixes_configured_and_base_required():

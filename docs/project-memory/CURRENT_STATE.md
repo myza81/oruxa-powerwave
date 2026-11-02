@@ -9,6 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Per-Unit audit remediation — Slice 2 (2026-11-02, local)
+
+[FACT] PU-005 and PU-008 are corrected. Waveform publishes the latest unit
+choice before optional metadata, invalidates affected cursor measurements on
+mode/base changes, and rejects obsolete workspace/mode/base/time responses.
+Callout/peak readouts share the display-basis invalidation; anchors and cursor
+positions stay fixed. Zoom remains available while current range loads finish.
+Base edits refresh the affected recording and calculated descendants. The
+shared renderer remains state-free (DEC-127); engineering calculations,
+Measurement Group/Source Default policy and Power functionality are unchanged.
+
+[VALIDATION] Final relevant browser suite: **334 passed, zero failures/skips,
+zero retries**, including 26 new cases. Full backend: **10,835 passed, 320
+conditional/platform skips, zero failures/errors**, 21 warnings; all 45 Slice 1
+atomicity cases pass. Original audit and existing untracked evidence preserved.
+No push, merge or deployment. Stop for owner review before any further audit
+slice. Mechanism, reproduction evidence, exact scope and limits:
+[PER_UNIT_AUDIT_SLICE_2.md](PER_UNIT_AUDIT_SLICE_2.md).
+
 ## Phase E — Three-Phase Power Calculated Channels — DEPLOYED & UAT PASSED (2026-11-02)
 
 [FACT] DEV is running `3c5df3a` (branch `feature/calculator-vi-phasors`), deployed 2026-11-02.

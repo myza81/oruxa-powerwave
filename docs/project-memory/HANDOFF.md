@@ -4,8 +4,27 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-02** (Phase E — Three-Phase Power complete. DEV deployment confirmed.
-Owner UAT PASSED. Project-memory updated. PR to main pending creation.)
+Last updated: **2026-11-02** (Per-Unit audit Slice 2 verified locally; stop for owner review.)
+
+## Per-Unit audit Slice 2 — PU-005/PU-008 complete locally
+
+Based on `cc72cc7`; Slice 1 and completed Power work remain intact. Latest
+unit intent is synchronous. Mode/base refreshes invalidate cursor, callout
+and peak values, reject obsolete replies and preserve sample/time identities.
+Zoom/pan superseding a transition is supported without losing the latest plot
+arrays. Configuration edits refresh their source and calculated descendants;
+no engineering calculation or base policy changed. DEC-127's shared renderer
+contract is preserved.
+
+Final selected browser run: **334/334**, zero skips/retries; 26 new browser
+cases. Full backend: **10,835 passed / 320 skipped / zero failures or errors**,
+including the 45 Slice 1 atomicity regressions. Scope, before/after evidence,
+intermediate failures, performance and verification limits are recorded in
+[PER_UNIT_AUDIT_SLICE_2.md](PER_UNIT_AUDIT_SLICE_2.md).
+
+Only Slice 2 code/tests/documentation may be committed. Preserve `.audit/`,
+`.slice1-evidence/`, `test-results/` and both untracked screenshot specs.
+No push, merge or deployment; **do not start Slice 3 without owner approval**.
 
 ## Phase E — Three-Phase Power Complete — UAT PASSED (DEC-208) — 2026-11-02
 

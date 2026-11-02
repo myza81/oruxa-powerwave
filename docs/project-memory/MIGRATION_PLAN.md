@@ -8852,6 +8852,15 @@ separately-approved work.
 
 ## Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit Inheritance (2026-08-25)
 
+**Audit follow-up (2026-11-02, local):** the later Per-Unit audit remediation
+Slice 2 fixes PU-005 unit-intent ordering and PU-008 Waveform cursor/readout
+invalidation, including inherited calculated channels. This is separate from
+the original DEC-050 implementation-slice numbering below. Inheritance,
+conversion and base precedence are unchanged. Final selected browser:
+334/334; full backend: 10,835 passed, 320 conditional/platform skips, zero
+failures/errors. No push/deployment or further audit slice authorized. See
+[PER_UNIT_AUDIT_SLICE_2.md](PER_UNIT_AUDIT_SLICE_2.md).
+
 ### Scope
 
 Implements Slice 7 of the DEC-050 sequence: a calculated channel may
