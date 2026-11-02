@@ -539,7 +539,8 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     const rmsRow = page.locator(".ww-cc-list-row").filter({ hasText: "RMS (KPDN1 VRY" });
     await expect(rmsRow.locator(".ww-cc-list-row-expr")).toHaveText("RMS (KPDN1 VRY, 50 Hz, 1 cycle)");
     await expect(subs(rmsRow.locator(".ww-cc-list-row-expr"))).toHaveText(["RY"]);
-    await expect(subs(rmsRow.locator(".ww-cc-list-row-summary"))).toHaveText(["RY"]);
+    // Summaries contain operation/policy only; the expression retains the input identity.
+    await expect(rmsRow.locator(".ww-cc-list-row-summary")).toHaveText("RMS · Null: Propagate");
     await expect(subs(rmsRow.locator(".ww-cc-list-row-name"))).toHaveCount(0); // "RMS (KPDN1 VRY)" is a stored name
     await expectTrueSubscripts(rmsRow.locator(".ww-electrical-symbol"));
   });

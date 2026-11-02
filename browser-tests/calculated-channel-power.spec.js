@@ -87,6 +87,27 @@ function row(page, name) {
   });
 }
 
+async function expectPowerRow(page, { glyph, operation, label, expression, unit }) {
+  // Compact labels are display-only; the row still identifies the full calculation.
+  const escapedGlyph = glyph.replace(/\|/g, "\\|");
+  const createdRow = row(page, `${escapedGlyph} · SYNTH_POWER · VA`);
+  await expect(createdRow).toBeVisible();
+  await expect(createdRow.locator(".ww-cc-list-row-expr")).toHaveText(expression);
+  await expect(createdRow.locator(".ww-cc-list-row-summary")).toHaveText(`${label} · Null: Propagate`);
+  await expect(createdRow.locator(".ww-cc-list-row-class")).toHaveText("Power");
+  await expect(createdRow.locator(".ww-cc-list-row-unit")).toHaveText(unit);
+  const id = await createdRow.getAttribute("data-calculated-channel-id");
+  const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
+  const calculation = await page.evaluate((calcId) => ww.calculatedChannels.get(calcId), id);
+  expect(calculation).toMatchObject({
+    id, name: `${glyph} (VA, IA)`, operation, unit, engineering_type: "Power",
+    inputs: [
+      { kind: "source", source_id: sourceId, channel_name: "VA" },
+      { kind: "source", source_id: sourceId, channel_name: "IA" },
+    ],
+  });
+}
+
 test.describe("Power calculated channel: voltage/current dropdown grouping (Phase A)", () => {
   test("voltage dropdown: Voltage channels first, then Undefined, then Other", async ({ page }) => {
     await uploadFixture(page);
@@ -177,8 +198,10 @@ test.describe("Power calculated channel: voltage/current dropdown grouping (Phas
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
 
-    // Channel appears in the list. Suggested name pattern: "P (V, I)".
-    await expect(row(page, "P \\(VA, IA\\)")).toBeVisible();
+    await expectPowerRow(page, {
+      glyph: "P", operation: "active_power", label: "Active Power", unit: "MW",
+      expression: "Re(V₁ × conj(I₁)) / 1e6 (VA, IA)",
+    });
   });
 
   test("create Reactive Power channel with Voltage + Current inputs", async ({ page }) => {
@@ -192,7 +215,10 @@ test.describe("Power calculated channel: voltage/current dropdown grouping (Phas
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(row(page, "Q \\(VA, IA\\)")).toBeVisible();
+    await expectPowerRow(page, {
+      glyph: "Q", operation: "reactive_power", label: "Reactive Power", unit: "Mvar",
+      expression: "Im(V₁ × conj(I₁)) / 1e6 (VA, IA)",
+    });
   });
 
   test("create Apparent Power channel with Voltage + Current inputs", async ({ page }) => {
@@ -206,7 +232,10 @@ test.describe("Power calculated channel: voltage/current dropdown grouping (Phas
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(row(page, "\\|S\\| \\(VA, IA\\)")).toBeVisible();
+    await expectPowerRow(page, {
+      glyph: "|S|", operation: "apparent_power", label: "Apparent Power", unit: "MVA",
+      expression: "|V₁ × conj(I₁)| / 1e6 (VA, IA)",
+    });
   });
 
   test("voltage dropdown grouping is consistent across all three power operations", async ({ page }) => {
