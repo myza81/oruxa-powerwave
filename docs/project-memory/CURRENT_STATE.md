@@ -9,9 +9,34 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Phase E — Three-Phase Power Calculated Channels — DEPLOYED & UAT PASSED (2026-11-02)
+
+[FACT] DEV is running `3c5df3a` (branch `feature/calculator-vi-phasors`), deployed 2026-11-02.
+Owner UAT PASSED 2026-11-02. Branch is 5 commits ahead of `origin/main`.
+
+[FACT] Three-phase power calculated channels are fully implemented (Phase E-1 through E-3B):
+- **Backend** — domain function `evaluate_three_phase_power_channel()`, service validation
+  (voltage-reference gate, phase-identity guards DEC-208-D/F–J, source-identity guard
+  DEC-208-H), backward-compatible API schema extension (`three_phase_complete_sets` /
+  `three_phase_incomplete_sets` on `GET /vi-pairs`).
+- **Frontend** — three-phase set picker + locked summary UI (DEC-208-N), voltage-reference
+  confirmation block, phase-pairing confirmation checkbox, source-removal invalidation
+  (DEC-208-O), incomplete-set notice. One-at-a-time creation model (DEC-208-P).
+- **Notation** — P₃ₚₕ / Q₃ₚₕ / |S₃ₚₕ| display labels (DEC-208-Q); canonical stored
+  channel names (`P₃ (…)` etc.) are unchanged.
+
+[VALIDATION] 38 browser tests pass; 29 Python static tests pass. CI passed on commit `3c5df3a`.
+
+[DEFERRED] DEC-208-A (IEEE 1459/S_e apparent power), DEC-208-B/P ("Create All Three"
+shortcut), DEC-208-E (L1/L2/L3 grammar expansion), L-L voltage support.
+
+[NEXT] PR from `feature/calculator-vi-phasors` to `main` pending creation.
+
+---
+
 ## DEV UAT: Time Group UTC header (2026-10-26)
 
-[FACT] DEV is running `ba8ff4829a575be048d3870720d49117af7c5df3`.
+[FACT] Superseded — DEV now runs `3c5df3a` (see section above). Prior DEV SHA was `ba8ff4829a575be048d3870720d49117af7c5df3`.
 GPTH UAT exposed a display-only mismatch: the source/sidebar showed raw clock
 digits with the user-assigned offset, while the Time Group header silently
 converted the effective UTC origin to the configured Asia/Kuala_Lumpur display
