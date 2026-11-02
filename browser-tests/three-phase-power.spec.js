@@ -541,7 +541,12 @@ test.describe("Single-phase power regression (Phase A, same fixture)", () => {
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(ccRow(page, "P \\(VA, IA\\)")).toBeVisible();
+    // Compact label (DEC-202/208): "P · <source> · VA" is shown instead of the
+    // canonical "P (VA, IA)" when the compact label guard passes.
+    const nameEl = page.locator(".ww-cc-list-row-name").first();
+    await expect(nameEl).toBeVisible({ timeout: 5000 });
+    const nameText = await nameEl.textContent();
+    expect(nameText).toMatch(/P\s*·\s*SYNTH_3P_LG\s*·\s*VA/);
   });
 });
 
