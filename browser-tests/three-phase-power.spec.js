@@ -272,8 +272,8 @@ test.describe("Three-Phase Power: create all three operations (L-G fixture)", ()
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    // Auto-suggested name contains P₃.
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃");
+    // Compact label contains P₃ₚₕ (display notation).
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃ₚₕ");
   });
 
   test("create Reactive Power (3φ): output unit Mvar, channel in list", async ({ page }) => {
@@ -287,7 +287,7 @@ test.describe("Three-Phase Power: create all three operations (L-G fixture)", ()
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("Q₃");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("Q₃ₚₕ");
   });
 
   test("create Apparent Power (3φ): output unit MVA, channel in list", async ({ page }) => {
@@ -301,7 +301,7 @@ test.describe("Three-Phase Power: create all three operations (L-G fixture)", ()
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("|S₃|");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("|S₃ₚₕ|");
   });
 });
 
@@ -411,7 +411,7 @@ test.describe("Three-Phase Power: manual selection", () => {
 
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃ₚₕ");
   });
 });
 
@@ -682,7 +682,7 @@ test.describe("Three-Phase Power: voltage-reference confirmation (unknown refere
     await page.locator("#wwCcCreateBtn").click();
     await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
     // Channel should now be listed.
-    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃");
+    await expect(page.locator(".ww-cc-list-row-name").first()).toContainText("P₃ₚₕ");
   });
 });
 

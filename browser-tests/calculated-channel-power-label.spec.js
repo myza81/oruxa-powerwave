@@ -260,7 +260,7 @@ test.describe("Single-phase power compact label", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Three-phase power compact label", () => {
-  test("CC manager shows compact label 'P₃ · SYNTH_3P_LG · VA' not the long generated name", async ({ page }) => {
+  test("CC manager shows compact label 'P₃ₚₕ · SYNTH_3P_LG · VA' not the long generated name", async ({ page }) => {
     await uploadAndGoToCC(page, threePhaseFixture(), "threep.cfg");
     await createThreePhasePower(page, "three_phase_active_power");
 
@@ -268,7 +268,7 @@ test.describe("Three-phase power compact label", () => {
     const canonicalName = allCalcs.find((n) => n.startsWith("P₃ ("));
     expect(canonicalName, "3φ canonical name not found").toBeTruthy();
 
-    const compactLabel = "P₃ · SYNTH_3P_LG · VA";
+    const compactLabel = "P₃ₚₕ · SYNTH_3P_LG · VA";
     await expect(mgrRow(page, compactLabel)).toBeVisible();
     await expect(page.locator(".ww-cc-list-row-name", { hasText: canonicalName })).toHaveCount(0);
   });
@@ -277,7 +277,7 @@ test.describe("Three-phase power compact label", () => {
     await uploadAndGoToCC(page, threePhaseFixture(), "threep.cfg");
     await createThreePhasePower(page, "three_phase_active_power");
 
-    const compactLabel = "P₃ · SYNTH_3P_LG · VA";
+    const compactLabel = "P₃ₚₕ · SYNTH_3P_LG · VA";
     const row = mgrRow(page, compactLabel);
     await expect(row).toBeVisible();
     const summary = row.locator(".ww-cc-list-row-summary");
