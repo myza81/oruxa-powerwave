@@ -116,6 +116,7 @@ def _build_source(
     return build_source_channel_provenance(
         workspace_id=WORKSPACE, source_id=SOURCE, channel_name=channel_name,
         engineering_type=engineering_type, engineering_quantity=engineering_quantity,
+        measured_unit="V" if engineering_type == VOLTAGE else "A",
         per_unit_profile=profile, voltage_channel_names=voltage_channel_names or [],
         group_registry=group_registry, voltage_config_registry=voltage_config_registry,
         current_config_registry=current_config_registry,

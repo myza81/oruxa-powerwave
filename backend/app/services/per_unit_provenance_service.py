@@ -12,9 +12,10 @@ object that would be used to convert the channel's own displayed value --
 first, falling through to the DEC-049 `resolve_per_unit()` only when
 ungrouped/uninherited, mirroring `waveform_service._resolve_effective_per_unit()`'s
 and `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`'s
-own exact dispatch order. `status`/`reason` are read directly off that
-resolution -- never independently re-derived -- so the displayed
-explanation can never disagree with the actual calculation path.
+own exact dispatch order. The resulting base is checked against the channel's
+measured unit by `resolve_conversion_eligibility()`, also used by scalar/array
+conversion. Its `status`/`reason` describe conversion readiness; resolved base
+metadata remains available even when the measured unit prevents conversion.
 
 The richer display-only fields a bare `PerUnitResolution` does not carry
 (a Measurement Group's own nominal LL voltage / effective reference /
@@ -59,6 +60,7 @@ from app.domain.per_unit import (
     STATUS_NOT_APPLICABLE,
     PerUnitBaseProfile,
     PerUnitResolution,
+    resolve_conversion_eligibility,
     resolve_effective_voltage_reference,
     resolve_per_unit,
 )
@@ -109,10 +111,21 @@ _SOURCE_DEFAULT_REASON_COPY: dict[str, str] = {
 }
 _DEFAULT_SOURCE_DEFAULT_REASON = "No usable source-wide per-unit base is configured."
 
+_MEASURED_UNIT_REASON_COPY = {
+    "measured_unit_missing": (
+        "The measured unit is missing; per-unit conversion requires V/kV for Voltage or A/kA for Current."
+    ),
+    "measured_unit_unsupported": (
+        "The measured unit is unsupported for this quantity; per-unit conversion requires V/kV for Voltage or A/kA for Current."
+    ),
+}
+
 
 def _reason_text(source_kind: str | None, raw_reason: str | None) -> str | None:
     if raw_reason is None:
         return None
+    if raw_reason in _MEASURED_UNIT_REASON_COPY:
+        return _MEASURED_UNIT_REASON_COPY[raw_reason]
     if source_kind == SOURCE_KIND_MEASUREMENT_GROUP:
         return _MEASUREMENT_GROUP_REASON_COPY.get(raw_reason, _DEFAULT_MEASUREMENT_GROUP_REASON)
     if source_kind == SOURCE_KIND_SOURCE_DEFAULT:
@@ -144,10 +157,10 @@ class PerUnitChannelProvenance:
     nominal_base_kv: float | None
     nominal_reference: str | None  # "line_to_ground" | "line_to_line" | None
     # The actual resolved denominator used for division -- populated for
-    # BOTH scopes whenever status is "configured" (kV for Voltage, kA for
-    # Current). For a Voltage Measurement Group this already reflects
-    # the LL/LG-aware division; for Source Default it is the same raw
-    # number `resolve_per_unit()` used directly, by construction.
+    # BOTH scopes whenever a base resolves (kV for Voltage, kA for Current),
+    # including when the measured unit prevents conversion. For a Voltage
+    # Measurement Group this reflects the LL/LG-aware division; Source Default
+    # reports the same denominator `resolve_per_unit()` actually resolved.
     effective_base_amount: float | None
     effective_base_unit: str | None  # "kV" | "kA" | None
     # Current Measurement Group (equipment_rating method) only.
@@ -170,9 +183,9 @@ def _effective_base(resolution: PerUnitResolution) -> tuple[float | None, str | 
     own established convention, unchanged) -- converted here to the
     canonical kV/kA this provenance schema displays throughout,
     matching every other Slice 6/Slice 2 read model's own kV/kA
-    convention. Only ever non-`None` when the resolution is actually
-    `configured`."""
-    if resolution.status != STATUS_CONFIGURED or resolution.base_amount is None:
+    convention. A resolved base remains useful metadata even when the
+    channel's measured unit prevents conversion; status decides readiness."""
+    if resolution.base_amount is None:
         return None, None
     unit = "kV" if resolution.base_unit == "V" else "kA"
     return resolution.base_amount / 1000.0, unit
@@ -244,7 +257,7 @@ def _provenance_from_legacy(
 
     nominal_base_kv = None
     nominal_reference = None
-    if engineering_type == VOLTAGE and resolution.status == STATUS_CONFIGURED and per_unit_profile is not None:
+    if engineering_type == VOLTAGE and resolution.base_amount is not None and per_unit_profile is not None:
         # Slice 4 follow-up: the entered Source Default Voltage Base is
         # now uniformly the nominal SYSTEM LINE-TO-LINE voltage (see
         # resolve_per_unit()'s own VOLTAGE branch) -- expose it and the
@@ -252,7 +265,7 @@ def _provenance_from_legacy(
         # Measurement Group already uses. `nominal_reference` is
         # re-derived here via the SAME pure, deterministic
         # resolve_effective_voltage_reference() call resolve_per_unit()
-        # itself already made internally to reach `STATUS_CONFIGURED` in
+        # itself already made internally to resolve the base in
         # the first place -- a side-effect-free function given the same
         # inputs can never disagree with itself, so this stays faithful
         # to the "one source of truth" resolution without requiring
@@ -288,6 +301,7 @@ def build_source_channel_provenance(
     channel_name: str,
     engineering_type: str,
     engineering_quantity: str,
+    measured_unit: str | None,
     per_unit_profile: PerUnitBaseProfile | None,
     voltage_channel_names: list[str],
     group_registry: MeasurementGroupRegistry,
@@ -308,6 +322,7 @@ def build_source_channel_provenance(
         current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
+        group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id, engineering_type=engineering_type,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
@@ -315,6 +330,7 @@ def build_source_channel_provenance(
         )
 
     legacy_resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+    legacy_resolution = resolve_conversion_eligibility(legacy_resolution, measured_unit, engineering_type)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,
@@ -357,6 +373,7 @@ def build_calculated_channel_provenance(
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
+        group_resolution = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id,
             engineering_type=channel.engineering_type, group_registry=group_registry,
@@ -368,6 +385,7 @@ def build_calculated_channel_provenance(
         channel.engineering_type, per_unit_profile, voltage_channel_names,
         explicit_voltage_reference=channel.voltage_representation,
     )
+    legacy_resolution = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=channel.engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,

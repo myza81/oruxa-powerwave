@@ -110,7 +110,7 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
     def resolve():
         return _resolve_effective_per_unit(
             active, ref.channel_name, engineering_type, profile,
-            [ch.name for ch in active.metadata.analog_channels if ch.engineering_type == "voltage"],
+            voltage_channel_names_for_source(reg.source, workspace_id, ref.source_id),
             workspace_id=workspace_id, group_registry=reg.group, voltage_config_registry=reg.voltage_config,
             current_config_registry=reg.current_config,
         )

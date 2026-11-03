@@ -32,7 +32,7 @@ module never touches a registry or raises an HTTP-mappable error itself.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 import numpy as np
@@ -346,6 +346,23 @@ def _measured_unit_scale(engineering_type: str, measured_unit: str | None) -> fl
     return None
 
 
+def resolve_conversion_eligibility(
+    resolution: PerUnitResolution, measured_unit: str | None, engineering_type: str,
+) -> PerUnitResolution:
+    """Validate the measured side of an already resolved electrical base.
+
+    Base availability alone is not conversion readiness. All conversion and
+    channel read models use this metadata-only check; no sample probe or unit
+    guessing is needed. Preserve the resolved base/scope when a unit prevents
+    conversion, so provenance can explain the accepted configuration. Never
+    mutate the caller's resolution (it may be shared by a batch).
+    """
+    if resolution.status != STATUS_CONFIGURED or _measured_unit_scale(engineering_type, measured_unit) is not None:
+        return resolution
+    reason = "measured_unit_missing" if not measured_unit or not measured_unit.strip() else "measured_unit_unsupported"
+    return replace(resolution, status=STATUS_BASE_REQUIRED, reason=reason)
+
+
 def convert_value_to_pu(
     value: float | None, measured_unit: str | None, resolution: PerUnitResolution, engineering_type: str
 ) -> float | None:
@@ -362,6 +379,7 @@ def convert_value_to_pu(
     in every such case."""
     if value is None or not np.isfinite(value):
         return None
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED or resolution.base_amount is None:
         return None
     scale = _measured_unit_scale(engineering_type, measured_unit)
@@ -377,6 +395,7 @@ def convert_array_to_pu(
     normalization/eligibility rules, vectorized. Non-finite input samples
     remain non-finite (NaN) after conversion, never coerced. Unchanged
     from the original DEC-049 implementation."""
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED or resolution.base_amount is None:
         return None
     scale = _measured_unit_scale(engineering_type, measured_unit)
@@ -411,6 +430,7 @@ def apply_per_unit_to_value(
     """
     if resolution is None:
         return value, measured_unit, None
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED:
         return value, measured_unit, resolution.status
     scale = _measured_unit_scale(engineering_type, measured_unit)
@@ -429,6 +449,7 @@ def apply_per_unit_to_array(
     original DEC-049 implementation."""
     if resolution is None:
         return values, measured_unit, None
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED:
         return values, measured_unit, resolution.status
     converted = convert_array_to_pu(values, measured_unit, resolution, engineering_type)

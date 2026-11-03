@@ -337,6 +337,7 @@ def get_source_channel_per_unit_resolution(
         channel_name=channel_name,
         engineering_type=channel.engineering_type,
         engineering_quantity=channel.engineering_quantity,
+        measured_unit=channel.unit,
         per_unit_profile=per_unit_profile,
         voltage_channel_names=_voltage_channel_names_for_active(active),
         group_registry=measurement_group_registry,

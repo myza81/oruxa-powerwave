@@ -12,6 +12,8 @@ mutated, and no waveform sample data is ever touched -- classification
 only needs each channel's own already-parsed `AnalogChannelSummary`
 (engineering_type/engineering_quantity) plus the same group/profile
 registry reads the live display endpoints already perform per request.
+The channel's measured unit is checked by the same domain eligibility
+function as scalar/array conversion; a configured base alone is not coverage.
 
 **Classification must stay in lockstep with
 `app.services.waveform_service._resolve_effective_per_unit()`** -- the
@@ -36,7 +38,7 @@ from app.domain.channel_classification import (
     ENGINEERING_QUANTITY_VOLTAGE_ANGLE,
     VOLTAGE,
 )
-from app.domain.per_unit import STATUS_CONFIGURED, PerUnitBaseProfile, resolve_per_unit
+from app.domain.per_unit import STATUS_CONFIGURED, PerUnitBaseProfile, resolve_conversion_eligibility, resolve_per_unit
 from app.domain.source import AnalogChannelSummary
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import SourceNotFoundError
@@ -114,10 +116,12 @@ def _classify_channel(
         # `needs_configuration`, never a silent fall-through to Source
         # Default (canonical document section 21's own "never silently
         # borrow another base" principle).
-        return CATEGORY_MEASUREMENT_GROUP if group_resolution.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION
+        eligible = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type)
+        return CATEGORY_MEASUREMENT_GROUP if eligible.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION
 
     legacy_resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
-    return CATEGORY_SOURCE_DEFAULT if legacy_resolution.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION
+    eligible = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type)
+    return CATEGORY_SOURCE_DEFAULT if eligible.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION
 
 
 def build_per_unit_coverage_summary(
