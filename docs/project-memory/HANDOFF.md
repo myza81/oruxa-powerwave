@@ -4,32 +4,36 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-03** (Per-Unit audit Slice 3 verified locally; stop for owner review.)
+Last updated: **2026-11-03** (Per-Unit audit Slice 4 verified locally; stop for owner review.)
 
-## Per-Unit audit Slice 3 — PU-003/PU-004 complete locally
+## Per-Unit audit Slice 4 — PU-006/PU-007 complete locally
 
-Based on `0eea55c`; Slice 1/2 and completed Power work remain intact. Coverage,
-provenance and conversion now use one measured-unit eligibility check, preserving
-resolved base metadata while reporting unavailable conversion honestly.
-Compliance raw-source automatic references use the canonical voltage-name
-accessor. No formula, base precedence, representation or inheritance policy
-changes; no production frontend change or new response schema.
+Based on `b5d824e`; Slices 1–3 and completed Power work remain intact. Shared
+numerical helpers reject unusable SI/derived base candidates before publication,
+preserve valid subnormals and avoid intermediate overflow. Finite measurements
+that cannot normalize report existing `base_required` consistently across
+coverage/provenance, raw/calculated arrays, cursors and Compliance. Original gaps
+and real zero remain distinct. One pre-coercion schema alias rejects booleans
+on all seven numeric base fields while preserving ordinary numeric compatibility.
+No formula, base precedence, representation/inheritance or status schema changes;
+no production frontend change. Linked Current bases remain live dependencies.
 
-Full backend: **10,904 passed / 320 skipped / zero failures/errors**, exit 0,
-including all 69 new cases and 45 Slice 1 atomicity cases. Selected browser
-run: **385/385**, zero skips/retries/failures/errors, exit 0; the 26 Slice 2
-cases remain green. Original-defect reproduction: 27 failed / 25 passed before
-correction. Full mechanism, numerical proof, compatibility, evidence and limits:
-[PER_UNIT_AUDIT_SLICE_3.md](PER_UNIT_AUDIT_SLICE_3.md).
+Full backend: **11,068 passed / 320 skipped / zero failures/errors**, 21 warnings,
+exit 0, including 164 new cases, 69 Slice 3 cases and 45 Slice 1 atomicity cases.
+Selected browser: **389/389**, zero skips/retries/failures/errors, exit 0, including
+the 26 Slice 2 and four new numerical/editor/ER cases. Original-defect reproduction:
+27 failed / 11 passed in 38 cases before correction. Independent Decimal and
+4,096-case boundary checks agree. Full file list, mechanism, proof and limits:
+[PER_UNIT_AUDIT_SLICE_4.md](PER_UNIT_AUDIT_SLICE_4.md).
 
-Separate issue left unchanged: CSV post-conversion discovery passes the old
-preparation id after a new canonical source id is created. See the report for
-evidence and a proposed separately scoped correction. PC-001 and PU-006/007
-remain deferred; **do not start Slice 4 without owner approval**.
+Separate CSV post-conversion discovery id issue and PC-001 remain unchanged;
+see the Slice 3 report for the former's evidence and proposed owner-scoped fix.
+**Do not start Slice 5 without owner approval.**
 
-Only Slice 3 code/tests/documentation may be committed. Preserve `.audit/`,
+Only Slice 4 code/tests/documentation may be committed. Preserve `.audit/`,
 `.slice1-evidence/`, `test-results/` and both untracked screenshot specs.
-No push, merge or deployment. All 2,250 protected files remain unchanged.
+No push, merge or deployment. All 2,250 protected files, including their file
+list, hashes, sizes and modification times, remain unchanged.
 
 ## Phase E — Three-Phase Power Complete — UAT PASSED (DEC-208) — 2026-11-02
 

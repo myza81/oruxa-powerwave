@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.schemas.measurement_group import VoltageReferenceValue
+from app.schemas.measurement_group import PerUnitBaseNumber, VoltageReferenceValue
 from app.services.per_unit_coverage_service import PerUnitCoverageSummary
 from app.services.per_unit_provenance_service import PerUnitChannelProvenance
 from app.services.per_unit_service import SourcePerUnitConfigView
@@ -27,12 +27,12 @@ class SourcePerUnitConfigUpdateRequest(BaseModel):
     replace, matching every other PUT in this codebase -- there is no
     partial-update concept."""
 
-    voltage_base_value: float | None = None
+    voltage_base_value: PerUnitBaseNumber | None = None
     voltage_reference_mode: Literal["auto", "manual"] = "auto"
     voltage_reference_override: Literal["line_to_ground", "line_to_line"] | None = None
     current_base_mode: Literal["none", "derived", "direct"] = "none"
-    apparent_power_base_value: float | None = None
-    direct_current_base_value: float | None = None
+    apparent_power_base_value: PerUnitBaseNumber | None = None
+    direct_current_base_value: PerUnitBaseNumber | None = None
 
 
 class ResolvedCurrentBaseOut(BaseModel):

@@ -8,12 +8,12 @@ This module is a pure, additive read model: it derives counts from
 already-existing metadata and configuration state each request, exactly
 like `app.services.measurement_group_view_service` derives its own
 per-group `pu_status`. Nothing here is persisted, no registry is
-mutated, and no waveform sample data is ever touched -- classification
-only needs each channel's own already-parsed `AnalogChannelSummary`
+mutated. Classification uses each channel's own `AnalogChannelSummary`
 (engineering_type/engineering_quantity) plus the same group/profile
 registry reads the live display endpoints already perform per request.
 The channel's measured unit is checked by the same domain eligibility
-function as scalar/array conversion; a configured base alone is not coverage.
+function as scalar/array conversion, including vectorized full-channel bounds;
+a configured base alone is not coverage. Samples are never changed/converted here.
 
 **Classification must stay in lockstep with
 `app.services.waveform_service._resolve_effective_per_unit()`** -- the
@@ -31,6 +31,8 @@ ever changes, this module's `_classify_channel()` must change with it.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import numpy as np
 
 from app.domain.channel_classification import (
     CURRENT,
@@ -89,6 +91,7 @@ def _classify_channel(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    values: np.ndarray | None = None,
 ) -> str | None:
     """Returns one of the three `CATEGORY_*` constants, or `None` when
     this channel is not applicable to Per-Unit at all (not a Voltage/
@@ -116,11 +119,11 @@ def _classify_channel(
         # `needs_configuration`, never a silent fall-through to Source
         # Default (canonical document section 21's own "never silently
         # borrow another base" principle).
-        eligible = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type)
+        eligible = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type, values)
         return CATEGORY_MEASUREMENT_GROUP if eligible.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION
 
     legacy_resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
-    eligible = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type)
+    eligible = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type, values)
     return CATEGORY_SOURCE_DEFAULT if eligible.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION
 
 
@@ -139,7 +142,7 @@ def build_per_unit_coverage_summary(
     mirroring `app.services.per_unit_service.get_source_per_unit_config()`'s
     own exact validation shape. Digital channels are structurally
     excluded (only `active.metadata.analog_channels` is ever iterated);
-    no waveform sample array is read."""
+    bounds are read without producing a normalized waveform."""
     active = source_registry.get(workspace_id, source_id)
     if active is None:
         raise SourceNotFoundError(f"No source '{source_id}' in workspace '{workspace_id}'.")
@@ -159,6 +162,7 @@ def build_per_unit_coverage_summary(
             group_registry=group_registry,
             voltage_config_registry=voltage_config_registry,
             current_config_registry=current_config_registry,
+            values=active.record.waveform_data[channel.name].to_numpy(),
         )
         if category is None:
             continue

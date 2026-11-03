@@ -9,31 +9,38 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## Per-Unit audit remediation — Slice 3 (2026-11-03, local)
+## Per-Unit audit remediation — Slice 4 (2026-11-03, local)
 
-[FACT] PU-003 and PU-004 are corrected. Coverage, provenance and scalar/array
-conversion share the existing measured-unit validation through one domain
-eligibility function. A resolved base remains available as metadata when a
-missing/unsupported measured unit requires `base_required`; status determines
-conversion readiness. No response schema or status vocabulary changes.
-Compliance's raw-series adapter uses the canonical shared voltage-name accessor,
-so Source Default automatic references agree with Waveform. PU mathematics,
-Measurement Group precedence, calculated-channel restrictions and Power remain
-unchanged. Slice 1 atomicity and Slice 2 display synchronization remain intact.
+[FACT] PU-006 and PU-007 are corrected. Shared numerical helpers validate SI
+denominators and complete derived Current candidates before publication, avoid
+avoidable intermediate overflow, and preserve representable subnormal results.
+Booleans are rejected before request-schema numeric coercion on all seven base
+fields; integer, float, numeric-string and omission/null semantics remain intact.
+Valid bases whose finite measurements cannot normalize report `base_required`,
+with engineering fallback and an explanation, rather than false zeros or newly
+created configured gaps. Coverage, provenance, raw/calculated conversion and
+Compliance use consistent channel bounds. No new API fields/status vocabulary.
 
-[VALIDATION] Full backend: **10,904 passed, 320 conditional/platform skips, zero
-failures/errors**, 21 warnings, exit 0. All 69 new eligibility/integration cases
-and 45 Slice 1 atomicity cases pass. Relevant browser selection: **385/385**,
-zero failures/errors/skips/retries, exit 0, including the 26 Slice 2 cases.
-Original audit and all 2,250 protected evidence files are preserved. No push,
-merge or deployment. Stop for owner review before Slice 4.
+[FACT] Slice 1 atomicity, Slice 2 synchronization and Slice 3 measured-unit/
+reference eligibility remain intact. Voltage/Current mathematics, group/base
+precedence, calculated-channel restrictions, physical samples and Power are
+unchanged. Linked Current dependencies remain live and fail closed if their
+effective denominator becomes unrepresentable; no cross-registry transaction.
+
+[VALIDATION] Full backend: **11,068 passed, 320 conditional/platform skips, zero
+failures/errors**, 21 warnings, exit 0. All 164 new cases, 69 Slice 3 cases and
+45 Slice 1 atomicity cases pass. Relevant browser selection: **389/389**, zero
+failures/errors/skips/retries, exit 0, including all 26 Slice 2 cases and four
+new numerical/editor/ER cases. All 2,250 protected evidence files are unchanged.
+No push, merge or deployment. Stop for owner review before Slice 5.
 
 [OPEN] A separate, unchanged CSV post-conversion discovery bug uses the old
 preparation id rather than the new canonical source id. Evidence, proposed
 bounded correction and impact are recorded for owner review; it is not fixed
-in this slice. See [PER_UNIT_AUDIT_SLICE_3.md](PER_UNIT_AUDIT_SLICE_3.md) for
-the shared contract, numerical results, compatibility and validation limits;
-[Slice 2](PER_UNIT_AUDIT_SLICE_2.md) retains its historical implementation record.
+in this slice. See [PER_UNIT_AUDIT_SLICE_4.md](PER_UNIT_AUDIT_SLICE_4.md) for the
+numerical contract, file list, proof, regression evidence, performance and limits.
+[Slice 3](PER_UNIT_AUDIT_SLICE_3.md) retains the separate CSV issue evidence and
+its historical implementation record.
 
 ## Phase E — Three-Phase Power Calculated Channels — DEPLOYED & UAT PASSED (2026-11-02)
 

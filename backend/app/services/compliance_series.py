@@ -124,14 +124,17 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
 def unit_problem(
     ref: ChannelRef, reference_unit: str, *, workspace_id: str, reg: Registries,
 ) -> str | None:
-    """Why `ref` cannot be shown in `reference_unit`, or `None`. Cheap: no
-    array is converted (a one-element probe checks the per-unit resolution),
-    so the readiness check can call it without touching the data."""
+    """Why `ref` cannot be shown in `reference_unit`, or `None`.
+
+    Resolution checks full-channel bounds without normalizing the array.
+    Zero probes the units/status without inventing a measurement of 1 that
+    might overflow on a valid subnormal base unlike the real channel.
+    """
     raw = _raw(ref, workspace_id=workspace_id, reg=reg)
     if raw is None:
         return "The measurement channel no longer exists."
     _, _, unit, engineering_type, _, name, resolve = raw
-    return _convert_probe(np.asarray([1.0]), unit, engineering_type, reference_unit, name, resolve)[1]
+    return _convert_probe(np.asarray([0.0]), unit, engineering_type, reference_unit, name, resolve)[1]
 
 
 def _convert_probe(values, unit, engineering_type, reference_unit, name, resolve):

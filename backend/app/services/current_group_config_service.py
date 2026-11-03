@@ -34,6 +34,7 @@ from app.domain.current_group_config import (
     METHOD_MANUAL,
     METHOD_NONE,
     equipment_rating_mva_valid,
+    equipment_rating_ibase_ka,
     manual_ibase_ka_valid,
     manual_voltage_base_kv_valid,
     resolve_current_base_for_group,
@@ -90,7 +91,7 @@ def _validate_linked_voltage_group(
     linked_voltage_group_id: str,
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
-) -> None:
+) -> float:
     """Task section 4's full link-validation checklist. A missing group
     raises `MeasurementGroupNotFoundError` (the same "does this id exist
     at all" concept every other lookup in this codebase uses); every
@@ -114,6 +115,7 @@ def _validate_linked_voltage_group(
         raise InvalidLinkedVoltageGroupError(
             f"Linked voltage group '{linked_voltage_group_id}' has no usable nominal LL voltage base configured."
         )
+    return linked_config.nominal_voltage_ll_kv
 
 
 def set_current_base_equipment_rating(
@@ -151,7 +153,7 @@ def set_current_base_equipment_rating(
         )
 
     if has_link:
-        _validate_linked_voltage_group(
+        applicable_kv = _validate_linked_voltage_group(
             workspace_id=workspace_id, source_id=group.source_id, linked_voltage_group_id=linked_voltage_group_id,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
         )
@@ -160,6 +162,12 @@ def set_current_base_equipment_rating(
             raise InvalidManualVoltageBaseValueError(
                 f"manual_voltage_base_kv={manual_voltage_base_kv!r} must be a finite, positive number."
             )
+        applicable_kv = manual_voltage_base_kv
+
+    if equipment_rating_ibase_ka(equipment_rating_mva, applicable_kv) is None:
+        raise InvalidEquipmentRatingValueError(
+            "Equipment rating and nominal LL voltage must yield a finite, positive current base in kA and A."
+        )
 
     config = _existing_or_default_config(workspace_id, measurement_group_id, current_config_registry=current_config_registry)
     config.method = METHOD_EQUIPMENT_RATING

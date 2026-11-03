@@ -8852,15 +8852,19 @@ separately-approved work.
 
 ## Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit Inheritance (2026-08-25)
 
-**Audit follow-up (2026-11-03, local):** the later Per-Unit audit remediation
-Slice 3 fixes PU-003 measured-unit eligibility in coverage/provenance and
-PU-004 Compliance raw-source automatic reference resolution. Slice 1 atomicity
-and Slice 2 display synchronization remain intact. This is separate from the
-original DEC-050 implementation-slice numbering below. Inheritance, numerical
-conversion and base precedence are unchanged. Final selected browser: 385/385;
-full backend: 10,904 passed, 320 conditional/platform skips, zero failures/errors.
-Both exit 0. No push/deployment or Slice 4 authorized. See
-[PER_UNIT_AUDIT_SLICE_3.md](PER_UNIT_AUDIT_SLICE_3.md).
+**Audit follow-up (2026-11-03, local):** owner-authorized audit remediation
+Slice 4 fixes PU-006 numerical denominator/result safety and PU-007 pre-coercion
+boolean rejection. Shared SI/derived validation, stable division and channel
+bounds preserve valid subnormals and distinguish invalid configuration from
+unrepresentable measurements. Slice 1 atomicity, Slice 2 synchronization and
+Slice 3 measured-unit/reference eligibility remain intact. This audit numbering
+is separate from the original DEC-050 implementation slices below. Formulas,
+inheritance and base precedence remain unchanged. Final relevant browser:
+389/389; full backend: 11,068 passed, 320 conditional/platform skips, zero
+failures/errors, 21 warnings. Both exit 0. No push, merge or deployment;
+stop for owner review before Slice 5. See
+[PER_UNIT_AUDIT_SLICE_4.md](PER_UNIT_AUDIT_SLICE_4.md), with historical
+[Slice 3](PER_UNIT_AUDIT_SLICE_3.md) evidence retained.
 
 ### Scope
 

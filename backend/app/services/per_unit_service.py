@@ -27,6 +27,7 @@ from app.domain.per_unit import (
     voltage_base_valid,
 )
 from app.domain.voltage_reference import KNOWN_VOLTAGE_REFERENCES
+from app.domain.per_unit_numerics import derived_current_ka
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import InvalidPerUnitBaseError, SourceNotFoundError
 from app.services.per_unit_registry import PerUnitRegistry, recompute_inherited_per_unit_assignments
@@ -139,6 +140,11 @@ def _validate_base_fields(
         raise InvalidPerUnitBaseError("Three-Phase MVA Base must be a finite, positive number of MVA.")
     if current_base_mode == "direct" and direct_current_base_value is not None and not direct_current_base_valid(direct_current_base_value):
         raise InvalidPerUnitBaseError("Direct current base must be a finite, positive number of kA.")
+    if (current_base_mode == "derived" and apparent_power_base_value is not None and voltage_base_value is not None
+            and derived_current_ka(apparent_power_base_value, voltage_base_value) is None):
+        raise InvalidPerUnitBaseError(
+            "Three-Phase MVA Base and nominal LL voltage must yield a finite, positive current base in kA and A."
+        )
 
 
 def upsert_source_per_unit_config(

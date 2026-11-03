@@ -314,8 +314,8 @@ def get_source_channel_per_unit_resolution(
     used, built from the exact same resolution
     GET .../waveform?unit_mode=per_unit already uses (see
     app.services.per_unit_provenance_service's own "one source of
-    truth" guarantee). Read-only channel METADATA, never a waveform
-    sample -- fetched lazily on explicit engineer request only, never
+    truth" guarantee). Read-only metadata and numerical bounds -- fetched
+    lazily on explicit engineer request only, never
     attached to any waveform/cursor/peak response."""
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
@@ -338,6 +338,7 @@ def get_source_channel_per_unit_resolution(
         engineering_type=channel.engineering_type,
         engineering_quantity=channel.engineering_quantity,
         measured_unit=channel.unit,
+        values=active.record.waveform_data[channel_name].to_numpy(),
         per_unit_profile=per_unit_profile,
         voltage_channel_names=_voltage_channel_names_for_active(active),
         group_registry=measurement_group_registry,

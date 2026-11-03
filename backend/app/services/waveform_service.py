@@ -52,6 +52,7 @@ from app.domain.per_unit import (
     PerUnitResolution,
     apply_per_unit_to_array,
     apply_per_unit_to_value,
+    resolve_conversion_eligibility,
     resolve_per_unit,
 )
 from app.domain.source import ActiveSource, DigitalChannelSummary
@@ -148,7 +149,10 @@ def _resolve_effective_per_unit(
         )
     if resolution is None:
         resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
-    return resolution
+    channel = next(ch for ch in active.metadata.analog_channels if ch.name == channel_name)
+    return resolve_conversion_eligibility(
+        resolution, channel.unit, engineering_type, active.record.waveform_data[channel_name].to_numpy(),
+    )
 
 #: Starting reference point: `powerwave`'s own live desktop code
 #: (`build_aligned_data`/`decimate_for_display`) uses this exact value at

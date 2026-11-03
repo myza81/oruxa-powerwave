@@ -22,11 +22,22 @@ issuing a follow-up request per row.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator
 
 from app.schemas.calculated_channel import ChannelRefIn, ChannelRefOut
+
+
+def _reject_boolean_base(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("A per-unit base must be numeric, not a boolean.")
+    return value
+
+
+# Preserve float/int/numeric-string coercion; only JSON booleans must be
+# rejected before Pydantic turns them into 1.0/0.0 (audit PU-007).
+PerUnitBaseNumber = Annotated[float, BeforeValidator(_reject_boolean_base)]
 
 GroupKind = Literal["voltage", "current"]
 GroupStatus = Literal["suggested", "confirmed", "needs_review", "manual"]
@@ -109,7 +120,7 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     `reference_mode="auto"` (default) always returns the group to
     live auto-detection, clearing any previous override."""
 
-    nominal_voltage_ll_kv: float | None = None
+    nominal_voltage_ll_kv: PerUnitBaseNumber | None = None
     reference_mode: VoltageReferenceMode = "auto"
     reference_override: VoltageReferenceValue | None = None
 
@@ -124,10 +135,10 @@ class CurrentGroupConfigUpdateRequest(BaseModel):
     endpoint enforces (never re-validated here, only passed through)."""
 
     method: CurrentBaseMethod
-    equipment_rating_mva: float | None = None
+    equipment_rating_mva: PerUnitBaseNumber | None = None
     linked_voltage_group_id: str | None = None
-    manual_voltage_base_kv: float | None = None
-    manual_ibase_ka: float | None = None
+    manual_voltage_base_kv: PerUnitBaseNumber | None = None
+    manual_ibase_ka: PerUnitBaseNumber | None = None
 
 
 class SuggestGroupsRequest(BaseModel):

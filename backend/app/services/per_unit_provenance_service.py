@@ -13,7 +13,7 @@ first, falling through to the DEC-049 `resolve_per_unit()` only when
 ungrouped/uninherited, mirroring `waveform_service._resolve_effective_per_unit()`'s
 and `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`'s
 own exact dispatch order. The resulting base is checked against the channel's
-measured unit by `resolve_conversion_eligibility()`, also used by scalar/array
+measured unit and numerical bounds by `resolve_conversion_eligibility()`, also used by scalar/array
 conversion. Its `status`/`reason` describe conversion readiness; resolved base
 metadata remains available even when the measured unit prevents conversion.
 
@@ -47,6 +47,8 @@ fields for the Source Default scope.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import numpy as np
 
 from app.domain.calculated_channel import CalculatedChannel
 from app.domain.channel_classification import (
@@ -112,6 +114,8 @@ _SOURCE_DEFAULT_REASON_COPY: dict[str, str] = {
 _DEFAULT_SOURCE_DEFAULT_REASON = "No usable source-wide per-unit base is configured."
 
 _MEASURED_UNIT_REASON_COPY = {
+    "effective_base_not_representable": "The effective base cannot be represented as a finite, positive denominator.",
+    "per_unit_result_not_representable": "This channel contains finite measurements whose per-unit results cannot be represented.",
     "measured_unit_missing": (
         "The measured unit is missing; per-unit conversion requires V/kV for Voltage or A/kA for Current."
     ),
@@ -307,6 +311,7 @@ def build_source_channel_provenance(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    values: np.ndarray | None = None,
 ) -> PerUnitChannelProvenance:
     """Mirrors `waveform_service._resolve_effective_per_unit()`'s own
     exact dispatch order for a SOURCE channel: the DEC-078 Angle
@@ -322,7 +327,7 @@ def build_source_channel_provenance(
         current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
-        group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type)
+        group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type, values)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id, engineering_type=engineering_type,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
@@ -330,7 +335,7 @@ def build_source_channel_provenance(
         )
 
     legacy_resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
-    legacy_resolution = resolve_conversion_eligibility(legacy_resolution, measured_unit, engineering_type)
+    legacy_resolution = resolve_conversion_eligibility(legacy_resolution, measured_unit, engineering_type, values)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,
@@ -373,7 +378,7 @@ def build_calculated_channel_provenance(
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
-        group_resolution = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type)
+        group_resolution = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type, channel.values)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id,
             engineering_type=channel.engineering_type, group_registry=group_registry,
@@ -385,7 +390,7 @@ def build_calculated_channel_provenance(
         channel.engineering_type, per_unit_profile, voltage_channel_names,
         explicit_voltage_reference=channel.voltage_representation,
     )
-    legacy_resolution = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type)
+    legacy_resolution = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type, channel.values)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=channel.engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,

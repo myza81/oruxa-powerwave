@@ -125,6 +125,7 @@ from app.domain.per_unit import (
     apply_per_unit_to_value,
     derive_per_unit_profile_id,
     resolve_per_unit,
+    resolve_conversion_eligibility,
 )
 from app.domain.rms_detector import (
     LIKELY_INSTANTANEOUS,
@@ -1449,7 +1450,7 @@ def _resolve_effective_per_unit_for_calculated_channel(
             channel.engineering_type, per_unit_profile, voltage_channel_names,
             explicit_voltage_reference=channel.voltage_representation,
         )
-    return resolution
+    return resolve_conversion_eligibility(resolution, channel.unit, channel.engineering_type, channel.values)
 
 
 @dataclass(slots=True)

@@ -70,6 +70,7 @@ from app.domain.measurement_group import (
     MeasurementGroup,
 )
 from app.domain.voltage_group_config import VoltageBaseConfiguration, voltage_base_valid
+from app.domain.per_unit_numerics import convert_scalar, derived_current_ka, positive_finite, scaled_base
 
 SQRT_3 = 1.7320508075688772
 
@@ -100,12 +101,9 @@ def current_base_method_valid(method: str) -> bool:
 
 def _positive_finite(value: float | None) -> bool:
     """Shared validator shape for every numeric field in this module --
-    same rules as `voltage_group_config.voltage_base_valid()`: rejects
-    `None`, rejects `bool`, requires a finite, strictly positive
-    number."""
-    if value is None:
-        return False
-    return bool(not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value > 0)
+    rejects `None`/`bool` and requires a finite, strictly positive number.
+    Canonical kV/kA fields additionally require a usable SI representation."""
+    return positive_finite(value)
 
 
 def equipment_rating_mva_valid(value: float | None) -> bool:
@@ -113,11 +111,11 @@ def equipment_rating_mva_valid(value: float | None) -> bool:
 
 
 def manual_voltage_base_kv_valid(value: float | None) -> bool:
-    return _positive_finite(value)
+    return scaled_base(value, 1000.0) is not None
 
 
 def manual_ibase_ka_valid(value: float | None) -> bool:
-    return _positive_finite(value)
+    return scaled_base(value, 1000.0) is not None
 
 
 @dataclass(slots=True)
@@ -154,7 +152,7 @@ class CurrentBaseConfiguration:
     manual_ibase_ka: float | None = None
 
 
-def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll_kv: float) -> float:
+def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll_kv: float) -> float | None:
     """`Ibase = Sbase / (sqrt(3) * Vbase_LL)`, with `Sbase` in MVA and
     `Vbase_LL` in kV, yielding `Ibase` directly in kA (dimensionally
     consistent: `MVA = sqrt(3) * kV * kA`). Verified worked examples
@@ -164,7 +162,7 @@ def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll
     - 1000 MVA / 275 kV  -> ~2.0995 kA
     - 1000 MVA / 132 kV  -> ~4.3739 kA
     """
-    return equipment_rating_mva / (SQRT_3 * applicable_voltage_ll_kv)
+    return derived_current_ka(equipment_rating_mva, applicable_voltage_ll_kv)
 
 
 @dataclass(slots=True)
@@ -277,6 +275,11 @@ def resolve_current_base_for_group(
                 reason="applicable_voltage_base_not_configured",
             )
         ibase_ka = equipment_rating_ibase_ka(config.equipment_rating_mva, applicable_kv)
+        if ibase_ka is None:
+            return CurrentBaseResolution(
+                status=STATUS_BASE_REQUIRED, ibase_ka=None, applicable_voltage_ll_kv=applicable_kv,
+                reason="effective_base_not_representable",
+            )
         return CurrentBaseResolution(status=STATUS_CONFIGURED, ibase_ka=ibase_ka, applicable_voltage_ll_kv=applicable_kv, reason=None)
 
     # Unreachable through any validly-constructed configuration (the
@@ -310,5 +313,7 @@ def convert_current_to_pu(measured_value: float | None, measured_unit: str | Non
     scale = _CURRENT_UNIT_TO_KA.get(key)
     if scale is None:
         return None
-    measured_ka = measured_value * scale
-    return measured_ka / resolution.ibase_ka
+    denominator = scaled_base(resolution.ibase_ka, 1000.0)
+    if denominator is None:
+        return None
+    return convert_scalar(measured_value, scale * 1000.0, denominator)
