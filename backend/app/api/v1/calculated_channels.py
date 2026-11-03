@@ -368,6 +368,7 @@ def get_channel_waveform(
         voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
         workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+        source_registry=source_registry, per_unit_registry=per_unit_registry,
     )
     return CalculatedWaveformRangeOut.from_result(result)
 
@@ -402,6 +403,7 @@ def get_channel_per_unit_resolution(
         group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry,
         current_config_registry=current_group_config_registry,
+        source_registry=source_registry, per_unit_registry=per_unit_registry,
     )
     return PerUnitResolutionOut.from_provenance(provenance)
 
@@ -475,6 +477,7 @@ def get_cursor_values(
         voltage_channel_names_by_id=voltage_channel_names_by_id,
         workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+        source_registry=source_registry, per_unit_registry=per_unit_registry,
     )
     return CalculatedCursorValuesOut(channels=[CalculatedCursorValuesItemOut.from_result(r) for r in results])
 
@@ -525,6 +528,7 @@ def get_peak_values(
             voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
             voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+        source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
         results.append(CalculatedPeakResultOut.from_result(result))
     return CalculatedPeakBatchOut(start_time=body.start_time, end_time=body.end_time, results=results)
@@ -560,6 +564,7 @@ def resolve_annotation_anchor(
         voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
         workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+        source_registry=source_registry, per_unit_registry=per_unit_registry,
     )
     if result is None:
         raise HTTPException(

@@ -338,6 +338,7 @@ def get_source_channel_per_unit_resolution(
         engineering_type=channel.engineering_type,
         engineering_quantity=channel.engineering_quantity,
         measured_unit=channel.unit,
+        measurement_side=channel.measurement_side,
         values=active.record.waveform_data[channel_name].to_numpy(),
         per_unit_profile=per_unit_profile,
         voltage_channel_names=_voltage_channel_names_for_active(active),

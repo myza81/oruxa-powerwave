@@ -36,6 +36,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 import numpy as np
+from app.domain.reference_side import ReferenceSide
 
 from app.domain.calculated_channel import (
     OP_ABSOLUTE_VALUE,
@@ -130,6 +131,7 @@ class PerUnitBaseProfile:
     apparent_power_base_value: float | None  # MVA, canonical
     direct_current_base_value: float | None  # kA, canonical
     created_at: datetime | None = None
+    current_base_reference_side: ReferenceSide = "unknown"
 
 
 def voltage_base_valid(value: float | None) -> bool:

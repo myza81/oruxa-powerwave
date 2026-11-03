@@ -10,6 +10,7 @@ the owner's own UAT preference for a fixed unit suffix over a dropdown.
 """
 
 from __future__ import annotations
+from app.domain.reference_side import ReferenceSide
 
 from datetime import datetime
 from typing import Literal
@@ -30,6 +31,7 @@ class SourcePerUnitConfigUpdateRequest(BaseModel):
     voltage_base_value: PerUnitBaseNumber | None = None
     voltage_reference_mode: Literal["auto", "manual"] = "auto"
     voltage_reference_override: Literal["line_to_ground", "line_to_line"] | None = None
+    current_base_reference_side: ReferenceSide = "unknown"
     current_base_mode: Literal["none", "derived", "direct"] = "none"
     apparent_power_base_value: PerUnitBaseNumber | None = None
     direct_current_base_value: PerUnitBaseNumber | None = None
@@ -54,6 +56,7 @@ class SourcePerUnitConfigOut(BaseModel):
     effective_voltage_reference: Literal["line_to_ground", "line_to_line"] | None
     voltage_reference_evidence: list[str]
     voltage_reference_reason: str
+    current_base_reference_side: ReferenceSide = "unknown"
     current_base_mode: Literal["none", "derived", "direct"]
     apparent_power_base_value: float | None
     direct_current_base_value: float | None
@@ -71,6 +74,7 @@ class SourcePerUnitConfigOut(BaseModel):
             effective_voltage_reference=view.effective_voltage_reference,
             voltage_reference_evidence=view.voltage_reference_evidence,
             voltage_reference_reason=view.voltage_reference_reason,
+            current_base_reference_side=view.current_base_reference_side,
             current_base_mode=view.current_base_mode,
             apparent_power_base_value=view.apparent_power_base_value,
             direct_current_base_value=view.direct_current_base_value,
@@ -133,10 +137,16 @@ class PerUnitResolutionOut(BaseModel):
     effective_base_unit: Literal["kV", "kA"] | None
     equipment_rating_mva: float | None
     applicable_voltage_ll_kv: float | None
+    resolution_origin: Literal["automatic_common_base"] | None = None
+    measurement_side: ReferenceSide = "unknown"
+    base_reference_side: ReferenceSide = "unknown"
 
     @classmethod
     def from_provenance(cls, provenance: PerUnitChannelProvenance) -> "PerUnitResolutionOut":
         return cls(
+            resolution_origin=provenance.resolution_origin,
+            measurement_side=provenance.measurement_side,
+            base_reference_side=provenance.base_reference_side,
             status=provenance.status,
             engineering_type=provenance.engineering_type,
             source_kind=provenance.source_kind,

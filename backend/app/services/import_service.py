@@ -308,6 +308,7 @@ def _build_source_metadata(
             offset=ch.offset,
             primary_ratio=ch.primary_ratio,
             secondary_ratio=ch.secondary_ratio,
+            measurement_side=ch.measurement_side,
         )
         for ch in record.analog_channels
     ]

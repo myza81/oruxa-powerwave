@@ -8866,6 +8866,25 @@ stop for owner review before Slice 5. See
 [PER_UNIT_AUDIT_SLICE_4.md](PER_UNIT_AUDIT_SLICE_4.md), with historical
 [Slice 3](PER_UNIT_AUDIT_SLICE_3.md) evidence retained.
 
+**PC-001 Stage 5A (2026-11-03):** owner approved separate reference-side
+metadata and automatic common Current bases. Implementation is verified locally;
+see [Stage 5A](PER_UNIT_AUDIT_STAGE_5A.md). New cross-authority
+eligibility is Primary/Primary only, using live authoritative leaves,
+rtol=1e-12/atol=0 and a deterministic minimum representative. No ambient default
+repairs unresolved grouped inputs. Historical single-authority and genuinely
+ungrouped Source Default remain supported. No sample scaling or math changes.
+Metadata/API/editor/provenance additions preserve numeric PUT semantics and
+atomic rejection. Stage 5B manual result configuration, CSV/BEN side UI, shared
+secondary references and the separate CSV discovery-id issue remain deferred.
+The two earlier assessments remain historical context, not authorization for
+other proposed extensions. Baseline: 108 failures / 24 passes. Broader focused
+correction: 494 passed. Full backend: 11,253 passed, 320 conditional/platform
+skips, zero failures/errors and 21 existing warnings. Selected browser:
+392/392 passed in 32 explicit files, zero skips/flaky cases/failures/global
+errors. Both exit 0. All 2,250 protected evidence files remain unchanged.
+Stage 5A acceptance is met locally. Stop for owner review; no push, merge,
+deployment or Stage 5B is authorized.
+
 ### Scope
 
 Implements Slice 7 of the DEC-050 sequence: a calculated channel may

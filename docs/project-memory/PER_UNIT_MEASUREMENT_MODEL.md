@@ -1128,6 +1128,49 @@ by display label).
 
 ## 19. Calculated-channel implications — `[DECISION]` initial rule approved 2026-08-23, implementation pending
 
+**[Owner-approved Stage 5A update - 2026-11-03, DEC-209].** Automatic
+calculated Current eligibility now resolves each contributing source channel's
+live effective base. Group membership is authoritative even when incomplete;
+only genuinely ungrouped inputs use their own Source Default. Different group
+ids or configuration methods do not themselves prevent compatibility.
+
+Measurement side and configured base side are independent validated
+primary/secondary/unknown metadata. Manual/direct bases never inherit sample
+side or a previous equipment-derived Primary declaration. Equipment derivation
+remains primary; historical manual bases remain undeclared unless explicitly
+configured. COMTRADE provides P/S without changing a*x+b. CSV/BEN stay Unknown.
+No CT/VT scaling or sample reinterpretation is authorized.
+
+Across distinct authorities, only Primary measurements with Primary bases may
+qualify in 5A. Secondary/Secondary, conflicting and Unknown sides are unavailable;
+a shared secondary-reference contract is deferred. Established same-group/shared
+Source Default normalization is preserved when metadata is missing. This does
+not certify the historical secondary applicability limitation.
+
+Valid SI bases must satisfy (max-min)/max <= 1e-12, with zero absolute tolerance.
+Compare global leaf extrema, not intermediate representatives; choose the minimum
+equivalent base deterministically. ENG arithmetic comes first, followed by one
+normalization with existing unit/result-safety checks. Bases, links, sides and
+dependencies stay live; no inherited base is persisted. DEC-052/115/116 Voltage
+restrictions remain unchanged.
+
+Multi-authority provenance retains source_kind=null and adds
+resolution_origin=automatic_common_base, independent sides and the actual
+common base or unavailable reason. Never attribute it to one input group or an
+ambient Source Default. See [Stage 5A](PER_UNIT_AUDIT_STAGE_5A.md).
+
+**Manual override remains required for Stage 5B.** The engineer must ultimately
+have an explicit result-specific base with precedence, truthful manual provenance
+and unchanged inputs, subject to safety/unit/physical gates. The
+[gap assessment](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md) remains
+separate. Stage 5A adds no result-owned manual storage, write API/editor or
+explicit unassignment. Existing internal manual assignments are preserved.
+The original initial rule below is historical, superseded only for the approved
+Current scope above. Stage 5A is verified locally: 11,253 backend passes,
+320 conditional/platform skips, zero failures/errors and 21 existing warnings;
+392/392 selected browser passes, zero skips/flaky cases/failures/global errors.
+Both runs exit 0. No push, merge, deployment or Stage 5B implementation.
+
 For the **first group-aware implementation**, use the conservative
 rule:
 

@@ -46,7 +46,9 @@ fields for the Source Default scope.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from app.domain.reference_side import ReferenceSide, configured_base_side
+from app.services.calculated_current_per_unit import resolve_calculated_current_per_unit, CURRENT_REASON_COPY
 
 import numpy as np
 
@@ -54,7 +56,7 @@ from app.domain.calculated_channel import CalculatedChannel
 from app.domain.channel_classification import (
     ENGINEERING_QUANTITY_CURRENT_ANGLE,
     ENGINEERING_QUANTITY_VOLTAGE_ANGLE,
-    VOLTAGE,
+    VOLTAGE, CURRENT,
 )
 from app.domain.per_unit import (
     STATUS_BASE_REQUIRED,
@@ -170,6 +172,9 @@ class PerUnitChannelProvenance:
     # Current Measurement Group (equipment_rating method) only.
     equipment_rating_mva: float | None
     applicable_voltage_ll_kv: float | None
+    resolution_origin: str | None = None
+    measurement_side: ReferenceSide = "unknown"
+    base_reference_side: ReferenceSide = "unknown"
 
 
 def _not_applicable_provenance(engineering_type: str) -> PerUnitChannelProvenance:
@@ -236,6 +241,7 @@ def _provenance_from_group(
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_MEASUREMENT_GROUP,
         reason=_reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason),
+        base_reference_side=view.current_config.base_reference_side if view and view.current_config else "unknown",
         measurement_group_id=measurement_group_id,
         measurement_group_name=group.display_name if group is not None else None,
         nominal_base_kv=nominal_base_kv,
@@ -287,6 +293,7 @@ def _provenance_from_legacy(
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_SOURCE_DEFAULT,
         reason=_reason_text(SOURCE_KIND_SOURCE_DEFAULT, resolution.reason),
+        base_reference_side=configured_base_side(per_unit_profile.current_base_mode, per_unit_profile.current_base_reference_side) if per_unit_profile and engineering_type == CURRENT else "unknown",
         measurement_group_id=None,
         measurement_group_name=None,
         nominal_base_kv=nominal_base_kv,
@@ -298,7 +305,7 @@ def _provenance_from_legacy(
     )
 
 
-def build_source_channel_provenance(
+def _build_source_channel_provenance(
     *,
     workspace_id: str,
     source_id: str,
@@ -342,6 +349,10 @@ def build_source_channel_provenance(
     )
 
 
+def build_source_channel_provenance(*, measurement_side: ReferenceSide = "unknown", **kwargs) -> PerUnitChannelProvenance:
+    return replace(_build_source_channel_provenance(**kwargs), measurement_side=measurement_side)
+
+
 def build_calculated_channel_provenance(
     *,
     workspace_id: str,
@@ -352,6 +363,8 @@ def build_calculated_channel_provenance(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    source_registry=None,
+    per_unit_registry=None,
 ) -> PerUnitChannelProvenance:
     """Mirrors `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`'s
     own exact dispatch order for a CALCULATED channel -- including
@@ -364,6 +377,31 @@ def build_calculated_channel_provenance(
     DEC-116: the undetermined-representation rule is checked first,
     exactly like the display dispatcher, so provenance never explains a
     base the display path would refuse."""
+    if channel.engineering_type == CURRENT and source_registry is not None and per_unit_registry is not None:
+        inherited = resolve_calculated_current_per_unit(
+            workspace_id=workspace_id, channel=channel, source_registry=source_registry,
+            per_unit_registry=per_unit_registry, calc_registry=calc_registry, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry)
+        if inherited is not None:
+            resolution = inherited.resolution
+            if inherited.source_kind == SOURCE_KIND_MEASUREMENT_GROUP:
+                provenance = _provenance_from_group(
+                    resolution.profile_id, resolution, workspace_id=workspace_id,
+                    engineering_type=CURRENT, group_registry=group_registry,
+                    voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry)
+            elif inherited.source_kind == SOURCE_KIND_SOURCE_DEFAULT:
+                provenance = _provenance_from_legacy(resolution, engineering_type=CURRENT,
+                    per_unit_profile=per_unit_registry.get(workspace_id, resolution.profile_id))
+            else:
+                amount, unit = _effective_base(resolution)
+                reason = CURRENT_REASON_COPY.get(resolution.reason) or _MEASURED_UNIT_REASON_COPY.get(resolution.reason)
+                if resolution.reason and reason is None:
+                    reason = _reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason)
+                provenance = replace(_not_applicable_provenance(CURRENT), status=resolution.status,
+                    reason=reason, effective_base_amount=amount, effective_base_unit=unit,
+                    resolution_origin="automatic_common_base")
+            return replace(provenance, measurement_side=inherited.measurement_side,
+                           base_reference_side=inherited.base_reference_side)
     if voltage_representation_undetermined(workspace_id, channel, calc_registry=calc_registry):
         return PerUnitChannelProvenance(
             status=STATUS_BASE_REQUIRED, engineering_type=channel.engineering_type, source_kind=None,

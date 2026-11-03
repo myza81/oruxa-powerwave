@@ -9,6 +9,42 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Per-Unit audit Stage 5A - verified locally (2026-11-03)
+
+[DECISION] Owner approved separate reference-side metadata and automatic
+cross-authority Current eligibility (DEC-209). Only proven Primary/Primary
+cross-authority cases may qualify; Secondary/Secondary and unknown sides remain
+unavailable in 5A. Historical single-group/shared-Source-Default normalization
+remains supported. No CT/VT scaling or Voltage-policy change is authorized.
+
+[FACT] Live source-leaf resolution establishes authoritative effective bases,
+refuses ambient defaults for unresolved grouped inputs, compares global extrema
+with rtol=1e-12/atol=0, and normalizes ENG results once. Metadata/API fields,
+existing manual Group/direct Source Default selectors and read-only Current
+calculation provenance are implemented locally. Omission preserves a declaration
+only within the same manual/direct method; transitions reset it. Equipment-derived
+bases remain Primary. Production Power math and physical arrays are unchanged.
+
+[VALIDATION] Baseline: 108 failures / 24 passes in 132 cases, zero errors/skips.
+Initial correction: 173 passed. Broader focused selection: 494 passed, zero
+failures/errors/skips, three existing warnings. Full backend: **11,253 passed,
+320 skipped, zero failures/errors**, 21 existing warnings, exit 0, including all
+185 new Stage 5A cases. Relevant browser selection: **392/392 passed** across
+32 explicitly selected files, zero failures/errors/skips/flaky cases, exit 0.
+Independent Decimal checks: 1,800 comparisons, zero mismatches. All 2,250
+protected evidence files retain their file list, hashes, sizes and timestamps.
+Stage 5A acceptance is met locally; no push, merge or deployment. See
+[PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md).
+
+[DEFERRED] Result-specific manual PU storage/API/editor and explicit calculated
+unassignment are Stage 5B. The two earlier
+[reference-side](PER_UNIT_AUDIT_SLICE_5_DESIGN.md) and
+[manual-override](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md)
+assessments remain historical context; Stage 5A approval supersedes their initial
+metadata pause only. CSV/BEN sample side stays Unknown; sample-side declaration
+UI, shared secondary references and the separate CSV discovery-id issue remain
+deferred. No Stage 5B feature is implemented.
+
 ## Per-Unit audit remediation — Slice 4 (2026-11-03, local)
 
 [FACT] PU-006 and PU-007 are corrected. Shared numerical helpers validate SI

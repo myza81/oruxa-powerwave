@@ -16,6 +16,7 @@ definition, this module validates and evaluates it.
 """
 
 from __future__ import annotations
+from app.services.calculated_current_per_unit import resolve_calculated_current_per_unit
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -1404,6 +1405,8 @@ def _resolve_effective_per_unit_for_calculated_channel(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    source_registry: WorkspaceRegistry | None = None,
+    per_unit_registry: PerUnitRegistry | None = None,
 ):
     """DEC-050 Slice 7: the ONE dispatch point every per-unit-aware
     calculated-channel function below calls, instead of
@@ -1419,6 +1422,17 @@ def _resolve_effective_per_unit_for_calculated_channel(
     resolution exactly as before. See
     `app.services.calculated_group_aware_per_unit`'s own module
     docstring for the full rule."""
+    if (channel.engineering_type == CURRENT and all(reg is not None for reg in (
+        workspace_id, source_registry, per_unit_registry, calc_registry, group_registry,
+        voltage_config_registry, current_config_registry,
+    ))):
+        inherited = resolve_calculated_current_per_unit(
+            workspace_id=workspace_id, channel=channel, source_registry=source_registry,
+            per_unit_registry=per_unit_registry, calc_registry=calc_registry, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        )
+        if inherited is not None:
+            return inherited.resolution
     # DEC-116: checked BEFORE either resolver, so the Measurement Group
     # and Source Default paths apply the identical rule -- a generic
     # multi-input Voltage result (or a unary descendant of one) has no
@@ -1481,6 +1495,8 @@ def extract_calculated_waveform_range(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    source_registry: WorkspaceRegistry | None = None,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> CalculatedWaveformRangeResult:
     """Display-range extraction for one calculated channel -- calls the
     SAME `_clip_and_reduce()` core the source-channel waveform endpoint
@@ -1496,6 +1512,7 @@ def extract_calculated_waveform_range(
             channel, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
         out_values, unit, per_unit_status = apply_per_unit_to_array(
             out_values, channel.unit, channel.engineering_type, resolution
@@ -1537,6 +1554,8 @@ def extract_calculated_cursor_values(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    source_registry: WorkspaceRegistry | None = None,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> list[CalculatedCursorValues]:
     """A/B cursor values for a batch of calculated channels (section 54) --
     each channel's own full-resolution `time` array is searched
@@ -1563,6 +1582,7 @@ def extract_calculated_cursor_values(
                 channel, profile, names,
                 workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
                 voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
             )
             a_value, unit, per_unit_status = apply_per_unit_to_value(a_value, channel.unit, channel.engineering_type, resolution)
             b_value, unit, per_unit_status = apply_per_unit_to_value(b_value, channel.unit, channel.engineering_type, resolution)
@@ -1606,6 +1626,8 @@ def resolve_calculated_peak_value(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    source_registry: WorkspaceRegistry | None = None,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> CalculatedPeakResult:
     """+Peak/-Peak for one calculated channel (section 55) -- calls the
     SAME `_peak_in_range()` core (earliest-tie argmax/argmin, non-finite
@@ -1620,6 +1642,7 @@ def resolve_calculated_peak_value(
             channel, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedPeakResult(
@@ -1661,6 +1684,8 @@ def resolve_calculated_annotation_anchor(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    source_registry: WorkspaceRegistry | None = None,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> CalculatedAnnotationAnchorResult | None:
     """Callout anchor resolution for one calculated channel (section 56) --
     reuses `_nearest_sample_index()` directly, the exact same nearest-
@@ -1680,6 +1705,7 @@ def resolve_calculated_annotation_anchor(
             channel, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedAnnotationAnchorResult(

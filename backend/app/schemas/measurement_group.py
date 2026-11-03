@@ -20,6 +20,7 @@ issuing a follow-up request per row.
 """
 
 from __future__ import annotations
+from app.domain.reference_side import ReferenceSide
 
 from datetime import datetime
 from typing import Annotated, Literal
@@ -68,6 +69,7 @@ class CurrentGroupConfigOut(BaseModel):
     DERIVED information (Slice 4's own resolver) -- the frontend must
     never recompute `Ibase = Sbase / (sqrt(3) * Vbase_LL)` itself."""
 
+    base_reference_side: ReferenceSide = "unknown"
     method: CurrentBaseMethod
     equipment_rating_mva: float | None
     linked_voltage_group_id: str | None
@@ -134,6 +136,7 @@ class CurrentGroupConfigUpdateRequest(BaseModel):
     docstrings for the exact field requirements/mutual exclusivity this
     endpoint enforces (never re-validated here, only passed through)."""
 
+    base_reference_side: ReferenceSide = "unknown"
     method: CurrentBaseMethod
     equipment_rating_mva: PerUnitBaseNumber | None = None
     linked_voltage_group_id: str | None = None

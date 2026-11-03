@@ -4,7 +4,55 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-03** (Per-Unit audit Slice 4 verified locally; stop for owner review.)
+Last updated: **2026-11-03** (owner-approved Stage 5A implemented and verified locally).
+
+## Per-Unit audit Stage 5A - automatic Current common bases
+
+Stage 5A is approved after the two bounded assessments. Separate measurement/
+base sides use primary/secondary/unknown. New cross-authority eligibility is
+Primary/Primary only; historical single-authority behavior and genuinely
+ungrouped Source Default remain supported. No CT/VT scaling or Voltage-policy
+change. Bases resolve live from authoritative source leaves; compare global
+min/max with rtol=1e-12, atol=0 and use the minimum equivalent SI base.
+ENG arithmetic precedes one normalization, with existing result safety checks.
+
+Manual Group/direct Source Default editors declare base side independently.
+Omitted side is retained only in an unchanged manual/direct method. Derived
+bases remain Primary; transitions to manual reset to Unknown. Current calculated
+provenance is read-only, retains the source_kind contract and adds explicit
+automatic_common_base origin. Existing internal manual assignment graphs retain
+their legacy behavior; this is not a new result-specific manual workflow.
+
+Baseline: 132 cases, 108 failures / 24 passes, zero errors/skips. Initial green:
+173 cases. Broader focused selection: 494 passed, zero failures/errors/skips,
+three existing warnings. Full backend: **11,253 passed / 320 skipped / zero
+failures/errors**, 21 existing warnings, exit 0, including 185 new cases and
+the prior Slice 1-4 regressions. Full selected browser: **392/392 passed** in
+32 explicit files, zero skips/flaky cases/failures/global errors, exit 0.
+The new complete browser file first passed all three cases independently.
+Independent Decimal base comparisons: 1,800, zero mismatches. Physical scaling
+and all 78 reviewed domain math functions are unchanged.
+The first three browser attempts timed out at a new test's raw-container
+selector; it is corrected, with failure artifacts retained. Test-managed server
+teardown hung; only verified owned processes were stopped. Fresh hidden local
+servers and all test outputs used isolated TEMP. Those servers are now stopped.
+Final source hashes match the implementation exercised by the full test runs.
+Stage 5A acceptance is met locally.
+
+Evidence: `C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-stage5a-20261103-a64oug4y`.
+Full status: [PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md).
+Implementation baseline: `2114a71`, on `feature/calculator-vi-phasors`. The local
+Stage 5A revision contains only its 33 code/test/documentation files; use Git
+history for its resulting commit hash. No push, merge or deployment. All 2,250
+files in the five original untracked paths retain their file list, hashes,
+sizes and timestamps, including the original audit. No concurrent production
+changes were found. Preserve these paths; do not stage or clean them.
+
+**Do not begin Stage 5B.** Result-owned manual bases, result-specific write APIs/
+editors, explicit unassignment and new descendant policy remain deferred. The
+owner manual-override principle stands. No CSV discovery-id correction, CSV/BEN
+side UI, CT/VT scaling or shared secondary-reference model is included. Read
+DEC-209 and the historical assessments for the approved versus deferred scope.
 
 ## Per-Unit audit Slice 4 — PU-006/PU-007 complete locally
 

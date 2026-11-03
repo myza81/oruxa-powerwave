@@ -32258,10 +32258,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const menu = document.getElementById("wwChannelContextMenu");
             // Rename / Change colour apply to every plotted analog channel
             // (raw or calculated: both are presentation metadata keyed by
-            // wwChannelKey()). Per-Unit Details reads the SOURCE
-            // per-unit-resolution endpoint, which a calculated channel id
-            // does not have, so it is raw-only.
-            menu.querySelector("#wwChannelMenuPerUnitBtn").hidden = wwIsCalculatedSourceId(wwChannelMenuTarget.sourceId);
+            // wwChannelKey()). Current calculations also expose their
+            // read-only automatic-base provenance through the existing modal.
+            const calculated = ww.calculatedChannels.get(wwChannelMenuTarget.sourceId);
+            menu.querySelector("#wwChannelMenuPerUnitBtn").hidden = wwIsCalculatedSourceId(wwChannelMenuTarget.sourceId) &&
+                (!calculated || calculated.engineering_type !== "Current");
             menu.hidden = false;
             // Clamp so the menu can never render partly off-screen -- a
             // right-click near the Workspace Sidebar's own right/bottom
@@ -32427,6 +32428,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ));
             } else if (resolution.source_kind === "source_default") {
                 rows.push(wwPerUnitInfoRowHtml("Source", "Source Default"));
+            } else if (resolution.resolution_origin === "automatic_common_base") {
+                rows.push(wwPerUnitInfoRowHtml("Source", "Automatic common current base"));
             }
 
             // Nominal voltage / Channel interpretation: the SAME three-
@@ -32457,7 +32460,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     rows.push(wwPerUnitInfoRowHtml(
                         "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit + suffix
                     ));
-                } else if (resolution.source_kind === "measurement_group") {
+                } else if (resolution.source_kind === "measurement_group" || resolution.resolution_origin === "automatic_common_base") {
                     rows.push(wwPerUnitInfoRowHtml(
                         "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit
                     ));
@@ -32470,6 +32473,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
 
+            if (resolution.engineering_type === "Current") {
+                rows.push(wwPerUnitInfoRowHtml("Measurement side", wwReferenceSideText(resolution.measurement_side)));
+                rows.push(wwPerUnitInfoRowHtml("Base reference side", wwReferenceSideText(resolution.base_reference_side)));
+            }
             rows.push(wwPerUnitInfoRowHtml("Status", resolution.status === "configured" ? "Configured" : "Needs configuration"));
             if (resolution.reason) {
                 rows.push(wwPerUnitInfoRowHtml("Reason", resolution.reason));
@@ -32480,12 +32487,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         async function wwFetchChannelPerUnitResolution(sourceId, channelName) {
+            const calculated = wwIsCalculatedSourceId(sourceId);
+            const resource = calculated ? "/calculated-channels/" : "/sources/";
             let response;
             try {
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/per-unit-resolution" +
-                    "?channel_name=" + encodeURIComponent(channelName)
+                    resource + encodeURIComponent(sourceId) + "/per-unit-resolution" +
+                    (calculated ? "" : "?channel_name=" + encodeURIComponent(channelName))
                 );
             } catch (error) {
                 return null;
@@ -34808,6 +34817,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the algorithm's own result, just from an already-fresh read.
         let perUnitEditorState = null;
 
+        function wwReferenceSideText(side) {
+            return side === "primary" ? "Primary" : side === "secondary" ? "Secondary" : "Unknown";
+        }
+
+        function wwPerUnitBaseSideFieldHtml(id, side) {
+            return '<label class="ww-cc-field"><span>Base reference side</span><select id="' + id + '">' +
+                ["unknown", "primary", "secondary"].map((value) => '<option value="' + value + '"' +
+                    (side === value ? ' selected' : '') + '>' + wwReferenceSideText(value) + '</option>').join("") +
+                '</select></label><p class="hint">Declare the base reference independently of the recorded samples. Unknown does not establish automatic cross-group compatibility.</p>';
+        }
+
         function wwPerUnitConfigToEditorState(sourceId, config) {
             return {
                 sourceId,
@@ -34817,6 +34837,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 currentBaseMode: config ? config.current_base_mode : "none",
                 apparentPowerBaseValue: config ? config.apparent_power_base_value : null,
                 directCurrentBaseValue: config ? config.direct_current_base_value : null,
+                currentBaseReferenceSide: config && config.current_base_mode === "direct" ? (config.current_base_reference_side || "unknown") : "unknown",
                 configured: !!(config && config.configured),
                 autoDetection: {
                     reference: config ? config.effective_voltage_reference : null,
@@ -35042,6 +35063,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 radio.addEventListener("change", () => {
                     if (!radio.checked) return;
                     state.currentBaseMode = radio.value;
+                    state.currentBaseReferenceSide = "unknown";
                     wwRenderPerUnitProfileEditor(); // structural (progressive disclosure) -- a radio change, never mid-typing
                 });
             });
@@ -35055,6 +35077,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 state.apparentPowerBaseValue = wwPerUnitNumberOrNull(sValueInput.value);
                 wwUpdatePerUnitCalculatedCurrentBasePreview();
             });
+            const baseSideSelect = document.getElementById("perUnitCurrentBaseSide");
+            if (baseSideSelect) baseSideSelect.addEventListener("change", () => { state.currentBaseReferenceSide = baseSideSelect.value; });
             const dValueInput = document.getElementById("perUnitDirectCurrentBaseValue");
             if (dValueInput) dValueInput.addEventListener("input", () => {
                 state.directCurrentBaseValue = wwPerUnitNumberOrNull(dValueInput.value);
@@ -35172,6 +35196,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                           (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 2.10">' +
                           '<span class="ww-pu-suffix">kA</span></div></label>'
                         : "") +
+                    (showDirect ? wwPerUnitBaseSideFieldHtml("perUnitCurrentBaseSide", state.currentBaseReferenceSide) :
+                        showMva ? '<p class="hint">Base reference side: Primary</p>' : "") +
                     (showNone
                         ? '<p class="hint" style="margin-top:10px;">Current channels will show "Base required" in Per Unit mode until a current base is configured.</p>'
                         : "") +
@@ -35208,6 +35234,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 current_base_mode: state.currentBaseMode,
                 apparent_power_base_value: state.currentBaseMode === "derived" ? state.apparentPowerBaseValue : null,
                 direct_current_base_value: state.currentBaseMode === "direct" ? state.directCurrentBaseValue : null,
+                current_base_reference_side: state.currentBaseMode === "derived" ? "primary" : state.currentBaseMode === "direct" ? state.currentBaseReferenceSide : "unknown",
             };
 
             let response;
@@ -35670,6 +35697,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 linkedVoltageGroupId: cfg.linked_voltage_group_id,
                 manualVoltageBaseKv: cfg.manual_voltage_base_kv,
                 manualIbaseKa: cfg.manual_ibase_ka,
+                baseReferenceSide: cfg.method === "manual" ? (cfg.base_reference_side || "unknown") : "unknown",
             };
         }
 
@@ -35776,11 +35804,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
                 html += '<div class="ww-pu-section">';
                 html += '<h4 class="ww-pu-section-title">Derived Current Base</h4>';
+                html += '<p class="hint">Base reference side: Primary</p>';
                 html += '<p class="hint"><strong id="wwMgDerivedIbaseText">Ibase ≈ ' + wwMgCurrentDrawerDerivedIbaseText(state) + '</strong><br><span style="font-size:0.66rem;">Read-only, calculated by the backend.</span></p>';
                 html += '</div>';
             } else if (state.method === "manual") {
                 html += '<div class="ww-pu-section">';
                 html += '<h4 class="ww-pu-section-title">Current Base (Ibase)</h4>';
+                html += wwPerUnitBaseSideFieldHtml("wwMgBaseReferenceSide", state.baseReferenceSide);
                 html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Current base</span>';
                 html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgManualIbaseInput" min="0" step="any" value="' + (state.manualIbaseKa != null ? state.manualIbaseKa : "") + '"><span class="ww-pu-suffix">kA</span></div></label>';
                 html += '</div>';
@@ -35841,7 +35871,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const methodRadioIds = { equipment_rating: "wwMgMethodEquipment", manual: "wwMgMethodManual", none: "wwMgMethodNone" };
             for (const value of Object.keys(methodRadioIds)) {
                 const el = document.getElementById(methodRadioIds[value]);
-                if (el) el.addEventListener("change", () => { if (el.checked) { state.method = value; wwRenderMgDrawerBody(); } });
+                if (el) el.addEventListener("change", () => { if (el.checked) { state.method = value; state.baseReferenceSide = "unknown"; wwRenderMgDrawerBody(); } });
             }
             if (state.method === "equipment_rating") {
                 const mvaInput = document.getElementById("wwMgMvaInput");
@@ -35855,6 +35885,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const manualVbaseInput = document.getElementById("wwMgManualVbaseInput");
                 if (manualVbaseInput) manualVbaseInput.addEventListener("input", () => { state.manualVoltageBaseKv = wwPerUnitNumberOrNull(manualVbaseInput.value); wwUpdateMgDerivedIbasePreview(); });
             } else if (state.method === "manual") {
+                const baseSideSelect = document.getElementById("wwMgBaseReferenceSide");
+                if (baseSideSelect) baseSideSelect.addEventListener("change", () => { state.baseReferenceSide = baseSideSelect.value; });
                 const ibaseInput = document.getElementById("wwMgManualIbaseInput");
                 if (ibaseInput) ibaseInput.addEventListener("input", () => { state.manualIbaseKa = wwPerUnitNumberOrNull(ibaseInput.value); });
             }
@@ -35898,7 +35930,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 };
             } else {
                 url = base + "/current-config";
-                body = { method: state.method };
+                body = { method: state.method, base_reference_side: state.method === "equipment_rating" ? "primary" : state.method === "manual" ? state.baseReferenceSide : "unknown" };
                 if (state.method === "equipment_rating") {
                     body.equipment_rating_mva = state.equipmentRatingMva;
                     if (state.voltageSourceMode === "linked") body.linked_voltage_group_id = state.linkedVoltageGroupId;

@@ -71,6 +71,7 @@ from app.domain.measurement_group import (
 )
 from app.domain.voltage_group_config import VoltageBaseConfiguration, voltage_base_valid
 from app.domain.per_unit_numerics import convert_scalar, derived_current_ka, positive_finite, scaled_base
+from app.domain.reference_side import ReferenceSide
 
 SQRT_3 = 1.7320508075688772
 
@@ -150,6 +151,7 @@ class CurrentBaseConfiguration:
     linked_voltage_group_id: str | None = None
     manual_voltage_base_kv: float | None = None
     manual_ibase_ka: float | None = None
+    base_reference_side: ReferenceSide = "unknown"
 
 
 def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll_kv: float) -> float | None:

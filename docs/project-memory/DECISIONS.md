@@ -29063,3 +29063,91 @@ These decisions were made and implemented during Phase E-3B (three-phase power f
   is unchanged and remains the sole source for canonical stored channel names — stored
   names continue to read `P₃ (VA, IA, VB, IB, VC, IC)` etc. Single-phase display labels
   (`P`, `Q`, `|S|`) are unchanged. Implemented in commit `02b1a68`; UAT PASSED 2026-11-02.
+
+## DEC-209 — PC-001 Current common-base policy requires explicit, separate measurement and base reference sides
+
+Date: 2026-11-03.
+Status: **Owner-approved Stage 5A implementation scope. Automatic resolution
+only; result-specific manual configuration remains deferred to Stage 5B.**
+Source: owner task "Per-Unit Audit Remediation, Slice 5" and subsequent owner
+decision "Define explicit base-side metadata first" (Option 2), followed by
+"Additional owner requirement - Preserve Manual Override", then the explicit
+owner-approved implementation task "Reference-Side Metadata and Automatic
+Cross-Group Current PU Eligibility - Slice 5A".
+
+Approved principles:
+
+- Calculated Current arithmetic remains in engineering units. Automatic PU
+  eligibility depends on valid, physically compatible, numerically equivalent
+  effective bases of every contributing input, transitively. Group identity
+  alone neither proves nor disproves compatibility. Manual and equipment-derived
+  bases may agree when their physical/reference meanings agree.
+- A grouped input's unresolved/incompatible base must not acquire an unrelated
+  Source Default. Genuinely ungrouped inputs retain supported Source Default.
+- Measurement side represented by samples and reference side represented by a
+  configured base are **distinct**. The minimal vocabulary is primary,
+  secondary or unknown. Never assign manual/direct base side solely from the
+  sample side, or silently label historical manual bases primary/secondary.
+- Preserve equipment-derived primary-base semantics. Do not apply CT/VT ratio
+  scaling, reinterpret COMTRADE values, redesign mathematical operations, or
+  change established behavior outside approved PC-001 scope.
+- Unknown necessary compatibility conditions fail closed for the **new
+  cross-group automatic decision**. Existing manual configuration and Source
+  Default functionality must remain available.
+- When automatic Current resolution fails because bases differ or are unknown,
+  the engineer must retain an explicit manual base workflow for the intended
+  calculated result. A valid explicit base takes precedence, with distinct
+  manual provenance and no mutation of input groups/bases. It cannot bypass
+  numerical safety, measured-unit checks or physical compatibility. Reuse an
+  existing workflow if sufficient; obtain owner approval before adding any
+  calculated-channel configuration UI or storage-model extension.
+
+Supersession is limited to the intended PC-001 Current policy: DEC-050/model
+section 19's initial group-id-only exclusion, DEC-051's calculated-channel
+ambient fallback for incompatible groups, and DEC-116's historical statement
+that Current inheritance is unchanged cannot define the new cross-authority
+Current rule. DEC-049 legacy Source Default remains supported. DEC-052/115/116
+Voltage representation restrictions remain unchanged. The original audit is
+historical evidence and is not rewritten; the pre-Stage-5A runtime had PC-001.
+
+The initial owner direction required a bounded assessment and metadata pause.
+Both assessments remain historical evidence:
+[reference-side design](PER_UNIT_AUDIT_SLICE_5_DESIGN.md) and
+[manual-override gap](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md).
+The subsequent Stage 5A task authorizes only the following implementation:
+
+- Add separate validated primary/secondary/unknown measurement/base metadata.
+  COMTRADE P/S provides structured side without changing a*x+b. CSV/BEN stay
+  Unknown absent an independently established provider contract.
+- Equipment-derived bases remain Primary. Manual/direct declarations are
+  independent; historical manual bases are not backfilled. Preserve an omitted
+  side only within the same manual/direct method. Explicit Unknown resets it;
+  method transitions cannot carry equipment-derived Primary into manual mode.
+- New cross-authority automatic eligibility permits only Primary/Primary,
+  subject to base/unit/dependency/confirmation/numerical gates. Secondary/
+  Secondary is unavailable in this release, pending a shared physical reference,
+  not permanently prohibited. Preserve established single-authority behavior.
+- Resolve live contributing bases. Group membership is authoritative even when
+  configuration fails; only genuinely ungrouped channels use their own Source
+  Default. An ambient automatic assignment must not repair grouped failures.
+- Compute ENG arithmetic first and normalize the actual result once. Preserve
+  Slice 4 safety. Compare global extrema with relative tolerance 1e-12 and zero
+  absolute tolerance; the minimum equivalent SI base is deterministic. Never
+  average incompatible bases or persist inherited values.
+- Preserve source_kind values. Add automatic_common_base origin for
+  multi-authority results, independent sides, actual common kA base and truthful
+  unavailable reasons. Use the existing read-only Current provenance modal/API,
+  without adding a result configuration editor.
+
+Stage 5A implementation and validation are in
+[PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md). Verification is complete
+locally: 11,253 backend passes, 320 conditional/platform skips, zero failures/
+errors and 21 existing warnings; 392/392 selected browser cases pass, with zero
+skips/flaky cases/failures/global errors. Both exit 0. No push, merge or deploy.
+No CSV/BEN side-declaration UI, scaling, secondary identity model,
+Voltage policy, Power calculation or separate CSV correction is included.
+
+**Stage 5B is not authorized by Stage 5A:** no result-owned manual base storage,
+write API/editor, explicit unassignment or new manual descendant policy. The
+owner manual-override principle stands; its proposed extension requires separate
+approval. Existing internal manual assignment graphs retain their legacy path.
