@@ -4,55 +4,61 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-03** (owner-approved Stage 5A implemented and verified locally).
+Last updated: **2026-11-04** (Stage 5B implemented and verified locally; owner-approved test maintenance complete).
 
-## Per-Unit audit Stage 5A - automatic Current common bases
+## Per-Unit audit Stage 5B - result-owned manual Current PU
 
-Stage 5A is approved after the two bounded assessments. Separate measurement/
-base sides use primary/secondary/unknown. New cross-authority eligibility is
-Primary/Primary only; historical single-authority behavior and genuinely
-ungrouped Source Default remain supported. No CT/VT scaling or Voltage-policy
-change. Bases resolve live from authoritative source leaves; compare global
-min/max with rtol=1e-12, atol=0 and use the minimum equivalent SI base.
-ENG arithmetic precedes one normalization, with existing result safety checks.
+The separate Stage 5B task authorizes result-specific Manual / Automatic /
+Unassigned configuration and an explicit Return to Automatic action. Baseline:
+`e2427b652bafcb9e366cc84d79258e28c15dcc8b` (Stage 5A), on
+`feature/calculator-vi-phasors`. Fetched origin: five ahead / zero behind.
 
-Manual Group/direct Source Default editors declare base side independently.
-Omitted side is retained only in an unchanged manual/direct method. Derived
-bases remain Primary; transitions to manual reset to Unknown. Current calculated
-provenance is read-only, retains the source_kind contract and adds explicit
-automatic_common_base origin. Existing internal manual assignment graphs retain
-their legacy behavior; this is not a new result-specific manual workflow.
+The existing assignment record owns immutable SI amperes, an independent base
+side and timestamp. Complete physical/unit/numerical candidate validation
+precedes one locked replacement. Rejected saves preserve previous state. Manual
+never silently falls back after later inapplicability. Original groups, defaults,
+linked bases, reverse indices, source samples and physical Power/math are
+unchanged. Automatic descendants resolve source leaves, not a parent's override;
+a child may independently configure its result. Unknown sides and distinct
+secondary authorities remain unavailable; no scaling or secondary identity model.
 
-Baseline: 132 cases, 108 failures / 24 passes, zero errors/skips. Initial green:
-173 cases. Broader focused selection: 494 passed, zero failures/errors/skips,
-three existing warnings. Full backend: **11,253 passed / 320 skipped / zero
-failures/errors**, 21 existing warnings, exit 0, including 185 new cases and
-the prior Slice 1-4 regressions. Full selected browser: **392/392 passed** in
-32 explicit files, zero skips/flaky cases/failures/global errors, exit 0.
-The new complete browser file first passed all three cases independently.
-Independent Decimal base comparisons: 1,800, zero mismatches. Physical scaling
-and all 78 reviewed domain math functions are unchanged.
-The first three browser attempts timed out at a new test's raw-container
-selector; it is corrected, with failure artifacts retained. Test-managed server
-teardown hung; only verified owned processes were stopped. Fresh hidden local
-servers and all test outputs used isolated TEMP. Those servers are now stopped.
-Final source hashes match the implementation exercised by the full test runs.
-Stage 5A acceptance is met locally.
+The existing PU modal and Calculated Channels manager expose the editor. Shared
+conversion/provenance and Slice 2 refresh generations serve Waveform arrays,
+row units, legends, cursors, callouts and peaks. Event Reconstruction uses its
+own live resolution/unit mode. Definition lists/preview remain ENG. A-unit
+presentation preserves usable manual subnormal bases exactly across reopen/save.
 
-Evidence: `C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-stage5a-20261103-a64oug4y`.
-Full status: [PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md).
-Implementation baseline: `2114a71`, on `feature/calculator-vi-phasors`. The local
-Stage 5A revision contains only its 33 code/test/documentation files; use Git
-history for its resulting commit hash. No push, merge or deployment. All 2,250
-files in the five original untracked paths retain their file list, hashes,
-sizes and timestamps, including the original audit. No concurrent production
-changes were found. Preserve these paths; do not stage or clean them.
+Dedicated final browser: **10/10 passed**, zero retries/failures/skips/errors.
+Final full backend: **11,315 passed / 320 skipped / zero failures/errors**,
+21 existing warnings, exit 0, including all 62 new cases. Final broad browser:
+**431/431 passed** in 37 explicit files, zero failures/skips/flaky cases/global
+errors, retries=0, exit 0. Two pre-existing compact-summary expectations were
+corrected with explicit owner approval, preserving exact expression/identity/
+unit/spacing assertions. Both complete files also pass 9/9 independently;
+the affected backend notation guard passes 11/11. Only those two browser files
+changed after the passing full backend; production code is unchanged, verified
+by the source/test hash manifest. Failure and proposal evidence remain intact.
+Stage 5B acceptance is met locally. Baseline new workflow:
+21 expected failures. Independent 100,000-sample and Decimal checks preserve
+physical hashes/array identity; full evidence, file list and limits:
+[PER_UNIT_AUDIT_STAGE_5B.md](PER_UNIT_AUDIT_STAGE_5B.md).
 
-**Do not begin Stage 5B.** Result-owned manual bases, result-specific write APIs/
-editors, explicit unassignment and new descendant policy remain deferred. The
-owner manual-override principle stands. No CSV discovery-id correction, CSV/BEN
-side UI, CT/VT scaling or shared secondary-reference model is included. Read
-DEC-209 and the historical assessments for the approved versus deferred scope.
+Evidence roots (all new outputs in isolated TEMP):
+- `C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-stage5b-20261103-jlhzg8h7`
+- `C:/Users/fairizat/AppData/Local/Temp/oruxa-stage5b-browser-5db4d2f589b04367b92d4c84f8f7654d`
+- Closure: `C:/Users/fairizat/AppData/Local/Temp/oruxa-stage5b-closure-c0ce8e9f34174a6bb119eebd16816b67`
+
+Preserve `.audit/`, `.slice1-evidence/`, `test-results/` and both untracked
+screenshot specs. Do not stage, clean or rewrite them. All 2,250 files retain
+their file list, hashes, sizes and modification times. The focused local Stage
+5B revision includes only the 19 listed code/test/documentation files; use Git
+history for the containing commit hash. No push, merge,
+deployment or automatic final audit; stop for owner review. Modes persist only
+in the existing live in-memory workspace, not through a server restart. CSV/BEN
+side UI and the separate CSV discovery-id correction remain deferred.
+
+Earlier slice records below describe their respective closure boundaries;
+Stage 5B's separate owner authorization supersedes the historical pauses only.
 
 ## Per-Unit audit Slice 4 — PU-006/PU-007 complete locally
 

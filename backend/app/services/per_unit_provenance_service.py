@@ -47,6 +47,7 @@ fields for the Source Default scope.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from sys import float_info
 from app.domain.reference_side import ReferenceSide, configured_base_side
 from app.services.calculated_current_per_unit import resolve_calculated_current_per_unit, CURRENT_REASON_COPY
 
@@ -173,6 +174,8 @@ class PerUnitChannelProvenance:
     equipment_rating_mva: float | None
     applicable_voltage_ll_kv: float | None
     resolution_origin: str | None = None
+    configuration_mode: str | None = None
+    configured_current_base_amps: float | None = None
     measurement_side: ReferenceSide = "unknown"
     base_reference_side: ReferenceSide = "unknown"
 
@@ -394,14 +397,20 @@ def build_calculated_channel_provenance(
                     per_unit_profile=per_unit_registry.get(workspace_id, resolution.profile_id))
             else:
                 amount, unit = _effective_base(resolution)
+                if inherited.configuration_mode == "manual" and amount is not None and amount < float_info.min:
+                    # Result bases are stored in SI. Keep that exact reference
+                    # when displaying it in kA would underflow or lose subnormal precision.
+                    amount, unit = resolution.base_amount, "A"
                 reason = CURRENT_REASON_COPY.get(resolution.reason) or _MEASURED_UNIT_REASON_COPY.get(resolution.reason)
                 if resolution.reason and reason is None:
                     reason = _reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason)
                 provenance = replace(_not_applicable_provenance(CURRENT), status=resolution.status,
                     reason=reason, effective_base_amount=amount, effective_base_unit=unit,
-                    resolution_origin="automatic_common_base")
+                    resolution_origin=inherited.resolution_origin or "automatic_common_base")
             return replace(provenance, measurement_side=inherited.measurement_side,
-                           base_reference_side=inherited.base_reference_side)
+                           base_reference_side=inherited.base_reference_side,
+                           configuration_mode=inherited.configuration_mode,
+                           configured_current_base_amps=inherited.configured_current_base_amps)
     if voltage_representation_undetermined(workspace_id, channel, calc_registry=calc_registry):
         return PerUnitChannelProvenance(
             status=STATUS_BASE_REQUIRED, engineering_type=channel.engineering_type, source_kind=None,

@@ -1159,17 +1159,35 @@ resolution_origin=automatic_common_base, independent sides and the actual
 common base or unavailable reason. Never attribute it to one input group or an
 ambient Source Default. See [Stage 5A](PER_UNIT_AUDIT_STAGE_5A.md).
 
-**Manual override remains required for Stage 5B.** The engineer must ultimately
-have an explicit result-specific base with precedence, truthful manual provenance
-and unchanged inputs, subject to safety/unit/physical gates. The
-[gap assessment](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md) remains
-separate. Stage 5A adds no result-owned manual storage, write API/editor or
-explicit unassignment. Existing internal manual assignments are preserved.
-The original initial rule below is historical, superseded only for the approved
-Current scope above. Stage 5A is verified locally: 11,253 backend passes,
-320 conditional/platform skips, zero failures/errors and 21 existing warnings;
-392/392 selected browser passes, zero skips/flaky cases/failures/global errors.
-Both runs exit 0. No push, merge, deployment or Stage 5B implementation.
+**[Owner-approved Stage 5B update - 2026-11-04, DEC-209 addendum].** An eligible
+calculated Current result owns Automatic / Manual / Unassigned configuration.
+Manual stores positive finite SI amperes, independent base side and provenance;
+it takes precedence without editing inputs, groups, defaults or linked bases.
+The complete candidate validates before one atomic assignment replacement.
+Rejected saves preserve prior state. Later inapplicability retains Manual and
+reports unavailable, without automatic fallback. Unassigned persists until an
+explicit selection; Return to Automatic is separate.
+
+Manual overrides differing/missing input normalization bases, but cannot replace
+known compatible sample sides, measured-unit validation, group confirmation,
+dependency availability or numerical safety. Primary/Primary may qualify;
+Secondary/Secondary is limited to one established authority, without scaling.
+Unknown/conflicting sides and distinct secondary authorities remain unavailable.
+An automatic descendant follows contributing source leaves under Stage 5A; it
+does not inherit a parent's result-specific override or unassignment. A child
+may independently own its base. Legacy internal assignment graphs stay supported.
+
+Existing assignment cleanup handles calculated/source/workspace removal. Modes
+survive page reload in the live in-memory workspace, not server restart. Arrays
+remain physical ENG; shared normalization and provenance serve all PU consumers.
+New manual-result display uses A if kA loses subnormal precision. Definition lists
+and preview retain ENG units; display rows match their own live unit mode.
+No Voltage policy, CT/VT scaling, sample-side UI or secondary identity framework
+is added. See [Stage 5B](PER_UNIT_AUDIT_STAGE_5B.md) for verification and limits.
+The earlier [gap assessment](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md)
+and the original initial rule below are historical, superseded only for the
+explicitly approved Current scope. Stage 5A's historical validation is retained
+in [its report](PER_UNIT_AUDIT_STAGE_5A.md).
 
 For the **first group-aware implementation**, use the conservative
 rule:

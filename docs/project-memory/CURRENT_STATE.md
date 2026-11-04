@@ -9,6 +9,45 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Per-Unit audit Stage 5B - result-specific manual Current PU (2026-11-04)
+
+[DECISION] The owner separately authorized Stage 5B storage/API/editor work
+after Stage 5A. Automatic, Manual and Unassigned are explicit result-owned modes;
+Return to Automatic is separate. No CT/VT scaling, input-base mutation, Voltage
+override or secondary-reference identity framework is authorized.
+
+[FACT] Immutable SI-ampere configuration uses the existing calculated assignment
+lifetime. Complete candidate validation precedes one locked replacement. Rejected
+saves preserve the assignment; later inapplicability retains Manual and reports
+unavailable without automatic fallback. Known matching sides, measured units,
+review state, dependencies and numerical range remain mandatory. Automatic
+descendants resolve source leaves rather than inheriting a parent's override.
+
+[FACT] The existing PU modal and Calculated Channels manager expose the editor.
+Backend provenance distinguishes manual/automatic/explicit unassignment. Shared
+refresh fences update Waveform arrays, row units, legends, cursors and annotations
+without moving anchors or refetching unrelated results. Event Reconstruction
+uses its own live resolution and unit mode. Physical definition lists/preview
+remain in ENG. Tiny usable manual bases reload/display in A when kA loses
+subnormal precision. No engineering calculation or physical array is changed.
+
+[VALIDATION] Final full backend: **11,315 passed / 320 skipped / zero failures
+or errors**, 21 existing warnings, exit 0, including all 62 new cases. Dedicated
+Stage 5B browser: ten passes with zero retries. Final broad browser: **431/431
+passed**, zero failures/skips/flaky cases/global errors, exit 0, in 37 explicit
+files, retries=0. The owner-approved two-file compact-summary test maintenance
+is applied without further production changes. Both complete files also pass
+9/9 independently; the affected backend notation guard passes 11/11. See
+[PER_UNIT_AUDIT_STAGE_5B.md](PER_UNIT_AUDIT_STAGE_5B.md) for evidence and limits.
+Stage 5B acceptance is met locally. The focused local revision includes only its
+19 code/test/documentation files; the two maintenance files are distinguished
+in the report. All 2,250 protected evidence files remain unchanged.
+
+[DEFERRED] CSV/BEN sample-side UI, shared secondary references, CT/VT scaling and
+the separate CSV discovery-id correction remain outside this stage. Modes survive
+page reload in the live in-memory workspace, not a server restart. No push,
+merge, deployment or final audit; stop for owner review after local verification.
+
 ## Per-Unit audit Stage 5A - verified locally (2026-11-03)
 
 [DECISION] Owner approved separate reference-side metadata and automatic
@@ -36,14 +75,14 @@ protected evidence files retain their file list, hashes, sizes and timestamps.
 Stage 5A acceptance is met locally; no push, merge or deployment. See
 [PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md).
 
-[DEFERRED] Result-specific manual PU storage/API/editor and explicit calculated
-unassignment are Stage 5B. The two earlier
+[FACT] Result-specific manual PU storage/API/editor and explicit calculated
+unassignment are now implemented by the separately approved Stage 5B above. The two earlier
 [reference-side](PER_UNIT_AUDIT_SLICE_5_DESIGN.md) and
 [manual-override](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md)
 assessments remain historical context; Stage 5A approval supersedes their initial
-metadata pause only. CSV/BEN sample side stays Unknown; sample-side declaration
+metadata pause. CSV/BEN sample side stays Unknown; sample-side declaration
 UI, shared secondary references and the separate CSV discovery-id issue remain
-deferred. No Stage 5B feature is implemented.
+deferred.
 
 ## Per-Unit audit remediation — Slice 4 (2026-11-03, local)
 

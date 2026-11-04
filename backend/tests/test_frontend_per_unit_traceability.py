@@ -192,13 +192,13 @@ class TestUnitModeSwitchingUnchanged:
 
 
 class TestReadOnlyNeverMutates:
-    """The popover must only ever GET -- opening it can never change
-    per-unit configuration, group membership, or anything else."""
+    """Opening/reading remains GET-only. Stage 5B's explicit Save is a
+    separate action; opening cannot change configuration or membership."""
 
     def test_popover_open_and_fetch_functions_never_mutate(self):
         source = _source()
         body = _function_body(
-            source, "async function wwFetchChannelPerUnitResolution(sourceId, channelName)", "async function wwOpenChannelPerUnitModal()"
+            source, "async function wwFetchChannelPerUnitResolution(sourceId, channelName)", "function wwCloseChannelPerUnitModal()"
         )
         for verb in ('"POST"', '"PUT"', '"PATCH"', '"DELETE"', "method:"):
             assert verb not in body

@@ -8885,6 +8885,27 @@ errors. Both exit 0. All 2,250 protected evidence files remain unchanged.
 Stage 5A acceptance is met locally. Stop for owner review; no push, merge,
 deployment or Stage 5B is authorized.
 
+**Subsequent PC-001 Stage 5B owner authorization (2026-11-03/04):** the separate
+implementation task approves result-specific Manual PU and explicit Unassigned,
+plus Return to Automatic. Immutable SI-ampere/base-side configuration extends
+the existing assignment lifetime; complete validation precedes one replacement.
+Manual takes precedence without mutating input authorities, with no automatic
+fallback after later inapplicability. Automatic children follow source leaves;
+each child can independently configure its result. Additive API/provenance and
+the existing modal/manager expose the workflow. Shared refresh guards update
+arrays, row units, legends, cursors and annotations while preserving anchors and
+unrelated results. Physical math/definitions/preview remain ENG. Final backend:
+11,315 passed, 320 skipped, zero failures/errors, 21 existing warnings, exit 0.
+Final broad browser: 431/431 passed in 37 explicit files, zero failures/skips/
+flaky cases/global errors, retries=0, exit 0; dedicated Stage 5B file: ten passed.
+The owner-approved additional test-only maintenance is complete; both corrected
+files pass 9/9 independently, and the affected backend notation guard passes
+11/11. Stage 5B acceptance is met locally. The 19-file local revision preserves
+all 2,250 protected evidence files. See
+[Stage 5B](PER_UNIT_AUDIT_STAGE_5B.md) for evidence and the prepared correction.
+CSV/BEN side UI, shared secondary references, CT/VT scaling and the CSV discovery
+issue remain deferred. No push, merge, deploy or automatic final audit.
+
 ### Scope
 
 Implements Slice 7 of the DEC-050 sequence: a calculated channel may

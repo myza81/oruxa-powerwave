@@ -101,11 +101,17 @@ test.describe("Workspace-wide channel presentation", () => {
     expect(await backendCalculated(page)).toEqual(before);
 
     await page.locator("#mainNavCalculatedChannelsBtn").click();
-    // Manager list: the operation summary shows the CURRENT display names of both input kinds.
+    // Compact summaries state type/policy; input aliases belong in the exact expression rows.
     const rows = page.locator(".ww-cc-list-row");
     await expect(rows.filter({ hasText: CALC_ALIAS }).first()).toBeVisible();
-    await expect(page.locator(".ww-cc-list-row-summary", { hasText: ALIAS }).first()).toBeVisible();
-    await expect(page.locator(".ww-cc-list-row-summary", { hasText: CALC_ALIAS }).first()).toBeVisible();
+    const sourceResult = page.locator(`.ww-cc-list-row[data-calculated-channel-id="${before.find(c => c.name === ABS_P).id}"]`);
+    const nestedResult = page.locator(`.ww-cc-list-row[data-calculated-channel-id="${before.find(c => c.name !== ABS_P).id}"]`);
+    await expect(sourceResult.locator(".ww-cc-list-row-expr")).toHaveText(`|${ALIAS}|`);
+    await expect(nestedResult.locator(".ww-cc-list-row-expr")).toHaveText(`|${CALC_ALIAS}|`);
+    for (const result of [sourceResult, nestedResult]) {
+      await expect(result.locator(".ww-cc-list-row-summary")).toHaveText("Absolute Value · Null: Propagate");
+      await expect(result.locator(".ww-cc-list-row-unit")).toHaveText("MW");
+    }
 
     // Input picker: raw and calculated candidates both resolve the alias.
     await pickOperation(page, "absolute_value");

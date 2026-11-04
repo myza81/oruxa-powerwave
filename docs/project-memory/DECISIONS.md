@@ -29067,8 +29067,8 @@ These decisions were made and implemented during Phase E-3B (three-phase power f
 ## DEC-209 — PC-001 Current common-base policy requires explicit, separate measurement and base reference sides
 
 Date: 2026-11-03.
-Status: **Owner-approved Stage 5A implementation scope. Automatic resolution
-only; result-specific manual configuration remains deferred to Stage 5B.**
+Status: **Owner-approved Stage 5A and subsequent Stage 5B implementation scopes.
+Stage 5B adds result-specific manual configuration under the addendum below.**
 Source: owner task "Per-Unit Audit Remediation, Slice 5" and subsequent owner
 decision "Define explicit base-side metadata first" (Option 2), followed by
 "Additional owner requirement - Preserve Manual Override", then the explicit
@@ -29151,3 +29151,50 @@ Voltage policy, Power calculation or separate CSV correction is included.
 write API/editor, explicit unassignment or new manual descendant policy. The
 owner manual-override principle stands; its proposed extension requires separate
 approval. Existing internal manual assignment graphs retain their legacy path.
+
+### Subsequent owner approval - Stage 5B (implemented 2026-11-03/04)
+
+The separate owner task "Stage 5B: Manual PU Override for Calculated Current
+Channels" explicitly authorizes the minimal result-owned storage/API/editor
+extension identified by the earlier assessment. That assessment remains
+historical, not the final descendant policy. This approval does not reopen the
+Stage 5A reference-side contract or authorize other audit work.
+
+- Automatic preserves Stage 5A. Manual stores canonical SI amperes and an
+  independently declared Primary/Secondary/Unknown base side on the calculated
+  result, taking precedence subject to physical/unit/numerical safety. A saved
+  manual choice that later becomes inapplicable stays saved and unavailable;
+  it never silently falls back to Automatic.
+- Unassigned explicitly disables this result's PU. Return to Automatic is a
+  separate action. Modes survive browser reload in the existing live workspace;
+  server-restart persistence is not introduced.
+- Manual choices cannot alter source samples, groups, Source Defaults, linked
+  bases or physical arithmetic. Known matching measurement/base sides are
+  necessary. Established single-authority Secondary/Secondary may qualify;
+  distinct secondary authorities remain unavailable without a shared reference.
+  Unknown sides fail closed. No CT/VT scaling or new sample-side declaration UI.
+- An automatic descendant resolves its contributing source leaves under 5A,
+  rather than inheriting a parent's Manual or Unassigned selection. Each child
+  may independently own a manual base. Existing internal legacy assignments
+  without this new configuration retain their historical path.
+- All PU consumers use shared backend conversion/provenance and existing
+  asynchronous refresh fences. Calculated display rows show their live unit;
+  physical definitions and preview remain ENG. New manual-result provenance
+  may use A when kA would lose subnormal precision; existing Group/Source
+  Default display-unit contracts remain unchanged.
+
+Implementation and validation: [PER_UNIT_AUDIT_STAGE_5B.md](PER_UNIT_AUDIT_STAGE_5B.md).
+Delivery is local only; no push, merge, deployment or automatic final audit.
+
+The owner subsequently approved the prepared test-only corrections in
+`channel-presentation-propagation.spec.js` and `text-spacing.spec.js`, followed
+by a rerun of all 37 selected browser files. These align the existing compact
+summary with exact expression/identity/unit/spacing assertions; they authorize
+no additional production change or engineering policy.
+
+Stage 5B is verified locally: 11,315 backend passes, 320 conditional/platform
+skips, zero failures/errors and 21 existing warnings; final selected browser:
+431/431 in 37 explicit files, zero failures/skips/flaky cases/global errors,
+retries=0. Both exit 0. Only the two approved browser files changed after the
+full backend run; production hashes are unchanged and the affected backend
+notation guard rerun passes 11/11. No push, merge, deployment or final audit.

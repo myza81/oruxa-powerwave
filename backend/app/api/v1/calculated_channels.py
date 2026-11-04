@@ -37,7 +37,10 @@ from app.schemas.calculated_channel import (
     RmsEligibilityRequest,
     RmsEligibilityResponse,
 )
-from app.schemas.per_unit import PerUnitResolutionOut
+from app.schemas.per_unit import PerUnitResolutionOut, CalculatedCurrentConfigUpdateRequest, CalculatedCurrentConfigOut
+from app.domain.calculated_current_config import CalculatedCurrentConfiguration
+from app.services.calculated_current_config_service import require_current_result, update_current_configuration
+from dataclasses import asdict
 from app.schemas.source import ErrorOut
 from app.services.calculated_timing_service import get_calculated_result, calculated_timing_metadata
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -406,6 +409,45 @@ def get_channel_per_unit_resolution(
         source_registry=source_registry, per_unit_registry=per_unit_registry,
     )
     return PerUnitResolutionOut.from_provenance(provenance)
+
+
+@router.get("/{calculated_channel_id}/per-unit-config", response_model=CalculatedCurrentConfigOut)
+def get_current_result_config(
+    workspace_id: str, calculated_channel_id: str,
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> CalculatedCurrentConfigOut:
+    channel = _get_channel_or_404(calc_registry, _validate_workspace_id(workspace_id), calculated_channel_id, source_registry)
+    try:
+        require_current_result(channel)
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    config = per_unit_registry.current_configuration_for_calculated_channel(workspace_id, channel.id) or CalculatedCurrentConfiguration()
+    return CalculatedCurrentConfigOut(calculated_channel_id=channel.id, **asdict(config))
+
+
+@router.put("/{calculated_channel_id}/per-unit-config", response_model=CalculatedCurrentConfigOut)
+def put_current_result_config(
+    workspace_id: str, calculated_channel_id: str, body: CalculatedCurrentConfigUpdateRequest,
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+) -> CalculatedCurrentConfigOut:
+    workspace_id = _validate_workspace_id(workspace_id)
+    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id, source_registry)
+    try:
+        config = update_current_configuration(
+            workspace_id=workspace_id, channel=channel, **body.model_dump(),
+            per_unit_registry=per_unit_registry, source_registry=source_registry, calc_registry=calc_registry,
+            group_registry=measurement_group_registry, voltage_config_registry=voltage_group_config_registry,
+            current_config_registry=current_group_config_registry)
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return CalculatedCurrentConfigOut(calculated_channel_id=channel.id, **asdict(config))
 
 
 @router.post("/rms-eligibility", response_model=RmsEligibilityResponse)
