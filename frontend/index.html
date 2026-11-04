@@ -4243,6 +4243,9 @@
             padding: 16px;
         }
         .confirm-overlay[hidden] { display: none; }
+        /* Keep this dialog above waveform annotations (layer 15), so a
+           draggable Peak cannot obscure its fields or intercept Save. */
+        #wwChannelPerUnitOverlay { z-index: 16; }
         .confirm-box {
             background: var(--panel);
             border: 1px solid var(--panel-border);

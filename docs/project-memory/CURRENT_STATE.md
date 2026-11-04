@@ -9,6 +9,47 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## PU audit DEV preparation — final push/deploy confirmation pending (2026-11-04)
+
+[DECISION] Owner approved the six-commit PU contents, existing ephemeral workspace
+lifetime and feature-branch-to-DEV UAT route. Owner also authorized the narrow
+Peak/modal fix, browser coverage and committing the five readiness/UAT deliverables.
+Stop for confirmation of the final release SHA before pushing or deploying.
+Do not merge main or start the consolidated audit.
+
+[FACT] The release-preparation commit has `bddebd5` as parent on
+`feature/calculator-vi-phasors`; use its containing Git commit for the final SHA.
+It contains only the targeted CSS rule, two browser regressions and the five
+readiness/UAT deliverables. Source PU/Power mathematics, backend, persistence
+and deployment configuration are unchanged. Live DEV remains at the previously
+verified `d8ade8f04dde5df2654082a784adbebb064a7336`, also fetched `origin/main`.
+Slice 1 and completed Power are already there; the six approved later commits
+deliver Slices 2–4, Stages 5A–5B and approved test maintenance.
+
+[FACT] Only the Per-unit dialog is placed above the annotation layer (16 versus
+15). Maximum/Minimum Peak boxes can no longer obscure its fields or intercept
+Save. Normal annotation dragging after close, data anchors, accepted/rejected
+saves and close actions are covered. Original blocked-Save tests fail 2/2;
+the corrected focused cases pass 2/2. Relevant backend/browser regressions are
+recorded in the report below. Fresh backend: **3,578 passed / 17 POSIX-only skips /
+zero failures/errors**, three existing warnings, in 111 selected files including
+all frontend static guards. Fresh browser: **152/152 passed** in 13 complete
+files, zero failures/skips/flaky cases/global errors/retries, including both new
+modal cases and the complete 12-case manual Current file. Historical full backend (11,315 passes/320 skips)
+and 431-browser evidence remain distinguished from this fresh CSS verification.
+All 2,250 protected evidence files are preserved.
+
+[FACT] Manual settings survive reload/same-origin tabs only in the live workspace;
+reset/reimport and backend restart do not restore them. This existing design is
+owner-accepted. No permanent storage or unrelated overlay correction is added.
+Complete commit list, selected branch deployment/rollback steps and verification:
+[readiness review](PU_AUDIT_DEV_READINESS_2026-11-04.md);
+[engineer UAT checklist and synthetic fixture generator](../uat/pu-audit-2026-11-04/README.md).
+The scoped release-preparation commit is local only; no push, merge, deployment
+or consolidated audit. GitHub CI and actual DEV owner UAT remain future gates.
+[ASSESSMENT] Ready locally for the approved branch route; await owner confirmation
+of the final full release SHA before any external Git/deployment action.
+
 ## Per-Unit audit Stage 5B - result-specific manual Current PU (2026-11-04)
 
 [DECISION] The owner separately authorized Stage 5B storage/API/editor work
@@ -119,8 +160,10 @@ its historical implementation record.
 
 ## Phase E — Three-Phase Power Calculated Channels — DEPLOYED & UAT PASSED (2026-11-02)
 
-[FACT] DEV is running `3c5df3a` (branch `feature/calculator-vi-phasors`), deployed 2026-11-02.
-Owner UAT PASSED 2026-11-02. Branch is 5 commits ahead of `origin/main`.
+[FACT] Owner UAT PASSED on the earlier DEV `3c5df3a`, 2026-11-02. PR #6
+subsequently merged this Power work into main; DEV now runs its merge commit
+`d8ade8f` (API/frontend verified 2026-11-04). The six newer local commits are
+the separate PU release candidate reviewed above.
 
 [FACT] Three-phase power calculated channels are fully implemented (Phase E-1 through E-3B):
 - **Backend** — domain function `evaluate_three_phase_power_channel()`, service validation
@@ -138,13 +181,15 @@ Owner UAT PASSED 2026-11-02. Branch is 5 commits ahead of `origin/main`.
 [DEFERRED] DEC-208-A (IEEE 1459/S_e apparent power), DEC-208-B/P ("Create All Three"
 shortcut), DEC-208-E (L1/L2/L3 grammar expansion), L-L voltage support.
 
-[NEXT] PR from `feature/calculator-vi-phasors` to `main` pending creation.
+[FACT] Power PR #6 is merged. The subsequent PU candidate awaits owner release
+approval; its PR/DEV steps have not been performed.
 
 ---
 
 ## DEV UAT: Time Group UTC header (2026-10-26)
 
-[FACT] Superseded — DEV now runs `3c5df3a` (see section above). Prior DEV SHA was `ba8ff4829a575be048d3870720d49117af7c5df3`.
+[FACT] Superseded — DEV now runs `d8ade8f` (verified 2026-11-04; see above).
+The historical UTC-header UAT DEV SHA was `ba8ff4829a575be048d3870720d49117af7c5df3`.
 GPTH UAT exposed a display-only mismatch: the source/sidebar showed raw clock
 digits with the user-assigned offset, while the Time Group header silently
 converted the effective UTC origin to the configured Asia/Kuala_Lumpur display

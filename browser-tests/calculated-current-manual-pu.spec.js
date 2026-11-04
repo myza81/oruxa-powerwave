@@ -115,6 +115,93 @@ async function readouts(page, c, amount, unit = "pu") {
   return data.annotations;
 }
 
+for (const peakKind of ["max", "min"]) {
+  test(`${peakKind} Peak cannot cover Per-unit dialog controls or intercept saves`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const c = await setup(page);
+    await open(page, c); await save(page, c); await scaled(page, c, 4000);
+    await page.locator("#wwChannelPerUnitCloseFooterBtn").click();
+    await cursorsAndAnnotations(page, c);
+    if (peakKind === "min") await page.evaluate(async id => {
+      const { panel, channel } = Array.from(ww.displayed.values()).find(e => e.channel.sourceId === id);
+      await wwCreatePeakFromClick(panel, channel, "min");
+    }, c.sum.id);
+    const peak = page.locator(`.ww-annotation--peak_${peakKind}`);
+    const anchors = () => page.evaluate(() => Array.from(ww.annotations.values()).map(a => ({
+      id: a.id, type: a.type, time: wwAnchoredAnnotationTime(a), value: wwAnchoredAnnotationValue(a),
+      unit: a.data.unit, index: a.data.sampleIndex,
+    })));
+    const initialAnchors = await anchors();
+    const groups = await json(await page.request.get(c.groupsUrl));
+    const initialConfig = await json(await page.request.get(config(c)));
+    const initialWaveform = await json(await page.request.get(`${c.base}/calculated-channels/${c.sum.id}/waveform?unit_mode=per_unit`));
+    async function movePeakOver(box) {
+      const before = await peak.boundingBox();
+      await page.mouse.move(before.x + 65, before.y + 10);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 - before.width / 2 + 65,
+        box.y + box.height / 2 - before.height / 2 + 10, { steps: 12 });
+      await page.mouse.up();
+      const after = await peak.boundingBox();
+      // Prove the annotation actually covers the intended coordinates.
+      expect(after.x).toBeLessThan(box.x + box.width / 2);
+      expect(after.x + after.width).toBeGreaterThan(box.x + box.width / 2);
+      expect(after.y).toBeLessThan(box.y + box.height / 2);
+      expect(after.y + after.height).toBeGreaterThan(box.y + box.height / 2);
+    }
+    async function expectReachable(selector) {
+      expect(await page.locator(selector).evaluate(el => {
+        const box = el.getBoundingClientRect();
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return top === el || el.contains(top);
+      })).toBe(true);
+    }
+    // Test hit targets, not just z-index values or DOM visibility. The Peak
+    // stays at the overlapping position while the real dialog is open.
+    for (const target of ["#wwCalculatedPuSaveBtn", "#wwChannelPerUnitBody", "#wwCalculatedPuBase",
+      "#wwCalculatedPuUnit", "#wwCalculatedPuSide", "#wwCalculatedPuAutomaticBtn",
+      "#wwChannelPerUnitCloseFooterBtn"]) {
+      await open(page, c);
+      const box = await page.locator(target).boundingBox();
+      await page.locator("#wwChannelPerUnitCloseFooterBtn").click();
+      await movePeakOver(box);
+      await open(page, c);
+      await expectReachable(target);
+      await expectReachable("#wwChannelPerUnitCloseBtn");
+      await page.locator("#wwChannelPerUnitCloseFooterBtn").click();
+    }
+    expect(await anchors()).toEqual(initialAnchors);
+    expect(await json(await page.request.get(config(c)))).toEqual(initialConfig);
+    expect(await json(await page.request.get(`${c.base}/calculated-channels/${c.sum.id}/waveform?unit_mode=per_unit`))).toEqual(initialWaveform);
+    await open(page, c);
+    const saveBox = await page.locator("#wwCalculatedPuSaveBtn").boundingBox();
+    await page.locator("#wwChannelPerUnitCloseFooterBtn").click();
+    await movePeakOver(saveBox); await open(page, c);
+    await page.screenshot({ path: test.info().outputPath(`peak-${peakKind}-behind-pu-dialog.png`) });
+    await save(page, c, { value: "2" }); await scaled(page, c, 2000);
+    await expect.poll(anchors).toEqual(initialAnchors.map(a => ({ ...a, value: a.value * 2 })));
+    const accepted = await json(await page.request.get(config(c)));
+    await save(page, c, { value: "0", status: 400 }); await scaled(page, c, 2000);
+    expect(await json(await page.request.get(config(c)))).toEqual(accepted);
+    await expectReachable("#wwCalculatedPuSaveBtn");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#wwChannelPerUnitOverlay")).toBeHidden();
+    await open(page, c); await page.locator("#wwChannelPerUnitCloseBtn").click();
+    await expect(page.locator("#wwChannelPerUnitOverlay")).toBeHidden();
+    await open(page, c); await page.locator("#wwChannelPerUnitOverlay").click({ position: { x: 5, y: 5 } });
+    await expect(page.locator("#wwChannelPerUnitOverlay")).toBeHidden();
+    // Ordinary annotation dragging remains available after the modal closes.
+    const before = await peak.boundingBox();
+    await page.mouse.move(before.x + 65, before.y + 10); await page.mouse.down();
+    await page.mouse.move(before.x + 105, before.y + 35, { steps: 8 }); await page.mouse.up();
+    const after = await peak.boundingBox();
+    expect(after.x).toBeCloseTo(before.x + 40, 0); expect(after.y).toBeCloseTo(before.y + 25, 0);
+    expect(await anchors()).toEqual(initialAnchors.map(a => ({ ...a, value: a.value * 2 })));
+    expect(await json(await page.request.get(c.groupsUrl))).toEqual(groups);
+    expect(await json(await page.request.get(`${c.base}/calculated-channels/${c.sum.id}/waveform`))).toEqual(c.physical);
+  });
+}
+
 test("manual lifecycle updates arrays, legends, cursors and annotations without changing input authorities", async ({ page }) => {
   const c = await setup(page);
   const groups = await json(await page.request.get(c.groupsUrl));

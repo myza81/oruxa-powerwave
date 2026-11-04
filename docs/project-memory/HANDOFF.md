@@ -4,7 +4,53 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-04** (Stage 5B implemented and verified locally; owner-approved test maintenance complete).
+Last updated: **2026-11-04** (owner-approved modal fix and release preparation; stop before push/deploy).
+
+## PU audit DEV release readiness — stop for owner review
+
+Owner approved the six PU commits, existing ephemeral workspace lifetime and
+feature-branch-to-DEV route. The subsequent instruction authorizes a narrowly
+scoped Peak/modal correction, browser regressions and committing the five reviewed
+readiness/UAT deliverables. **Stop for confirmation before pushing or deploying;
+do not merge main or start the consolidated audit.**
+
+Read [PU_AUDIT_DEV_READINESS_2026-11-04.md](PU_AUDIT_DEV_READINESS_2026-11-04.md)
+and the [owner UAT checklist](../uat/pu-audit-2026-11-04/README.md). The local
+release-preparation commit has parent `bddebd507d40ab5d4d92a95f1e1917c130ac8e6d`;
+its containing commit supplies the final full release SHA reported to the owner.
+Branch remains `feature/calculator-vi-phasors`; fetched upstream `9e5d829` and
+main `d8ade8f` did not move. Live DEV was independently verified at full
+`d8ade8f04dde5df2654082a784adbebb064a7336`; Slice 1/Power are already included.
+
+Only the PU dialog is raised above annotations (z-index 16 above 15). Both new
+Maximum/Minimum Peak regressions fail on Save hit-testing before the change,
+then pass with actual overlapping controls, saves/rejections, ordinary post-close
+dragging, anchors/ENG preservation and header/ESC/backdrop closing. An intermediate
+test setup dragged a header into the toolbar; its movement was corrected without
+changing product behavior. Fresh relevant regression results are in the report.
+Fresh backend: **3,578 passed / 17 POSIX-only skips / zero failures/errors**,
+three existing warnings, exit 0; 111 selected files including all frontend guards.
+Fresh browser: **152/152 passed** in 13 complete files, zero failures/skips/flaky
+cases/global errors/retries, exit 0. The complete manual Current file passes
+12/12; its two new cases also pass 2/2 independently. Fresh backend includes
+all 45 Slice 1, 185 Stage 5A and 62 Stage 5B cases. Local release is ready,
+subject to final owner push/deploy confirmation and subsequent remote CI/UAT.
+Backend code/tests are unchanged; full Stage 5B evidence remains 11,315 passes /
+320 skips and 431 selected browser passes. Do not call that a fresh full rerun.
+
+All 2,250 protected files are preserved. New fix/regression evidence:
+`C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-modal-fix-c43300494509406ca36598544dcbacc6`.
+The earlier readiness evidence remains untouched in
+`C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-dev-readiness-4952a4fb3d65445dac6272369262a230`.
+The seven-file release-preparation scope is frontend CSS, the existing manual
+Current browser file, CURRENT_STATE, HANDOFF, readiness report, UAT checklist and
+fixture generator. No backend, workflow, infrastructure or other UI fix.
+
+After final owner confirmation only, push the approved exact branch SHA normally,
+require green branch CI, then manually dispatch **Deploy Powerwave** on this
+feature branch with **target dev**. Verify full deployed API/frontend SHAs before
+owner UAT. Main merge remains unauthorized and would auto-deploy DEV after CI.
+Preserve all five original untracked evidence paths; do not stage or clean them.
 
 ## Per-Unit audit Stage 5B - result-owned manual Current PU
 
@@ -91,8 +137,9 @@ list, hashes, sizes and modification times, remain unchanged.
 
 ## Phase E — Three-Phase Power Complete — UAT PASSED (DEC-208) — 2026-11-02
 
-**Status: DEPLOYED to DEV (commit `3c5df3a`). CI: PASSED. Owner UAT: PASSED 2026-11-02.
-Ready for PR from `feature/calculator-vi-phasors` to `main`.**
+**Historical Power delivery: DEV UAT passed on `3c5df3a`, 2026-11-02.
+PR #6 subsequently merged into main as `d8ade8f`; that is the live DEV SHA
+verified 2026-11-04. The newer PU candidate remains local, as reviewed above.**
 
 ### Commits on feature/calculator-vi-phasors (5 ahead of origin/main)
 
