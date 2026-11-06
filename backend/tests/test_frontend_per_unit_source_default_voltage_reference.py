@@ -44,7 +44,15 @@ class TestCurrentBasePreviewNoLongerDoubleAdjustsForLg:
         body = _function_body(
             source, "function wwPerUnitEditorResolvedCurrentBaseText(state)", "async function wwOpenPerUnitProfilesModal"
         )
-        assert "sbaseVa / (PER_UNIT_SQRT_3 * vbaseVolts)" in body
+        assert "wwPerUnitDerivedCurrentBaseKa(sbase, vbase)" in body
+        helper = _function_body(
+            source, "function wwPerUnitDerivedCurrentBaseKa(", "function wwPerUnitEditorResolvedCurrentBaseText("
+        )
+        # MVA/kV already yields kA; the overflow-safe helper must still use
+        # the nominal L-L base exactly once, without a reference adjustment.
+        assert "const denominator = PER_UNIT_SQRT_3 * nominalLlKv;" in helper
+        assert "let ka = ratingMva / denominator;" in helper
+        assert "PER_UNIT_LINE_TO_GROUND" not in helper
 
 
 class TestVoltageReferenceTooltipNoLongerMisleading:

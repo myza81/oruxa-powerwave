@@ -34985,6 +34985,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
+        function wwPerUnitDerivedCurrentBaseKa(ratingMva, nominalLlKv) {
+            if (!Number.isFinite(ratingMva) || ratingMva <= 0 ||
+                !Number.isFinite(nominalLlKv) || nominalLlKv <= 0 ||
+                !Number.isFinite(nominalLlKv * 1000)) return null;
+            // Cosmetic counterpart of backend derived_current_ka(): MVA/kV
+            // gives kA, so the SI factors cancel. Preserve its ordinary order;
+            // separate exponents only at floating-point range boundaries.
+            const minNormal = 2 ** -1022;
+            const denominator = PER_UNIT_SQRT_3 * nominalLlKv;
+            let ka = ratingMva / denominator;
+            if (!Number.isFinite(denominator) || denominator < minNormal ||
+                !Number.isFinite(ka) || ka < minNormal) {
+                const ratingExponent = Math.min(1023, Math.floor(Math.log2(ratingMva)));
+                const voltageExponent = Math.min(1023, Math.floor(Math.log2(nominalLlKv)));
+                let mantissa = ((ratingMva / (2 ** ratingExponent)) * (1 / PER_UNIT_SQRT_3)) /
+                    (nominalLlKv / (2 ** voltageExponent));
+                let exponent = ratingExponent - voltageExponent;
+                while (mantissa < 1) { mantissa *= 2; exponent -= 1; }
+                while (mantissa >= 2) { mantissa /= 2; exponent += 1; }
+                // Keep the first factor normal to avoid rounding a subnormal
+                // twice. These are IEEE-754 bounds, not engineering limits.
+                const power = Math.max(-1022, Math.min(1023, exponent));
+                ka = (mantissa * (2 ** power)) * (2 ** (exponent - power));
+            }
+            return Number.isFinite(ka) && ka > 0 && Number.isFinite(ka * 1000) ? ka : null;
+        }
+
         function wwPerUnitEditorResolvedCurrentBaseText(state) {
             if (state.currentBaseMode === "direct") {
                 const v = Number(state.directCurrentBaseValue);
@@ -34996,22 +35023,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const sbase = Number(state.apparentPowerBaseValue);
                 const reference = state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : state.autoDetection.reference;
                 if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0 || !reference) return "—";
-                // Per-Unit Configuration Slice 4 correction: the entered
-                // Voltage Base is now uniformly the nominal SYSTEM
-                // LINE-TO-LINE voltage (matching the Measurement Groups
-                // modal's own identical semantics), so this cosmetic
-                // preview's own Vbase_LL is simply the entered value in
-                // volts, with NO reference-dependent adjustment any more
-                // -- mirrors app.domain.per_unit.resolve_current_base_amps()'s
-                // own corrected formula exactly (see its own docstring
-                // for the full reasoning). Multiplying by sqrt(3) here
-                // for a line-to-ground reference, as this preview used
-                // to, would now double-convert and silently mismatch
-                // what the backend actually saves.
-                const vbaseVolts = vbase * 1000;
-                const sbaseVa = sbase * 1_000_000;
-                const amps = sbaseVa / (PER_UNIT_SQRT_3 * vbaseVolts);
-                return (amps / 1000).toFixed(4) + " kA";
+                // The entered voltage is nominal system L-L in both reference
+                // modes. Save still derives the authoritative base on the backend.
+                const ka = wwPerUnitDerivedCurrentBaseKa(sbase, vbase);
+                if (ka == null) return "—";
+                const fixed = ka.toFixed(4);
+                return (Number(fixed) === 0 ? String(ka) : fixed) + " kA";
             }
             return "—";
         }
