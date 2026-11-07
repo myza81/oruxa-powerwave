@@ -29198,3 +29198,44 @@ skips, zero failures/errors and 21 existing warnings; final selected browser:
 retries=0. Both exit 0. Only the two approved browser files changed after the
 full backend run; production hashes are unchanged and the affected backend
 notation guard rerun passes 11/11. No push, merge, deployment or final audit.
+
+## DEC-210 — Current PU reference safety blocks known mismatch and identifies historical Unknown as Unverified
+
+Date: 2026-11-06. Status: **Owner-approved implementation policy.**
+Authority: owner task "LIM-001: Centralized PU Reference-Side Safety", following
+the bounded LIM-001 assessment. This chooses its compatibility-preserving option A.
+
+- Recorded measurement side, configured base side, base provenance and actual
+  normalization denominator remain independent. No CT/VT ratio scaling, side
+  inference, sample reinterpretation, new conversion workflow or persistence.
+- Known Primary/Primary qualifies subject to existing gates. Known Secondary/
+  Secondary qualifies only under the established authority contract. Known P/S
+  or S/P mismatch blocks PU in raw, group/default, legacy, calculated and nested
+  paths. Mixed known sample sides cannot be hidden by Unknown aggregation.
+- Historical raw and single-authority Automatic Current with Unknown reference
+  retain their previously permitted numbers, explicitly labeled **Unverified
+  reference**. This is not verified physical compatibility. No missing metadata
+  is silently assigned Primary/Secondary. CSV/BEN remain supported without a
+  new recorded-side selector.
+- Stage 5A cross-authority Automatic and Stage 5B result-specific Manual remain
+  strict: Unknown fails closed; distinct Secondary authorities require a shared
+  reference that remains deferred. Result Manual uses its own independent base,
+  superseding input normalization bases without changing those inputs. It still
+  requires compatible measured sides, units, review, dependencies and numerical
+  safety. Automatic children resolve leaves rather than parent display choices.
+- Use one shared reference classifier after authoritative base selection.
+  `configured` remains conversion availability, not a new claim of reference
+  verification. Add compatible/incompatible/unverified metadata separately;
+  existing unavailable statuses/reasons and physical ENG fallback are retained.
+  Group/default base availability is distinct from each channel's eligibility.
+- Shared value/provenance/readiness and UI status surfaces must agree through
+  mode/base/group changes and stale-response fencing. Use compact accessible
+  warnings; no duplicate frontend normalization or additional workspace polling.
+- Preserve group/default precedence, atomic rejected saves, linked bases, original
+  arrays, Voltage behavior, Power/phasor mathematics and ephemeral workspace life.
+
+This supersedes DEC-209's historical same-authority lack of side gating only to
+the extent above. It does not relax its cross-authority or Manual restrictions,
+authorize the CSV discovery-ID fix, or close the complete PU audit automatically.
+Implementation and validation: [PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
+Owner review remains required before acceptance, push, merge or deployment.

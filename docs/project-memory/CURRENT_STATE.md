@@ -9,46 +9,52 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## PU audit DEV preparation — final push/deploy confirmation pending (2026-11-04)
+## LIM-001 - centralized Current PU reference safety (2026-11-07)
 
-[DECISION] Owner approved the six-commit PU contents, existing ephemeral workspace
-lifetime and feature-branch-to-DEV UAT route. Owner also authorized the narrow
-Peak/modal fix, browser coverage and committing the five readiness/UAT deliverables.
-Stop for confirmation of the final release SHA before pushing or deploying.
-Do not merge main or start the consolidated audit.
+[DECISION] DEC-210 records the owner's approved option A: known P/S or S/P
+mismatch blocks Current PU; historical raw/single-authority Unknown conversion
+retains its numbers with explicit **Unverified reference** disclosure. Stage 5A
+cross-authority Automatic and Stage 5B result Manual remain strict. No CT/VT
+scaling, side inference, recorded-side UI or new persistence is introduced.
 
-[FACT] The release-preparation commit has `bddebd5` as parent on
-`feature/calculator-vi-phasors`; use its containing Git commit for the final SHA.
-It contains only the targeted CSS rule, two browser regressions and the five
-readiness/UAT deliverables. Source PU/Power mathematics, backend, persistence
-and deployment configuration are unchanged. Live DEV remains at the previously
-verified `d8ade8f04dde5df2654082a784adbebb064a7336`, also fetched `origin/main`.
-Slice 1 and completed Power are already there; the six approved later commits
-deliver Slices 2–4, Stages 5A–5B and approved test maintenance.
+[FACT] One pure backend reference classifier serves raw Group/Source Default,
+legacy, calculated/nested, provenance and readiness resolution. Group precedence,
+unit/review/dependency/numerical gates and independent result Manual remain.
+Additive response metadata drives shared accessible warnings through base/mode
+changes and asynchronous refreshes. Event Reconstruction uses its own mode.
+Physical samples, Voltage PU, linked bases and Power mathematics are unchanged.
+Policy, exact 26-file scope, reproductions, evidence and limits:
+[LIM-001 implementation report](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
 
-[FACT] Only the Per-unit dialog is placed above the annotation layer (16 versus
-15). Maximum/Minimum Peak boxes can no longer obscure its fields or intercept
-Save. Normal annotation dragging after close, data anchors, accepted/rejected
-saves and close actions are covered. Original blocked-Save tests fail 2/2;
-the corrected focused cases pass 2/2. Relevant backend/browser regressions are
-recorded in the report below. Fresh backend: **3,578 passed / 17 POSIX-only skips /
-zero failures/errors**, three existing warnings, in 111 selected files including
-all frontend static guards. Fresh browser: **152/152 passed** in 13 complete
-files, zero failures/skips/flaky cases/global errors/retries, including both new
-modal cases and the complete 12-case manual Current file. Historical full backend (11,315 passes/320 skips)
-and 431-browser evidence remain distinguished from this fresh CSS verification.
-All 2,250 protected evidence files are preserved.
+[VALIDATION] Final full backend: **11,374 passed / 320 existing skips / zero
+failures or errors / 21 existing warnings**, 2012.44 seconds, exit 0.
+Final complete browser: **1302/1302 passed in 92 files**, four workers, zero
+failures/skips/flaky cases/global errors/retries, 2449.365 seconds, exit 0.
+The 59 new backend and seven new browser cases pass. All 871 tested source files
+match the recorded hashes. Six intended pre-fix failures, the initial full-run
+failures, scoped corrections, 65/65 affected-file rerun and temporary launcher
+diagnostics are retained honestly in the report; the first runs were not clean.
 
-[FACT] Manual settings survive reload/same-origin tabs only in the live workspace;
-reset/reimport and backend restart do not restore them. This existing design is
-owner-accepted. No permanent storage or unrelated overlay correction is added.
-Complete commit list, selected branch deployment/rollback steps and verification:
-[readiness review](PU_AUDIT_DEV_READINESS_2026-11-04.md);
-[engineer UAT checklist and synthetic fixture generator](../uat/pu-audit-2026-11-04/README.md).
-The scoped release-preparation commit is local only; no push, merge, deployment
-or consolidated audit. GitHub CI and actual DEV owner UAT remain future gates.
-[ASSESSMENT] Ready locally for the approved branch route; await owner confirmation
-of the final full release SHA before any external Git/deployment action.
+[FACT] The focused local LIM-001 commit is the commit adding that report, with
+FA-001 parent `384a55fafbbecf7e304aa9ea8cfc663554177fd1`.
+Branch `feature/calculator-vi-phasors` is two ahead / zero behind fetched
+upstream `265f1906d4a6c30568309dd45ffa5e41cbb236ce`.
+Main remains `d8ade8f04dde5df2654082a784adbebb064a7336`.
+Tracked tree/index are clean; seven pre-existing untracked entries remain.
+All 2250 protected files passed SHA-256/size/nanosecond-mtime checks unchanged.
+The historical [assessment](PER_UNIT_AUDIT_LIM_001_ASSESSMENT_2026-11-06.md)
+remains byte-identical; [final audit](PER_UNIT_AUDIT_FINAL_2026-11-05.md)
+receives append-only evidence preserving its 47,966-byte task-start prefix.
+Neither existing untracked report is included in the focused commit.
+
+[OPEN / BOUNDARY] Historical Unknown remains unverified by explicit owner policy.
+CT/VT conversion, common Secondary reference identity, CSV/BEN recorded-side
+declaration, the separate CSV discovery-ID defect and durable workspace life
+remain deferred. Final overall PU audit acceptance belongs to the owner.
+DEV frontend/backend were last observed at `265f1906` on 2026-11-05
+12:26:55 UTC; this task makes no new deployed-version claim.
+No push, merge, deployment or automatic overall audit closure. Stop for owner
+review before release activities or additional work.
 
 ## Per-Unit audit Stage 5B - result-specific manual Current PU (2026-11-04)
 

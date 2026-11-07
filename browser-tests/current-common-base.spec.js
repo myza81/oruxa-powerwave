@@ -64,10 +64,16 @@ function displayed(page, cid) {
 }
 
 async function scaled(page, context, eligible) {
-  await expect.poll(() => displayed(page, context.nested.id)).toMatchObject({
+  let data;
+  await expect.poll(async () => {
+    data = await displayed(page, context.nested.id);
+    return data && { status: data.status, unit: data.unit, count: data.values.length };
+  }).toEqual({
     status: eligible ? "configured" : "base_required", unit: eligible ? "pu" : "A",
+    count: context.physical.values.length,
   });
-  const data = await displayed(page, context.nested.id);
+  // Assert the accepted complete snapshot: a live edit retires arrays while
+  // status/unit can legitimately remain unchanged during the pending fetch.
   expect(data.values.length).toBe(context.physical.values.length);
   data.values.forEach((v, i) => expect(v).toBeCloseTo(context.physical.values[i] / (eligible ? 2000 : 1), 10));
 }

@@ -92,6 +92,7 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
                 channel, profile, names, workspace_id=workspace_id, calc_registry=reg.calc,
                 group_registry=reg.group, voltage_config_registry=reg.voltage_config,
                 current_config_registry=reg.current_config,
+                source_registry=reg.source, per_unit_registry=reg.per_unit,
             )
 
         return channel.time, channel.values, channel.unit, channel.engineering_type, channel.reference_source_id, channel.name, resolve

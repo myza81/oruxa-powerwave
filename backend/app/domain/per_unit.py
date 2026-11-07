@@ -255,6 +255,11 @@ class PerUnitResolution:
     base_unit: str | None
     reason: str | None
 
+    # Additive, transient reference proof; base availability alone is not proof.
+    reference_compatibility: str | None = None
+    measurement_side: str = "unknown"
+    base_reference_side: str = "unknown"
+
 
 def resolve_per_unit(
     engineering_type: str,

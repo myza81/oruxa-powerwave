@@ -114,6 +114,7 @@ class PerUnitCoverageOut(BaseModel):
     measurement_group_count: int
     source_default_count: int
     needs_configuration_count: int
+    unverified_reference_count: int = 0
 
     @classmethod
     def from_summary(cls, summary: PerUnitCoverageSummary) -> "PerUnitCoverageOut":
@@ -123,6 +124,7 @@ class PerUnitCoverageOut(BaseModel):
             measurement_group_count=summary.measurement_group_count,
             source_default_count=summary.source_default_count,
             needs_configuration_count=summary.needs_configuration_count,
+            unverified_reference_count=summary.unverified_reference_count,
         )
 
 
@@ -159,6 +161,7 @@ class PerUnitResolutionOut(BaseModel):
     configured_current_base_amps: float | None = None
     measurement_side: ReferenceSide = "unknown"
     base_reference_side: ReferenceSide = "unknown"
+    reference_compatibility: Literal["compatible", "incompatible", "unverified"] | None = None
 
     @classmethod
     def from_provenance(cls, provenance: PerUnitChannelProvenance) -> "PerUnitResolutionOut":
@@ -167,6 +170,7 @@ class PerUnitResolutionOut(BaseModel):
             configured_current_base_amps=provenance.configured_current_base_amps,
             resolution_origin=provenance.resolution_origin,
             measurement_side=provenance.measurement_side,
+            reference_compatibility=provenance.reference_compatibility,
             base_reference_side=provenance.base_reference_side,
             status=provenance.status,
             engineering_type=provenance.engineering_type,

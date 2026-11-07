@@ -423,8 +423,9 @@ class TestEventReconstructionChannelBrowser:
         tree = _between(_source(), "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
         assert 'class="source-recording"' in tree
         assert "renderChannelTable(" in tree
-        assert "analogChannelNameCellHtml({ source_id: sourceId }, c)" in tree
-        assert "analogChannelNameCellHtml({ source_id: c.id }, c)" in tree
+        # Reuse name cells while suppressing the other view's PU warning.
+        assert "analogChannelNameCellHtml({ source_id: sourceId }, c, null)" in tree
+        assert "analogChannelNameCellHtml({ source_id: c.id }, c, null)" in tree
         assert '"Analog Channels"' in tree and '"Calculated Channels"' in tree
         helpers = _between(_source(), "function wwErChannelGroupHtml(", "function wwErSourceTreeHtml(")
         assert 'class="channel-group"' in helpers and 'class="channel-subgroup" open' in helpers

@@ -15,7 +15,9 @@ from app.domain.per_unit import (
     resolve_conversion_eligibility, resolve_per_unit,
 )
 from app.domain.reference_side import configured_base_side
+from app.domain.per_unit_reference import apply_current_reference
 from app.services.group_aware_per_unit import resolve_per_unit_for_group
+from app.services.calculated_group_aware_per_unit import resolve_calculated_group_aware_per_unit
 
 COMMON_BASE_RTOL = 1e-12
 CURRENT_REASON_COPY = {
@@ -54,6 +56,7 @@ def resolve_calculated_current_per_unit(*, workspace_id, channel: CalculatedChan
     leaves = {}
     visited, visiting = set(), set()
     legacy_manual = False
+    sample_sides, base_sides, authorities = {"unknown"}, {"unknown"}, set()
 
     def visit(node):
         nonlocal legacy_manual
@@ -83,15 +86,13 @@ def resolve_calculated_current_per_unit(*, workspace_id, channel: CalculatedChan
         if manual:
             kind, identity, base_side = None, None, configuration.base_reference_side
         return CurrentInheritance(
-            PerUnitResolution(STATUS_BASE_REQUIRED, identity, None, None, reason), kind, measurement, base_side,
+            apply_current_reference(PerUnitResolution(STATUS_BASE_REQUIRED, identity, None, None, reason),
+                                    sample_sides, base_sides, strict=manual or len(authorities) > 1,
+                                    cross_authority=len(authorities) > 1), kind, measurement, base_side,
             origin, "manual" if manual else "automatic", configuration.current_base_amps if manual else None)
 
     if not visit(channel) or not leaves:
         return unavailable("current_dependency_unavailable")
-    if legacy_manual and not manual:
-        # Stage 5A is automatic only. Preserve the existing internal assignment
-        # contract; making it an engineer-facing result override is Stage 5B.
-        return None
     contributors = []
     for (source_id, name), ref in leaves.items():
         active = source_registry.get(workspace_id, source_id)
@@ -136,22 +137,46 @@ def resolve_calculated_current_per_unit(*, workspace_id, channel: CalculatedChan
     for _, resolution, _, _ in contributors:
         if resolution.status != STATUS_CONFIGURED:
             if kind is not None:
-                return CurrentInheritance(replace(resolution, profile_id=identity), kind, measurement, base_side)
+                return CurrentInheritance(apply_current_reference(replace(resolution, profile_id=identity),
+                    sample_sides, base_sides, strict=manual), kind, measurement, base_side)
             return unavailable(resolution.reason, kind, identity, measurement, base_side)
+    reference = apply_current_reference(
+        PerUnitResolution(STATUS_CONFIGURED, identity, contributors[0][1].base_amount, "A", None),
+        sample_sides, base_sides, strict=manual or len(authorities) > 1, cross_authority=len(authorities) > 1)
+    if reference.status != STATUS_CONFIGURED:
+        return unavailable(reference.reason, kind, identity, measurement, base_side)
+    if legacy_manual and not manual:
+        # Retain the old explicit profile-pointer denominator, never a physical
+        # reference bypass. Its original grouped inputs must also qualify above.
+        legacy = resolve_calculated_group_aware_per_unit(
+            workspace_id=workspace_id, channel=channel, calc_registry=calc_registry,
+            group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry)
+        if legacy is not None:
+            kind, identity = "measurement_group", legacy.profile_id
+            config = current_config_registry.get(workspace_id, identity)
+            side = configured_base_side(config.method, config.base_reference_side) if config else "unknown"
+        else:
+            identity = per_unit_registry.profile_for_calculated_channel(workspace_id, channel.id)
+            profile = per_unit_registry.get(workspace_id, identity) if identity else None
+            names = []
+            active = source_registry.get(workspace_id, identity) if identity else None
+            if active:
+                names = [ch.name for ch in active.metadata.analog_channels if ch.engineering_type == VOLTAGE]
+            legacy = resolve_per_unit(CURRENT, profile, names)
+            side = configured_base_side(profile.current_base_mode, profile.current_base_reference_side) if profile else "unknown"
+            kind = "source_default"
+        legacy = apply_current_reference(legacy, sample_sides, [side], strict=len(authorities) > 1,
+                                         cross_authority=len(authorities) > 1)
+        legacy = resolve_conversion_eligibility(legacy, channel.unit, CURRENT, channel.values)
+        return CurrentInheritance(legacy, kind, measurement, side)
     bases = [c[1].base_amount for c in contributors]
     smallest, largest = min(bases), max(bases)
     # Division avoids underflow of rtol * largest for subnormal SI bases.
     if (largest - smallest) / largest > COMMON_BASE_RTOL:
         return unavailable("current_bases_differ", kind, identity, measurement, base_side)
-    if len(authorities) > 1 or manual:
-        if "unknown" in sample_sides or "unknown" in base_sides:
-            return unavailable("current_reference_side_unknown", measurement=measurement, base_side=base_side)
-        if sample_sides != base_sides or len(sample_sides) != 1:
-            return unavailable("current_reference_side_incompatible", measurement=measurement, base_side=base_side)
-        if sample_sides == {"secondary"} and len(authorities) > 1:
-            return unavailable("current_secondary_reference_unestablished", measurement=measurement, base_side=base_side)
     resolution = resolve_conversion_eligibility(
-        PerUnitResolution(STATUS_CONFIGURED, identity, smallest, "A", None), channel.unit, CURRENT, channel.values)
+        replace(reference, base_amount=smallest), channel.unit, CURRENT, channel.values)
     return CurrentInheritance(resolution, kind, measurement, base_side,
                               origin, "manual" if manual else "automatic",
                               configuration.current_base_amps if manual else None)

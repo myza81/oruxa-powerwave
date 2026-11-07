@@ -4,53 +4,56 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-04** (owner-approved modal fix and release preparation; stop before push/deploy).
+Last updated: **2026-11-07** (LIM-001 implemented and verified locally).
 
-## PU audit DEV release readiness — stop for owner review
+## LIM-001 - stop for owner review
 
-Owner approved the six PU commits, existing ephemeral workspace lifetime and
-feature-branch-to-DEV route. The subsequent instruction authorizes a narrowly
-scoped Peak/modal correction, browser regressions and committing the five reviewed
-readiness/UAT deliverables. **Stop for confirmation before pushing or deploying;
-do not merge main or start the consolidated audit.**
+The owner-approved DEC-210 policy is implemented. Read the
+[LIM-001 implementation report](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md)
+for the exact 26-file scope, compatibility matrix, numerical reproductions,
+source/evidence manifests, first-run failures/corrections and final results.
 
-Read [PU_AUDIT_DEV_READINESS_2026-11-04.md](PU_AUDIT_DEV_READINESS_2026-11-04.md)
-and the [owner UAT checklist](../uat/pu-audit-2026-11-04/README.md). The local
-release-preparation commit has parent `bddebd507d40ab5d4d92a95f1e1917c130ac8e6d`;
-its containing commit supplies the final full release SHA reported to the owner.
-Branch remains `feature/calculator-vi-phasors`; fetched upstream `9e5d829` and
-main `d8ade8f` did not move. Live DEV was independently verified at full
-`d8ade8f04dde5df2654082a784adbebb064a7336`; Slice 1/Power are already included.
+Known P/S mismatch is blocked by shared backend reference proof. Historical
+raw/single-authority Unknown keeps approved numerical behavior with explicit
+Unverified reference labeling. Stage 5A cross-authority and Stage 5B Manual
+restrictions remain; Manual selects an independent result base without changing
+inputs. No CT/VT scaling, sample reinterpretation, persistence redesign or
+Current Compliance product expansion. Physical arrays and PU/Power mathematics
+are unchanged. Shared UI metadata/warnings respect existing refresh fences.
 
-Only the PU dialog is raised above annotations (z-index 16 above 15). Both new
-Maximum/Minimum Peak regressions fail on Save hit-testing before the change,
-then pass with actual overlapping controls, saves/rejections, ordinary post-close
-dragging, anchors/ENG preservation and header/ESC/backdrop closing. An intermediate
-test setup dragged a header into the toolbar; its movement was corrected without
-changing product behavior. Fresh relevant regression results are in the report.
-Fresh backend: **3,578 passed / 17 POSIX-only skips / zero failures/errors**,
-three existing warnings, exit 0; 111 selected files including all frontend guards.
-Fresh browser: **152/152 passed** in 13 complete files, zero failures/skips/flaky
-cases/global errors/retries, exit 0. The complete manual Current file passes
-12/12; its two new cases also pass 2/2 independently. Fresh backend includes
-all 45 Slice 1, 185 Stage 5A and 62 Stage 5B cases. Local release is ready,
-subject to final owner push/deploy confirmation and subsequent remote CI/UAT.
-Backend code/tests are unchanged; full Stage 5B evidence remains 11,315 passes /
-320 skips and 431 selected browser passes. Do not call that a fresh full rerun.
+Final full backend: **11,374 passed / 320 existing skips / no failures or errors /
+21 existing warnings**, 2012.44 seconds. Final complete browser: **1302/1302**,
+92 explicit files, four workers, zero failures/skips/flaky cases/global errors/
+retries, 2449.365 seconds. Both exit 0. All 59 new backend and seven new browser
+cases pass. The 871 application/test source hashes match across the complete
+runs. The six intended pre-fix failures and initial full-run failures remain
+in evidence; do not describe the first runs as clean. Text Note adapter and
+scoped response/readiness assertions were corrected; no unrelated product
+correction was made. Temporary PowerShell launcher diagnostics are documented.
 
-All 2,250 protected files are preserved. New fix/regression evidence:
-`C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-modal-fix-c43300494509406ca36598544dcbacc6`.
-The earlier readiness evidence remains untouched in
-`C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-dev-readiness-4952a4fb3d65445dac6272369262a230`.
-The seven-file release-preparation scope is frontend CSS, the existing manual
-Current browser file, CURRENT_STATE, HANDOFF, readiness report, UAT checklist and
-fixture generator. No backend, workflow, infrastructure or other UI fix.
+The focused local LIM-001 commit is the commit containing that report.
+Its parent is FA-001 `384a55fafbbecf7e304aa9ea8cfc663554177fd1`.
+Branch `feature/calculator-vi-phasors` is two ahead / zero behind fetched
+upstream `265f1906`; `origin/main` remains `d8ade8f`.
+Tracked tree/index are clean. Neither local fix was pushed.
+DEV frontend/backend were last observed at `265f1906` on 2026-11-05
+12:26:55 UTC; there is no new deployed observation or deployment here.
 
-After final owner confirmation only, push the approved exact branch SHA normally,
-require green branch CI, then manually dispatch **Deploy Powerwave** on this
-feature branch with **target dev**. Verify full deployed API/frontend SHAs before
-owner UAT. Main merge remains unauthorized and would auto-deploy DEV after CI.
-Preserve all five original untracked evidence paths; do not stage or clean them.
+The historical [assessment](PER_UNIT_AUDIT_LIM_001_ASSESSMENT_2026-11-06.md)
+is unchanged. The [final audit](PER_UNIT_AUDIT_FINAL_2026-11-05.md) keeps its
+original conclusions and complete 47,966-byte task-start prefix before an
+append-only LIM follow-up. Both existing untracked reports stay outside the
+focused commit. Preserve all seven existing untracked entries, including
+`.audit/`, `.slice1-evidence/`, `test-results/` and both screenshot specs.
+All 2250 protected files passed hash/size/nanosecond-mtime comparison unchanged.
+New outputs only:
+`C:/Users/fairizat/AppData/Local/Temp/oruxa-lim001-f7c1a499069b416097aabd49a5d828e5`.
+
+LIM-001's local acceptance checks pass. The owner still controls final overall
+PU acceptance and release. Do not push, merge, deploy or begin additional work.
+Historical Unknown, shared Secondary identity, CSV/BEN side declaration, the
+separate CSV discovery-ID defect, CT/VT conversion and durable workspace life
+remain explicitly bounded/deferred. Stop for owner review.
 
 ## Per-Unit audit Stage 5B - result-owned manual Current PU
 

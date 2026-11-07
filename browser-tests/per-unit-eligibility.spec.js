@@ -66,7 +66,7 @@ test("missing unit: coverage, provenance and Waveform fallback agree, including 
   await expect(page.locator("#wwPuCoverageBody")).toContainText("Needs configuration");
   const coverage = await json(await page.request.get(`${base}/per-unit/sources/${sid}/coverage`));
   expect(coverage).toEqual({ source_id: sid, applicable_channel_count: 1, measurement_group_count: 0,
-    source_default_count: 0, needs_configuration_count: 1 });
+    source_default_count: 0, needs_configuration_count: 1, unverified_reference_count: 0 });
   await page.evaluate(() => wwClosePerUnitSettingsModal());
   // The real accepted save is followed by the same source-scoped display
   // refresh used by the editor. No unit or previous PU value is invented.

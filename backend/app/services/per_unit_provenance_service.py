@@ -77,6 +77,7 @@ from app.services.calculated_group_aware_per_unit import (
 )
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.group_aware_per_unit import resolve_group_aware_per_unit
+from app.domain.per_unit_reference import apply_source_reference
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_view_service import build_group_view
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -131,6 +132,8 @@ _MEASURED_UNIT_REASON_COPY = {
 def _reason_text(source_kind: str | None, raw_reason: str | None) -> str | None:
     if raw_reason is None:
         return None
+    if raw_reason in CURRENT_REASON_COPY:
+        return CURRENT_REASON_COPY[raw_reason]
     if raw_reason in _MEASURED_UNIT_REASON_COPY:
         return _MEASURED_UNIT_REASON_COPY[raw_reason]
     if source_kind == SOURCE_KIND_MEASUREMENT_GROUP:
@@ -178,6 +181,7 @@ class PerUnitChannelProvenance:
     configured_current_base_amps: float | None = None
     measurement_side: ReferenceSide = "unknown"
     base_reference_side: ReferenceSide = "unknown"
+    reference_compatibility: str | None = None
 
 
 def _not_applicable_provenance(engineering_type: str) -> PerUnitChannelProvenance:
@@ -243,6 +247,7 @@ def _provenance_from_group(
         status=resolution.status,
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_MEASUREMENT_GROUP,
+        reference_compatibility=resolution.reference_compatibility,
         reason=_reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason),
         base_reference_side=view.current_config.base_reference_side if view and view.current_config else "unknown",
         measurement_group_id=measurement_group_id,
@@ -295,6 +300,7 @@ def _provenance_from_legacy(
         status=resolution.status,
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_SOURCE_DEFAULT,
+        reference_compatibility=resolution.reference_compatibility,
         reason=_reason_text(SOURCE_KIND_SOURCE_DEFAULT, resolution.reason),
         base_reference_side=configured_base_side(per_unit_profile.current_base_mode, per_unit_profile.current_base_reference_side) if per_unit_profile and engineering_type == CURRENT else "unknown",
         measurement_group_id=None,
@@ -322,6 +328,7 @@ def _build_source_channel_provenance(
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
     values: np.ndarray | None = None,
+    measurement_side: ReferenceSide = "unknown",
 ) -> PerUnitChannelProvenance:
     """Mirrors `waveform_service._resolve_effective_per_unit()`'s own
     exact dispatch order for a SOURCE channel: the DEC-078 Angle
@@ -337,6 +344,8 @@ def _build_source_channel_provenance(
         current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
+        group_resolution = apply_source_reference(group_resolution, engineering_type, measurement_side,
+            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id))
         group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type, values)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id, engineering_type=engineering_type,
@@ -345,6 +354,7 @@ def _build_source_channel_provenance(
         )
 
     legacy_resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+    legacy_resolution = apply_source_reference(legacy_resolution, engineering_type, measurement_side, profile=per_unit_profile)
     legacy_resolution = resolve_conversion_eligibility(legacy_resolution, measured_unit, engineering_type, values)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=engineering_type,
@@ -353,7 +363,7 @@ def _build_source_channel_provenance(
 
 
 def build_source_channel_provenance(*, measurement_side: ReferenceSide = "unknown", **kwargs) -> PerUnitChannelProvenance:
-    return replace(_build_source_channel_provenance(**kwargs), measurement_side=measurement_side)
+    return replace(_build_source_channel_provenance(measurement_side=measurement_side, **kwargs), measurement_side=measurement_side)
 
 
 def build_calculated_channel_provenance(
@@ -408,6 +418,7 @@ def build_calculated_channel_provenance(
                     reason=reason, effective_base_amount=amount, effective_base_unit=unit,
                     resolution_origin=inherited.resolution_origin or "automatic_common_base")
             return replace(provenance, measurement_side=inherited.measurement_side,
+                           reference_compatibility=resolution.reference_compatibility,
                            base_reference_side=inherited.base_reference_side,
                            configuration_mode=inherited.configuration_mode,
                            configured_current_base_amps=inherited.configured_current_base_amps)
@@ -426,6 +437,8 @@ def build_calculated_channel_provenance(
     )
     if group_resolution is not None:
         group_resolution = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type, channel.values)
+        group_resolution = apply_source_reference(group_resolution, channel.engineering_type,
+            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id))
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id,
             engineering_type=channel.engineering_type, group_registry=group_registry,
@@ -438,6 +451,7 @@ def build_calculated_channel_provenance(
         explicit_voltage_reference=channel.voltage_representation,
     )
     legacy_resolution = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type, channel.values)
+    legacy_resolution = apply_source_reference(legacy_resolution, channel.engineering_type, profile=per_unit_profile)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=channel.engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,

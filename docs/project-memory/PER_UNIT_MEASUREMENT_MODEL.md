@@ -1471,3 +1471,24 @@ modified alongside either. The next authorized step is Slice 1 only
 (§25), issued as a separate, explicit implementation prompt — not a
 general go-ahead to implement this document's remaining sections (see
 [HANDOFF.md](HANDOFF.md)).
+
+## 27. Current reference-side safety — approved 2026-11-06
+
+Subsequent owner-authorized implementation scopes supersede the historical
+scope reminder above only as recorded in DEC-209 and DEC-210. Measurement side
+and configured base side are independent Primary/Secondary/Unknown metadata.
+Known P/S or S/P mismatch makes Current PU unavailable; physical ENG samples
+remain unchanged. No CT/VT scaling or side inference is authorized.
+
+Historical raw/single-authority Unknown-reference Current retains previously
+permitted numerical behavior with an explicit **Unverified reference** indication,
+not a claim of physical compatibility. Stage 5A cross-authority Automatic and
+Stage 5B result Manual remain strict about known compatible sides; distinct
+Secondary references remain deferred. An independent valid result Manual base
+supersedes input normalization bases without modifying those inputs. All existing
+unit, review, dependency and numerical gates remain mandatory. Base configuration
+availability alone is not channel conversion readiness or reference verification.
+
+See [DECISIONS.md — DEC-210](DECISIONS.md#dec-210--current-pu-reference-safety-blocks-known-mismatch-and-identifies-historical-unknown-as-unverified)
+and [the LIM-001 implementation report](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
+Voltage representation policy and all PU/Power mathematics remain unchanged.

@@ -74,6 +74,7 @@ class ChannelCursorValuesOut(BaseModel):
     a_value: float | None
     b_value: float | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
 
 class DigitalChannelCursorStateOut(BaseModel):
@@ -126,6 +127,7 @@ class CursorValuesOut(BaseModel):
                     a_value=channel.a_value,
                     b_value=channel.b_value,
                     per_unit_status=channel.per_unit_status,
+                    per_unit_reference_compatibility=channel.per_unit_reference_compatibility,
                 )
                 for channel in result.channels
             ],
