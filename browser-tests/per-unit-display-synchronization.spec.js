@@ -40,7 +40,7 @@ async function setup(page, { station = "SYNC_PU", sourceDefault = false, extraCh
     expect(response.ok()).toBe(true);
     voltage = await response.json();
     expect((await page.request.put(`${groupsUrl}/${voltage.id}/voltage-config`, {
-      data: { nominal_voltage_ll_kv: NOMINAL_KV },
+      data: { nominal_voltage_ll_kv: NOMINAL_KV, base_reference_side: "primary" },
     })).ok()).toBe(true);
   }
   await page.locator("#mainNavWaveformBtn").click();

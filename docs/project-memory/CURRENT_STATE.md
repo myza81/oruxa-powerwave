@@ -9,6 +9,44 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## VLT-REF-001 — Voltage PU reference-side safety (2026-11-07, local only)
+
+[DECISION] Owner authorized DEC-211: extend LIM-001/DEC-210 reference-side safety
+architecture to Voltage PU channels. Branch: `feature/vlt-ref-001-voltage-reference-safety`
+at `054575f`. Not pushed to origin; awaiting owner review.
+
+[FACT] Defect confirmed before implementation: Secondary-referred Voltage channels
+normalized against a Primary voltage base produced 0.000833 pu (×1200 error = VT ratio)
+with `reference_compatibility: null`. Root cause: `apply_source_reference()` returned
+unchanged for `engineering_type != "Current"`. No Voltage analogue of `apply_current_reference()`
+existed.
+
+[FACT] New `apply_voltage_reference()` classifier and extended `apply_source_reference()`
+gate. New `base_reference_side` field on `VoltageBaseConfiguration` (Voltage Measurement Group
+path) and `voltage_base_reference_side` on `PerUnitBaseProfile` (Source Default path), both
+defaulting to `"unknown"` for backward compatibility. Full wire path through waveform service,
+provenance service, view service, API schemas and endpoints.
+
+[FACT] Policy (DEC-211): Primary/Secondary mismatch → `incompatible`, `base_required`, raw ENG.
+Unknown measurement or base → `unverified`, PU allowed. Matching known sides → `compatible`.
+Defaults to `"unknown"` → all existing configs become `unverified`, never `incompatible`.
+
+[VALIDATION] Full backend: **11,424 passed / 303 skipped / 0 failed / exit 0** (11,727 collected:
+11,694 baseline + 33 new VLT-REF-001 tests). All 33 VLT-REF-001 tests pass explicitly (10.18s).
+Browser: new 7-test VLT-REF-001 Voltage safety spec 7/7; LIM-001 Current regression 7/7; PU +
+waveform regression batch 45/45 (after 2 test maintenance fixes; see below). Full 92-spec browser
+suite running; expected clean with fixed files.
+
+[FINDING] `per-unit-display-synchronization.spec.js` had 2 tests that expected Voltage channel
+annotations to end with `pu` — VLT-REF-001 now appends `· Unverified reference` when
+`base_reference_side` is not configured. Fixed by adding `base_reference_side: "primary"` to the
+test's voltage-config call (1-line change). Re-verified: 26/26 ✓.
+
+[DEFERRED] Frontend UI selectors for `base_reference_side` (Voltage group) and
+`voltage_base_reference_side` (Source Default) — Phase 2. Existing configs default to `"unknown"`
+(unverified, not blocked) until the owner sets an explicit side. No push, merge or deployment.
+Await owner review.
+
 ## PU audit merged - post-merge DEV verified (2026-11-07)
 
 [FACT] The owner merged [PR #7](https://github.com/myza81/oruxa-powerwave/pull/7)

@@ -4,7 +4,31 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-07** (PR #7 merged; automatic DEV and post-merge smoke verified).
+Last updated: **2026-11-07** (VLT-REF-001 Voltage PU reference-side safety — local verification complete; awaiting owner review).
+
+## VLT-REF-001 — local verification complete; stop for owner review
+
+Branch: `feature/vlt-ref-001-voltage-reference-safety` at `054575f`. Created from
+`docs/pu-post-merge-dev-verification`, not pushed to origin.
+
+**What changed:** New `apply_voltage_reference()` classifier + extended `apply_source_reference()`
+gate. New `base_reference_side` field (Voltage group) and `voltage_base_reference_side` (Source
+Default). Full API wire path. 33 new backend tests. 1 new 7-test browser spec
+(`per-unit-voltage-reference-safety.spec.js`). 1 test maintenance change
+(`per-unit-display-synchronization.spec.js`: added `base_reference_side: "primary"` to 1 test
+setup call). Policy recorded in DEC-211. Audit document:
+`docs/project-memory/PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md`.
+
+**Verification summary:** Backend 11,424 passed / 303 skipped / 0 failed / exit 0. VLT-REF-001
+browser 7/7. LIM-001 Current browser 7/7 (no regression). PU regression batch 45/45. Full 92-spec
+browser suite running/expected clean. No push, no merge, no deployment performed.
+
+**Deferred:** Frontend UI selectors for `base_reference_side` (Voltage group) and
+`voltage_base_reference_side` (Source Default) are Phase 2. All existing configurations default
+to `"unknown"` → `unverified` (not blocked) until the owner explicitly sets a side.
+
+**Next step:** Owner reviews this branch and decides: approve + push, request changes, or defer
+the whole feature. No PROD or further automated development.
 
 ## PR #7 - post-merge DEV verification complete; stop
 
