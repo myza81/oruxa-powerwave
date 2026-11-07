@@ -154,9 +154,22 @@ def _resolve_effective_per_unit(
     if resolution is None:
         resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
     channel = next(ch for ch in active.metadata.analog_channels if ch.name == channel_name)
+    # Look up the Voltage group config for the reference-side gate (VLT-REF-001).
+    # For the Source Default path, the profile carries voltage_base_reference_side directly.
+    voltage_group_config = None
+    if (
+        engineering_type == "Voltage"
+        and workspace_id is not None
+        and voltage_config_registry is not None
+        and resolution.profile_id is not None
+        and resolution.profile_id != active.metadata.source_id
+    ):
+        voltage_group_config = voltage_config_registry.get(workspace_id, resolution.profile_id)
     resolution = apply_source_reference(
         resolution, engineering_type, channel.measurement_side,
-        group_config=group_config, profile=per_unit_profile if group_config is None and resolution.profile_id == active.metadata.source_id else None,
+        group_config=group_config,
+        profile=per_unit_profile if group_config is None and resolution.profile_id == active.metadata.source_id else None,
+        voltage_group_config=voltage_group_config,
     )
     return resolve_conversion_eligibility(
         resolution, channel.unit, engineering_type, active.record.waveform_data[channel_name].to_numpy(),

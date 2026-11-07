@@ -51,6 +51,7 @@ class VoltageGroupConfigView:
     effective_reference: str | None
     evidence_names: list[str]
     detection_reason: str
+    base_reference_side: ReferenceSide = "unknown"
 
 
 @dataclass(slots=True)
@@ -86,6 +87,7 @@ def _build_voltage_view(
         effective_reference=effective.reference,
         evidence_names=list(effective.evidence_names),
         detection_reason=effective.reason,
+        base_reference_side=config.base_reference_side if config is not None else "unknown",
     )
     pu_status = "configured" if resolution.status == _VOLTAGE_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason

@@ -83,14 +83,17 @@ def update_voltage_configuration(
     nominal_voltage_ll_kv: float | None = None,
     reference_mode: str | None = None,
     reference_override: str | None = None,
+    base_reference_side: str | None = None,
 ) -> VoltageBaseConfiguration:
     """Validate the entire requested edit before one registry replacement.
 
     None nominal means preserve the base. None mode (individual service
     setters only) preserves the reference pair; the API supplies its existing
     default 'auto'. Auto clears overrides, manual requires a valid override.
+    None base_reference_side preserves the existing side declaration.
     No live configuration object is modified while validating.
     """
+    from app.domain.reference_side import REFERENCE_SIDES
     _get_voltage_group(workspace_id, measurement_group_id, group_registry=group_registry)
     if nominal_voltage_ll_kv is not None and not voltage_base_valid(nominal_voltage_ll_kv):
         raise InvalidVoltageBaseValueError(
@@ -100,10 +103,15 @@ def update_voltage_configuration(
         raise InvalidVoltageReferenceOverrideError(f"Unknown voltage reference mode {reference_mode!r}.")
     if reference_mode == VOLTAGE_REFERENCE_MODE_MANUAL and not voltage_reference_value_valid(reference_override):
         raise InvalidVoltageReferenceOverrideError(f"Unknown voltage reference {reference_override!r}.")
+    if base_reference_side is not None and base_reference_side not in REFERENCE_SIDES:
+        raise InvalidVoltageBaseValueError(
+            f"base_reference_side={base_reference_side!r} must be one of {REFERENCE_SIDES}."
+        )
     return voltage_config_registry.update_fields(
         workspace_id, measurement_group_id, nominal_voltage_ll_kv=nominal_voltage_ll_kv,
         reference_mode=reference_mode,
         reference_override=reference_override if reference_mode == VOLTAGE_REFERENCE_MODE_MANUAL else None,
+        base_reference_side=base_reference_side,
     )
 
 

@@ -29247,3 +29247,47 @@ CI, exact-commit manual DEV deployment and post-deployment verification.
 This supersedes the prior deployment pause for that scope only. No main merge,
 PROD deployment or automatic overall PU acceptance. See the
 [final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
+
+---
+
+## DEC-211 — Voltage PU reference-side safety extends LIM-001/DEC-210 to Voltage channels
+
+Date: 2026-11-07. Status: **Owner-approved implementation. Awaiting owner review before acceptance, push, merge or deployment.**
+Authority: owner task "VLT-REF-001: Voltage Reference-Side Safety", following the
+bounded VLT-REF-001 assessment and live defect reproduction (scratchpad confirmed
+0.0008333 pu for a Secondary recording normalized against a Primary base, both
+Measurement Group and Source Default paths).
+
+- **Policy mirrors DEC-210 for Voltage.** Known Primary/Secondary mismatch blocks
+  Voltage PU (`status=base_required`, `reference_compatibility=incompatible`,
+  `reason=voltage_reference_side_incompatible`). Unknown sides produce
+  `unverified` without blocking conversion. Known matching sides produce
+  `compatible`. No VT ratio scaling, side inference or sample reinterpretation.
+- **Domain gate:** `apply_voltage_reference()` in `per_unit_reference.py` —
+  exact structural match to `apply_current_reference()`. Called from the shared
+  `apply_source_reference()` gate (the single VLT-REF-001 root-cause call site
+  that previously had an unconditional early-return for non-Current types).
+- **Configuration:** `base_reference_side: ReferenceSide = "unknown"` added to
+  `VoltageBaseConfiguration` (group path) and `PerUnitBaseProfile`
+  (`voltage_base_reference_side`, source-default path). Both default to `"unknown"`
+  for backward compatibility — existing configurations remain `unverified`, not
+  `incompatible`.
+- **Wire path:** `waveform_service._resolve_effective_per_unit()` looks up the
+  Voltage group config from `voltage_config_registry` when `profile_id ≠ source_id`
+  (Measurement Group path) and passes it as `voltage_group_config`. The Source
+  Default path passes `profile=per_unit_profile`, which carries
+  `voltage_base_reference_side`. `per_unit_provenance_service` updated with the
+  same group-config lookup for the provenance endpoint.
+- **APIs extended additively.** `VoltageGroupConfigUpdateRequest` and
+  `VoltageGroupConfigOut` gain `base_reference_side`. `SourcePerUnitConfigUpdateRequest`
+  and `SourcePerUnitConfigOut` gain `voltage_base_reference_side`.
+- **Frontend deferred.** The `base_reference_side` selector for Voltage groups and
+  the `voltage_base_reference_side` selector for Source Default are Phase 2
+  work. Existing configurations default to `"unknown"` (unverified, not blocked).
+- **Scope boundary.** No CT/VT ratio conversion, automatic VT scaling, or new
+  calculated-Voltage paths. Calculated Voltage channels already restricted by
+  DEC-052. Power/phasor mathematics unchanged.
+- **Validation.** 33 new backend tests (unit + integration) all pass.
+  Full existing backend suite (pre-new-tests) passes without regression.
+  Implementation: `feature/vlt-ref-001-voltage-reference-safety` branch.
+  Audit: [PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md](PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md).

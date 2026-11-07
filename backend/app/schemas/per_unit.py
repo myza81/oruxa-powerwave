@@ -32,6 +32,7 @@ class SourcePerUnitConfigUpdateRequest(BaseModel):
     voltage_base_value: PerUnitBaseNumber | None = None
     voltage_reference_mode: Literal["auto", "manual"] = "auto"
     voltage_reference_override: Literal["line_to_ground", "line_to_line"] | None = None
+    voltage_base_reference_side: ReferenceSide = "unknown"
     current_base_reference_side: ReferenceSide = "unknown"
     current_base_mode: Literal["none", "derived", "direct"] = "none"
     apparent_power_base_value: PerUnitBaseNumber | None = None
@@ -73,6 +74,7 @@ class SourcePerUnitConfigOut(BaseModel):
     effective_voltage_reference: Literal["line_to_ground", "line_to_line"] | None
     voltage_reference_evidence: list[str]
     voltage_reference_reason: str
+    voltage_base_reference_side: ReferenceSide = "unknown"
     current_base_reference_side: ReferenceSide = "unknown"
     current_base_mode: Literal["none", "derived", "direct"]
     apparent_power_base_value: float | None
@@ -91,6 +93,7 @@ class SourcePerUnitConfigOut(BaseModel):
             effective_voltage_reference=view.effective_voltage_reference,
             voltage_reference_evidence=view.voltage_reference_evidence,
             voltage_reference_reason=view.voltage_reference_reason,
+            voltage_base_reference_side=view.voltage_base_reference_side,
             current_base_reference_side=view.current_base_reference_side,
             current_base_mode=view.current_base_mode,
             apparent_power_base_value=view.apparent_power_base_value,

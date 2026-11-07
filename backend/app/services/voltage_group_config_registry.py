@@ -93,6 +93,7 @@ class VoltageGroupConfigRegistry:
         nominal_voltage_ll_kv: float | None = None,
         reference_mode: str | None = None,
         reference_override: str | None = None,
+        base_reference_side: str | None = None,
     ) -> VoltageBaseConfiguration:
         """Publish service-validated fields as one configuration replacement.
 
@@ -113,6 +114,8 @@ class VoltageGroupConfigRegistry:
             if reference_mode is not None:
                 candidate.reference_mode = reference_mode
                 candidate.reference_override = reference_override
+            if base_reference_side is not None:
+                candidate.base_reference_side = base_reference_side
             result = _copy_config(candidate)
             self._configs[key] = candidate
             return result

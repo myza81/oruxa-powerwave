@@ -344,8 +344,13 @@ def _build_source_channel_provenance(
         current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
+        voltage_group_config = (
+            voltage_config_registry.get(workspace_id, group_resolution.profile_id)
+            if engineering_type == "Voltage" else None
+        )
         group_resolution = apply_source_reference(group_resolution, engineering_type, measurement_side,
-            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id))
+            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id),
+            voltage_group_config=voltage_group_config)
         group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type, values)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id, engineering_type=engineering_type,

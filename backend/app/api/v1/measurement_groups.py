@@ -165,6 +165,7 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             effective_reference=view.voltage_config.effective_reference,
             evidence_names=view.voltage_config.evidence_names,
             detection_reason=view.voltage_config.detection_reason,
+            base_reference_side=view.voltage_config.base_reference_side,
         )
         if view.voltage_config is not None
         else None
@@ -378,6 +379,7 @@ def put_voltage_config(
             workspace_id=workspace_id, measurement_group_id=measurement_group_id,
             nominal_voltage_ll_kv=body.nominal_voltage_ll_kv,
             reference_mode=body.reference_mode, reference_override=body.reference_override,
+            base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
         )
     except ImportServiceError as exc:

@@ -132,6 +132,7 @@ class PerUnitBaseProfile:
     direct_current_base_value: float | None  # kA, canonical
     created_at: datetime | None = None
     current_base_reference_side: ReferenceSide = "unknown"
+    voltage_base_reference_side: ReferenceSide = "unknown"
 
 
 def voltage_base_valid(value: float | None) -> bool:

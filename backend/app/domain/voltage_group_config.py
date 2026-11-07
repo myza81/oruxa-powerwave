@@ -60,6 +60,7 @@ from app.domain.measurement_group import (
     MeasurementGroup,
 )
 from app.domain.per_unit_numerics import convert_scalar, scaled_base
+from app.domain.reference_side import ReferenceSide
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -142,6 +143,7 @@ class VoltageBaseConfiguration:
     nominal_voltage_ll_kv: float | None
     reference_mode: str = VOLTAGE_REFERENCE_MODE_AUTO
     reference_override: str | None = None
+    base_reference_side: ReferenceSide = "unknown"
 
 
 def resolve_effective_voltage_reference_for_group(
