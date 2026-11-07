@@ -104,6 +104,7 @@ class WaveformRangeOut(BaseModel):
     # "base_required" -- `unit`/`values` above are already converted
     # when this is "configured".
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: WaveformRangeResult) -> "WaveformRangeOut":
@@ -119,4 +120,5 @@ class WaveformRangeOut(BaseModel):
             time=_require_finite_time_array(result.time),
             values=_sanitize_float_array(result.values),
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )

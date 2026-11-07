@@ -28,6 +28,7 @@ from app.domain.time_reference import TimeReferenceInterpretation
 
 from app.domain.channel_classification import UNDEFINED, WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
+from app.domain.reference_side import ReferenceSide
 
 
 @dataclass(slots=True)
@@ -60,6 +61,7 @@ class AnalogChannelSummary:
     # section for the full taxonomy and its broad_engineering_type()
     # backward-compatibility mapping.
     engineering_quantity: str = UNDEFINED
+    measurement_side: ReferenceSide = "unknown"
 
 
 @dataclass(slots=True)

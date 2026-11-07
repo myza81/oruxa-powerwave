@@ -171,6 +171,7 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
     )
     current_config_out = (
         CurrentGroupConfigOut(
+            base_reference_side=view.current_config.base_reference_side,
             method=view.current_config.method,
             equipment_rating_mva=view.current_config.equipment_rating_mva,
             linked_voltage_group_id=view.current_config.linked_voltage_group_id,
@@ -411,6 +412,7 @@ def put_current_config(
         if body.method == METHOD_EQUIPMENT_RATING:
             set_current_base_equipment_rating(
                 workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
                 equipment_rating_mva=body.equipment_rating_mva,
                 linked_voltage_group_id=body.linked_voltage_group_id,
                 manual_voltage_base_kv=body.manual_voltage_base_kv,
@@ -420,12 +422,14 @@ def put_current_config(
         elif body.method == METHOD_MANUAL:
             set_current_base_manual(
                 workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
                 manual_ibase_ka=body.manual_ibase_ka,
                 group_registry=group_registry, current_config_registry=current_config_registry,
             )
         else:  # METHOD_NONE
             set_current_base_none(
                 workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
                 group_registry=group_registry, current_config_registry=current_config_registry,
             )
     except ImportServiceError as exc:

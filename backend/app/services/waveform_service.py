@@ -52,9 +52,11 @@ from app.domain.per_unit import (
     PerUnitResolution,
     apply_per_unit_to_array,
     apply_per_unit_to_value,
+    resolve_conversion_eligibility,
     resolve_per_unit,
 )
 from app.domain.source import ActiveSource, DigitalChannelSummary
+from app.domain.per_unit_reference import apply_source_reference
 from app.domain.waveform_reduction import build_min_max_envelope
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
@@ -131,6 +133,7 @@ def _resolve_effective_per_unit(
             reason="engineering_quantity_angle",
         )
     resolution: PerUnitResolution | None = None
+    group_config = None
     if (
         workspace_id is not None
         and group_registry is not None
@@ -146,9 +149,18 @@ def _resolve_effective_per_unit(
             voltage_config_registry=voltage_config_registry,
             current_config_registry=current_config_registry,
         )
+        if resolution is not None:
+            group_config = current_config_registry.get(workspace_id, resolution.profile_id)
     if resolution is None:
         resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
-    return resolution
+    channel = next(ch for ch in active.metadata.analog_channels if ch.name == channel_name)
+    resolution = apply_source_reference(
+        resolution, engineering_type, channel.measurement_side,
+        group_config=group_config, profile=per_unit_profile if group_config is None and resolution.profile_id == active.metadata.source_id else None,
+    )
+    return resolve_conversion_eligibility(
+        resolution, channel.unit, engineering_type, active.record.waveform_data[channel_name].to_numpy(),
+    )
 
 #: Starting reference point: `powerwave`'s own live desktop code
 #: (`build_aligned_data`/`decimate_for_display`) uses this exact value at
@@ -187,6 +199,7 @@ class WaveformRangeResult:
     # Otherwise one of app.domain.per_unit's three statuses; `unit`/
     # `values` above are already converted when this is "configured".
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
 
 def _resolve_analog_channel(active: ActiveSource, channel_name: str) -> str:
@@ -323,6 +336,7 @@ def extract_waveform_range(
     )
 
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
         resolution = _resolve_effective_per_unit(
@@ -330,6 +344,7 @@ def extract_waveform_range(
             workspace_id=workspace_id, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
         )
+        per_unit_reference_compatibility = resolution.reference_compatibility
         out_values, unit, per_unit_status = apply_per_unit_to_array(out_values, unit, engineering_type, resolution)
 
     return WaveformRangeResult(
@@ -343,6 +358,7 @@ def extract_waveform_range(
         time=out_time,
         values=out_values,
         per_unit_status=per_unit_status,
+        per_unit_reference_compatibility=per_unit_reference_compatibility,
     )
 
 
@@ -376,6 +392,7 @@ class ChannelCursorValues:
     a_value: float | None
     b_value: float | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
 
 @dataclass(slots=True)
@@ -552,6 +569,7 @@ def extract_cursor_values(
 
         display_unit = unit
         per_unit_status: str | None = None
+        per_unit_reference_compatibility: str | None = None
         if unit_mode == UNIT_MODE_PER_UNIT:
             engineering_type = _analog_channel_engineering_type(active, name)
             resolution = _resolve_effective_per_unit(
@@ -559,6 +577,7 @@ def extract_cursor_values(
                 workspace_id=workspace_id, group_registry=group_registry,
                 voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
             )
+            per_unit_reference_compatibility = resolution.reference_compatibility
             a_value, display_unit, per_unit_status = apply_per_unit_to_value(a_value, unit, engineering_type, resolution)
             b_value, display_unit, per_unit_status = apply_per_unit_to_value(b_value, unit, engineering_type, resolution)
 
@@ -566,6 +585,7 @@ def extract_cursor_values(
             ChannelCursorValues(
                 channel_name=name, unit=display_unit, a_value=a_value, b_value=b_value,
                 per_unit_status=per_unit_status,
+                per_unit_reference_compatibility=per_unit_reference_compatibility,
             )
         )
 
@@ -632,6 +652,7 @@ class AnnotationAnchorResult:
     elapsed_seconds: float
     value: float | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
 
 def resolve_annotation_anchor(
@@ -686,6 +707,7 @@ def resolve_annotation_anchor(
     # fixed above and never move to "find" a non-null value instead).
     value = _finite_or_none(values_full[index])
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
         resolution = _resolve_effective_per_unit(
@@ -693,6 +715,7 @@ def resolve_annotation_anchor(
             workspace_id=workspace_id, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
         )
+        per_unit_reference_compatibility = resolution.reference_compatibility
         value, unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
 
     return AnnotationAnchorResult(
@@ -703,6 +726,7 @@ def resolve_annotation_anchor(
         elapsed_seconds=float(time_full[index]),
         value=value,
         per_unit_status=per_unit_status,
+        per_unit_reference_compatibility=per_unit_reference_compatibility,
     )
 
 
@@ -737,6 +761,7 @@ class PeakValueResult:
     value: float | None
     unit: str | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
 
 def _peak_in_range(
@@ -842,6 +867,7 @@ def resolve_peak_value(
     )
 
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
     display_unit = unit if available else None
     if available and unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
@@ -850,6 +876,7 @@ def resolve_peak_value(
             workspace_id=workspace_id, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
         )
+        per_unit_reference_compatibility = resolution.reference_compatibility
         value, display_unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
 
     return PeakValueResult(
@@ -861,6 +888,7 @@ def resolve_peak_value(
         value=value,
         unit=display_unit,
         per_unit_status=per_unit_status,
+        per_unit_reference_compatibility=per_unit_reference_compatibility,
     )
 
 

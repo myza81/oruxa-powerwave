@@ -60,6 +60,7 @@ class PeakValueResultOut(BaseModel):
     value: float | None
     unit: str | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: PeakValueResult) -> "PeakValueResultOut":
@@ -72,6 +73,7 @@ class PeakValueResultOut(BaseModel):
             value=result.value,
             unit=result.unit,
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )
 
 

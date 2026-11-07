@@ -37,6 +37,7 @@ uploaded files.
 """
 
 from __future__ import annotations
+from app.domain.reference_side import comtrade_measurement_side
 
 import io
 import math
@@ -790,6 +791,7 @@ def _build_record(cfg: _CfgData) -> DisturbanceRecord:
             offset=adef.b,
             primary_ratio=adef.primary,
             secondary_ratio=adef.secondary,
+            measurement_side=comtrade_measurement_side(adef.ps_flag),
         )
         for adef, name in zip(cfg.analog_defs, analog_names)
     ]

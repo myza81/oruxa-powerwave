@@ -11,6 +11,7 @@ redesign -- may have just changed).
 """
 
 from __future__ import annotations
+from app.domain.reference_side import ReferenceSide, candidate_base_side, configured_base_side
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from app.domain.per_unit import (
     voltage_base_valid,
 )
 from app.domain.voltage_reference import KNOWN_VOLTAGE_REFERENCES
+from app.domain.per_unit_numerics import derived_current_ka
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import InvalidPerUnitBaseError, SourceNotFoundError
 from app.services.per_unit_registry import PerUnitRegistry, recompute_inherited_per_unit_assignments
@@ -68,6 +70,7 @@ class SourcePerUnitConfigView:
     direct_current_base_value: float | None
     resolved_current_base_amps: float | None
     created_at: datetime | None
+    current_base_reference_side: ReferenceSide = "unknown"
 
 
 def _view_for_source(
@@ -81,6 +84,7 @@ def _view_for_source(
     return SourcePerUnitConfigView(
         source_id=source_id,
         configured=profile is not None,
+        current_base_reference_side=configured_base_side(profile.current_base_mode, profile.current_base_reference_side) if profile else "unknown",
         voltage_base_value=profile.voltage_base_value if profile else None,
         voltage_reference_mode=profile.voltage_reference_mode if profile else "auto",
         voltage_reference_override=profile.voltage_reference_override if profile else None,
@@ -139,6 +143,11 @@ def _validate_base_fields(
         raise InvalidPerUnitBaseError("Three-Phase MVA Base must be a finite, positive number of MVA.")
     if current_base_mode == "direct" and direct_current_base_value is not None and not direct_current_base_valid(direct_current_base_value):
         raise InvalidPerUnitBaseError("Direct current base must be a finite, positive number of kA.")
+    if (current_base_mode == "derived" and apparent_power_base_value is not None and voltage_base_value is not None
+            and derived_current_ka(apparent_power_base_value, voltage_base_value) is None):
+        raise InvalidPerUnitBaseError(
+            "Three-Phase MVA Base and nominal LL voltage must yield a finite, positive current base in kA and A."
+        )
 
 
 def upsert_source_per_unit_config(
@@ -151,6 +160,7 @@ def upsert_source_per_unit_config(
     current_base_mode: str,
     apparent_power_base_value: float | None,
     direct_current_base_value: float | None,
+    current_base_reference_side: str | None = None,
     registry: PerUnitRegistry,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
@@ -173,7 +183,14 @@ def upsert_source_per_unit_config(
         direct_current_base_value=direct_current_base_value,
     )
     existing = registry.get(workspace_id, source_id)
+    try:
+        side = candidate_base_side(current_base_mode, current_base_reference_side,
+                                   existing.current_base_mode if existing else "none",
+                                   existing.current_base_reference_side if existing else "unknown")
+    except ValueError as exc:
+        raise InvalidPerUnitBaseError(str(exc)) from exc
     profile = PerUnitBaseProfile(
+        current_base_reference_side=side,
         source_id=source_id,
         workspace_id=workspace_id,
         voltage_base_value=voltage_base_value,

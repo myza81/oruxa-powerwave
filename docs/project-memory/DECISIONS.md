@@ -29063,3 +29063,187 @@ These decisions were made and implemented during Phase E-3B (three-phase power f
   is unchanged and remains the sole source for canonical stored channel names — stored
   names continue to read `P₃ (VA, IA, VB, IB, VC, IC)` etc. Single-phase display labels
   (`P`, `Q`, `|S|`) are unchanged. Implemented in commit `02b1a68`; UAT PASSED 2026-11-02.
+
+## DEC-209 — PC-001 Current common-base policy requires explicit, separate measurement and base reference sides
+
+Date: 2026-11-03.
+Status: **Owner-approved Stage 5A and subsequent Stage 5B implementation scopes.
+Stage 5B adds result-specific manual configuration under the addendum below.**
+Source: owner task "Per-Unit Audit Remediation, Slice 5" and subsequent owner
+decision "Define explicit base-side metadata first" (Option 2), followed by
+"Additional owner requirement - Preserve Manual Override", then the explicit
+owner-approved implementation task "Reference-Side Metadata and Automatic
+Cross-Group Current PU Eligibility - Slice 5A".
+
+Approved principles:
+
+- Calculated Current arithmetic remains in engineering units. Automatic PU
+  eligibility depends on valid, physically compatible, numerically equivalent
+  effective bases of every contributing input, transitively. Group identity
+  alone neither proves nor disproves compatibility. Manual and equipment-derived
+  bases may agree when their physical/reference meanings agree.
+- A grouped input's unresolved/incompatible base must not acquire an unrelated
+  Source Default. Genuinely ungrouped inputs retain supported Source Default.
+- Measurement side represented by samples and reference side represented by a
+  configured base are **distinct**. The minimal vocabulary is primary,
+  secondary or unknown. Never assign manual/direct base side solely from the
+  sample side, or silently label historical manual bases primary/secondary.
+- Preserve equipment-derived primary-base semantics. Do not apply CT/VT ratio
+  scaling, reinterpret COMTRADE values, redesign mathematical operations, or
+  change established behavior outside approved PC-001 scope.
+- Unknown necessary compatibility conditions fail closed for the **new
+  cross-group automatic decision**. Existing manual configuration and Source
+  Default functionality must remain available.
+- When automatic Current resolution fails because bases differ or are unknown,
+  the engineer must retain an explicit manual base workflow for the intended
+  calculated result. A valid explicit base takes precedence, with distinct
+  manual provenance and no mutation of input groups/bases. It cannot bypass
+  numerical safety, measured-unit checks or physical compatibility. Reuse an
+  existing workflow if sufficient; obtain owner approval before adding any
+  calculated-channel configuration UI or storage-model extension.
+
+Supersession is limited to the intended PC-001 Current policy: DEC-050/model
+section 19's initial group-id-only exclusion, DEC-051's calculated-channel
+ambient fallback for incompatible groups, and DEC-116's historical statement
+that Current inheritance is unchanged cannot define the new cross-authority
+Current rule. DEC-049 legacy Source Default remains supported. DEC-052/115/116
+Voltage representation restrictions remain unchanged. The original audit is
+historical evidence and is not rewritten; the pre-Stage-5A runtime had PC-001.
+
+The initial owner direction required a bounded assessment and metadata pause.
+Both assessments remain historical evidence:
+[reference-side design](PER_UNIT_AUDIT_SLICE_5_DESIGN.md) and
+[manual-override gap](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md).
+The subsequent Stage 5A task authorizes only the following implementation:
+
+- Add separate validated primary/secondary/unknown measurement/base metadata.
+  COMTRADE P/S provides structured side without changing a*x+b. CSV/BEN stay
+  Unknown absent an independently established provider contract.
+- Equipment-derived bases remain Primary. Manual/direct declarations are
+  independent; historical manual bases are not backfilled. Preserve an omitted
+  side only within the same manual/direct method. Explicit Unknown resets it;
+  method transitions cannot carry equipment-derived Primary into manual mode.
+- New cross-authority automatic eligibility permits only Primary/Primary,
+  subject to base/unit/dependency/confirmation/numerical gates. Secondary/
+  Secondary is unavailable in this release, pending a shared physical reference,
+  not permanently prohibited. Preserve established single-authority behavior.
+- Resolve live contributing bases. Group membership is authoritative even when
+  configuration fails; only genuinely ungrouped channels use their own Source
+  Default. An ambient automatic assignment must not repair grouped failures.
+- Compute ENG arithmetic first and normalize the actual result once. Preserve
+  Slice 4 safety. Compare global extrema with relative tolerance 1e-12 and zero
+  absolute tolerance; the minimum equivalent SI base is deterministic. Never
+  average incompatible bases or persist inherited values.
+- Preserve source_kind values. Add automatic_common_base origin for
+  multi-authority results, independent sides, actual common kA base and truthful
+  unavailable reasons. Use the existing read-only Current provenance modal/API,
+  without adding a result configuration editor.
+
+Stage 5A implementation and validation are in
+[PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md). Verification is complete
+locally: 11,253 backend passes, 320 conditional/platform skips, zero failures/
+errors and 21 existing warnings; 392/392 selected browser cases pass, with zero
+skips/flaky cases/failures/global errors. Both exit 0. No push, merge or deploy.
+No CSV/BEN side-declaration UI, scaling, secondary identity model,
+Voltage policy, Power calculation or separate CSV correction is included.
+
+**Stage 5B is not authorized by Stage 5A:** no result-owned manual base storage,
+write API/editor, explicit unassignment or new manual descendant policy. The
+owner manual-override principle stands; its proposed extension requires separate
+approval. Existing internal manual assignment graphs retain their legacy path.
+
+### Subsequent owner approval - Stage 5B (implemented 2026-11-03/04)
+
+The separate owner task "Stage 5B: Manual PU Override for Calculated Current
+Channels" explicitly authorizes the minimal result-owned storage/API/editor
+extension identified by the earlier assessment. That assessment remains
+historical, not the final descendant policy. This approval does not reopen the
+Stage 5A reference-side contract or authorize other audit work.
+
+- Automatic preserves Stage 5A. Manual stores canonical SI amperes and an
+  independently declared Primary/Secondary/Unknown base side on the calculated
+  result, taking precedence subject to physical/unit/numerical safety. A saved
+  manual choice that later becomes inapplicable stays saved and unavailable;
+  it never silently falls back to Automatic.
+- Unassigned explicitly disables this result's PU. Return to Automatic is a
+  separate action. Modes survive browser reload in the existing live workspace;
+  server-restart persistence is not introduced.
+- Manual choices cannot alter source samples, groups, Source Defaults, linked
+  bases or physical arithmetic. Known matching measurement/base sides are
+  necessary. Established single-authority Secondary/Secondary may qualify;
+  distinct secondary authorities remain unavailable without a shared reference.
+  Unknown sides fail closed. No CT/VT scaling or new sample-side declaration UI.
+- An automatic descendant resolves its contributing source leaves under 5A,
+  rather than inheriting a parent's Manual or Unassigned selection. Each child
+  may independently own a manual base. Existing internal legacy assignments
+  without this new configuration retain their historical path.
+- All PU consumers use shared backend conversion/provenance and existing
+  asynchronous refresh fences. Calculated display rows show their live unit;
+  physical definitions and preview remain ENG. New manual-result provenance
+  may use A when kA would lose subnormal precision; existing Group/Source
+  Default display-unit contracts remain unchanged.
+
+Implementation and validation: [PER_UNIT_AUDIT_STAGE_5B.md](PER_UNIT_AUDIT_STAGE_5B.md).
+Delivery is local only; no push, merge, deployment or automatic final audit.
+
+The owner subsequently approved the prepared test-only corrections in
+`channel-presentation-propagation.spec.js` and `text-spacing.spec.js`, followed
+by a rerun of all 37 selected browser files. These align the existing compact
+summary with exact expression/identity/unit/spacing assertions; they authorize
+no additional production change or engineering policy.
+
+Stage 5B is verified locally: 11,315 backend passes, 320 conditional/platform
+skips, zero failures/errors and 21 existing warnings; final selected browser:
+431/431 in 37 explicit files, zero failures/skips/flaky cases/global errors,
+retries=0. Both exit 0. Only the two approved browser files changed after the
+full backend run; production hashes are unchanged and the affected backend
+notation guard rerun passes 11/11. No push, merge, deployment or final audit.
+
+## DEC-210 — Current PU reference safety blocks known mismatch and identifies historical Unknown as Unverified
+
+Date: 2026-11-06. Status: **Owner-approved implementation policy.**
+Authority: owner task "LIM-001: Centralized PU Reference-Side Safety", following
+the bounded LIM-001 assessment. This chooses its compatibility-preserving option A.
+
+- Recorded measurement side, configured base side, base provenance and actual
+  normalization denominator remain independent. No CT/VT ratio scaling, side
+  inference, sample reinterpretation, new conversion workflow or persistence.
+- Known Primary/Primary qualifies subject to existing gates. Known Secondary/
+  Secondary qualifies only under the established authority contract. Known P/S
+  or S/P mismatch blocks PU in raw, group/default, legacy, calculated and nested
+  paths. Mixed known sample sides cannot be hidden by Unknown aggregation.
+- Historical raw and single-authority Automatic Current with Unknown reference
+  retain their previously permitted numbers, explicitly labeled **Unverified
+  reference**. This is not verified physical compatibility. No missing metadata
+  is silently assigned Primary/Secondary. CSV/BEN remain supported without a
+  new recorded-side selector.
+- Stage 5A cross-authority Automatic and Stage 5B result-specific Manual remain
+  strict: Unknown fails closed; distinct Secondary authorities require a shared
+  reference that remains deferred. Result Manual uses its own independent base,
+  superseding input normalization bases without changing those inputs. It still
+  requires compatible measured sides, units, review, dependencies and numerical
+  safety. Automatic children resolve leaves rather than parent display choices.
+- Use one shared reference classifier after authoritative base selection.
+  `configured` remains conversion availability, not a new claim of reference
+  verification. Add compatible/incompatible/unverified metadata separately;
+  existing unavailable statuses/reasons and physical ENG fallback are retained.
+  Group/default base availability is distinct from each channel's eligibility.
+- Shared value/provenance/readiness and UI status surfaces must agree through
+  mode/base/group changes and stale-response fencing. Use compact accessible
+  warnings; no duplicate frontend normalization or additional workspace polling.
+- Preserve group/default precedence, atomic rejected saves, linked bases, original
+  arrays, Voltage behavior, Power/phasor mathematics and ephemeral workspace life.
+
+This supersedes DEC-209's historical same-authority lack of side gating only to
+the extent above. It does not relax its cross-authority or Manual restrictions,
+authorize the CSV discovery-ID fix, or close the complete PU audit automatically.
+Implementation and validation: [PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
+Owner review remains required before acceptance, push, merge or deployment.
+
+
+Release authorization update (2026-11-07): the owner accepted this engineering
+policy and authorized final documentation, normal feature-branch push, required
+CI, exact-commit manual DEV deployment and post-deployment verification.
+This supersedes the prior deployment pause for that scope only. No main merge,
+PROD deployment or automatic overall PU acceptance. See the
+[final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).

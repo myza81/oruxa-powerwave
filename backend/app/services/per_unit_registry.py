@@ -33,10 +33,12 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.calculated_current_config import CalculatedCurrentConfiguration
 from app.domain.channel_classification import CURRENT, UNDEFINED, VOLTAGE
 from app.domain.per_unit import PerUnitBaseProfile, derive_per_unit_profile_id
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.workspace_registry import WorkspaceRegistry
+from app.services.errors import CalculatedChannelNotFoundError
 
 AssignmentMode = Literal["auto", "manual"]
 
@@ -52,6 +54,7 @@ class ChannelAssignment:
 
     mode: AssignmentMode
     profile_id: str | None  # always a source_id, or None
+    current_configuration: CalculatedCurrentConfiguration | None = None
 
 
 class PerUnitRegistry:
@@ -145,6 +148,33 @@ class PerUnitRegistry:
             record = self._calc_assignments.get((workspace_id, calculated_channel_id))
             return record.mode if record is not None else None
 
+    def current_configuration_for_calculated_channel(
+        self, workspace_id: str, calculated_channel_id: str,
+    ) -> CalculatedCurrentConfiguration | None:
+        with self._lock:
+            record = self._calc_assignments.get((workspace_id, calculated_channel_id))
+            return record.current_configuration if record else None  # immutable value object
+
+    def set_current_configuration_for_calculated_channel(
+        self, workspace_id: str, calculated_channel_id: str, configuration: CalculatedCurrentConfiguration,
+    ) -> None:
+        """Publish one validated result configuration, without changing other assignments.
+
+        Manual and explicit unassignment are protected from the legacy auto
+        recompute cascade. A result-owned base never points to a Source Default.
+        Existing calculated/workspace removal already deletes this same record.
+        """
+        with self._lock:
+            key = (workspace_id, calculated_channel_id)
+            # Creation installs this lifetime record. Never resurrect it after
+            # calculated/workspace deletion has removed it during validation.
+            if key not in self._calc_assignments:
+                raise CalculatedChannelNotFoundError("The calculated result was removed before configuration could be saved.")
+            self._calc_assignments[key] = ChannelAssignment(
+                mode="auto" if configuration.mode == "automatic" else "manual",
+                profile_id=None, current_configuration=configuration,
+            )
+
     def set_manual_assignment_for_calculated_channel(
         self, workspace_id: str, calculated_channel_id: str, profile_id: str | None
     ) -> bool:
@@ -170,8 +200,13 @@ class PerUnitRegistry:
         with self._lock:
             key = (workspace_id, calculated_channel_id)
             existing = self._calc_assignments.get(key)
+            if existing and existing.current_configuration and existing.current_configuration.mode != "automatic":
+                return False  # A recompute begun before a manual save cannot overwrite that choice.
             changed = existing is None or existing.profile_id != profile_id
-            self._calc_assignments[key] = ChannelAssignment(mode="auto", profile_id=profile_id)
+            self._calc_assignments[key] = ChannelAssignment(
+                mode="auto", profile_id=profile_id,
+                current_configuration=existing.current_configuration if existing else None,
+            )
             return changed
 
     def remove_calculated_channel(self, workspace_id: str, calculated_channel_id: str) -> None:

@@ -96,7 +96,7 @@ def resolve_per_unit_for_group(
             return PerUnitResolution(
                 status=STATUS_CONFIGURED,
                 profile_id=measurement_group_id,
-                base_amount=resolution.denominator_kv * 1000.0,
+                base_amount=resolution.denominator_volts,
                 base_unit="V",
                 reason=None,
             )

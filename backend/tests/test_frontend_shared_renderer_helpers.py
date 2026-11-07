@@ -59,7 +59,7 @@ def test_shared_helper_reads_no_page_or_workspace_state(signature):
     [
         ("function wwPanelPlotWidth(panel)", "return wwPlotWidthForChart(panel && panel.chartEl);"),
         ("function wwPointBudgetForPanel(panel)", "return wwPointBudgetForPlotWidth(wwPanelPlotWidth(panel));"),
-        ("async function wwFetchChannelRange(channelEntry, startTime, endTime, pointBudget)", "return wwFetchWaveformRange({"),
+        ("async function wwFetchChannelRange(channelEntry, startTime, endTime, pointBudget)", "const result = await wwFetchWaveformRange({"),
         ("function wwBuildTrace(channel, panel)", "const trace = wwAnalogLineTrace({"),
         ("function wwBuildLayout(panel, colors)", "const layout = wwAnalogPanelLayout(colors, {"),
         ("function wwCreatePanelDom(panel)", "container.innerHTML = wwPanelMarkupHtml(panel.label);"),
@@ -84,6 +84,8 @@ def test_waveform_fetch_wrapper_keeps_waveform_inputs():
         "timeOffsetS: alignmentOffset,",
     ):
         assert expected in wrapper
+    assert "workspaceId !== currentWorkspaceId() || epochAtStart !== ww.epoch" in wrapper
+    assert "return { superseded: true };" in wrapper
 
 
 def test_fetch_core_keeps_the_existing_request_contract():

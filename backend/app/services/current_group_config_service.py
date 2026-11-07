@@ -26,6 +26,7 @@ why this is a deliberate design choice, not merely a convenience.
 """
 
 from __future__ import annotations
+from app.domain.reference_side import candidate_base_side
 
 from app.domain.current_group_config import (
     CurrentBaseConfiguration,
@@ -34,6 +35,7 @@ from app.domain.current_group_config import (
     METHOD_MANUAL,
     METHOD_NONE,
     equipment_rating_mva_valid,
+    equipment_rating_ibase_ka,
     manual_ibase_ka_valid,
     manual_voltage_base_kv_valid,
     resolve_current_base_for_group,
@@ -90,7 +92,7 @@ def _validate_linked_voltage_group(
     linked_voltage_group_id: str,
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
-) -> None:
+) -> float:
     """Task section 4's full link-validation checklist. A missing group
     raises `MeasurementGroupNotFoundError` (the same "does this id exist
     at all" concept every other lookup in this codebase uses); every
@@ -114,6 +116,7 @@ def _validate_linked_voltage_group(
         raise InvalidLinkedVoltageGroupError(
             f"Linked voltage group '{linked_voltage_group_id}' has no usable nominal LL voltage base configured."
         )
+    return linked_config.nominal_voltage_ll_kv
 
 
 def set_current_base_equipment_rating(
@@ -123,6 +126,7 @@ def set_current_base_equipment_rating(
     equipment_rating_mva: float,
     linked_voltage_group_id: str | None = None,
     manual_voltage_base_kv: float | None = None,
+    base_reference_side: str | None = None,
     group_registry: MeasurementGroupRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
@@ -151,7 +155,7 @@ def set_current_base_equipment_rating(
         )
 
     if has_link:
-        _validate_linked_voltage_group(
+        applicable_kv = _validate_linked_voltage_group(
             workspace_id=workspace_id, source_id=group.source_id, linked_voltage_group_id=linked_voltage_group_id,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
         )
@@ -160,8 +164,19 @@ def set_current_base_equipment_rating(
             raise InvalidManualVoltageBaseValueError(
                 f"manual_voltage_base_kv={manual_voltage_base_kv!r} must be a finite, positive number."
             )
+        applicable_kv = manual_voltage_base_kv
+
+    if equipment_rating_ibase_ka(equipment_rating_mva, applicable_kv) is None:
+        raise InvalidEquipmentRatingValueError(
+            "Equipment rating and nominal LL voltage must yield a finite, positive current base in kA and A."
+        )
 
     config = _existing_or_default_config(workspace_id, measurement_group_id, current_config_registry=current_config_registry)
+    try:
+        config.base_reference_side = candidate_base_side(
+            METHOD_EQUIPMENT_RATING, base_reference_side, config.method, config.base_reference_side)
+    except ValueError as exc:
+        raise InvalidEquipmentRatingValueError(str(exc)) from exc
     config.method = METHOD_EQUIPMENT_RATING
     config.equipment_rating_mva = equipment_rating_mva
     config.linked_voltage_group_id = linked_voltage_group_id
@@ -176,6 +191,7 @@ def set_current_base_manual(
     workspace_id: str,
     measurement_group_id: str,
     manual_ibase_ka: float,
+    base_reference_side: str | None = None,
     group_registry: MeasurementGroupRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
 ) -> CurrentBaseConfiguration:
@@ -187,6 +203,11 @@ def set_current_base_manual(
         raise InvalidManualCurrentBaseValueError(f"manual_ibase_ka={manual_ibase_ka!r} must be a finite, positive number.")
 
     config = _existing_or_default_config(workspace_id, measurement_group_id, current_config_registry=current_config_registry)
+    try:
+        config.base_reference_side = candidate_base_side(
+            METHOD_MANUAL, base_reference_side, config.method, config.base_reference_side)
+    except ValueError as exc:
+        raise InvalidManualCurrentBaseValueError(str(exc)) from exc
     config.method = METHOD_MANUAL
     config.manual_ibase_ka = manual_ibase_ka
     config.equipment_rating_mva = None
@@ -200,6 +221,7 @@ def set_current_base_none(
     *,
     workspace_id: str,
     measurement_group_id: str,
+    base_reference_side: str | None = None,
     group_registry: MeasurementGroupRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
 ) -> CurrentBaseConfiguration:
@@ -209,6 +231,11 @@ def set_current_base_none(
     resolution (`CurrentBaseConfiguration`'s own documented behaviour)."""
     _get_current_group(workspace_id, measurement_group_id, group_registry=group_registry)
     config = _existing_or_default_config(workspace_id, measurement_group_id, current_config_registry=current_config_registry)
+    try:
+        config.base_reference_side = candidate_base_side(
+            METHOD_NONE, base_reference_side, config.method, config.base_reference_side)
+    except ValueError as exc:
+        raise InvalidManualCurrentBaseValueError(str(exc)) from exc
     config.method = METHOD_NONE
     config.equipment_rating_mva = None
     config.linked_voltage_group_id = None

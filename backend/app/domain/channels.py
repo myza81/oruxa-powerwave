@@ -8,6 +8,7 @@ DisturbanceRecord.waveform_data, keyed by channel name.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from app.domain.reference_side import ReferenceSide
 
 
 @dataclass(slots=True)
@@ -25,6 +26,7 @@ class AnalogChannel:
     primary_ratio: float | None = None
     secondary_ratio: float | None = None
     parameter_type: str | None = None
+    measurement_side: ReferenceSide = "unknown"
 
 
 @dataclass(slots=True)

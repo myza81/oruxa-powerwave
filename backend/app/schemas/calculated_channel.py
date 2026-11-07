@@ -308,6 +308,7 @@ class CalculatedWaveformRangeOut(BaseModel):
     time: list[float | None]
     values: list[float | None]
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedWaveformRangeResult) -> "CalculatedWaveformRangeOut":
@@ -323,6 +324,7 @@ class CalculatedWaveformRangeOut(BaseModel):
             time=_sanitize_float_list(result.time),
             values=_sanitize_float_list(result.values),
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )
 
 
@@ -341,6 +343,7 @@ class CalculatedCursorValuesItemOut(BaseModel):
     a_value: float | None
     b_value: float | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedCursorValues) -> "CalculatedCursorValuesItemOut":
@@ -348,6 +351,7 @@ class CalculatedCursorValuesItemOut(BaseModel):
             calculated_channel_id=result.calculated_channel_id, name=result.name,
             unit=result.unit, a_value=result.a_value, b_value=result.b_value,
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )
 
 
@@ -377,6 +381,7 @@ class CalculatedPeakResultOut(BaseModel):
     value: float | None
     unit: str | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedPeakResult) -> "CalculatedPeakResultOut":
@@ -385,6 +390,7 @@ class CalculatedPeakResultOut(BaseModel):
             available=result.available, sample_index=result.sample_index,
             elapsed_seconds=result.elapsed_seconds, value=result.value, unit=result.unit,
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )
 
 
@@ -411,6 +417,7 @@ class CalculatedAnnotationAnchorOut(BaseModel):
     # (an RMS channel's warm-up region).
     value: float | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedAnnotationAnchorResult) -> "CalculatedAnnotationAnchorOut":
@@ -418,6 +425,7 @@ class CalculatedAnnotationAnchorOut(BaseModel):
             calculated_channel_id=result.calculated_channel_id, unit=result.unit,
             sample_index=result.sample_index, elapsed_seconds=result.elapsed_seconds, value=result.value,
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )
 
 

@@ -159,4 +159,13 @@ class TestNoUnrelatedRegressions:
 
     def test_current_base_preview_formula_still_uses_raw_vbase(self):
         source = _source()
-        assert "sbaseVa / (PER_UNIT_SQRT_3 * vbaseVolts)" in source
+        preview = _function_body(
+            source, "function wwPerUnitEditorResolvedCurrentBaseText(", "async function wwOpenPerUnitProfilesModal("
+        )
+        helper = _function_body(
+            source, "function wwPerUnitDerivedCurrentBaseKa(", "function wwPerUnitEditorResolvedCurrentBaseText("
+        )
+        assert "wwPerUnitDerivedCurrentBaseKa(sbase, vbase)" in preview
+        assert "const denominator = PER_UNIT_SQRT_3 * nominalLlKv;" in helper
+        assert "let ka = ratingMva / denominator;" in helper
+        assert "PER_UNIT_LINE_TO_GROUND" not in helper

@@ -4,13 +4,140 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-02** (Phase E — Three-Phase Power complete. DEV deployment confirmed.
-Owner UAT PASSED. Project-memory updated. PR to main pending creation.)
+Last updated: **2026-11-07** (DEV verified; hand over for final owner acceptance).
+
+## Final PU release - stop for owner acceptance
+
+Deployed release: `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` on
+feature/calculator-vi-phasors, including FA-001 384a55f and LIM-001 b6202fc.
+Normal push, both required CI jobs, and existing manual deploy.yml target=dev
+passed. CI run 42327370768; DEV run 42327935955. Both full Linux backend runs:
+11,391 passed / 303 skipped / 21 warnings / zero failures. No main merge or PROD.
+
+Both running full versions match the release, development environment and
+healthy backend. Strict chain/hostname/system-CA TLS verification passed before
+and after deployed smoke, without any TLS bypass or trust-store change.
+
+140 unique deployed smoke cases have passing evidence in nine files. Initial
+101 passes / one wrong raw-row expectation / 38 not run; follow-up one harness
+legend/layout error / 38 not run; final remaining 39/39 pass. Both harness errors
+are preserved and explained, not product corrections. Zero automatic retries.
+Raw source rows intentionally keep ENG metadata; plots and calculated display
+rows use live units. Exact arrays, identities and label assertions were retained.
+
+FA-001 extreme preview/saved base/actual PU samples match independent arithmetic.
+LIM-001 side matrix and disclosure, strict cross-authority Unknown/Manual,
+shared consumers, mode/base edits, async fencing, Voltage/group/default/linked
+bases, independent/nested Manual, Power Calculator and calculated Power pass.
+All 142 synthetic test-owned workspaces cleaned, every DELETE 204. All 871 tested
+source hashes and all 2250 protected evidence files remain unchanged. Prior full
+local acceptance remains applicable; no new complete local suite claimed.
+
+This result record is a separate documentation-only closure commit after the
+actual deployed SHA. Do not confuse documentation HEAD with runtime version;
+no application/test change or redeploy is needed for the record. Current remote
+main remains d8ade8f. Preserve the five protected untracked paths unchanged:
+.audit/, .slice1-evidence/, test-results/ and both screenshot specs.
+
+Read the [release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md) for
+exact commits, workflow links, tests, numerical evidence, retained harness errors,
+secure versions, cleanup and rollback boundary. New outputs only:
+C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120
+
+GO for final owner UAT; overall PU acceptance remains the owner's decision.
+Known limits: accepted ephemeral workspaces, Unverified historical Unknown,
+shared Secondary identity, CSV/BEN side declaration and separate discovery-ID,
+CT/VT scaling and broader load/heap certification. No permanent storage expansion,
+main merge, PROD deploy, unrelated fixes or further work. Stop here.
+
+## Per-Unit audit Stage 5B - result-owned manual Current PU
+
+The separate Stage 5B task authorizes result-specific Manual / Automatic /
+Unassigned configuration and an explicit Return to Automatic action. Baseline:
+`e2427b652bafcb9e366cc84d79258e28c15dcc8b` (Stage 5A), on
+`feature/calculator-vi-phasors`. Fetched origin: five ahead / zero behind.
+
+The existing assignment record owns immutable SI amperes, an independent base
+side and timestamp. Complete physical/unit/numerical candidate validation
+precedes one locked replacement. Rejected saves preserve previous state. Manual
+never silently falls back after later inapplicability. Original groups, defaults,
+linked bases, reverse indices, source samples and physical Power/math are
+unchanged. Automatic descendants resolve source leaves, not a parent's override;
+a child may independently configure its result. Unknown sides and distinct
+secondary authorities remain unavailable; no scaling or secondary identity model.
+
+The existing PU modal and Calculated Channels manager expose the editor. Shared
+conversion/provenance and Slice 2 refresh generations serve Waveform arrays,
+row units, legends, cursors, callouts and peaks. Event Reconstruction uses its
+own live resolution/unit mode. Definition lists/preview remain ENG. A-unit
+presentation preserves usable manual subnormal bases exactly across reopen/save.
+
+Dedicated final browser: **10/10 passed**, zero retries/failures/skips/errors.
+Final full backend: **11,315 passed / 320 skipped / zero failures/errors**,
+21 existing warnings, exit 0, including all 62 new cases. Final broad browser:
+**431/431 passed** in 37 explicit files, zero failures/skips/flaky cases/global
+errors, retries=0, exit 0. Two pre-existing compact-summary expectations were
+corrected with explicit owner approval, preserving exact expression/identity/
+unit/spacing assertions. Both complete files also pass 9/9 independently;
+the affected backend notation guard passes 11/11. Only those two browser files
+changed after the passing full backend; production code is unchanged, verified
+by the source/test hash manifest. Failure and proposal evidence remain intact.
+Stage 5B acceptance is met locally. Baseline new workflow:
+21 expected failures. Independent 100,000-sample and Decimal checks preserve
+physical hashes/array identity; full evidence, file list and limits:
+[PER_UNIT_AUDIT_STAGE_5B.md](PER_UNIT_AUDIT_STAGE_5B.md).
+
+Evidence roots (all new outputs in isolated TEMP):
+- `C:/Users/fairizat/AppData/Local/Temp/oruxa-pu-stage5b-20261103-jlhzg8h7`
+- `C:/Users/fairizat/AppData/Local/Temp/oruxa-stage5b-browser-5db4d2f589b04367b92d4c84f8f7654d`
+- Closure: `C:/Users/fairizat/AppData/Local/Temp/oruxa-stage5b-closure-c0ce8e9f34174a6bb119eebd16816b67`
+
+Preserve `.audit/`, `.slice1-evidence/`, `test-results/` and both untracked
+screenshot specs. Do not stage, clean or rewrite them. All 2,250 files retain
+their file list, hashes, sizes and modification times. The focused local Stage
+5B revision includes only the 19 listed code/test/documentation files; use Git
+history for the containing commit hash. No push, merge,
+deployment or automatic final audit; stop for owner review. Modes persist only
+in the existing live in-memory workspace, not through a server restart. CSV/BEN
+side UI and the separate CSV discovery-id correction remain deferred.
+
+Earlier slice records below describe their respective closure boundaries;
+Stage 5B's separate owner authorization supersedes the historical pauses only.
+
+## Per-Unit audit Slice 4 — PU-006/PU-007 complete locally
+
+Based on `b5d824e`; Slices 1–3 and completed Power work remain intact. Shared
+numerical helpers reject unusable SI/derived base candidates before publication,
+preserve valid subnormals and avoid intermediate overflow. Finite measurements
+that cannot normalize report existing `base_required` consistently across
+coverage/provenance, raw/calculated arrays, cursors and Compliance. Original gaps
+and real zero remain distinct. One pre-coercion schema alias rejects booleans
+on all seven numeric base fields while preserving ordinary numeric compatibility.
+No formula, base precedence, representation/inheritance or status schema changes;
+no production frontend change. Linked Current bases remain live dependencies.
+
+Full backend: **11,068 passed / 320 skipped / zero failures/errors**, 21 warnings,
+exit 0, including 164 new cases, 69 Slice 3 cases and 45 Slice 1 atomicity cases.
+Selected browser: **389/389**, zero skips/retries/failures/errors, exit 0, including
+the 26 Slice 2 and four new numerical/editor/ER cases. Original-defect reproduction:
+27 failed / 11 passed in 38 cases before correction. Independent Decimal and
+4,096-case boundary checks agree. Full file list, mechanism, proof and limits:
+[PER_UNIT_AUDIT_SLICE_4.md](PER_UNIT_AUDIT_SLICE_4.md).
+
+Separate CSV post-conversion discovery id issue and PC-001 remain unchanged;
+see the Slice 3 report for the former's evidence and proposed owner-scoped fix.
+**Do not start Slice 5 without owner approval.**
+
+Only Slice 4 code/tests/documentation may be committed. Preserve `.audit/`,
+`.slice1-evidence/`, `test-results/` and both untracked screenshot specs.
+No push, merge or deployment. All 2,250 protected files, including their file
+list, hashes, sizes and modification times, remain unchanged.
 
 ## Phase E — Three-Phase Power Complete — UAT PASSED (DEC-208) — 2026-11-02
 
-**Status: DEPLOYED to DEV (commit `3c5df3a`). CI: PASSED. Owner UAT: PASSED 2026-11-02.
-Ready for PR from `feature/calculator-vi-phasors` to `main`.**
+**Historical Power delivery: DEV UAT passed on `3c5df3a`, 2026-11-02.
+PR #6 subsequently merged into main as `d8ade8f`; that is the live DEV SHA
+verified 2026-11-04. The newer PU candidate remains local, as reviewed above.**
 
 ### Commits on feature/calculator-vi-phasors (5 ahead of origin/main)
 

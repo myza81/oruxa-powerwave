@@ -210,7 +210,7 @@ test.describe("Composed labels keep their word spacing", () => {
 
     const row = page.locator(".ww-cc-list-row").filter({ hasText: "RMS (Default Context VAB)" });
     await expect(row.locator(".ww-cc-list-row-expr")).toHaveText("RMS (Default Context VAB, 50 Hz, 1 cycle)");
-    await expect(row.locator(".ww-cc-list-row-summary")).toHaveText("RMS · Default Context VAB · Null: Propagate");
+    await expect(row.locator(".ww-cc-list-row-summary")).toHaveText("RMS · Null: Propagate");
     for (const part of [".ww-cc-list-row-name", ".ww-cc-list-row-expr", ".ww-cc-list-row-summary"]) {
       await expectWordSpacingPreserved(row.locator(part), { count: 1 });
     }

@@ -4243,6 +4243,15 @@
             padding: 16px;
         }
         .confirm-overlay[hidden] { display: none; }
+        /* Keep this dialog above waveform annotations (layer 15), so a
+           draggable Peak cannot obscure its fields or intercept Save. */
+        #wwChannelPerUnitOverlay { z-index: 16; }
+        .ww-pu-reference-status {
+            display: inline-block; font-size: 0.66rem; line-height: 1.3;
+            padding: 1px 4px; margin: 0; font-style: normal;
+            color: var(--text); background: color-mix(in srgb, var(--warn) 14%, transparent);
+            border-radius: 3px;
+        }
         .confirm-box {
             background: var(--panel);
             border: 1px solid var(--panel-border);
@@ -15415,8 +15424,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             <p class="hint" id="wwChannelPerUnitNotApplicable" hidden>Per-unit conversion is not applicable to this channel.</p>
             <p class="hint error" id="wwChannelPerUnitError" hidden role="alert"></p>
             <div class="ww-cc-preview-info-strip" id="wwChannelPerUnitBody" hidden></div>
+            <div id="wwCalculatedPuEditor" hidden></div>
             <div class="group-editor-footer">
                 <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwCalculatedPuAutomaticBtn" hidden>Return to Automatic</button>
+                <button type="button" id="wwCalculatedPuSaveBtn" hidden>Save PU configuration</button>
                 <button type="button" class="secondary" id="wwChannelPerUnitCloseFooterBtn">Close</button>
             </div>
         </div>
@@ -17775,7 +17787,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const analogBody = analog.length
                     ? '<div class="subgroup-list">' + wwGroupChannelsByEngineeringType(analog).map(({ type, channels }) =>
                         wwErSubgroupHtml(base + ":analog:" + type, type, channels.length, renderChannelTable(channels, [
-                            ["Channel", (c) => analogChannelNameCellHtml({ source_id: sourceId }, c), { raw: true }],
+                            ["Channel", (c) => analogChannelNameCellHtml({ source_id: sourceId }, c, null), { raw: true }],
                             ["Phase", (c) => c.phase || "—"],
                             ...wwErTreeCursorColumns((c) => wwErChannelSelectionKey(member.record_id, sourceId, c.name)),
                         ], null, (c) => wwErChannelRowAttrs(member.record_id, "analog", sourceId, c.name, sourceId)))).join("") + "</div>"
@@ -17786,7 +17798,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<div class="subgroup-list">' + wwGroupChannelsByEngineeringType(calculated).map(({ type, channels }) => {
                             const sorted = channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1));
                             return wwErSubgroupHtml(base + ":calculated:" + type, type, sorted.length, renderChannelTable(sorted, [
-                                ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
+                                ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c, null), { raw: true }],
                                 ...wwErTreeCursorColumns((c) => wwErChannelSelectionKey(member.record_id, c.id, c.name)),
                             ], null, (c) => wwErChannelRowAttrs(member.record_id, "calculated", c.id, c.name, c.reference_source_id)));
                         }).join("") + "</div>", true)
@@ -18657,6 +18669,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 if (!unavailable && badge) badge.remove();
                 if (unavailable) badge.title = wwErPerUnitUnavailableText(display.resolution);
+                if (row.dataset.erKind === "calculated") {
+                    const channel = wwErCalculatedChannels().find(c => c.id === row.dataset.erSourceId);
+                    const cell = row.querySelector(".channel-name-cell");
+                    // This tree has its own unit mode. Use its backend resolution,
+                    // never Waveform's display state or a rewritten definition unit.
+                    if (channel && cell) cell.outerHTML = analogChannelNameCellHtml(
+                        { source_id: channel.id }, { ...channel, unit: display?.state === "per_unit" ? "pu" : channel.unit }, null);
+                }
+                wwSyncPuReferenceBadge(row.querySelector(".channel-name-cell"), selected ?
+                    wwErReference(row.dataset.erKind, row.dataset.erSourceId, row.dataset.erChannelName) : null);
             }
         }
 
@@ -18795,7 +18817,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErHoverTemplate(trace) {
             const time = wwErState.timeDisplay === "absolute" && wwErAbsoluteZero() ? "%{text}" : "%{customdata:.6f} s";
             return time + ": %{y}" + (trace.unit ? " " + escapeHtml(trace.unit) : "") +
-                "<extra>" + escapeHtml(wwErTraceLabelText(trace)) + "</extra>";
+                "<extra>" + escapeHtml(wwErTraceLabelText(trace) + wwPuReferenceSuffix(wwErReference(trace.kind, trace.sourceId, trace.channelName, trace.unitMode))) + "</extra>";
         }
 
         // Name and colour come from the Waveform-owned resolvers on every
@@ -18827,6 +18849,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return '<span class="ww-legend-item" data-er-trace-key="' + escapeHtml(trace.key) + '">' +
                 '<span class="ww-legend-dot" style="background:' + escapeHtml(wwColorForChannel(trace.sourceId, trace.channelName)) + '"></span>' +
                 '<span class="ww-legend-label">' + wwErTraceLabelHtml(trace) + "</span>" +
+                wwPuReferenceBadgeHtml(wwErReference(trace.kind, trace.sourceId, trace.channelName, trace.unitMode)) +
                 (trace.error ? '<span class="ww-er-trace-failed">not loaded</span>' : "") +
             "</span>";
         }
@@ -20305,12 +20328,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ({ type, data: { text, available, peakValue, unit } }).
         function wwErAsWaveformAnnotation(annotation) {
             const peak = wwErAnnotationPeak(annotation);
+            // Text Notes have no channel. Their manager rendering must not
+            // request a measurement reference or acquire a PU warning.
+            const reference = annotation.channel ? wwErAnnotationDisplay(annotation).resolution : null;
             return {
                 type: annotation.type,
                 data: {
                     text: annotation.text,
                     available: !!(peak && peak.available),
                     peakValue: peak ? peak.value : null,
+                    perUnitStatus: reference?.status,
+                    perUnitReferenceCompatibility: reference?.reference_compatibility,
                     unit: peak ? peak.unit : (annotation.anchor ? annotation.anchor.unit : null),
                 },
             };
@@ -20335,7 +20363,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : wwErCalloutDisplayValue(annotation);
                 const value = display.state === "unavailable" || (shown && shown.puUnavailable) ? "PU unavailable"
                     : shown && shown.available ? shown.value.toFixed(3) + (shown.unit ? " " + shown.unit : "") : "—";
-                return channelText + " · " + wwErAnnotationTimeText(wwErAnnotationTime(annotation)) + " · " + value;
+                return channelText + " · " + wwErAnnotationTimeText(wwErAnnotationTime(annotation)) + " · " + value + wwPuReferenceSuffix(wwErReference(wwErChannelKindOf(annotation.channel.source_id), annotation.channel.source_id, annotation.channel.channel_name));
             }
             const peak = wwErAnnotationPeak(annotation);
             if (peak && peak.puUnavailable) return channelText + " · PU unavailable";
@@ -20449,6 +20477,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     overlay.appendChild(el);
                     wwErWireAnnotationBox(el, id);
                 }
+                if (annotation.type === "callout") wwSyncPuReferenceBadge(el.querySelector(".ww-annotation-header"),
+                    wwErReference(wwErChannelKindOf(annotation.channel.source_id), annotation.channel.source_id, annotation.channel.channel_name));
                 const selected = ui.selectedId === id;
                 el.classList.toggle("ww-annotation--selected", selected);
                 el.style.zIndex = String(selected ? 100000 : annotation.sequence);
@@ -22285,6 +22315,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (!touches(channel.sourceId)) continue;
                 if (channel.abortController) channel.abortController.abort();
                 channel.requestSeq += 1; channel.time = []; channel.values = [];
+                channel.perUnitReferenceCompatibility = null;
+                wwRefreshChannelSidebarRow(channel.sourceId, channel.channelName);
                 const index = panel.channels.indexOf(channel);
                 if (index >= 0 && panel.plotlyReady) Plotly.restyle(panel.chartEl, { x: [[]], y: [[]], customdata: [[]] }, [index]);
             }
@@ -29071,7 +29103,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // color->identity mapping aid, not new information; the channel
         // name/unit text remains the real accessible label, exactly as
         // before.
-        function analogChannelNameCellHtml(source, channel) {
+        function analogChannelNameCellHtml(source, channel, reference = wwDisplayedReference(source.source_id, channel.name)) {
             const color = wwColorForChannel(source.source_id, channel.name);
             const displayName = wwChannelDisplayName(source.source_id, channel.name);
             // Engineering Quantity enhancement (DEC-077): show the richer
@@ -29093,6 +29125,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                 '<span class="channel-name-text">' + wwRichLabelHtml(wwChannelDisplayNameHtml(source.source_id, channel.name) +
                     escapeHtml(label.slice(displayName.length))) + '</span>' +
+                wwPuReferenceBadgeHtml(reference) +
                 '</span>';
         }
 
@@ -29221,8 +29254,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 row.classList.toggle("channel-row--hidden", !isDisplayed);
                 row.setAttribute("aria-pressed", String(isDisplayed));
                 const label = (isDisplayed ? "Hide " : "Show ") + row.dataset.channelName;
-                row.setAttribute("aria-label", label);
-                row.title = label;
+                const reference = isDigital || !isDisplayed ? null : wwDisplayedReference(row.dataset.sourceId, row.dataset.channelName);
+                if (!isDigital) wwSyncPuReferenceBadge(row.querySelector(".channel-name-cell"), reference);
+                row.setAttribute("aria-label", label + wwPuReferenceSuffix(reference));
+                row.title = label + (reference ? ": " + reference.detail : "");
             }
             // Phase 4A-UAT9: each group's own Show all/Hide all button
             // (section 10) is DERIVED, never a separate group-selection
@@ -32157,7 +32192,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
             if (!row) return;
             const cell = row.querySelector(".channel-name-cell");
-            if (cell) cell.outerHTML = analogChannelNameCellHtml({ source_id: sourceId }, { name: channelName, unit: row.dataset.unit });
+            const displayed = wwIsCalculatedSourceId(sourceId) && ww.displayed.get(wwChannelKey(sourceId, channelName));
+            if (cell) cell.outerHTML = analogChannelNameCellHtml({ source_id: sourceId },
+                { name: channelName, unit: displayed ? displayed.channel.unit : row.dataset.unit });
             row.setAttribute("aria-label", (row.getAttribute("aria-pressed") === "true" ? "Hide " : "Show ") +
                 wwChannelDisplayName(sourceId, channelName));
             row.setAttribute("title", row.getAttribute("aria-label"));
@@ -32258,10 +32295,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const menu = document.getElementById("wwChannelContextMenu");
             // Rename / Change colour apply to every plotted analog channel
             // (raw or calculated: both are presentation metadata keyed by
-            // wwChannelKey()). Per-Unit Details reads the SOURCE
-            // per-unit-resolution endpoint, which a calculated channel id
-            // does not have, so it is raw-only.
-            menu.querySelector("#wwChannelMenuPerUnitBtn").hidden = wwIsCalculatedSourceId(wwChannelMenuTarget.sourceId);
+            // wwChannelKey()). Current calculations also expose their
+            // read-only automatic-base provenance through the existing modal.
+            const calculated = ww.calculatedChannels.get(wwChannelMenuTarget.sourceId);
+            menu.querySelector("#wwChannelMenuPerUnitBtn").hidden = wwIsCalculatedSourceId(wwChannelMenuTarget.sourceId) &&
+                (!calculated || calculated.engineering_type !== "Current");
             menu.hidden = false;
             // Clamp so the menu can never render partly off-screen -- a
             // right-click near the Workspace Sidebar's own right/bottom
@@ -32382,6 +32420,123 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ------------------------------------------------------------------
 
         let wwChannelPerUnitRequestSeq = 0;
+        let wwCalculatedPuEditor = null;
+
+        // Backend reference proof is independent of conversion/base availability.
+        // One compact status shared by lists, legends, hover and annotations.
+        function wwPuReferenceStatus(status, compatibility) {
+            if (compatibility === "incompatible") return {
+                label: "PU unavailable", detail: "Measurement and base reference sides are incompatible. Engineering values are unchanged; no CT/VT scaling is applied." };
+            if (status === "configured" && compatibility === "unverified") return {
+                label: "Unverified reference", detail: "Historical PU conversion is available, but the measurement or base reference is unknown. Physical reference compatibility has not been verified; no CT/VT scaling is applied." };
+            return null;
+        }
+
+        function wwDisplayedReference(sourceId, channelName) {
+            const channel = ww.displayed.get(wwChannelKey(sourceId, channelName))?.channel;
+            return channel ? wwPuReferenceStatus(channel.perUnitStatus, channel.perUnitReferenceCompatibility) : null;
+        }
+
+        function wwPuReferenceBadgeHtml(reference) {
+            return reference ? '<span class="ww-pu-reference-status hint" role="status" title="' +
+                escapeHtml(reference.detail) + '" aria-label="' + escapeHtml(reference.label + ": " + reference.detail) + '">' +
+                escapeHtml(reference.label) + '</span>' : "";
+        }
+
+        function wwPuReferenceSuffix(reference) {
+            return reference ? " · " + reference.label : "";
+        }
+
+        function wwSyncPuReferenceBadge(host, reference) {
+            if (!host) return;
+            const prior = host.querySelector(".ww-pu-reference-status");
+            if ((!prior && !reference) || (prior && reference && prior.title === reference.detail)) return;
+            host.querySelectorAll(".ww-pu-reference-status").forEach(badge => badge.remove());
+            host.insertAdjacentHTML("beforeend", wwPuReferenceBadgeHtml(reference));
+        }
+
+        function wwErReference(kind, sourceId, channelName, unitMode = wwErState.unitMode) {
+            const resolution = wwErChannelUnitDisplay(kind, sourceId, channelName, unitMode).resolution;
+            return resolution ? wwPuReferenceStatus(resolution.status, resolution.reference_compatibility) : null;
+        }
+
+        function wwRenderCalculatedPuEditor() {
+            const state = wwCalculatedPuEditor;
+            const editor = document.getElementById("wwCalculatedPuEditor");
+            editor.hidden = !state;
+            document.getElementById("wwCalculatedPuSaveBtn").hidden = !state;
+            document.getElementById("wwCalculatedPuAutomaticBtn").hidden = !state || state.savedMode === "automatic";
+            if (!state) { editor.innerHTML = ""; return; }
+            editor.innerHTML = '<label class="ww-cc-field"><span>PU configuration</span><select id="wwCalculatedPuMode">' +
+                [["automatic", "Automatic"], ["manual", "Manual override"], ["unassigned", "Unassigned"]].map(([value, text]) =>
+                    '<option value="' + value + '"' + (state.mode === value ? ' selected' : '') + '>' + text + '</option>').join("") +
+                '</select></label>' + (state.mode === "manual" ?
+                    '<label class="ww-cc-field"><span>Current base</span><input type="number" step="any" id="wwCalculatedPuBase" value="' +
+                    escapeHtml(state.value == null ? "" : String(state.value)) + '"></label>' +
+                    '<label class="ww-cc-field"><span>Current base unit</span><select id="wwCalculatedPuUnit">' +
+                    ["kA", "A"].map(unit => '<option' + (state.unit === unit ? ' selected' : '') + '>' + unit + '</option>').join("") + '</select></label>' +
+                    wwPerUnitBaseSideFieldHtml("wwCalculatedPuSide", state.side) : '') +
+                '<p class="hint">Applies only to this calculated Current result. Physical samples and input bases stay unchanged.</p>' +
+                '<p class="hint error" id="wwCalculatedPuError" role="alert" hidden></p>';
+            document.getElementById("wwCalculatedPuMode").addEventListener("change", event => {
+                state.mode = event.target.value; wwRenderCalculatedPuEditor();
+            });
+            const base = document.getElementById("wwCalculatedPuBase");
+            if (base) base.addEventListener("input", () => { state.value = wwPerUnitNumberOrNull(base.value); });
+            const unit = document.getElementById("wwCalculatedPuUnit");
+            if (unit) unit.addEventListener("change", () => { state.unit = unit.value; });
+            const side = document.getElementById("wwCalculatedPuSide");
+            if (side) side.addEventListener("change", () => { state.side = side.value; });
+        }
+
+        async function wwSaveCalculatedPuConfiguration(returnToAutomatic = false) {
+            const state = wwCalculatedPuEditor;
+            if (!state || state.saving) return;
+            const error = document.getElementById("wwCalculatedPuError");
+            error.hidden = true;
+            const mode = returnToAutomatic ? "automatic" : state.mode;
+            const body = mode === "manual" ? { mode, current_base_value: state.value,
+                current_base_unit: state.unit, base_reference_side: state.side } : { mode };
+            state.saving = true;
+            const controls = [...document.getElementById("wwCalculatedPuEditor").querySelectorAll("input, select"),
+                document.getElementById("wwCalculatedPuSaveBtn"), document.getElementById("wwCalculatedPuAutomaticBtn")];
+            controls.forEach(control => { control.disabled = true; });
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(state.workspaceId) +
+                    "/calculated-channels/" + encodeURIComponent(state.id) + "/per-unit-config", {
+                    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+                });
+                if (state.workspaceId !== currentWorkspaceId() || state.epoch !== ww.epoch) return;
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => null);
+                    if (state === wwCalculatedPuEditor) {
+                        error.textContent = payload?.detail?.message || "The PU configuration was rejected. Check the base and reference side.";
+                        error.hidden = false;
+                    }
+                    return;
+                }
+                const saved = await response.json();
+                // Slice 2 owns array/cursor/annotation invalidation and stale
+                // response fences. This exact calculated id affects no raw source.
+                const refresh = wwRefreshDisplayedChannelsForPerUnitChange(state.id);
+                const resolution = await wwFetchChannelPerUnitResolution(state.id, state.name);
+                if (state === wwCalculatedPuEditor) {
+                    state.savedMode = state.mode = saved.mode;
+                    if (saved.mode !== "manual") { state.value = null; state.unit = "kA"; state.side = "unknown"; }
+                    wwRenderChannelPerUnitResolution(resolution);
+                    wwRenderCalculatedPuEditor();
+                }
+                await refresh;
+            } catch (failure) {
+                if (state === wwCalculatedPuEditor) {
+                    error.textContent = "The configuration could not be saved or refreshed. Reopen to check its current state.";
+                    error.hidden = false;
+                }
+            } finally {
+                state.saving = false;
+                controls.forEach(control => { control.disabled = false; });
+            }
+        }
 
         function wwPerUnitReferenceAbbrev(reference) {
             if (reference === "line_to_line") return "L-L";
@@ -32420,6 +32575,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const refAbbrev = wwPerUnitReferenceAbbrev(resolution.nominal_reference);
             const rows = [];
+            if (resolution.configuration_mode) {
+                rows.push(wwPerUnitInfoRowHtml("PU configuration", resolution.configuration_mode === "manual" ? "Manual override" :
+                    resolution.configuration_mode === "unassigned" ? "Unassigned — Engineering units only" : "Automatic"));
+            }
 
             if (resolution.source_kind === "measurement_group") {
                 rows.push(wwPerUnitInfoRowHtml(
@@ -32427,6 +32586,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ));
             } else if (resolution.source_kind === "source_default") {
                 rows.push(wwPerUnitInfoRowHtml("Source", "Source Default"));
+            } else if (resolution.resolution_origin === "automatic_common_base") {
+                rows.push(wwPerUnitInfoRowHtml("Source", "Automatic common current base"));
+            } else if (resolution.resolution_origin === "manual_calculated_current") {
+                rows.push(wwPerUnitInfoRowHtml("Source", "Manual calculated Current base"));
             }
 
             // Nominal voltage / Channel interpretation: the SAME three-
@@ -32457,9 +32620,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     rows.push(wwPerUnitInfoRowHtml(
                         "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit + suffix
                     ));
-                } else if (resolution.source_kind === "measurement_group") {
+                } else if (resolution.source_kind === "measurement_group" || resolution.resolution_origin === "automatic_common_base" || resolution.resolution_origin === "manual_calculated_current") {
+                    const amount = resolution.effective_base_amount;
+                    const amountText = resolution.resolution_origin === "manual_calculated_current" && amount > 0 && Number(amount.toFixed(2)) === 0
+                        ? String(amount) : amount.toFixed(2);
                     rows.push(wwPerUnitInfoRowHtml(
-                        "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit
+                        "Effective base", amountText + " " + resolution.effective_base_unit
                     ));
                 } else if (resolution.source_kind === "source_default") {
                     // Source Default Current: deliberately plain -- no
@@ -32470,6 +32636,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
 
+            if (resolution.engineering_type === "Current") {
+                if (resolution.configuration_mode === "manual" && resolution.effective_base_amount == null && resolution.configured_current_base_amps != null) {
+                    rows.push(wwPerUnitInfoRowHtml("Saved manual base", String(resolution.configured_current_base_amps) + " A"));
+                }
+                rows.push(wwPerUnitInfoRowHtml("Measurement side", wwReferenceSideText(resolution.measurement_side)));
+                rows.push(wwPerUnitInfoRowHtml("Base reference side", wwReferenceSideText(resolution.base_reference_side)));
+                const referenceLabels = { compatible: "Verified compatible", incompatible: "Known incompatible", unverified: "Unverified reference" };
+                if (resolution.reference_compatibility) rows.push(wwPerUnitInfoRowHtml("Reference compatibility", referenceLabels[resolution.reference_compatibility]));
+            }
             rows.push(wwPerUnitInfoRowHtml("Status", resolution.status === "configured" ? "Configured" : "Needs configuration"));
             if (resolution.reason) {
                 rows.push(wwPerUnitInfoRowHtml("Reason", resolution.reason));
@@ -32480,12 +32655,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         async function wwFetchChannelPerUnitResolution(sourceId, channelName) {
+            const calculated = wwIsCalculatedSourceId(sourceId);
+            const resource = calculated ? "/calculated-channels/" : "/sources/";
             let response;
             try {
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/per-unit-resolution" +
-                    "?channel_name=" + encodeURIComponent(channelName)
+                    resource + encodeURIComponent(sourceId) + "/per-unit-resolution" +
+                    (calculated ? "" : "?channel_name=" + encodeURIComponent(channelName))
                 );
             } catch (error) {
                 return null;
@@ -32498,12 +32675,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
-        async function wwOpenChannelPerUnitModal() {
-            if (!wwChannelMenuTarget) return;
-            const sourceId = wwChannelMenuTarget.sourceId;
-            const channelName = wwChannelMenuTarget.channelName;
+        async function wwOpenChannelPerUnitModal(target = wwChannelMenuTarget) {
+            if (!target) return;
+            const sourceId = target.sourceId;
+            const channelName = target.channelName;
             wwCloseChannelContextMenu();
             const mySeq = ++wwChannelPerUnitRequestSeq;
+            const workspaceId = currentWorkspaceId(), epoch = ww.epoch;
+            wwCalculatedPuEditor = null; wwRenderCalculatedPuEditor();
             document.getElementById("wwChannelPerUnitChannelName").textContent = wwChannelDisplayName(sourceId, channelName);
             document.getElementById("wwChannelPerUnitBody").hidden = true;
             document.getElementById("wwChannelPerUnitBody").innerHTML = "";
@@ -32511,13 +32690,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwChannelPerUnitNotApplicable").hidden = true;
             document.getElementById("wwChannelPerUnitOverlay").hidden = false;
             const resolution = await wwFetchChannelPerUnitResolution(sourceId, channelName);
-            if (mySeq !== wwChannelPerUnitRequestSeq) return; // superseded by a later open/close
+            if (mySeq !== wwChannelPerUnitRequestSeq || workspaceId !== currentWorkspaceId() || epoch !== ww.epoch) return;
             wwRenderChannelPerUnitResolution(resolution);
+            const calc = ww.calculatedChannels.get(sourceId);
+            if (!calc || calc.engineering_type !== "Current") return;
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/calculated-channels/" + encodeURIComponent(sourceId) + "/per-unit-config");
+                if (!response.ok) return;
+                const config = await response.json();
+                if (mySeq !== wwChannelPerUnitRequestSeq || workspaceId !== currentWorkspaceId() || epoch !== ww.epoch || !ww.calculatedChannels.has(sourceId)) return;
+                const inKa = config.current_base_amps / 1000;
+                // Match manual provenance: retain SI amperes when kA is subnormal
+                // (or zero), so opening and saving cannot round the accepted base.
+                const displayInKa = inKa >= 2 ** -1022;
+                wwCalculatedPuEditor = { id: sourceId, name: channelName, workspaceId, epoch,
+                    mode: config.mode, savedMode: config.mode,
+                    value: config.current_base_amps == null ? null : displayInKa ? inKa : config.current_base_amps,
+                    unit: config.current_base_amps == null || displayInKa ? "kA" : "A", side: config.base_reference_side };
+                wwRenderCalculatedPuEditor();
+            } catch (failure) { /* Read-only provenance remains available if the editor cannot load. */ }
         }
 
         function wwCloseChannelPerUnitModal() {
             document.getElementById("wwChannelPerUnitOverlay").hidden = true;
             wwChannelPerUnitRequestSeq++; // invalidate any in-flight fetch
+            wwCalculatedPuEditor = null; wwRenderCalculatedPuEditor();
         }
 
         // ------------------------------------------------------------------
@@ -33365,6 +33563,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         async function wwFetchChannelRange(channelEntry, startTime, endTime, pointBudget) {
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
             // Slice 1 (task section 6): the caller's startTime/endTime are
             // WORKSPACE time (the shared viewport's own coordinate system);
             // the backend's waveform range is always source-native, so the
@@ -33373,7 +33573,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // fetch core below, with this channel's own alignment offset
             // (identical arithmetic to wwWorkspaceTimeToSourceTime()).
             const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(channelEntry.sourceId);
-            return wwFetchWaveformRange({
+            const result = await wwFetchWaveformRange({
                 requestState: channelEntry,
                 sourceId: channelEntry.sourceId,
                 channelName: channelEntry.channelName,
@@ -33391,6 +33591,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 unitMode: ww.unitMode,
                 timeOffsetS: alignmentOffset,
             });
+            if (workspaceId !== currentWorkspaceId() || epochAtStart !== ww.epoch) return { superseded: true };
+            return result;
         }
 
         // Shared renderer helper (DEC-127, Option B): the waveform range
@@ -33490,6 +33692,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Plotly yet" (the caller will addTraces/newPlot afterward) from
         // "this trace already exists, update it in place via restyle."
         async function wwLoadChannelRange(panel, channelEntry, startTime, endTime, opts) {
+            const job = wwLoadChannelRangeData(panel, channelEntry, startTime, endTime, opts);
+            channelEntry.loadPromise = job;
+            return job;
+        }
+
+        async function wwLoadChannelRangeData(panel, channelEntry, startTime, endTime, opts) {
             opts = opts || {};
             wwSetLoading(panel, true);
             wwClearError(panel);
@@ -33531,6 +33739,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // separate conversion logic of its own.
             channelEntry.unit = body.unit;
             channelEntry.perUnitStatus = body.per_unit_status;
+            channelEntry.perUnitReferenceCompatibility = body.per_unit_reference_compatibility;
+            wwRefreshChannelSidebarRow(channelEntry.sourceId, channelEntry.channelName);
 
             if (!opts.isInitialLoad) {
                 const idx = panel.channels.indexOf(channelEntry);
@@ -33778,6 +33988,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-legend-dot" style="background:' + channel.color + '"></span>' +
                     '<span class="ww-legend-label">' + wwRichLabelHtml(wwChannelDisplayNameHtml(channel.sourceId, channel.channelName) +
                     (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "")) + '</span>' +
+                    wwPuReferenceBadgeHtml(wwDisplayedReference(channel.sourceId, channel.channelName)) +
                     '<button type="button" class="ww-legend-remove" data-source-id="' + escapeHtml(channel.sourceId) +
                     '" data-channel-name="' + escapeHtml(channel.channelName) + '" title="Remove from display" ' +
                     'aria-label="Remove ' + escapeHtml(displayName) + ' from display">&times;</button>' +
@@ -33822,7 +34033,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
             const xFormat = wwGroupUsesClockTimeDisplay(groupId) && !wwHasT0(groupId) ? "%{customdata}" : "%{x:.6f}s";
             return xFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
-                "<extra>" + escapeHtml(wwChannelDisplayName(channel.sourceId, channel.channelName)) + "</extra>";
+                "<extra>" + escapeHtml(wwChannelDisplayName(channel.sourceId, channel.channelName) +
+                    wwPuReferenceSuffix(wwDisplayedReference(channel.sourceId, channel.channelName))) + "</extra>";
         }
 
         // ------------------------------------------------------------------
@@ -34529,7 +34741,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const jobs = [];
             for (const panel of ww.panels) {
                 for (const channel of panel.channels) {
-                    if (sourceIds && !wwTimingSourcesForDisplay(channel.sourceId).some(id => sourceIds.has(id))) continue;
+                    if (sourceIds && !sourceIds.has(channel.sourceId) && !wwTimingSourcesForDisplay(channel.sourceId).some(id => sourceIds.has(id))) continue;
                     const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
                     const range = ww.timeGroupViewports.get(groupId) || ww.viewport;
                     const startTime = range ? range.start : null;
@@ -34554,6 +34766,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // per-unit branch needs that value to decide panel membership --
         // see its own comment for why a brand-new mode can't be
         // reflected until at least one fetch has resolved).
+        let wwUnitModeGeneration = 0;
+
         async function wwApplyUnitMode(mode) {
             if (mode !== "engineering" && mode !== "per_unit") return;
             if (ww.unitMode === mode) return;
@@ -34564,12 +34778,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // re-fetches its own configs on open regardless). Selecting
             // Per Unit itself never opens any configuration surface --
             // see the click handler below.
-            if (mode === "per_unit") await wwFetchPerUnitSourceConfigs();
+            // Publish the user's latest choice before any asynchronous work.
+            // Optional editor metadata must never decide the active mode.
             ww.unitMode = mode;
+            wwUnitModeGeneration += 1;
             wwSyncUnitModeControls();
-            await wwRefetchAllChannelsAcrossGroups();
-            wwRebuildLayout();
-            wwUpdateUnitModeWarningBadge();
+            if (mode === "per_unit") void wwFetchPerUnitSourceConfigs();
+            await wwRefreshWaveformDisplayBasis();
         }
 
         function wwSyncUnitModeControls() {
@@ -34705,6 +34920,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwPuCoverageRowHtml("Measurement Groups", coverage.measurement_group_count, false) +
                     wwPuCoverageRowHtml("Source Default", coverage.source_default_count, false) +
                     wwPuCoverageRowHtml("Needs configuration", coverage.needs_configuration_count, needsAttention) +
+                    (coverage.unverified_reference_count ? wwPuCoverageRowHtml("Unverified reference (included above)", coverage.unverified_reference_count, true) : "") +
                 '</div>';
         }
 
@@ -34736,7 +34952,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return Number.isFinite(n) ? n : null;
         }
 
+        let wwPerUnitSourceConfigsGeneration = 0;
+
         async function wwFetchPerUnitSourceConfigs() {
+            const workspaceId = currentWorkspaceId();
+            const epoch = ww.epoch;
+            const catalogue = wwTimingCatalogueGeneration;
+            const generation = ++wwPerUnitSourceConfigsGeneration;
             let response;
             try {
                 response = await fetch(
@@ -34746,7 +34968,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             if (!response.ok) return;
-            const configs = await response.json();
+            let configs;
+            try { configs = await response.json(); } catch (error) { return; }
+            if (generation !== wwPerUnitSourceConfigsGeneration || epoch !== ww.epoch ||
+                workspaceId !== currentWorkspaceId() || catalogue !== wwTimingCatalogueGeneration) return;
             ww.perUnitSourceConfigs = new Map(configs.map((c) => [c.source_id, c]));
         }
 
@@ -34786,6 +35011,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the algorithm's own result, just from an already-fresh read.
         let perUnitEditorState = null;
 
+        function wwReferenceSideText(side) {
+            return side === "primary" ? "Primary" : side === "secondary" ? "Secondary" : "Unknown";
+        }
+
+        function wwPerUnitBaseSideFieldHtml(id, side) {
+            return '<label class="ww-cc-field"><span>Base reference side</span><select id="' + id + '">' +
+                ["unknown", "primary", "secondary"].map((value) => '<option value="' + value + '"' +
+                    (side === value ? ' selected' : '') + '>' + wwReferenceSideText(value) + '</option>').join("") +
+                '</select></label><p class="hint">Declare the base reference independently of the recorded samples. Known mismatches make PU unavailable. Historical Unknown references remain Unverified; cross-group Automatic and result Manual require compatible known references.</p>';
+        }
+
         function wwPerUnitConfigToEditorState(sourceId, config) {
             return {
                 sourceId,
@@ -34795,6 +35031,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 currentBaseMode: config ? config.current_base_mode : "none",
                 apparentPowerBaseValue: config ? config.apparent_power_base_value : null,
                 directCurrentBaseValue: config ? config.direct_current_base_value : null,
+                currentBaseReferenceSide: config && config.current_base_mode === "direct" ? (config.current_base_reference_side || "unknown") : "unknown",
                 configured: !!(config && config.configured),
                 autoDetection: {
                     reference: config ? config.effective_voltage_reference : null,
@@ -34811,6 +35048,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
+        function wwPerUnitDerivedCurrentBaseKa(ratingMva, nominalLlKv) {
+            if (!Number.isFinite(ratingMva) || ratingMva <= 0 ||
+                !Number.isFinite(nominalLlKv) || nominalLlKv <= 0 ||
+                !Number.isFinite(nominalLlKv * 1000)) return null;
+            // Cosmetic counterpart of backend derived_current_ka(): MVA/kV
+            // gives kA, so the SI factors cancel. Preserve its ordinary order;
+            // separate exponents only at floating-point range boundaries.
+            const minNormal = 2 ** -1022;
+            const denominator = PER_UNIT_SQRT_3 * nominalLlKv;
+            let ka = ratingMva / denominator;
+            if (!Number.isFinite(denominator) || denominator < minNormal ||
+                !Number.isFinite(ka) || ka < minNormal) {
+                const ratingExponent = Math.min(1023, Math.floor(Math.log2(ratingMva)));
+                const voltageExponent = Math.min(1023, Math.floor(Math.log2(nominalLlKv)));
+                let mantissa = ((ratingMva / (2 ** ratingExponent)) * (1 / PER_UNIT_SQRT_3)) /
+                    (nominalLlKv / (2 ** voltageExponent));
+                let exponent = ratingExponent - voltageExponent;
+                while (mantissa < 1) { mantissa *= 2; exponent -= 1; }
+                while (mantissa >= 2) { mantissa /= 2; exponent += 1; }
+                // Keep the first factor normal to avoid rounding a subnormal
+                // twice. These are IEEE-754 bounds, not engineering limits.
+                const power = Math.max(-1022, Math.min(1023, exponent));
+                ka = (mantissa * (2 ** power)) * (2 ** (exponent - power));
+            }
+            return Number.isFinite(ka) && ka > 0 && Number.isFinite(ka * 1000) ? ka : null;
+        }
+
         function wwPerUnitEditorResolvedCurrentBaseText(state) {
             if (state.currentBaseMode === "direct") {
                 const v = Number(state.directCurrentBaseValue);
@@ -34822,22 +35086,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const sbase = Number(state.apparentPowerBaseValue);
                 const reference = state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : state.autoDetection.reference;
                 if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0 || !reference) return "—";
-                // Per-Unit Configuration Slice 4 correction: the entered
-                // Voltage Base is now uniformly the nominal SYSTEM
-                // LINE-TO-LINE voltage (matching the Measurement Groups
-                // modal's own identical semantics), so this cosmetic
-                // preview's own Vbase_LL is simply the entered value in
-                // volts, with NO reference-dependent adjustment any more
-                // -- mirrors app.domain.per_unit.resolve_current_base_amps()'s
-                // own corrected formula exactly (see its own docstring
-                // for the full reasoning). Multiplying by sqrt(3) here
-                // for a line-to-ground reference, as this preview used
-                // to, would now double-convert and silently mismatch
-                // what the backend actually saves.
-                const vbaseVolts = vbase * 1000;
-                const sbaseVa = sbase * 1_000_000;
-                const amps = sbaseVa / (PER_UNIT_SQRT_3 * vbaseVolts);
-                return (amps / 1000).toFixed(4) + " kA";
+                // The entered voltage is nominal system L-L in both reference
+                // modes. Save still derives the authoritative base on the backend.
+                const ka = wwPerUnitDerivedCurrentBaseKa(sbase, vbase);
+                if (ka == null) return "—";
+                const fixed = ka.toFixed(4);
+                return (Number(fixed) === 0 ? String(ka) : fixed) + " kA";
             }
             return "—";
         }
@@ -35020,6 +35274,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 radio.addEventListener("change", () => {
                     if (!radio.checked) return;
                     state.currentBaseMode = radio.value;
+                    state.currentBaseReferenceSide = "unknown";
                     wwRenderPerUnitProfileEditor(); // structural (progressive disclosure) -- a radio change, never mid-typing
                 });
             });
@@ -35033,6 +35288,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 state.apparentPowerBaseValue = wwPerUnitNumberOrNull(sValueInput.value);
                 wwUpdatePerUnitCalculatedCurrentBasePreview();
             });
+            const baseSideSelect = document.getElementById("perUnitCurrentBaseSide");
+            if (baseSideSelect) baseSideSelect.addEventListener("change", () => { state.currentBaseReferenceSide = baseSideSelect.value; });
             const dValueInput = document.getElementById("perUnitDirectCurrentBaseValue");
             if (dValueInput) dValueInput.addEventListener("input", () => {
                 state.directCurrentBaseValue = wwPerUnitNumberOrNull(dValueInput.value);
@@ -35150,6 +35407,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                           (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 2.10">' +
                           '<span class="ww-pu-suffix">kA</span></div></label>'
                         : "") +
+                    (showDirect ? wwPerUnitBaseSideFieldHtml("perUnitCurrentBaseSide", state.currentBaseReferenceSide) :
+                        showMva ? '<p class="hint">Base reference side: Primary</p>' : "") +
                     (showNone
                         ? '<p class="hint" style="margin-top:10px;">Current channels will show "Base required" in Per Unit mode until a current base is configured.</p>'
                         : "") +
@@ -35186,6 +35445,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 current_base_mode: state.currentBaseMode,
                 apparent_power_base_value: state.currentBaseMode === "derived" ? state.apparentPowerBaseValue : null,
                 direct_current_base_value: state.currentBaseMode === "direct" ? state.directCurrentBaseValue : null,
+                current_base_reference_side: state.currentBaseMode === "derived" ? "primary" : state.currentBaseMode === "direct" ? state.currentBaseReferenceSide : "unknown",
             };
 
             let response;
@@ -35229,7 +35489,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwClosePerUnitProfilesModal();
             ww.perUnitSourceConfigs.set(saved.source_id, saved);
             wwUpdateUnitModeWarningBadge();
-            await wwRefreshDisplayedChannelsForPerUnitChange();
+            await wwRefreshDisplayedChannelsForPerUnitChange(state.sourceId);
         }
 
         async function wwDeletePerUnitProfileEditor() {
@@ -35252,9 +35512,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // above -- see that function's own comment for why the
             // modal-only re-sync calls this used to run are dropped.
             wwClosePerUnitProfilesModal();
-            await wwFetchPerUnitSourceConfigs();
+            ww.perUnitSourceConfigs.delete(state.sourceId);
+            void wwFetchPerUnitSourceConfigs();
             wwUpdateUnitModeWarningBadge();
-            await wwRefreshDisplayedChannelsForPerUnitChange();
+            await wwRefreshDisplayedChannelsForPerUnitChange(state.sourceId);
         }
 
         // A base/reference change can affect the CURRENTLY displayed
@@ -35263,11 +35524,81 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwApplyUnitMode() does (decision 2: it remains the sole
         // conversion authority), but only while Per Unit mode is
         // actually active (nothing to refresh in Engineering mode).
-        async function wwRefreshDisplayedChannelsForPerUnitChange() {
+        async function wwRefreshDisplayedChannelsForPerUnitChange(sourceId = null) {
             if (ww.unitMode !== "per_unit") return;
-            await wwRefetchAllChannelsAcrossGroups();
+            await wwRefreshWaveformDisplayBasis(sourceId === null ? null : new Set([sourceId]));
+        }
+
+        const wwDisplayBasisGenerations = new Map();
+
+        function wwWaveformDisplayContext(sourceId) {
+            return JSON.stringify([currentWorkspaceId(), ww.epoch, ww.unitMode, wwUnitModeGeneration,
+                wwDisplayBasisGenerations.get(sourceId) || 0, wwDisplayTimingFingerprint(sourceId)]);
+        }
+
+        async function wwRefreshWaveformDisplayBasis(sourceIds = null) {
+            const workspaceId = currentWorkspaceId();
+            const epoch = ww.epoch;
+            const modeGeneration = wwUnitModeGeneration;
+            const affected = new Set();
+            for (const { panel, channel } of ww.displayed.values()) {
+                if (sourceIds && !sourceIds.has(channel.sourceId) && !wwTimingSourcesForDisplay(channel.sourceId).some(id => sourceIds.has(id))) continue;
+                affected.add(channel.sourceId);
+                // Retire presentation arrays while the new basis is pending.
+                // Physical samples stay immutable on the backend.
+                channel.time = []; channel.values = [];
+                channel.perUnitReferenceCompatibility = null;
+                wwRefreshChannelSidebarRow(channel.sourceId, channel.channelName);
+                const index = panel.channels.indexOf(channel);
+                if (index >= 0 && panel.plotlyReady) Plotly.restyle(panel.chartEl, { x: [[]], y: [[]], customdata: [[]] }, [index]);
+            }
+            for (const annotation of ww.annotations.values()) {
+                const id = annotation.data && annotation.data.sourceId;
+                if (!id || (sourceIds && !sourceIds.has(id) && !wwTimingSourcesForDisplay(id).some(source => sourceIds.has(source)))) continue;
+                if (annotation.type === "callout" || wwIsPeakType(annotation.type)) affected.add(id);
+            }
+            for (const id of affected) {
+                wwDisplayBasisGenerations.set(id, (wwDisplayBasisGenerations.get(id) || 0) + 1);
+                wwCursorValuesGeneration.set(id, (wwCursorValuesGeneration.get(id) || 0) + 1);
+                wwPeakValuesGeneration.set(id, (wwPeakValuesGeneration.get(id) || 0) + 1);
+                const names = wwDisplayedAnalogChannelNamesForSource(id);
+                wwClearCursorValuesForChannels(id, names);
+                wwUpdateCursorValueCellsForChannels(id, names);
+            }
+            const annotationJobs = [];
+            const peakSources = new Set();
+            for (const annotation of ww.annotations.values()) {
+                const data = annotation.data || {};
+                if (!affected.has(data.sourceId)) continue;
+                if (annotation.type === "callout") {
+                    data.anchorValue = null; data.unit = ""; data.perUnitStatus = null; data.perUnitReferenceCompatibility = null;
+                    annotationJobs.push(wwResolveCalloutAnchorMove(annotation.id, data.sourceId, data.channelName, data.anchorElapsedSeconds, true));
+                } else if (wwIsPeakType(annotation.type)) {
+                    data.peakValue = null; data.unit = ""; data.perUnitStatus = null; data.perUnitReferenceCompatibility = null;
+                    peakSources.add(data.sourceId);
+                }
+            }
+            for (const id of peakSources) {
+                const range = wwTimeGroupVisibleRange(wwTimeGroupIdForDisplaySourceId(id));
+                if (range) annotationJobs.push(wwRecalculatePeakAnnotationsForSource(id, range.start, range.end));
+            }
+            if (annotationJobs.length) { wwRenderAnnotations(); wwRenderAnnotationList(); }
+            const cursorJobs = Array.from(affected, id => wwFetchCursorValuesForSource(id));
+            await wwRefetchAllChannelsAcrossGroups(sourceIds);
+            // Zoom/pan may supersede a range request during the transition.
+            // Wait for the current owners before regrouping; otherwise the
+            // later range could finish against panels already torn down here.
+            while (epoch === ww.epoch && workspaceId === currentWorkspaceId() && modeGeneration === wwUnitModeGeneration) {
+                const channels = Array.from(ww.displayed.values()).map(entry => entry.channel)
+                    .filter(channel => affected.has(channel.sourceId));
+                const loads = channels.map(channel => channel.loadPromise);
+                await Promise.all(loads);
+                if (channels.every((channel, index) => channel.loadPromise === loads[index])) break;
+            }
+            if (epoch !== ww.epoch || workspaceId !== currentWorkspaceId() || modeGeneration !== wwUnitModeGeneration) return;
             wwRebuildLayout();
             wwUpdateUnitModeWarningBadge();
+            await Promise.all([...cursorJobs, ...annotationJobs]);
         }
 
         // ------------------------------------------------------------------
@@ -35579,6 +35910,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 linkedVoltageGroupId: cfg.linked_voltage_group_id,
                 manualVoltageBaseKv: cfg.manual_voltage_base_kv,
                 manualIbaseKa: cfg.manual_ibase_ka,
+                baseReferenceSide: cfg.method === "manual" ? (cfg.base_reference_side || "unknown") : "unknown",
             };
         }
 
@@ -35685,11 +36017,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
                 html += '<div class="ww-pu-section">';
                 html += '<h4 class="ww-pu-section-title">Derived Current Base</h4>';
+                html += '<p class="hint">Base reference side: Primary</p>';
                 html += '<p class="hint"><strong id="wwMgDerivedIbaseText">Ibase ≈ ' + wwMgCurrentDrawerDerivedIbaseText(state) + '</strong><br><span style="font-size:0.66rem;">Read-only, calculated by the backend.</span></p>';
                 html += '</div>';
             } else if (state.method === "manual") {
                 html += '<div class="ww-pu-section">';
                 html += '<h4 class="ww-pu-section-title">Current Base (Ibase)</h4>';
+                html += wwPerUnitBaseSideFieldHtml("wwMgBaseReferenceSide", state.baseReferenceSide);
                 html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Current base</span>';
                 html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgManualIbaseInput" min="0" step="any" value="' + (state.manualIbaseKa != null ? state.manualIbaseKa : "") + '"><span class="ww-pu-suffix">kA</span></div></label>';
                 html += '</div>';
@@ -35750,7 +36084,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const methodRadioIds = { equipment_rating: "wwMgMethodEquipment", manual: "wwMgMethodManual", none: "wwMgMethodNone" };
             for (const value of Object.keys(methodRadioIds)) {
                 const el = document.getElementById(methodRadioIds[value]);
-                if (el) el.addEventListener("change", () => { if (el.checked) { state.method = value; wwRenderMgDrawerBody(); } });
+                if (el) el.addEventListener("change", () => { if (el.checked) { state.method = value; state.baseReferenceSide = "unknown"; wwRenderMgDrawerBody(); } });
             }
             if (state.method === "equipment_rating") {
                 const mvaInput = document.getElementById("wwMgMvaInput");
@@ -35764,6 +36098,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const manualVbaseInput = document.getElementById("wwMgManualVbaseInput");
                 if (manualVbaseInput) manualVbaseInput.addEventListener("input", () => { state.manualVoltageBaseKv = wwPerUnitNumberOrNull(manualVbaseInput.value); wwUpdateMgDerivedIbasePreview(); });
             } else if (state.method === "manual") {
+                const baseSideSelect = document.getElementById("wwMgBaseReferenceSide");
+                if (baseSideSelect) baseSideSelect.addEventListener("change", () => { state.baseReferenceSide = baseSideSelect.value; });
                 const ibaseInput = document.getElementById("wwMgManualIbaseInput");
                 if (ibaseInput) ibaseInput.addEventListener("input", () => { state.manualIbaseKa = wwPerUnitNumberOrNull(ibaseInput.value); });
             }
@@ -35793,10 +36129,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwSaveMgDrawer() {
             const state = wwMgEditState;
             if (!state) return;
+            const sourceId = wwMgSelectedSourceId;
             const errorEl = document.getElementById("wwMgDrawerError");
             errorEl.hidden = true;
             const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                "/sources/" + encodeURIComponent(wwMgSelectedSourceId) + "/measurement-groups/" + encodeURIComponent(state.groupId);
+                "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups/" + encodeURIComponent(state.groupId);
             let url, body;
             if (state.kind === "voltage") {
                 url = base + "/voltage-config";
@@ -35806,7 +36143,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 };
             } else {
                 url = base + "/current-config";
-                body = { method: state.method };
+                body = { method: state.method, base_reference_side: state.method === "equipment_rating" ? "primary" : state.method === "manual" ? state.baseReferenceSide : "unknown" };
                 if (state.method === "equipment_rating") {
                     body.equipment_rating_mva = state.equipmentRatingMva;
                     if (state.voltageSourceMode === "linked") body.linked_voltage_group_id = state.linkedVoltageGroupId;
@@ -35847,9 +36184,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 } catch (error) { /* best-effort promotion -- the base config itself already saved successfully */ }
             }
             wwCloseMgDrawer();
+            const refresh = wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
             await wwLoadAndRenderMeasurementGroupsBody();
             wwUpdateUnitModeWarningBadge();
-            await wwRefreshDisplayedChannelsForPerUnitChange();
+            await refresh;
             // DEC-167: Compliance reads the SAME group configuration, so a
             // base saved here (e.g. from "Configure Base") is reflected at once.
             if (shell.currentPage === "compliance") wwComplianceRefreshReadiness();
@@ -36439,7 +36777,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!data.available) return prefix + ": Unavailable for current view";
             const valueText = wwFormatEngineeringValue(data.peakValue);
             const unitText = data.unit ? " " + data.unit : "";
-            return prefix + ": " + valueText + unitText;
+            return prefix + ": " + valueText + unitText + wwPuReferenceSuffix(
+                wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility));
         }
 
         function wwAnnotationSummary(annotation) {
@@ -36485,7 +36824,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const value = Number.isFinite(data.anchorValue)
                     ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
                     : "—";
-                return displayName + " · " + time + " · " + value;
+                return displayName + " · " + time + " · " + value + wwPuReferenceSuffix(
+                    wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility));
             }
             if (wwIsPeakType(annotation.type)) {
                 if (!data.available) return displayName + " · Unavailable for current view";
@@ -36996,10 +37336,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (section 8/28/50). `sourceId`/`channelName` are the Callout's
         // EXISTING, unchanged identity (section 2/9) -- never taken from
         // anywhere else.
-        async function wwResolveCalloutAnchorMove(id, sourceId, channelName, approximateElapsedSeconds) {
+        async function wwResolveCalloutAnchorMove(id, sourceId, channelName, approximateElapsedSeconds, refreshOnly = false) {
             const workspaceId = currentWorkspaceId();
-            const epochAtStart = ww.epoch;
-            const timingAtStart = wwDisplayTimingFingerprint(sourceId);
+            const annotation = ww.annotations.get(id);
+            if (!annotation) return;
+            const generation = (annotation.valueRequestGeneration || 0) + 1;
+            annotation.valueRequestGeneration = generation;
+            const displayContext = wwWaveformDisplayContext(sourceId);
+            const isCurrent = () => ww.annotations.get(id) === annotation && annotation.valueRequestGeneration === generation &&
+                displayContext === wwWaveformDisplayContext(sourceId);
             const entry = ww.displayed.get(wwChannelKey(sourceId, channelName));
             const panel = entry ? entry.panel : null;
 
@@ -37009,7 +37354,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // multiple sources; one source's own recorded range can be
             // narrower than the shared viewport.
             const sourceBounds = ww.sourceBounds.get(sourceId);
-            const requestedTime = sourceBounds
+            const requestedTime = sourceBounds && !refreshOnly
                 ? Math.max(sourceBounds.start, Math.min(sourceBounds.end, approximateElapsedSeconds))
                 : approximateElapsedSeconds;
 
@@ -37035,6 +37380,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     }
                 );
             } catch (error) {
+                if (!isCurrent()) return;
                 if (panel) wwShowError(panel, "Could not move callout: could not reach the backend.");
                 wwRenderAnnotations(); // section 10: restore the unchanged authoritative anchor
                 return;
@@ -37043,11 +37389,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // have changed, OR this specific Callout was deleted, while
             // the request was in flight. Never resurrect/update a stale
             // or deleted annotation.
-            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
+            if (!isCurrent()) return;
 
             let body = null;
             try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
-            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
+            if (!isCurrent()) return;
 
             if (!response.ok || !body) {
                 // Section 10: never leave the Callout at the approximate
@@ -37066,11 +37412,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // wwCreateCalloutFromClick() itself sets from a fresh
             // resolution. boxOffset (section 11) and everything else in
             // `data` is untouched by this patch's own generic merge.
+            // A display refresh changes the value/unit only, never the anchor identity.
+            if (refreshOnly) {
+                wwUpdateAnnotation(id, { data: { anchorValue: body.value, unit: body.unit, perUnitStatus: body.per_unit_status, perUnitReferenceCompatibility: body.per_unit_reference_compatibility } });
+                return;
+            }
             wwUpdateAnnotation(id, {
                 data: {
                     sampleIndex: body.sample_index,
                     anchorElapsedSeconds: body.elapsed_seconds,
                     anchorValue: body.value,
+                    perUnitStatus: body.per_unit_status,
+                    perUnitReferenceCompatibility: body.per_unit_reference_compatibility,
                     unit: body.unit,
                 },
             });
@@ -37373,6 +37726,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     overlay.appendChild(el);
                     wwWireAnnotationNote(el, annotation.id);
                 }
+                if (isCallout) wwSyncPuReferenceBadge(el.querySelector(".ww-annotation-header"),
+                    wwPuReferenceStatus(annotation.data.perUnitStatus, annotation.data.perUnitReferenceCompatibility));
                 el.classList.toggle("ww-annotation--selected", ww.annotationSelectedId === annotation.id);
                 el.style.zIndex = String(annotation.zIndex);
 
@@ -37734,6 +38089,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const sourceId = channel.sourceId;
             const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             const channelName = channel.channelName;
+            const displayContext = wwWaveformDisplayContext(sourceId);
 
             // Phase 5A (section 56): a calculated channel's own anchor
             // resolution lives under /calculated-channels/{id}/annotation-
@@ -37771,11 +38127,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // have changed (Start New Workspace / this source removed)
             // while the request was in flight. Never create a Callout in
             // the wrong workspace.
-            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || displayContext !== wwWaveformDisplayContext(sourceId)) return;
 
             let body = null;
             try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
-            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || displayContext !== wwWaveformDisplayContext(sourceId)) return;
 
             if (!response.ok || !body) {
                 // Section 66: never create a partial/approximate Callout
@@ -37792,6 +38148,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 sampleIndex: body.sample_index,
                 anchorElapsedSeconds: body.elapsed_seconds,
                 anchorValue: body.value,
+                perUnitStatus: body.per_unit_status,
+                perUnitReferenceCompatibility: body.per_unit_reference_compatibility,
                 unit: body.unit,
                 // Section 62: a sensible default that avoids covering the
                 // clicked waveform point -- never elaborate auto-placement.
@@ -37840,10 +38198,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const channelName = channel.channelName;
             const startTime = clickRange.start;
             const endTime = clickRange.end;
+            const displayContext = wwWaveformDisplayContext(sourceId);
 
             function wwPlacementSessionStale() {
                 return timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId ||
-                    ww.annotationPlacementGeneration !== placementGenerationAtStart;
+                    ww.annotationPlacementGeneration !== placementGenerationAtStart || displayContext !== wwWaveformDisplayContext(sourceId);
             }
 
             // Phase 4G-UAT (section 10/17): placement mode -- and its
@@ -37933,6 +38292,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     sampleIndex: result.sample_index,
                     peakElapsedSeconds: result.elapsed_seconds,
                     peakValue: result.value,
+                    perUnitStatus: result.per_unit_status,
+                    perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
                     unit: result.unit,
                     available: true,
                     // Section 23: same sensible default Callout already uses --
@@ -37985,6 +38346,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const epochAtStart = ww.epoch;
             const timingAtStart = wwDisplayTimingFingerprint(sourceId);
             const generation = (wwPeakValuesGeneration.get(sourceId) || 0) + 1;
+            const displayContext = wwWaveformDisplayContext(sourceId);
             wwPeakValuesGeneration.set(sourceId, generation);
 
             // Phase 5A (section 55): same per-source-id batching, just
@@ -38020,12 +38382,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // error, since nothing valid has ever been shown yet there.
                 return;
             }
-            if (wwPeakValuesGeneration.get(sourceId) !== generation) return; // superseded while in flight
+            if (wwPeakValuesGeneration.get(sourceId) !== generation || displayContext !== wwWaveformDisplayContext(sourceId)) return;
             if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
             let body = null;
             try { body = await response.json(); } catch (error) { /* handled below */ }
-            if (wwPeakValuesGeneration.get(sourceId) !== generation) return; // re-checked after the second await
+            if (wwPeakValuesGeneration.get(sourceId) !== generation || displayContext !== wwWaveformDisplayContext(sourceId)) return;
             if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             if (!response.ok || !body || !Array.isArray(body.results)) return;
 
@@ -38060,6 +38422,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         sampleIndex: result.sample_index,
                         peakElapsedSeconds: result.elapsed_seconds,
                         peakValue: result.value,
+                        perUnitStatus: result.per_unit_status,
+                        perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
                         unit: result.unit,
                     },
                 });
@@ -41519,6 +41883,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                     escapeHtml("Plot All (" + WW_LL_NOTATION_PAIRS.map((p) => wwLineToLinePairText(p, wwCalculatedChannelPhaseDisplay(calc))).join(", ") + ")") +
                                     '">' + wwRichLabelHtml("Plot All (" +
                                     WW_LL_NOTATION_PAIRS.map((p) => wwLineToLinePairHtml(p, wwCalculatedChannelPhaseDisplay(calc))).join(", ") + ")") + '</button>' : '') +
+                                (calc.engineering_type === "Current" ? '<button type="button" class="ww-cc-menu-item" data-action="per-unit-config">PU configuration…</button>' : '') +
                                 '<button type="button" class="ww-cc-menu-item" data-action="delete">Delete</button>' +
                             '</div>' +
                         '</details>' +
@@ -41816,7 +42181,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     calculatedGroupToggleButtonHtml(type, type, group) +
                     '</summary>';
                 subgroupsHtml += '<div class="group-body">' + renderChannelTable(group, [
-                    ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
+                    ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id },
+                        { ...c, unit: ww.displayed.get(wwChannelKey(c.id, c.name))?.channel.unit ?? c.unit }), { raw: true }],
                     ["Cur A", (c) => wwCurValueCellHtml(c.id, c.name, "a"), { raw: true, className: "cur-value-col" }],
                     ["Cur B", (c) => wwCurValueCellHtml(c.id, c.name, "b"), { raw: true, className: "cur-value-col" }],
                 ], null, (c) => calculatedChannelRowAttrs(c)) + '</div>';
@@ -42875,6 +43241,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const calc = ww.calculatedChannels.get(id);
             const actionBtn = event.target.closest("button[data-action]");
             if (actionBtn && calc) {
+                if (actionBtn.dataset.action === "per-unit-config") {
+                    row.querySelector(".ww-cc-menu")?.removeAttribute("open");
+                    wwOpenChannelPerUnitModal({ sourceId: id, channelName: calc.name }); return;
+                }
                 if (actionBtn.dataset.action === "toggle-visibility") { wwToggleCalculatedChannelDisplay(calc); return; }
                 if (actionBtn.dataset.action === "plot-batch") {
                     const menu = row.querySelector(".ww-cc-menu[open]");
@@ -43055,6 +43425,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // behavior rather than silently reusing pixel-stale state.
             ww.timeGroupCursorState.clear();
             ww.cursorValues.clear();
+            wwDisplayBasisGenerations.clear();
             ww.digitalCursorValues.clear();
             for (const timerId of wwCursorValuesThrottleTimers.values()) clearTimeout(timerId);
             wwCursorValuesThrottleTimers.clear();
@@ -46545,6 +46916,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const generation = (wwCursorValuesGeneration.get(sourceId) || 0) + 1;
             wwCursorValuesGeneration.set(sourceId, generation);
+            const workspaceId = currentWorkspaceId();
+            const epoch = ww.epoch;
+            const unitMode = ww.unitMode;
+            const timing = wwDisplayTimingFingerprint(sourceId);
+            const isCurrent = () => {
+                const active = ww.timeGroupCursorState.get(groupId);
+                return wwCursorValuesGeneration.get(sourceId) === generation && epoch === ww.epoch &&
+                    workspaceId === currentWorkspaceId() && unitMode === ww.unitMode &&
+                    timing === wwDisplayTimingFingerprint(sourceId) && active === cursors && active.enabled &&
+                    groupId === wwTimeGroupIdForDisplaySourceId(sourceId) &&
+                    (active.a.visible && Number.isFinite(active.a.time) ? active.a.time : null) === aTime &&
+                    (active.b.visible && Number.isFinite(active.b.time) ? active.b.time : null) === bTime &&
+                    (wwDisplayedAnalogChannelNamesForSource(sourceId).length > 0 || wwDisplayedDigitalChannelNamesForSource(sourceId).length > 0);
+            };
 
             // Phase 5A (section 54): a calculated channel's own A/B values
             // live under the workspace-scoped /calculated-channels/cursor-
@@ -46576,7 +46961,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         ),
                     }
                 );
-                if (wwCursorValuesGeneration.get(sourceId) !== generation) return; // superseded while in flight
+                if (!isCurrent()) return;
                 if (!response.ok) {
                     // Section 38 (Phase 4C1)/30 (Phase 4C2): never
                     // fabricate a value/state on failure -- clear whatever
@@ -46591,7 +46976,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 body = await response.json();
             } catch (error) {
-                if (wwCursorValuesGeneration.get(sourceId) !== generation) return;
+                if (!isCurrent()) return;
                 wwClearCursorValuesForChannels(sourceId, analogNames);
                 wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
                 wwClearDigitalCursorValuesForChannels(sourceId, digitalNames);
@@ -46599,7 +46984,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
 
-            if (wwCursorValuesGeneration.get(sourceId) !== generation) return; // re-checked after the await
+            if (!isCurrent()) return; // includes a basis change during response parsing
             if (isCalculated) {
                 // Section 54: exactly one item, this pseudo-source's own
                 // calculated channel -- keyed by the SAME wwChannelKey()
@@ -46611,6 +46996,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // narrower here, a deliberate, documented Phase 5A scope
                 // trim (section 58: smallest clean abstraction).
                 for (const channel of body.channels) {
+                    if (!wwIsAnalogChannelVisible(sourceId, channel.name)) continue;
                     ww.cursorValues.set(wwChannelKey(sourceId, channel.name), {
                         aValue: channel.a_value, bValue: channel.b_value,
                         aSampleTime: null, bSampleTime: null,
@@ -46622,6 +47008,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const aSampleTimeNative = body.cursor_a ? body.cursor_a.sample_time : null;
             const bSampleTimeNative = body.cursor_b ? body.cursor_b.sample_time : null;
             for (const channel of body.channels) {
+                if (!wwIsAnalogChannelVisible(sourceId, channel.channel_name)) continue;
                 ww.cursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
                     aValue: channel.a_value,
                     bValue: channel.b_value,
@@ -46634,6 +47021,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 });
             }
             for (const channel of body.digital_channels) {
+                if (!wwIsDigitalChannelVisible(sourceId, channel.channel_name)) continue;
                 ww.digitalCursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
                     aState: channel.a_state,
                     bState: channel.b_state,
@@ -64980,6 +65368,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Change colour layers.
         document.getElementById("wwChannelPerUnitCloseBtn").addEventListener("click", wwCloseChannelPerUnitModal);
         document.getElementById("wwChannelPerUnitCloseFooterBtn").addEventListener("click", wwCloseChannelPerUnitModal);
+        document.getElementById("wwCalculatedPuSaveBtn").addEventListener("click", () => wwSaveCalculatedPuConfiguration());
+        document.getElementById("wwCalculatedPuAutomaticBtn").addEventListener("click", () => wwSaveCalculatedPuConfiguration(true));
         document.getElementById("wwChannelPerUnitOverlay").addEventListener("click", (event) => {
             if (event.target.id === "wwChannelPerUnitOverlay") wwCloseChannelPerUnitModal(); // click on backdrop
         });

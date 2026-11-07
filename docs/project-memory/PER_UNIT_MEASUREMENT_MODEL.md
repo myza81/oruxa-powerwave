@@ -1128,6 +1128,67 @@ by display label).
 
 ## 19. Calculated-channel implications — `[DECISION]` initial rule approved 2026-08-23, implementation pending
 
+**[Owner-approved Stage 5A update - 2026-11-03, DEC-209].** Automatic
+calculated Current eligibility now resolves each contributing source channel's
+live effective base. Group membership is authoritative even when incomplete;
+only genuinely ungrouped inputs use their own Source Default. Different group
+ids or configuration methods do not themselves prevent compatibility.
+
+Measurement side and configured base side are independent validated
+primary/secondary/unknown metadata. Manual/direct bases never inherit sample
+side or a previous equipment-derived Primary declaration. Equipment derivation
+remains primary; historical manual bases remain undeclared unless explicitly
+configured. COMTRADE provides P/S without changing a*x+b. CSV/BEN stay Unknown.
+No CT/VT scaling or sample reinterpretation is authorized.
+
+Across distinct authorities, only Primary measurements with Primary bases may
+qualify in 5A. Secondary/Secondary, conflicting and Unknown sides are unavailable;
+a shared secondary-reference contract is deferred. Established same-group/shared
+Source Default normalization is preserved when metadata is missing. This does
+not certify the historical secondary applicability limitation.
+
+Valid SI bases must satisfy (max-min)/max <= 1e-12, with zero absolute tolerance.
+Compare global leaf extrema, not intermediate representatives; choose the minimum
+equivalent base deterministically. ENG arithmetic comes first, followed by one
+normalization with existing unit/result-safety checks. Bases, links, sides and
+dependencies stay live; no inherited base is persisted. DEC-052/115/116 Voltage
+restrictions remain unchanged.
+
+Multi-authority provenance retains source_kind=null and adds
+resolution_origin=automatic_common_base, independent sides and the actual
+common base or unavailable reason. Never attribute it to one input group or an
+ambient Source Default. See [Stage 5A](PER_UNIT_AUDIT_STAGE_5A.md).
+
+**[Owner-approved Stage 5B update - 2026-11-04, DEC-209 addendum].** An eligible
+calculated Current result owns Automatic / Manual / Unassigned configuration.
+Manual stores positive finite SI amperes, independent base side and provenance;
+it takes precedence without editing inputs, groups, defaults or linked bases.
+The complete candidate validates before one atomic assignment replacement.
+Rejected saves preserve prior state. Later inapplicability retains Manual and
+reports unavailable, without automatic fallback. Unassigned persists until an
+explicit selection; Return to Automatic is separate.
+
+Manual overrides differing/missing input normalization bases, but cannot replace
+known compatible sample sides, measured-unit validation, group confirmation,
+dependency availability or numerical safety. Primary/Primary may qualify;
+Secondary/Secondary is limited to one established authority, without scaling.
+Unknown/conflicting sides and distinct secondary authorities remain unavailable.
+An automatic descendant follows contributing source leaves under Stage 5A; it
+does not inherit a parent's result-specific override or unassignment. A child
+may independently own its base. Legacy internal assignment graphs stay supported.
+
+Existing assignment cleanup handles calculated/source/workspace removal. Modes
+survive page reload in the live in-memory workspace, not server restart. Arrays
+remain physical ENG; shared normalization and provenance serve all PU consumers.
+New manual-result display uses A if kA loses subnormal precision. Definition lists
+and preview retain ENG units; display rows match their own live unit mode.
+No Voltage policy, CT/VT scaling, sample-side UI or secondary identity framework
+is added. See [Stage 5B](PER_UNIT_AUDIT_STAGE_5B.md) for verification and limits.
+The earlier [gap assessment](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md)
+and the original initial rule below are historical, superseded only for the
+explicitly approved Current scope. Stage 5A's historical validation is retained
+in [its report](PER_UNIT_AUDIT_STAGE_5A.md).
+
 For the **first group-aware implementation**, use the conservative
 rule:
 
@@ -1410,3 +1471,24 @@ modified alongside either. The next authorized step is Slice 1 only
 (§25), issued as a separate, explicit implementation prompt — not a
 general go-ahead to implement this document's remaining sections (see
 [HANDOFF.md](HANDOFF.md)).
+
+## 27. Current reference-side safety — approved 2026-11-06
+
+Subsequent owner-authorized implementation scopes supersede the historical
+scope reminder above only as recorded in DEC-209 and DEC-210. Measurement side
+and configured base side are independent Primary/Secondary/Unknown metadata.
+Known P/S or S/P mismatch makes Current PU unavailable; physical ENG samples
+remain unchanged. No CT/VT scaling or side inference is authorized.
+
+Historical raw/single-authority Unknown-reference Current retains previously
+permitted numerical behavior with an explicit **Unverified reference** indication,
+not a claim of physical compatibility. Stage 5A cross-authority Automatic and
+Stage 5B result Manual remain strict about known compatible sides; distinct
+Secondary references remain deferred. An independent valid result Manual base
+supersedes input normalization bases without modifying those inputs. All existing
+unit, review, dependency and numerical gates remain mandatory. Base configuration
+availability alone is not channel conversion readiness or reference verification.
+
+See [DECISIONS.md — DEC-210](DECISIONS.md#dec-210--current-pu-reference-safety-blocks-known-mismatch-and-identifies-historical-unknown-as-unverified)
+and [the LIM-001 implementation report](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
+Voltage representation policy and all PU/Power mathematics remain unchanged.

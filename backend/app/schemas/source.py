@@ -18,6 +18,7 @@ from app.domain.time_reference import source_timestamp_utc, effective_timing_ref
 from app.domain.channel_classification import UNDEFINED
 from app.domain.engineering_units import DisplayAxis, resolve_display_axis, resolve_per_unit_display_axis
 from app.domain.source import SourceMetadata
+from app.domain.reference_side import ReferenceSide
 from app.domain.source_timezone import TimeBasis, canonical_utc, resolve_time_basis
 
 
@@ -51,6 +52,7 @@ class AnalogChannelOut(BaseModel):
     offset: float
     primary_ratio: float | None = None
     secondary_ratio: float | None = None
+    measurement_side: ReferenceSide = "unknown"
 
     def _display_axis(self) -> DisplayAxis:
         return resolve_display_axis(self.engineering_type, self.engineering_quantity, self.unit)

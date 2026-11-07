@@ -59,6 +59,7 @@ from app.domain.measurement_group import (
     STATUS_MANUAL,
     MeasurementGroup,
 )
+from app.domain.per_unit_numerics import convert_scalar, scaled_base
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -102,10 +103,8 @@ STATUS_BASE_REQUIRED = "base_required"
 def voltage_base_valid(value: float | None) -> bool:
     """Same validator shape as `per_unit.voltage_base_valid()`: rejects
     `None`, rejects `bool` (a `bool` is technically an `int` in Python),
-    requires a finite, strictly positive number."""
-    if value is None:
-        return False
-    return bool(not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value > 0)
+    requires a finite, strictly positive number usable in SI volts."""
+    return scaled_base(value, 1000.0) is not None
 
 
 def voltage_reference_mode_valid(mode: str) -> bool:
@@ -196,6 +195,9 @@ class VoltageBaseResolution:
     denominator_kv: float | None
     effective_reference: str | None
     reason: str | None
+    # Internal SI denominator: scale before phase division to preserve
+    # precision when the configured kV value is subnormal. No wire change.
+    denominator_volts: float | None = None
 
 
 def resolve_voltage_base_for_group(
@@ -266,7 +268,8 @@ def resolve_voltage_base_for_group(
         denominator_kv = voltage_base_phase_kv(config.nominal_voltage_ll_kv)
 
     return VoltageBaseResolution(
-        status=STATUS_CONFIGURED, denominator_kv=denominator_kv, effective_reference=reference, reason=None
+        status=STATUS_CONFIGURED, denominator_kv=denominator_kv, effective_reference=reference, reason=None,
+        denominator_volts=(config.nominal_voltage_ll_kv * 1000.0) / (SQRT_3 if reference == LINE_TO_GROUND else 1.0),
     )
 
 
@@ -296,5 +299,9 @@ def convert_voltage_to_pu(measured_value: float | None, measured_unit: str | Non
     scale = _VOLTAGE_UNIT_TO_KV.get(key)
     if scale is None:
         return None
-    measured_kv = measured_value * scale
-    return measured_kv / resolution.denominator_kv
+    denominator = resolution.denominator_volts
+    if denominator is None:
+        denominator = scaled_base(resolution.denominator_kv, 1000.0)
+    if denominator is None:
+        return None
+    return convert_scalar(measured_value, scale * 1000.0, denominator)

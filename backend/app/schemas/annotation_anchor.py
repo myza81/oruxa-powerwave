@@ -52,6 +52,7 @@ class AnnotationAnchorOut(BaseModel):
     elapsed_seconds: float
     value: float | None
     per_unit_status: str | None = None
+    per_unit_reference_compatibility: str | None = None
 
     @classmethod
     def from_result(cls, result: AnnotationAnchorResult) -> "AnnotationAnchorOut":
@@ -63,4 +64,5 @@ class AnnotationAnchorOut(BaseModel):
             elapsed_seconds=result.elapsed_seconds,
             value=result.value,
             per_unit_status=result.per_unit_status,
+            per_unit_reference_compatibility=result.per_unit_reference_compatibility,
         )

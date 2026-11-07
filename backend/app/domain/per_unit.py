@@ -32,10 +32,11 @@ module never touches a registry or raises an HTTP-mappable error itself.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 import numpy as np
+from app.domain.reference_side import ReferenceSide
 
 from app.domain.calculated_channel import (
     OP_ABSOLUTE_VALUE,
@@ -48,6 +49,10 @@ from app.domain.calculated_channel import (
 from app.domain.channel_classification import CURRENT, VOLTAGE
 from app.domain.engineering_units import parse_engineering_unit
 from app.domain.line_to_line_voltage import OP_LINE_TO_LINE_VOLTAGE
+from app.domain.per_unit_numerics import (
+    channel_values_representable, convert_array, convert_scalar,
+    derived_current_ka, positive_finite, scaled_base,
+)
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -126,22 +131,23 @@ class PerUnitBaseProfile:
     apparent_power_base_value: float | None  # MVA, canonical
     direct_current_base_value: float | None  # kA, canonical
     created_at: datetime | None = None
+    current_base_reference_side: ReferenceSide = "unknown"
 
 
 def voltage_base_valid(value: float | None) -> bool:
     """A configured voltage base must be a finite, strictly positive
     number (canonical kV). `None` (not yet configured) is a separate,
     valid state -- callers check for that first; this only validates an
-    attempt to actually set one."""
-    if value is None:
-        return False
-    return bool(not isinstance(value, bool) and isinstance(value, (int, float)) and np.isfinite(value) and value > 0)
+    attempt to actually set one. Its SI representation must also be finite
+    and positive; no physical equipment-rating limit is imposed."""
+    return scaled_base(value, 1000.0) is not None
 
 
 def apparent_power_base_valid(value: float | None) -> bool:
-    """Same shape as voltage_base_valid(), for the "Three-Phase MVA Base
-    (Sbase)" field (canonical MVA)."""
-    return voltage_base_valid(value)
+    """Finite positive canonical MVA; validate the derived current separately."""
+    # MVA need not itself fit in VA: stable MVA/kV derivation can still
+    # produce a representable current base. Validate that combination later.
+    return positive_finite(value)
 
 
 def direct_current_base_valid(value: float | None) -> bool:
@@ -151,18 +157,14 @@ def direct_current_base_valid(value: float | None) -> bool:
 
 def voltage_base_volts(profile: PerUnitBaseProfile) -> float | None:
     """The source's own declared voltage base, normalized to volts.
-    `None` if no voltage base is configured yet."""
-    if profile.voltage_base_value is None:
-        return None
-    return profile.voltage_base_value * 1000.0
+    `None` if no usable voltage base is configured yet."""
+    return scaled_base(profile.voltage_base_value, 1000.0)
 
 
 def apparent_power_base_va(profile: PerUnitBaseProfile) -> float | None:
     """The source's own declared three-phase apparent power base,
     normalized to volt-amperes. `None` if not configured."""
-    if profile.apparent_power_base_value is None:
-        return None
-    return profile.apparent_power_base_value * 1_000_000.0
+    return scaled_base(profile.apparent_power_base_value, 1_000_000.0)
 
 
 def resolve_effective_voltage_reference(
@@ -228,11 +230,12 @@ def resolve_current_base_amps(
     # CURRENT_BASE_MODE_DERIVED: Ibase = Sbase / (sqrt(3) x Vbase_LL).
     if effective_reference not in KNOWN_VOLTAGE_REFERENCES:
         return None, "voltage_reference_undetermined"
-    sbase_va = apparent_power_base_va(profile)
-    vbase_ll = voltage_base_volts(profile)
-    if sbase_va is None or vbase_ll is None:
+    if profile.apparent_power_base_value is None or profile.voltage_base_value is None:
         return None, "current_base_not_configured"
-    return sbase_va / (SQRT_3 * vbase_ll), None
+    ka = derived_current_ka(profile.apparent_power_base_value, profile.voltage_base_value)
+    if ka is None:
+        return None, "effective_base_not_representable"
+    return ka * 1000.0, None
 
 
 @dataclass(slots=True)
@@ -251,6 +254,11 @@ class PerUnitResolution:
     base_amount: float | None
     base_unit: str | None
     reason: str | None
+
+    # Additive, transient reference proof; base availability alone is not proof.
+    reference_compatibility: str | None = None
+    measurement_side: str = "unknown"
+    base_reference_side: str = "unknown"
 
 
 def resolve_per_unit(
@@ -346,6 +354,33 @@ def _measured_unit_scale(engineering_type: str, measured_unit: str | None) -> fl
     return None
 
 
+def resolve_conversion_eligibility(
+    resolution: PerUnitResolution, measured_unit: str | None, engineering_type: str,
+    values: np.ndarray | None = None,
+) -> PerUnitResolution:
+    """Validate the measured side of an already resolved electrical base.
+
+    Base availability alone is not conversion readiness. All conversion and
+    channel read models use this check. When supplied, full-channel bounds
+    also establish numerical readiness independently of viewport/cursor choice.
+    Preserve the resolved base/scope when a unit or measurement prevents
+    conversion, so provenance can explain the accepted configuration. Never
+    mutate the caller's resolution (it may be shared by a batch).
+    """
+    if resolution.status != STATUS_CONFIGURED:
+        return resolution
+    if not positive_finite(resolution.base_amount):
+        return replace(resolution, status=STATUS_BASE_REQUIRED, base_amount=None,
+                       reason="effective_base_not_representable")
+    scale = _measured_unit_scale(engineering_type, measured_unit)
+    if scale is None:
+        reason = "measured_unit_missing" if not measured_unit or not measured_unit.strip() else "measured_unit_unsupported"
+        return replace(resolution, status=STATUS_BASE_REQUIRED, reason=reason)
+    if values is not None and not channel_values_representable(values, scale, resolution.base_amount):
+        return replace(resolution, status=STATUS_BASE_REQUIRED, reason="per_unit_result_not_representable")
+    return resolution
+
+
 def convert_value_to_pu(
     value: float | None, measured_unit: str | None, resolution: PerUnitResolution, engineering_type: str
 ) -> float | None:
@@ -362,12 +397,13 @@ def convert_value_to_pu(
     in every such case."""
     if value is None or not np.isfinite(value):
         return None
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED or resolution.base_amount is None:
         return None
     scale = _measured_unit_scale(engineering_type, measured_unit)
     if scale is None:
         return None
-    return (value * scale) / resolution.base_amount
+    return convert_scalar(value, scale, resolution.base_amount)
 
 
 def convert_array_to_pu(
@@ -375,14 +411,15 @@ def convert_array_to_pu(
 ) -> np.ndarray | None:
     """Array counterpart of convert_value_to_pu() -- same unit-
     normalization/eligibility rules, vectorized. Non-finite input samples
-    remain non-finite (NaN) after conversion, never coerced. Unchanged
-    from the original DEC-049 implementation."""
+    remain non-finite after conversion, never coerced. Finite samples that
+    cannot be normalized make conversion unavailable, never false zeros/gaps."""
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED or resolution.base_amount is None:
         return None
     scale = _measured_unit_scale(engineering_type, measured_unit)
     if scale is None:
         return None
-    return (values.astype(np.float64) * scale) / resolution.base_amount
+    return convert_array(values, scale, resolution.base_amount)
 
 
 def apply_per_unit_to_value(
@@ -401,16 +438,14 @@ def apply_per_unit_to_value(
     partially-converted or fabricated result. Unchanged from the
     original DEC-049 implementation.
 
-    Deliberately determines `display_unit`/`per_unit_status` from the
-    MEASURED UNIT alone, never from whether `value` itself happens to be
-    present/finite -- a batch endpoint (A/B cursor values, where cursor B
-    may simply not have been requested) must report the SAME status for
-    a channel regardless of which of two sibling calls (A, then B) a
-    caller happens to make; only the returned number itself is `None`/
-    unconverted when `value` is missing.
+    Missing/original non-finite inputs remain gaps with the channel's status.
+    Live dispatchers validate full-channel bounds first, so sibling cursor
+    values share readiness even if only one cursor or viewport was requested.
+    Standalone callers also receive an honest fallback on result overflow.
     """
     if resolution is None:
         return value, measured_unit, None
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED:
         return value, measured_unit, resolution.status
     scale = _measured_unit_scale(engineering_type, measured_unit)
@@ -418,7 +453,10 @@ def apply_per_unit_to_value(
         return value, measured_unit, STATUS_BASE_REQUIRED
     if value is None or not np.isfinite(value):
         return None, "pu", STATUS_CONFIGURED
-    return (value * scale) / resolution.base_amount, "pu", STATUS_CONFIGURED
+    converted = convert_scalar(value, scale, resolution.base_amount)
+    if converted is None:
+        return value, measured_unit, STATUS_BASE_REQUIRED
+    return converted, "pu", STATUS_CONFIGURED
 
 
 def apply_per_unit_to_array(
@@ -429,6 +467,7 @@ def apply_per_unit_to_array(
     original DEC-049 implementation."""
     if resolution is None:
         return values, measured_unit, None
+    resolution = resolve_conversion_eligibility(resolution, measured_unit, engineering_type)
     if resolution.status != STATUS_CONFIGURED:
         return values, measured_unit, resolution.status
     converted = convert_array_to_pu(values, measured_unit, resolution, engineering_type)

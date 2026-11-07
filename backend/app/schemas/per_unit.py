@@ -10,13 +10,15 @@ the owner's own UAT preference for a fixed unit suffix over a dropdown.
 """
 
 from __future__ import annotations
+from app.domain.reference_side import ReferenceSide
 
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from app.domain.calculated_current_config import CalculatedCurrentMode
 
-from app.schemas.measurement_group import VoltageReferenceValue
+from app.schemas.measurement_group import PerUnitBaseNumber, VoltageReferenceValue
 from app.services.per_unit_coverage_service import PerUnitCoverageSummary
 from app.services.per_unit_provenance_service import PerUnitChannelProvenance
 from app.services.per_unit_service import SourcePerUnitConfigView
@@ -27,12 +29,29 @@ class SourcePerUnitConfigUpdateRequest(BaseModel):
     replace, matching every other PUT in this codebase -- there is no
     partial-update concept."""
 
-    voltage_base_value: float | None = None
+    voltage_base_value: PerUnitBaseNumber | None = None
     voltage_reference_mode: Literal["auto", "manual"] = "auto"
     voltage_reference_override: Literal["line_to_ground", "line_to_line"] | None = None
+    current_base_reference_side: ReferenceSide = "unknown"
     current_base_mode: Literal["none", "derived", "direct"] = "none"
-    apparent_power_base_value: float | None = None
-    direct_current_base_value: float | None = None
+    apparent_power_base_value: PerUnitBaseNumber | None = None
+    direct_current_base_value: PerUnitBaseNumber | None = None
+
+
+class CalculatedCurrentConfigUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: CalculatedCurrentMode
+    current_base_value: PerUnitBaseNumber | None = None
+    current_base_unit: Literal["A", "kA"] = "kA"
+    base_reference_side: ReferenceSide = "unknown"
+
+
+class CalculatedCurrentConfigOut(BaseModel):
+    calculated_channel_id: str
+    mode: CalculatedCurrentMode
+    current_base_amps: float | None
+    base_reference_side: ReferenceSide
+    updated_at: datetime | None
 
 
 class ResolvedCurrentBaseOut(BaseModel):
@@ -54,6 +73,7 @@ class SourcePerUnitConfigOut(BaseModel):
     effective_voltage_reference: Literal["line_to_ground", "line_to_line"] | None
     voltage_reference_evidence: list[str]
     voltage_reference_reason: str
+    current_base_reference_side: ReferenceSide = "unknown"
     current_base_mode: Literal["none", "derived", "direct"]
     apparent_power_base_value: float | None
     direct_current_base_value: float | None
@@ -71,6 +91,7 @@ class SourcePerUnitConfigOut(BaseModel):
             effective_voltage_reference=view.effective_voltage_reference,
             voltage_reference_evidence=view.voltage_reference_evidence,
             voltage_reference_reason=view.voltage_reference_reason,
+            current_base_reference_side=view.current_base_reference_side,
             current_base_mode=view.current_base_mode,
             apparent_power_base_value=view.apparent_power_base_value,
             direct_current_base_value=view.direct_current_base_value,
@@ -93,6 +114,7 @@ class PerUnitCoverageOut(BaseModel):
     measurement_group_count: int
     source_default_count: int
     needs_configuration_count: int
+    unverified_reference_count: int = 0
 
     @classmethod
     def from_summary(cls, summary: PerUnitCoverageSummary) -> "PerUnitCoverageOut":
@@ -102,6 +124,7 @@ class PerUnitCoverageOut(BaseModel):
             measurement_group_count=summary.measurement_group_count,
             source_default_count=summary.source_default_count,
             needs_configuration_count=summary.needs_configuration_count,
+            unverified_reference_count=summary.unverified_reference_count,
         )
 
 
@@ -130,13 +153,25 @@ class PerUnitResolutionOut(BaseModel):
     nominal_base_kv: float | None
     nominal_reference: VoltageReferenceValue | None
     effective_base_amount: float | None
-    effective_base_unit: Literal["kV", "kA"] | None
+    effective_base_unit: Literal["kV", "kA", "A"] | None
     equipment_rating_mva: float | None
     applicable_voltage_ll_kv: float | None
+    resolution_origin: Literal["automatic_common_base", "manual_calculated_current", "explicit_unassigned"] | None = None
+    configuration_mode: CalculatedCurrentMode | None = None
+    configured_current_base_amps: float | None = None
+    measurement_side: ReferenceSide = "unknown"
+    base_reference_side: ReferenceSide = "unknown"
+    reference_compatibility: Literal["compatible", "incompatible", "unverified"] | None = None
 
     @classmethod
     def from_provenance(cls, provenance: PerUnitChannelProvenance) -> "PerUnitResolutionOut":
         return cls(
+            configuration_mode=provenance.configuration_mode,
+            configured_current_base_amps=provenance.configured_current_base_amps,
+            resolution_origin=provenance.resolution_origin,
+            measurement_side=provenance.measurement_side,
+            reference_compatibility=provenance.reference_compatibility,
+            base_reference_side=provenance.base_reference_side,
             status=provenance.status,
             engineering_type=provenance.engineering_type,
             source_kind=provenance.source_kind,

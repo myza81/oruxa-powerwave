@@ -20,6 +20,7 @@ single call the list endpoint uses to build every row in one pass.
 """
 
 from __future__ import annotations
+from app.domain.reference_side import ReferenceSide, configured_base_side
 
 from dataclasses import dataclass
 
@@ -61,6 +62,7 @@ class CurrentGroupConfigView:
     manual_ibase_ka: float | None
     resolved_ibase_ka: float | None
     applicable_voltage_ll_kv: float | None
+    base_reference_side: ReferenceSide = "unknown"
 
 
 @dataclass(slots=True)
@@ -109,6 +111,7 @@ def _build_current_view(
         group, config, linked_voltage_group=linked_voltage_group, linked_voltage_config=linked_voltage_config
     )
     view = CurrentGroupConfigView(
+        base_reference_side=configured_base_side(config.method, config.base_reference_side) if config else "unknown",
         method=config.method if config is not None else "none",
         equipment_rating_mva=config.equipment_rating_mva if config is not None else None,
         linked_voltage_group_id=config.linked_voltage_group_id if config is not None else None,

@@ -9,10 +9,153 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Final PU release - DEV verified; final owner acceptance pending (2026-11-07)
+
+[FACT] Feature release `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` is pushed
+and deployed to DEV through the existing manual target=dev workflow. FA-001
+384a55f and LIM-001 b6202fc are included; no unrelated runtime change, main merge
+or PROD deployment. Both CI jobs and the deployment's own backend gate passed:
+11,391 Linux passes / 303 skips / 21 warnings, zero failures, in each backend run.
+
+[VALIDATION] 140 unique deployed browser cases pass: 101 initial passes plus
+39/39 remaining passes after correcting two isolated harness errors. Preserve
+those failed attempts; do not claim one clean first run. Zero automatic retries.
+Actual FA-001 extreme preview 57735026.9190 kA, saved 57735026918.96258 A;
+all 101 samples match independent division. LIM side matrix, strict Manual/
+cross-authority Unknown, shared consumers, stale-response fences, Voltage,
+group/default precedence, manual modes and Power regressions pass.
+
+[FACT] Strict TLS/hostname and post-smoke checks confirm both running versions
+match that full release SHA, development environment and healthy backend.
+All 871 tested application/test hashes are unchanged, so prior full Windows
+backend 11,374/320 and local browser 1302/1302 remain applicable. No new complete
+local run claimed. All 142 synthetic test-owned workspaces were cleaned (204).
+All 2250 protected files are unchanged; the five protected paths remain untracked.
+
+[BOUNDARY] This handoff is in a separate documentation-only closure commit,
+newer than the deployed release; it changes no application/test code and does
+not redeploy DEV. Full results, exact workflow links, first-run accounting,
+commit identities, numerical evidence and limits:
+[final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
+Final owner UAT/overall PU acceptance remain pending. Ephemeral workspace life,
+Unverified historical Unknown, shared Secondary identity, CSV/BEN side UI,
+CSV discovery-ID, CT/VT conversion and load/heap certification stay bounded.
+No main merge, PROD or additional work. Hand over for final owner acceptance.
+
+## Per-Unit audit Stage 5B - result-specific manual Current PU (2026-11-04)
+
+[DECISION] The owner separately authorized Stage 5B storage/API/editor work
+after Stage 5A. Automatic, Manual and Unassigned are explicit result-owned modes;
+Return to Automatic is separate. No CT/VT scaling, input-base mutation, Voltage
+override or secondary-reference identity framework is authorized.
+
+[FACT] Immutable SI-ampere configuration uses the existing calculated assignment
+lifetime. Complete candidate validation precedes one locked replacement. Rejected
+saves preserve the assignment; later inapplicability retains Manual and reports
+unavailable without automatic fallback. Known matching sides, measured units,
+review state, dependencies and numerical range remain mandatory. Automatic
+descendants resolve source leaves rather than inheriting a parent's override.
+
+[FACT] The existing PU modal and Calculated Channels manager expose the editor.
+Backend provenance distinguishes manual/automatic/explicit unassignment. Shared
+refresh fences update Waveform arrays, row units, legends, cursors and annotations
+without moving anchors or refetching unrelated results. Event Reconstruction
+uses its own live resolution and unit mode. Physical definition lists/preview
+remain in ENG. Tiny usable manual bases reload/display in A when kA loses
+subnormal precision. No engineering calculation or physical array is changed.
+
+[VALIDATION] Final full backend: **11,315 passed / 320 skipped / zero failures
+or errors**, 21 existing warnings, exit 0, including all 62 new cases. Dedicated
+Stage 5B browser: ten passes with zero retries. Final broad browser: **431/431
+passed**, zero failures/skips/flaky cases/global errors, exit 0, in 37 explicit
+files, retries=0. The owner-approved two-file compact-summary test maintenance
+is applied without further production changes. Both complete files also pass
+9/9 independently; the affected backend notation guard passes 11/11. See
+[PER_UNIT_AUDIT_STAGE_5B.md](PER_UNIT_AUDIT_STAGE_5B.md) for evidence and limits.
+Stage 5B acceptance is met locally. The focused local revision includes only its
+19 code/test/documentation files; the two maintenance files are distinguished
+in the report. All 2,250 protected evidence files remain unchanged.
+
+[DEFERRED] CSV/BEN sample-side UI, shared secondary references, CT/VT scaling and
+the separate CSV discovery-id correction remain outside this stage. Modes survive
+page reload in the live in-memory workspace, not a server restart. No push,
+merge, deployment or final audit; stop for owner review after local verification.
+
+## Per-Unit audit Stage 5A - verified locally (2026-11-03)
+
+[DECISION] Owner approved separate reference-side metadata and automatic
+cross-authority Current eligibility (DEC-209). Only proven Primary/Primary
+cross-authority cases may qualify; Secondary/Secondary and unknown sides remain
+unavailable in 5A. Historical single-group/shared-Source-Default normalization
+remains supported. No CT/VT scaling or Voltage-policy change is authorized.
+
+[FACT] Live source-leaf resolution establishes authoritative effective bases,
+refuses ambient defaults for unresolved grouped inputs, compares global extrema
+with rtol=1e-12/atol=0, and normalizes ENG results once. Metadata/API fields,
+existing manual Group/direct Source Default selectors and read-only Current
+calculation provenance are implemented locally. Omission preserves a declaration
+only within the same manual/direct method; transitions reset it. Equipment-derived
+bases remain Primary. Production Power math and physical arrays are unchanged.
+
+[VALIDATION] Baseline: 108 failures / 24 passes in 132 cases, zero errors/skips.
+Initial correction: 173 passed. Broader focused selection: 494 passed, zero
+failures/errors/skips, three existing warnings. Full backend: **11,253 passed,
+320 skipped, zero failures/errors**, 21 existing warnings, exit 0, including all
+185 new Stage 5A cases. Relevant browser selection: **392/392 passed** across
+32 explicitly selected files, zero failures/errors/skips/flaky cases, exit 0.
+Independent Decimal checks: 1,800 comparisons, zero mismatches. All 2,250
+protected evidence files retain their file list, hashes, sizes and timestamps.
+Stage 5A acceptance is met locally; no push, merge or deployment. See
+[PER_UNIT_AUDIT_STAGE_5A.md](PER_UNIT_AUDIT_STAGE_5A.md).
+
+[FACT] Result-specific manual PU storage/API/editor and explicit calculated
+unassignment are now implemented by the separately approved Stage 5B above. The two earlier
+[reference-side](PER_UNIT_AUDIT_SLICE_5_DESIGN.md) and
+[manual-override](PER_UNIT_AUDIT_SLICE_5_MANUAL_OVERRIDE_ASSESSMENT.md)
+assessments remain historical context; Stage 5A approval supersedes their initial
+metadata pause. CSV/BEN sample side stays Unknown; sample-side declaration
+UI, shared secondary references and the separate CSV discovery-id issue remain
+deferred.
+
+## Per-Unit audit remediation — Slice 4 (2026-11-03, local)
+
+[FACT] PU-006 and PU-007 are corrected. Shared numerical helpers validate SI
+denominators and complete derived Current candidates before publication, avoid
+avoidable intermediate overflow, and preserve representable subnormal results.
+Booleans are rejected before request-schema numeric coercion on all seven base
+fields; integer, float, numeric-string and omission/null semantics remain intact.
+Valid bases whose finite measurements cannot normalize report `base_required`,
+with engineering fallback and an explanation, rather than false zeros or newly
+created configured gaps. Coverage, provenance, raw/calculated conversion and
+Compliance use consistent channel bounds. No new API fields/status vocabulary.
+
+[FACT] Slice 1 atomicity, Slice 2 synchronization and Slice 3 measured-unit/
+reference eligibility remain intact. Voltage/Current mathematics, group/base
+precedence, calculated-channel restrictions, physical samples and Power are
+unchanged. Linked Current dependencies remain live and fail closed if their
+effective denominator becomes unrepresentable; no cross-registry transaction.
+
+[VALIDATION] Full backend: **11,068 passed, 320 conditional/platform skips, zero
+failures/errors**, 21 warnings, exit 0. All 164 new cases, 69 Slice 3 cases and
+45 Slice 1 atomicity cases pass. Relevant browser selection: **389/389**, zero
+failures/errors/skips/retries, exit 0, including all 26 Slice 2 cases and four
+new numerical/editor/ER cases. All 2,250 protected evidence files are unchanged.
+No push, merge or deployment. Stop for owner review before Slice 5.
+
+[OPEN] A separate, unchanged CSV post-conversion discovery bug uses the old
+preparation id rather than the new canonical source id. Evidence, proposed
+bounded correction and impact are recorded for owner review; it is not fixed
+in this slice. See [PER_UNIT_AUDIT_SLICE_4.md](PER_UNIT_AUDIT_SLICE_4.md) for the
+numerical contract, file list, proof, regression evidence, performance and limits.
+[Slice 3](PER_UNIT_AUDIT_SLICE_3.md) retains the separate CSV issue evidence and
+its historical implementation record.
+
 ## Phase E — Three-Phase Power Calculated Channels — DEPLOYED & UAT PASSED (2026-11-02)
 
-[FACT] DEV is running `3c5df3a` (branch `feature/calculator-vi-phasors`), deployed 2026-11-02.
-Owner UAT PASSED 2026-11-02. Branch is 5 commits ahead of `origin/main`.
+[FACT] Owner UAT PASSED on the earlier DEV `3c5df3a`, 2026-11-02. PR #6
+subsequently merged this Power work into main; DEV now runs its merge commit
+`d8ade8f` (API/frontend verified 2026-11-04). The six newer local commits are
+the separate PU release candidate reviewed above.
 
 [FACT] Three-phase power calculated channels are fully implemented (Phase E-1 through E-3B):
 - **Backend** — domain function `evaluate_three_phase_power_channel()`, service validation
@@ -30,13 +173,15 @@ Owner UAT PASSED 2026-11-02. Branch is 5 commits ahead of `origin/main`.
 [DEFERRED] DEC-208-A (IEEE 1459/S_e apparent power), DEC-208-B/P ("Create All Three"
 shortcut), DEC-208-E (L1/L2/L3 grammar expansion), L-L voltage support.
 
-[NEXT] PR from `feature/calculator-vi-phasors` to `main` pending creation.
+[FACT] Power PR #6 is merged. The subsequent PU candidate awaits owner release
+approval; its PR/DEV steps have not been performed.
 
 ---
 
 ## DEV UAT: Time Group UTC header (2026-10-26)
 
-[FACT] Superseded — DEV now runs `3c5df3a` (see section above). Prior DEV SHA was `ba8ff4829a575be048d3870720d49117af7c5df3`.
+[FACT] Superseded — DEV now runs `d8ade8f` (verified 2026-11-04; see above).
+The historical UTC-header UAT DEV SHA was `ba8ff4829a575be048d3870720d49117af7c5df3`.
 GPTH UAT exposed a display-only mismatch: the source/sidebar showed raw clock
 digits with the user-assigned offset, while the Time Group header silently
 converted the effective UTC origin to the configured Asia/Kuala_Lumpur display

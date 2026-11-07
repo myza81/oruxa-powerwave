@@ -134,6 +134,7 @@ def put_source(
             voltage_base_value=body.voltage_base_value,
             voltage_reference_mode=body.voltage_reference_mode,
             voltage_reference_override=body.voltage_reference_override,
+            current_base_reference_side=body.current_base_reference_side if "current_base_reference_side" in body.model_fields_set else None,
             current_base_mode=body.current_base_mode,
             apparent_power_base_value=body.apparent_power_base_value,
             direct_current_base_value=body.direct_current_base_value,
