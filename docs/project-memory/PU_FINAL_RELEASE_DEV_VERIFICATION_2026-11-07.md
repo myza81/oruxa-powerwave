@@ -1,6 +1,136 @@
 # Final PU release preparation and DEV verification - 2026-11-07
 
-## Authorization and current status
+## DEV execution outcome - 2026-11-07
+
+**Recommendation: GO for final owner acceptance on DEV.** Final owner UAT and
+overall PU acceptance remain the owner's decision. No main merge or PROD release.
+
+- Deployed release: `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` (documentation preparation commit, parent b6202fc).
+- Normal feature-branch push succeeded; remote ref matched that exact SHA.
+- [CI](https://github.com/myza81/oruxa-powerwave/actions/runs/42327370768): Backend tests and Validate Compose overlays both passed.
+  Full Linux backend: **11,391 passed / 303 skipped / zero failures / 21 warnings**,
+  307.31 seconds. The 17 additional passes versus Windows are its POSIX cases.
+- [Manual deployment](https://github.com/myza81/oruxa-powerwave/actions/runs/42327935955): workflow_dispatch, target **dev**, exact recorded
+  head SHA above; its own full backend gate passed **11,391 / 303 / 21**, zero
+  failures, 553.94 seconds. Deploy to dev succeeded. No workflow changes/bypass.
+- At `2026-11-07T02:45:59.307Z`, frontend buildVersion and backend git_sha both matched the full
+  release SHA; backend status ok, both development, frontend API points to DEV.
+  TLS 1.3, authorized chain and hostname checks passed on both hosts, including
+  negative wrong-hostname checks. Node --use-system-ca used existing Windows
+  trust. No ignoreHTTPSErrors, disabled verification, CA/key export or trust change.
+
+### Executed smoke and honest first-run accounting
+
+**140 unique selected cases have passing deployed evidence across nine files.**
+The initial run was not clean: 101 passed / one temporary-harness assertion
+failed / 38 not run after maxFailures=1. It incorrectly expected a raw source
+row to become IA (pu); DEC-209 and Stage 5B explicitly preserve raw row ENG units.
+Saved bases, every API sample and plotted values had already passed. Correcting
+that assertion exposed a second harness setup error: a legend was queried in
+Grouped view, where that element is absent (zero passes / one harness error /
+38 not run). Neither was a production numerical or reference-policy defect.
+
+Both attempts, original scripts, JSON, traces and screenshots are retained.
+A separate frozen harness selected Separate view, asserted exact raw IA (A),
+data-unit A, plot legend IA (pu), trace identity and all numerical comparisons.
+The complete remaining **39/39 passed**, no failures/skips/flaky/global errors.
+All runs used **zero automatic retries**. The two earlier max-failure controller
+errors remain recorded; this is not claimed as one pristine 140-test run.
+No repository test, production behavior or engineering expected result changed.
+The isolated DEV runner used 120-second tests and 20-second default expectations
+to allow network overhead; existing explicit timing assertions were retained.
+
+| Explicit file | Passing cases |
+|---|---:|
+| `calculated-current-manual-pu.spec.js` | 12 |
+| `calculator-power-current.spec.js` | 34 |
+| `calculator-vi-phasors.spec.js` | 19 |
+| `current-common-base.spec.js` | 3 |
+| `per-unit-display-synchronization.spec.js` | 26 |
+| `per-unit-reference-safety.spec.js` | 7 |
+| `release-authoritative-values.spec.js` | 4 |
+| `source-default-current-preview.spec.js` | 7 |
+| `three-phase-power.spec.js` | 28 |
+
+The added release-authoritative-values spec exists only in isolated TEMP. All
+others reuse reviewed repository assertions with explicit DEV origins, real
+config.js, synthetic fixtures and test-owned lifecycle handling. No substitute
+frontend/backend or mocked deployment/version response. Controlled obsolete
+responses use actual backend responses with timing held by the existing tests.
+
+Manual/Unassigned/Automatic and Return to Automatic, independent Manual/nested
+ownership, rejected saves, waveform arrays/plots/legends, A/B, callouts/peaks,
+mode/base edits, async fences, group precedence/defaults and Voltage PU passed.
+Power Calculator Current/P-Q-S/PF and backend V-I Phasors passed; single- and
+three-phase calculated Power creation, units and confirmation gates passed.
+Fresh Peak/modal and Unknown-reference screenshots were visually inspected.
+
+### FA-001 actual deployed numerical evidence
+
+Each row uses a 5 A peak synthetic Primary Current channel with no group base.
+All 101 returned samples equal physical amperes divided by the independently
+calculated base; physical arrays remain identical, plot arrays match the API.
+
+| VLL kV | S MVA | Preview | Saved base A | Peak pu |
+|---|---|---|---|---|
+| 132 | 1000 | 4.3739 kA | 4373.865675678983 | 0.001143153532995459 |
+| 275 | 1000 | 2.0995 kA | 2099.455524325912 | 0.002381569860407206 |
+| 1e+300 | 1e+308 | 57735026.9190 kA | 57735026918.96258 | 8.660254037844386e-11 |
+
+No Infinity preview or fabricated base. Existing subnormal and invalid-save
+preview cases also passed; manual/automatic L-G/L-L interpretation is unchanged.
+
+### LIM-001 and shared consumers
+
+Primary/Primary and one-established-authority Secondary/Secondary remain usable.
+Both known mismatch directions are unavailable, retain unchanged ENG arrays and
+never scale CT/VT values. Historical Unknown raw/single-authority PU retains its
+approved numbers with Unverified disclosure on rows, legends, cursors and
+annotations; provenance/readiness distinguish it from verified compatibility.
+Cross-authority Unknown samples remain unavailable; independently declared
+Manual Primary is rejected when sample side is unknown, with exact before/after
+group/configuration/resolution/waveform equality. Compatible independent Manual
+remains valid; incompatible/unknown Manual saves retain accepted state. ER uses
+its own mode. Obsolete compatible data cannot restore PU after an incompatible
+accepted edit. Physical storage and PU/Power mathematics are unchanged.
+
+### Evidence, Git identity and handoff boundary
+
+All 871 application/test hashes still match final local acceptance. Existing
+Windows backend 11,374/320 and complete local browser 1302/1302 remain applicable;
+no fresh complete local run is claimed. The two fresh full Linux backend runs
+and the deployed browser selection above were executed for this task.
+
+All 142 attempted test contexts cleaned only their own 142 synthetic workspace
+UUIDs after closing their browser contexts; every DELETE returned 204. Existing
+owner resources were not selected for cleanup. All 2250 protected evidence files
+retain SHA-256, size and nanosecond mtime, with zero additions/removals/changes.
+The assessment remains byte-identical; all historical audit bytes are preserved
+before append-only release evidence. The five protected paths remain untracked,
+unstaged and outside both documentation commits.
+
+The release preparation commit above contains six reviewed docs. This execution
+record, CURRENT_STATE, HANDOFF and the final-audit addendum form a separate
+**documentation-only closure commit**, whose identity is the commit containing
+this outcome. Branch HEAD may therefore be newer than the deployed release;
+application/test hashes and the intended running SHA stay explicit. Publishing
+that record does not redeploy DEV or merge main. CI for the closure record is
+separately checked; the runtime release gates above apply to the deployed SHA.
+
+New evidence only:
+C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120
+
+Known limits remain the approved ephemeral workspace lifetime, historical
+Unknown as Unverified, no shared Secondary identity/CT-VT conversion, deferred
+CSV/BEN side declaration and separate CSV discovery-ID work, and no broader
+load/heap certification. Existing CI action-runtime/image migration notices and
+21 warnings were nonblocking; no unrelated workflow correction was made.
+Rollback remains prior manual DEV run 41831396862 for 265f1906, only with owner
+direction; no rollback, main merge, production deploy or further feature work.
+Owner UAT: [existing checklist](../uat/pu-audit-2026-11-04/README.md), interpreted
+with the current DEC-210 matrix above. Stop for final owner acceptance.
+
+## Authorization and preparation checkpoint (historical)
 
 The owner's task "Final PU Release Preparation and DEV Verification" accepts
 the LIM-001 engineering policy and authorizes reviewed documentation, a normal

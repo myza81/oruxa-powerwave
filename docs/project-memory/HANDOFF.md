@@ -4,44 +4,51 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-07** (final PU release preparation; DEV execution pending).
+Last updated: **2026-11-07** (DEV verified; hand over for final owner acceptance).
 
-## Final PU release - owner-authorized feature branch to DEV
+## Final PU release - stop for owner acceptance
 
-The latest owner task accepts the LIM-001 policy and authorizes documentation
-finalization, normal branch push, green CI, exact-commit manual DEV deployment
-and actual deployed smoke. Do not merge main or deploy PROD. Earlier release
-pause notes are historical and superseded only within this approved scope.
-Read the [release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
+Deployed release: `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` on
+feature/calculator-vi-phasors, including FA-001 384a55f and LIM-001 b6202fc.
+Normal push, both required CI jobs, and existing manual deploy.yml target=dev
+passed. CI run 42327370768; DEV run 42327935955. Both full Linux backend runs:
+11,391 passed / 303 skipped / 21 warnings / zero failures. No main merge or PROD.
 
-The preparation commit contains only six reviewed documentation paths, parent
-`b6202fcea18682dccd1b8ec41e080f9e9be953a7`; resolve its exact SHA before push.
-FA-001 parent `384a55f` and LIM-001 remain intact. Origin feature and actual
-DEV were `265f1906`; main `d8ade8f`. All 871 tested source hashes match:
-final local backend 11,374 passes / 320 existing skips / 21 warnings, complete
-browser 1302/1302 / 92 files / zero retries. No new full local run is claimed.
+Both running full versions match the release, development environment and
+healthy backend. Strict chain/hostname/system-CA TLS verification passed before
+and after deployed smoke, without any TLS bypass or trust-store change.
 
-Strict TLS/hostname/system-CA preflight confirms old DEV frontend/backend SHA
-and healthy development environment. CI, the new deployment and deployed smoke
-are pending. Push without force, require both CI jobs on the exact release SHA,
-verify remote ref still matches, then dispatch existing deploy.yml on this branch
-with target=dev. Its own backend test gate must pass. Verify recorded head SHA,
-deployment success, both running versions and health before smoke.
+140 unique deployed smoke cases have passing evidence in nine files. Initial
+101 passes / one wrong raw-row expectation / 38 not run; follow-up one harness
+legend/layout error / 38 not run; final remaining 39/39 pass. Both harness errors
+are preserved and explained, not product corrections. Zero automatic retries.
+Raw source rows intentionally keep ENG metadata; plots and calculated display
+rows use live units. Exact arrays, identities and label assertions were retained.
 
-Use isolated TEMP evidence, real DEV config/backend, synthetic fixtures and
-test-owned workspaces only. Zero browser retries, no ignoreHTTPSErrors or TLS
-disablement. Cover FA-001 actual preview/save/PU values, full LIM side matrix,
-Manual/Unassigned/Automatic, Voltage PU, precedence, shared consumers, stale
-response fences and Power regression. Recheck deployed versions afterward.
-Stop on any CI/deployment/version/numerical gate failure without unrelated fixes.
+FA-001 extreme preview/saved base/actual PU samples match independent arithmetic.
+LIM-001 side matrix and disclosure, strict cross-authority Unknown/Manual,
+shared consumers, mode/base edits, async fencing, Voltage/group/default/linked
+bases, independent/nested Manual, Power Calculator and calculated Power pass.
+All 142 synthetic test-owned workspaces cleaned, every DELETE 204. All 871 tested
+source hashes and all 2250 protected evidence files remain unchanged. Prior full
+local acceptance remains applicable; no new complete local suite claimed.
 
-The archived final audit keeps all previous bytes before append-only updates.
-The assessment is committed unchanged as historical analysis; DEC-210 supersedes
-its old proposal status. Protect .audit/, .slice1-evidence/, test-results/ and
-both screenshot specs. New outputs:
-`C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120`.
-Record actual outcomes in a separate documentation-only closure revision and
-keep the deployed release SHA explicit. Overall owner acceptance remains pending.
+This result record is a separate documentation-only closure commit after the
+actual deployed SHA. Do not confuse documentation HEAD with runtime version;
+no application/test change or redeploy is needed for the record. Current remote
+main remains d8ade8f. Preserve the five protected untracked paths unchanged:
+.audit/, .slice1-evidence/, test-results/ and both screenshot specs.
+
+Read the [release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md) for
+exact commits, workflow links, tests, numerical evidence, retained harness errors,
+secure versions, cleanup and rollback boundary. New outputs only:
+C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120
+
+GO for final owner UAT; overall PU acceptance remains the owner's decision.
+Known limits: accepted ephemeral workspaces, Unverified historical Unknown,
+shared Secondary identity, CSV/BEN side declaration and separate discovery-ID,
+CT/VT scaling and broader load/heap certification. No permanent storage expansion,
+main merge, PROD deploy, unrelated fixes or further work. Stop here.
 
 ## Per-Unit audit Stage 5B - result-owned manual Current PU
 

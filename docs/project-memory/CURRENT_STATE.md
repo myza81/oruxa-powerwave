@@ -9,34 +9,38 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## Final PU release - authorized DEV execution pending (2026-11-07)
+## Final PU release - DEV verified; final owner acceptance pending (2026-11-07)
 
-[DECISION] The owner accepted LIM-001's DEC-210 policy and authorized reviewed
-documentation, normal feature-branch push, CI, exact-commit manual DEV deployment
-and post-deployment verification. Main merge and PROD remain unauthorized.
-Final owner acceptance follows the DEV checks. Earlier stop notes are historical.
+[FACT] Feature release `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` is pushed
+and deployed to DEV through the existing manual target=dev workflow. FA-001
+384a55f and LIM-001 b6202fc are included; no unrelated runtime change, main merge
+or PROD deployment. Both CI jobs and the deployment's own backend gate passed:
+11,391 Linux passes / 303 skips / 21 warnings, zero failures, in each backend run.
 
-[FACT] FA-001 is `384a55fafbbecf7e304aa9ea8cfc663554177fd1`; LIM-001 is
-`b6202fcea18682dccd1b8ec41e080f9e9be953a7`. All 871 tested code/test hashes
-match the final local acceptance manifest: backend 11,374 passes / 320 existing
-skips / 21 existing warnings; browser 1302/1302 in 92 files, zero retries.
-No runtime/test changes are made in release preparation. The original audit and
-its follow-ups retain historical conclusions; the dated assessment is archived
-unchanged, superseded by DEC-210. Only reviewed documentation is committed here.
+[VALIDATION] 140 unique deployed browser cases pass: 101 initial passes plus
+39/39 remaining passes after correcting two isolated harness errors. Preserve
+those failed attempts; do not claim one clean first run. Zero automatic retries.
+Actual FA-001 extreme preview 57735026.9190 kA, saved 57735026918.96258 A;
+all 101 samples match independent division. LIM side matrix, strict Manual/
+cross-authority Unknown, shared consumers, stale-response fences, Voltage,
+group/default precedence, manual modes and Power regressions pass.
 
-[FACT] Strict TLS preflight on 2026-11-07 01:59:42 UTC confirms both DEV versions
-still at `265f1906`, environment development and backend healthy. Windows Node
-system CA trust works with hostname validation and no bypass. New release CI,
-deployment and deployed smoke are **pending**, not yet claimed as passed.
+[FACT] Strict TLS/hostname and post-smoke checks confirm both running versions
+match that full release SHA, development environment and healthy backend.
+All 871 tested application/test hashes are unchanged, so prior full Windows
+backend 11,374/320 and local browser 1302/1302 remain applicable. No new complete
+local run claimed. All 142 synthetic test-owned workspaces were cleaned (204).
+All 2250 protected files are unchanged; the five protected paths remain untracked.
 
-[BOUNDARY] Branch `feature/calculator-vi-phasors`; `origin/main=d8ade8f`.
-The release is the documentation commit containing the
-[release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md), parent b6202fc.
-The record gives exact commit contents, tests, gates, rollback and smoke plan.
-All five protected untracked paths remain untouched. Historical Unknown is
-Unverified; CT/VT conversion, shared Secondary identity, CSV/BEN side declaration,
-CSV discovery-ID and durable workspace life remain deferred. Do not merge main
-or deploy PROD. Stop on any release gate failure; hand over after DEV verification.
+[BOUNDARY] This handoff is in a separate documentation-only closure commit,
+newer than the deployed release; it changes no application/test code and does
+not redeploy DEV. Full results, exact workflow links, first-run accounting,
+commit identities, numerical evidence and limits:
+[final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
+Final owner UAT/overall PU acceptance remain pending. Ephemeral workspace life,
+Unverified historical Unknown, shared Secondary identity, CSV/BEN side UI,
+CSV discovery-ID, CT/VT conversion and load/heap certification stay bounded.
+No main merge, PROD or additional work. Hand over for final owner acceptance.
 
 ## Per-Unit audit Stage 5B - result-specific manual Current PU (2026-11-04)
 

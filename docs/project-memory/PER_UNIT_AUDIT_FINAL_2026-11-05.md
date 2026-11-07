@@ -844,3 +844,36 @@ Exact release delta, unchanged-code evidence, deployment gates, rollback plan,
 synthetic deployed smoke and remaining limitations:
 [PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
 Actual execution results will follow in a separate documentation-only record.
+
+
+## Final release DEV verification - 2026-11-07
+
+Subsequent deployed evidence; all original findings and historical conclusions
+above remain intact. Owner-authorized release `82c8ebbe320b58113a71caeb1c2e4335ad7887a8`
+was pushed normally and deployed through manual target=dev, without main merge
+or PROD. [CI](https://github.com/myza81/oruxa-powerwave/actions/runs/42327370768) and
+[DEV deployment](https://github.com/myza81/oruxa-powerwave/actions/runs/42327935955) both passed; each backend run had
+11,391 passes / 303 skips / 21 warnings / zero failures.
+
+At 2026-11-07T02:45:59.307Z, both live full SHAs match the release, backend healthy/development;
+strict certificate chain and hostname checks pass. 140 unique deployed browser
+cases have passing evidence, zero automatic retries: 101 initial passes plus
+39/39 remaining after two temporary-harness errors, both retained and explained.
+This does not rewrite the first attempts as clean. No production/test repository
+change was needed: raw-row ENG contract and Grouped/Separate legend setup were
+corrected only in isolated smoke harness copies.
+
+FA-001 ordinary/extreme preview, accepted base and all actual samples match
+independent division (extreme 57735026.9190 kA / 57735026918.96258 A).
+LIM-001 known mismatch and Unknown/Manual policy, shared consumers, async fencing,
+Voltage/linked/group/default bases, manual modes, Power Calculator and calculated
+Power pass. 142 test-owned synthetic workspaces were cleaned, all 204. All 871
+tested source hashes and all 2250 protected files remain unchanged; the complete
+51,696-byte release-task-start audit prefix is preserved before these addenda.
+
+Exact evidence, honest failure accounting, closure-documentation versus deployed
+identity, remaining limits and owner acceptance boundary:
+[final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
+Recommendation: GO for final owner UAT. Overall PU acceptance is not automatic.
+Historical Unknown/ephemeral workspace and other bounded limitations remain.
+No main merge, PROD deployment, rollback or additional development. Stop for owner.
