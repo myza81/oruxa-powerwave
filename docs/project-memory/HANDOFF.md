@@ -4,56 +4,44 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-07** (LIM-001 implemented and verified locally).
+Last updated: **2026-11-07** (final PU release preparation; DEV execution pending).
 
-## LIM-001 - stop for owner review
+## Final PU release - owner-authorized feature branch to DEV
 
-The owner-approved DEC-210 policy is implemented. Read the
-[LIM-001 implementation report](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md)
-for the exact 26-file scope, compatibility matrix, numerical reproductions,
-source/evidence manifests, first-run failures/corrections and final results.
+The latest owner task accepts the LIM-001 policy and authorizes documentation
+finalization, normal branch push, green CI, exact-commit manual DEV deployment
+and actual deployed smoke. Do not merge main or deploy PROD. Earlier release
+pause notes are historical and superseded only within this approved scope.
+Read the [release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
 
-Known P/S mismatch is blocked by shared backend reference proof. Historical
-raw/single-authority Unknown keeps approved numerical behavior with explicit
-Unverified reference labeling. Stage 5A cross-authority and Stage 5B Manual
-restrictions remain; Manual selects an independent result base without changing
-inputs. No CT/VT scaling, sample reinterpretation, persistence redesign or
-Current Compliance product expansion. Physical arrays and PU/Power mathematics
-are unchanged. Shared UI metadata/warnings respect existing refresh fences.
+The preparation commit contains only six reviewed documentation paths, parent
+`b6202fcea18682dccd1b8ec41e080f9e9be953a7`; resolve its exact SHA before push.
+FA-001 parent `384a55f` and LIM-001 remain intact. Origin feature and actual
+DEV were `265f1906`; main `d8ade8f`. All 871 tested source hashes match:
+final local backend 11,374 passes / 320 existing skips / 21 warnings, complete
+browser 1302/1302 / 92 files / zero retries. No new full local run is claimed.
 
-Final full backend: **11,374 passed / 320 existing skips / no failures or errors /
-21 existing warnings**, 2012.44 seconds. Final complete browser: **1302/1302**,
-92 explicit files, four workers, zero failures/skips/flaky cases/global errors/
-retries, 2449.365 seconds. Both exit 0. All 59 new backend and seven new browser
-cases pass. The 871 application/test source hashes match across the complete
-runs. The six intended pre-fix failures and initial full-run failures remain
-in evidence; do not describe the first runs as clean. Text Note adapter and
-scoped response/readiness assertions were corrected; no unrelated product
-correction was made. Temporary PowerShell launcher diagnostics are documented.
+Strict TLS/hostname/system-CA preflight confirms old DEV frontend/backend SHA
+and healthy development environment. CI, the new deployment and deployed smoke
+are pending. Push without force, require both CI jobs on the exact release SHA,
+verify remote ref still matches, then dispatch existing deploy.yml on this branch
+with target=dev. Its own backend test gate must pass. Verify recorded head SHA,
+deployment success, both running versions and health before smoke.
 
-The focused local LIM-001 commit is the commit containing that report.
-Its parent is FA-001 `384a55fafbbecf7e304aa9ea8cfc663554177fd1`.
-Branch `feature/calculator-vi-phasors` is two ahead / zero behind fetched
-upstream `265f1906`; `origin/main` remains `d8ade8f`.
-Tracked tree/index are clean. Neither local fix was pushed.
-DEV frontend/backend were last observed at `265f1906` on 2026-11-05
-12:26:55 UTC; there is no new deployed observation or deployment here.
+Use isolated TEMP evidence, real DEV config/backend, synthetic fixtures and
+test-owned workspaces only. Zero browser retries, no ignoreHTTPSErrors or TLS
+disablement. Cover FA-001 actual preview/save/PU values, full LIM side matrix,
+Manual/Unassigned/Automatic, Voltage PU, precedence, shared consumers, stale
+response fences and Power regression. Recheck deployed versions afterward.
+Stop on any CI/deployment/version/numerical gate failure without unrelated fixes.
 
-The historical [assessment](PER_UNIT_AUDIT_LIM_001_ASSESSMENT_2026-11-06.md)
-is unchanged. The [final audit](PER_UNIT_AUDIT_FINAL_2026-11-05.md) keeps its
-original conclusions and complete 47,966-byte task-start prefix before an
-append-only LIM follow-up. Both existing untracked reports stay outside the
-focused commit. Preserve all seven existing untracked entries, including
-`.audit/`, `.slice1-evidence/`, `test-results/` and both screenshot specs.
-All 2250 protected files passed hash/size/nanosecond-mtime comparison unchanged.
-New outputs only:
-`C:/Users/fairizat/AppData/Local/Temp/oruxa-lim001-f7c1a499069b416097aabd49a5d828e5`.
-
-LIM-001's local acceptance checks pass. The owner still controls final overall
-PU acceptance and release. Do not push, merge, deploy or begin additional work.
-Historical Unknown, shared Secondary identity, CSV/BEN side declaration, the
-separate CSV discovery-ID defect, CT/VT conversion and durable workspace life
-remain explicitly bounded/deferred. Stop for owner review.
+The archived final audit keeps all previous bytes before append-only updates.
+The assessment is committed unchanged as historical analysis; DEC-210 supersedes
+its old proposal status. Protect .audit/, .slice1-evidence/, test-results/ and
+both screenshot specs. New outputs:
+`C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120`.
+Record actual outcomes in a separate documentation-only closure revision and
+keep the deployed release SHA explicit. Overall owner acceptance remains pending.
 
 ## Per-Unit audit Stage 5B - result-owned manual Current PU
 

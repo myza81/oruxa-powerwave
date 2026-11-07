@@ -9,52 +9,34 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## LIM-001 - centralized Current PU reference safety (2026-11-07)
+## Final PU release - authorized DEV execution pending (2026-11-07)
 
-[DECISION] DEC-210 records the owner's approved option A: known P/S or S/P
-mismatch blocks Current PU; historical raw/single-authority Unknown conversion
-retains its numbers with explicit **Unverified reference** disclosure. Stage 5A
-cross-authority Automatic and Stage 5B result Manual remain strict. No CT/VT
-scaling, side inference, recorded-side UI or new persistence is introduced.
+[DECISION] The owner accepted LIM-001's DEC-210 policy and authorized reviewed
+documentation, normal feature-branch push, CI, exact-commit manual DEV deployment
+and post-deployment verification. Main merge and PROD remain unauthorized.
+Final owner acceptance follows the DEV checks. Earlier stop notes are historical.
 
-[FACT] One pure backend reference classifier serves raw Group/Source Default,
-legacy, calculated/nested, provenance and readiness resolution. Group precedence,
-unit/review/dependency/numerical gates and independent result Manual remain.
-Additive response metadata drives shared accessible warnings through base/mode
-changes and asynchronous refreshes. Event Reconstruction uses its own mode.
-Physical samples, Voltage PU, linked bases and Power mathematics are unchanged.
-Policy, exact 26-file scope, reproductions, evidence and limits:
-[LIM-001 implementation report](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
+[FACT] FA-001 is `384a55fafbbecf7e304aa9ea8cfc663554177fd1`; LIM-001 is
+`b6202fcea18682dccd1b8ec41e080f9e9be953a7`. All 871 tested code/test hashes
+match the final local acceptance manifest: backend 11,374 passes / 320 existing
+skips / 21 existing warnings; browser 1302/1302 in 92 files, zero retries.
+No runtime/test changes are made in release preparation. The original audit and
+its follow-ups retain historical conclusions; the dated assessment is archived
+unchanged, superseded by DEC-210. Only reviewed documentation is committed here.
 
-[VALIDATION] Final full backend: **11,374 passed / 320 existing skips / zero
-failures or errors / 21 existing warnings**, 2012.44 seconds, exit 0.
-Final complete browser: **1302/1302 passed in 92 files**, four workers, zero
-failures/skips/flaky cases/global errors/retries, 2449.365 seconds, exit 0.
-The 59 new backend and seven new browser cases pass. All 871 tested source files
-match the recorded hashes. Six intended pre-fix failures, the initial full-run
-failures, scoped corrections, 65/65 affected-file rerun and temporary launcher
-diagnostics are retained honestly in the report; the first runs were not clean.
+[FACT] Strict TLS preflight on 2026-11-07 01:59:42 UTC confirms both DEV versions
+still at `265f1906`, environment development and backend healthy. Windows Node
+system CA trust works with hostname validation and no bypass. New release CI,
+deployment and deployed smoke are **pending**, not yet claimed as passed.
 
-[FACT] The focused local LIM-001 commit is the commit adding that report, with
-FA-001 parent `384a55fafbbecf7e304aa9ea8cfc663554177fd1`.
-Branch `feature/calculator-vi-phasors` is two ahead / zero behind fetched
-upstream `265f1906d4a6c30568309dd45ffa5e41cbb236ce`.
-Main remains `d8ade8f04dde5df2654082a784adbebb064a7336`.
-Tracked tree/index are clean; seven pre-existing untracked entries remain.
-All 2250 protected files passed SHA-256/size/nanosecond-mtime checks unchanged.
-The historical [assessment](PER_UNIT_AUDIT_LIM_001_ASSESSMENT_2026-11-06.md)
-remains byte-identical; [final audit](PER_UNIT_AUDIT_FINAL_2026-11-05.md)
-receives append-only evidence preserving its 47,966-byte task-start prefix.
-Neither existing untracked report is included in the focused commit.
-
-[OPEN / BOUNDARY] Historical Unknown remains unverified by explicit owner policy.
-CT/VT conversion, common Secondary reference identity, CSV/BEN recorded-side
-declaration, the separate CSV discovery-ID defect and durable workspace life
-remain deferred. Final overall PU audit acceptance belongs to the owner.
-DEV frontend/backend were last observed at `265f1906` on 2026-11-05
-12:26:55 UTC; this task makes no new deployed-version claim.
-No push, merge, deployment or automatic overall audit closure. Stop for owner
-review before release activities or additional work.
+[BOUNDARY] Branch `feature/calculator-vi-phasors`; `origin/main=d8ade8f`.
+The release is the documentation commit containing the
+[release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md), parent b6202fc.
+The record gives exact commit contents, tests, gates, rollback and smoke plan.
+All five protected untracked paths remain untouched. Historical Unknown is
+Unverified; CT/VT conversion, shared Secondary identity, CSV/BEN side declaration,
+CSV discovery-ID and durable workspace life remain deferred. Do not merge main
+or deploy PROD. Stop on any release gate failure; hand over after DEV verification.
 
 ## Per-Unit audit Stage 5B - result-specific manual Current PU (2026-11-04)
 

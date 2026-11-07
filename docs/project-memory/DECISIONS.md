@@ -29239,3 +29239,11 @@ the extent above. It does not relax its cross-authority or Manual restrictions,
 authorize the CSV discovery-ID fix, or close the complete PU audit automatically.
 Implementation and validation: [PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md](PER_UNIT_AUDIT_LIM_001_IMPLEMENTATION.md).
 Owner review remains required before acceptance, push, merge or deployment.
+
+
+Release authorization update (2026-11-07): the owner accepted this engineering
+policy and authorized final documentation, normal feature-branch push, required
+CI, exact-commit manual DEV deployment and post-deployment verification.
+This supersedes the prior deployment pause for that scope only. No main merge,
+PROD deployment or automatic overall PU acceptance. See the
+[final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
