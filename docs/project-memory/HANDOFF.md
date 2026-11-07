@@ -4,51 +4,59 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-07** (DEV verified; hand over for final owner acceptance).
+Last updated: **2026-11-07** (PR #7 merged; automatic DEV and post-merge smoke verified).
 
-## Final PU release - stop for owner acceptance
+## PR #7 - post-merge DEV verification complete; stop
 
-Deployed release: `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` on
-feature/calculator-vi-phasors, including FA-001 384a55f and LIM-001 b6202fc.
-Normal push, both required CI jobs, and existing manual deploy.yml target=dev
-passed. CI run 42327370768; DEV run 42327935955. Both full Linux backend runs:
-11,391 passed / 303 skipped / 21 warnings / zero failures. No main merge or PROD.
+The owner merged [PR #7](https://github.com/myza81/oruxa-powerwave/pull/7) into
+main at `e6d77345cb5f244d2205741dcbe4de1aaf297576`. Fetched origin/main contains the
+merge. Its complete tree matches reviewed feature HEAD 8f30dc7; FA-001 and
+LIM-001 commits and existing Power functionality remain intact.
 
-Both running full versions match the release, development environment and
-healthy backend. Strict chain/hostname/system-CA TLS verification passed before
-and after deployed smoke, without any TLS bypass or trust-store change.
+[CI](https://github.com/myza81/oruxa-powerwave/actions/runs/42355588058) on that exact main SHA passed Backend
+tests and Compose validation: 11,391 passed / 303 skipped / 21 warnings / zero
+failures, 400.96 seconds. [Automatic DEV](https://github.com/myza81/oruxa-powerwave/actions/runs/42356103360)
+succeeded after that main CI, with log-proven APP_VERSION equal to the merge.
+The established workflow uses literal dev; no manual dispatch, rerun or bypass.
 
-140 unique deployed smoke cases have passing evidence in nine files. Initial
-101 passes / one wrong raw-row expectation / 38 not run; follow-up one harness
-legend/layout error / 38 not run; final remaining 39/39 pass. Both harness errors
-are preserved and explained, not product corrections. Zero automatic retries.
-Raw source rows intentionally keep ENG metadata; plots and calculated display
-rows use live units. Exact arrays, identities and label assertions were retained.
+At 2026-11-07T08:50:11.659Z, frontend buildVersion and backend git_sha both match the full
+merge; backend healthy and environments development. Strict certificate chain
+and hostname checks passed, including negative hostname checks. Node system-CA
+trust only; no ignoreHTTPSErrors, disabled TLS, CA/key export or trust change.
 
-FA-001 extreme preview/saved base/actual PU samples match independent arithmetic.
-LIM-001 side matrix and disclosure, strict cross-authority Unknown/Manual,
-shared consumers, mode/base edits, async fencing, Voltage/group/default/linked
-bases, independent/nested Manual, Power Calculator and calculated Power pass.
-All 142 synthetic test-owned workspaces cleaned, every DELETE 204. All 871 tested
-source hashes and all 2250 protected evidence files remain unchanged. Prior full
-local acceptance remains applicable; no new complete local suite claimed.
+Fresh post-merge real-DEV smoke: **35/35 passed in eight explicitly selected
+files**, zero failures/skips/flaky/global errors/automatic retries. This is a
+clean focused run, distinct from earlier feature verification's retained harness
+failures. Checks preserve exact numerical values, units, channel identity and
+configuration snapshots; original raw source rows retain ENG metadata.
 
-This result record is a separate documentation-only closure commit after the
-actual deployed SHA. Do not confuse documentation HEAD with runtime version;
-no application/test change or redeploy is needed for the record. Current remote
-main remains d8ade8f. Preserve the five protected untracked paths unchanged:
-.audit/, .slice1-evidence/, test-results/ and both screenshot specs.
+Coverage: Voltage Group/Source Default saves and clear; linked Current and
+physical-array round trips; compatible P/P and established S/S; both known
+mismatch directions unavailable with ENG preserved/no CT scaling; historical
+Unknown Unverified; strict cross-authority Unknown and incompatible Manual
+rejection; Manual/Unassigned/Automatic and Return to Automatic; nested Manual
+and ER; array/plot/cursor/annotation/provenance behavior; ordinary/extreme Current
+preview, saved bases and all 101 samples; Power Calculator Current/P-Q-S/PF,
+backend V-I phasors and single-/three-phase calculated Power.
 
-Read the [release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md) for
-exact commits, workflow links, tests, numerical evidence, retained harness errors,
-secure versions, cleanup and rollback boundary. New outputs only:
-C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120
+All 35 synthetic test-owned workspace UUIDs were deleted after closing their
+contexts, each HTTP 204. All 871 tested source hashes remain unchanged. Prior
+full local acceptance still applies; no fresh full local run claimed. All 2250
+protected files are unchanged. Preserve .audit/, .slice1-evidence/, test-results/
+and both untracked screenshot specs. Historical audit/release evidence is not
+rewritten. New outputs only: `C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-postmerge-20261107-233ce5c17c8a48c6b3ce4980ecbbff6d`.
 
-GO for final owner UAT; overall PU acceptance remains the owner's decision.
-Known limits: accepted ephemeral workspaces, Unverified historical Unknown,
-shared Secondary identity, CSV/BEN side declaration and separate discovery-ID,
-CT/VT scaling and broader load/heap certification. No permanent storage expansion,
-main merge, PROD deploy, unrelated fixes or further work. Stop here.
+This two-file result update is on docs/pu-post-merge-dev-verification, based on
+the verified merge, and changes no application/test code. Do not merge or push
+this record to main automatically: that would schedule another DEV deployment.
+The actual deployed SHA remains the merge above, not a later documentation HEAD.
+
+Post-merge DEV verification is complete. Stop for owner direction; no PROD,
+CT/VT enhancement or unrelated development. Accepted ephemeral workspace life,
+historical Unknown as Unverified, shared Secondary identity, CSV/BEN side UI,
+separate CSV discovery-ID and load/heap certification limits remain unchanged.
+The [earlier feature release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md)
+is historical; current main/running version is the merge stated here.
 
 ## Per-Unit audit Stage 5B - result-owned manual Current PU
 
