@@ -34,13 +34,18 @@ Defaults to `"unknown"` → all existing configs become `unverified`, never `inc
 [VALIDATION] Full backend: **11,424 passed / 303 skipped / 0 failed / exit 0** (11,727 collected:
 11,694 baseline + 33 new VLT-REF-001 tests). All 33 VLT-REF-001 tests pass explicitly (10.18s).
 Browser: new 7-test VLT-REF-001 Voltage safety spec 7/7; LIM-001 Current regression 7/7; PU +
-waveform regression batch 45/45 (after 2 test maintenance fixes; see below). Full 92-spec browser
-suite running; expected clean with fixed files.
+waveform regression batch 45/45 (after 3 test maintenance fixes; see below). Full 92-spec browser
+suite: **1,298 passed / 22 pre-existing BEN5K failures / 0 flaky / exit 1 (BEN5K) / VLT-REF-001
+net zero regressions**. Run completed 2026-11-08. HEAD `57ec3d1` → amended with final fix commit.
 
-[FINDING] `per-unit-display-synchronization.spec.js` had 2 tests that expected Voltage channel
-annotations to end with `pu` — VLT-REF-001 now appends `· Unverified reference` when
-`base_reference_side` is not configured. Fixed by adding `base_reference_side: "primary"` to the
-test's voltage-config call (1-line change). Re-verified: 26/26 ✓.
+[FINDING — RESOLVED] VLT-REF-001 annotation suffix pattern: any test creating a Voltage Measurement
+Group without `base_reference_side` and asserting PU annotation text with a strict end-anchor regex
+(`/... pu$/`) fails because VLT-REF-001 appends `· Unverified reference`. Three specs required
+1-line test maintenance fix each — add `base_reference_side: "primary"` to voltage-config PUT:
+1. `per-unit-display-synchronization.spec.js` (2 tests at lines 478, 519) — fixed in `57ec3d1`.
+2. `event-reconstruction-per-unit.spec.js` (1 test at line 473) — fixed in this commit.
+All 22 remaining failures are pre-existing BEN5K/timing infrastructure gaps (no owner .ben files
+on this machine); none are VLT-REF-001 regressions.
 
 [DEFERRED] Frontend UI selectors for `base_reference_side` (Voltage group) and
 `voltage_base_reference_side` (Source Default) — Phase 2. Existing configs default to `"unknown"`

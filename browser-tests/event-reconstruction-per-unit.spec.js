@@ -47,7 +47,7 @@ async function configure(page, station, { voltage = [], current = [], legacyKv =
   const refs = (names) => names.map((channel_name) => ({ kind: "source", source_id: sourceId, channel_name }));
   if (voltage.length) {
     const group = await (await page.request.post(groupsUrl, { data: { kind: "voltage", display_name: station + " 275 kV", status: "confirmed", channel_refs: refs(voltage) } })).json();
-    expect((await page.request.put(`${groupsUrl}/${group.id}/voltage-config`, { data: { nominal_voltage_ll_kv: LL_BASE_KV } })).ok()).toBe(true);
+    expect((await page.request.put(`${groupsUrl}/${group.id}/voltage-config`, { data: { nominal_voltage_ll_kv: LL_BASE_KV, base_reference_side: "primary" } })).ok()).toBe(true);
   }
   if (current.length) {
     const group = await (await page.request.post(groupsUrl, { data: { kind: "current", display_name: station + " current", status: "confirmed", channel_refs: refs(current) } })).json();
