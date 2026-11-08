@@ -94,6 +94,7 @@ SOURCE_KIND_SOURCE_DEFAULT = "source_default"
 #: group." vs "...source-wide...").
 _MEASUREMENT_GROUP_REASON_COPY: dict[str, str] = {
     "group_not_confirmed": "This Measurement Group has not been confirmed yet.",
+    "base_invalidated": "The base authority for this Measurement Group's configuration has been invalidated.",
     "voltage_base_not_configured": "Voltage base is not configured for this group.",
     "voltage_reference_undetermined": "This group's voltage reference (L-G/L-L) could not be determined.",
     "current_base_not_configured": "No current base method is configured for this group.",

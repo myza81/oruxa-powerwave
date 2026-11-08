@@ -151,6 +151,11 @@ def _convert_probe(values, unit, engineering_type, reference_unit, name, resolve
                     "The Measurement Group's voltage base is set but the group has not been confirmed, so the shared "
                     "per-unit configuration is not applied yet. Open Configure Base and save to confirm it."
                 )
+            if reason == "base_invalidated":
+                return None, (
+                    "The base authority for this Measurement Group's configuration has been invalidated. "
+                    "Engineer review is required before per-unit values can be shown."
+                )
             return None, (
                 f"{name} cannot be shown in per-unit: the shared per-unit configuration does not apply to it "
                 f"(status: {status or 'not configured'})."

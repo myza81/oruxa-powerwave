@@ -94,12 +94,17 @@ class VoltageGroupConfigRegistry:
         reference_mode: str | None = None,
         reference_override: str | None = None,
         base_reference_side: str | None = None,
+        base_authority: str | None = None,
+        secondary_voltage_ll_v: float | None = None,
+        update_secondary: bool = False,
     ) -> VoltageBaseConfiguration:
         """Publish service-validated fields as one configuration replacement.
 
         Merge omitted fields under the existing lock, so concurrent reference
         and nominal-base edits cannot overwrite each other's accepted fields.
         A supplied reference mode replaces the mode/override pair together.
+        `update_secondary=True` applies `secondary_voltage_ll_v` (None clears it);
+        False (default) preserves the existing secondary_voltage_ll_v.
         All copies (including the return value) are prepared before publication.
         """
         with self._lock:
@@ -116,6 +121,10 @@ class VoltageGroupConfigRegistry:
                 candidate.reference_override = reference_override
             if base_reference_side is not None:
                 candidate.base_reference_side = base_reference_side
+            if base_authority is not None:
+                candidate.base_authority = base_authority
+            if update_secondary:
+                candidate.secondary_voltage_ll_v = secondary_voltage_ll_v
             result = _copy_config(candidate)
             self._configs[key] = candidate
             return result

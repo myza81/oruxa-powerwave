@@ -184,6 +184,7 @@ async def upload_comtrade_source(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     calculated_channel_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
 ) -> SourceSummaryOut:
     """Import one recording: a COMTRADE ``cfg_file`` + ``dat_file`` pair,
     or a single ``ben_file`` (DEC-120) -- never both. Both formats share
@@ -247,6 +248,7 @@ async def upload_comtrade_source(
         workspace_id=workspace_id, source_id=source.source_id,
         source_registry=registry, group_registry=measurement_group_registry,
         context_registry=engineering_context_registry, calculated_channel_registry=calculated_channel_registry,
+        voltage_config_registry=voltage_group_config_registry,
     )
 
     return SourceSummaryOut.from_domain(source)

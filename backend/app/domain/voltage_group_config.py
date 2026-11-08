@@ -53,14 +53,22 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from app.domain.base_authority import (
+    BASE_AUTHORITY_LEGACY,
+    BaseAuthorityState,
+    is_auto_resolved,
+    is_base_eligible_for_pu,
+)
 from app.domain.measurement_group import (
     KIND_VOLTAGE,
     STATUS_CONFIRMED,
     STATUS_MANUAL,
+    STATUS_SUGGESTED,
     MeasurementGroup,
 )
 from app.domain.per_unit_numerics import convert_scalar, scaled_base
 from app.domain.reference_side import ReferenceSide
+from app.domain.voltage_primary_secondary import secondary_voltage_ll_v_valid
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -144,6 +152,13 @@ class VoltageBaseConfiguration:
     reference_mode: str = VOLTAGE_REFERENCE_MODE_AUTO
     reference_override: str | None = None
     base_reference_side: ReferenceSide = "unknown"
+    base_authority: BaseAuthorityState = BASE_AUTHORITY_LEGACY
+    # Slice 5C-2: secondary equivalent L-L voltage in Volts (None = not established).
+    # This is the secondary-side equivalent of nominal_voltage_ll_kv, stored separately
+    # so the two are never conflated. Only populated when a VT ratio or explicit
+    # secondary configuration establishes a secondary equivalent. The live resolver
+    # still uses nominal_voltage_ll_kv (primary path) until Slice 5D connects this.
+    secondary_voltage_ll_v: float | None = None
 
 
 def resolve_effective_voltage_reference_for_group(
@@ -245,9 +260,56 @@ def resolve_voltage_base_for_group(
     if group.kind != KIND_VOLTAGE:
         return VoltageBaseResolution(status=STATUS_NOT_APPLICABLE, denominator_kv=None, effective_reference=None, reason=None)
 
-    if group.status not in AUTHORITATIVE_GROUP_STATUSES:
+    # Authority gate (Slice 5C-1): ineligible states block PU regardless of group lifecycle status.
+    # needs_review and unavailable never produce an authoritative denominator.
+    if config is not None and not is_base_eligible_for_pu(config.base_authority):
+        return VoltageBaseResolution(
+            status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None, reason="base_invalidated"
+        )
+
+    # Group status gate: preserved for engineer-approved authority (legacy_manual / manual).
+    # auto_resolved authority bypasses the gate ONLY for suggested groups — a suggested group
+    # with valid auto_resolved evidence resolves to CONFIGURED without confirmed/manual status.
+    # needs_review groups have conflicting identity evidence and must not become PU-authoritative
+    # even when base_authority is auto_resolved — identity conflict takes precedence over base.
+    skip_status_gate = (
+        config is not None
+        and is_auto_resolved(config.base_authority)
+        and group.status == STATUS_SUGGESTED
+    )
+    if not skip_status_gate and group.status not in AUTHORITATIVE_GROUP_STATUSES:
         return VoltageBaseResolution(
             status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None, reason="group_not_confirmed"
+        )
+
+    # Slice 5D-1: Secondary denominator path.
+    # base_reference_side="secondary" declares the measurement is secondary-referred.
+    # secondary_voltage_ll_v MUST be valid — without it, the measurement side is declared
+    # secondary but the denominator would silently fall back to the primary nominal (e.g.
+    # 132 kV for a 63.5 V channel → ~0.0005 pu). That is the confirmed safety gap from the
+    # Slice 5D-1 Final Safety Verification: apply_voltage_reference() would classify the
+    # secondary/secondary pair as "compatible" and pass PU with the wrong denominator.
+    # Requiring secondary_voltage_ll_v for base_reference_side="secondary" is the safe rule.
+    if config is not None and config.base_reference_side == "secondary":
+        if not secondary_voltage_ll_v_valid(config.secondary_voltage_ll_v):
+            return VoltageBaseResolution(
+                status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None,
+                reason="secondary_equivalent_not_configured"
+            )
+        if explicit_reference in KNOWN_VOLTAGE_REFERENCES:
+            sec_ref = explicit_reference
+        else:
+            sec_ref = resolve_effective_voltage_reference_for_group(group, config).reference
+        if sec_ref not in KNOWN_VOLTAGE_REFERENCES:
+            return VoltageBaseResolution(
+                status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None,
+                reason="voltage_reference_undetermined"
+            )
+        sec_ll_v = config.secondary_voltage_ll_v
+        sec_denom_v = sec_ll_v / SQRT_3 if sec_ref == LINE_TO_GROUND else sec_ll_v
+        return VoltageBaseResolution(
+            status=STATUS_CONFIGURED, denominator_kv=sec_denom_v / 1000.0,
+            effective_reference=sec_ref, reason=None, denominator_volts=sec_denom_v,
         )
 
     if config is None or not voltage_base_valid(config.nominal_voltage_ll_kv):

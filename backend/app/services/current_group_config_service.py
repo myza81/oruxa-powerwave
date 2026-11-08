@@ -28,6 +28,7 @@ why this is a deliberate design choice, not merely a convenience.
 from __future__ import annotations
 from app.domain.reference_side import candidate_base_side
 
+from app.domain.base_authority import BASE_AUTHORITY_MANUAL
 from app.domain.current_group_config import (
     CurrentBaseConfiguration,
     CurrentBaseResolution,
@@ -182,6 +183,7 @@ def set_current_base_equipment_rating(
     config.linked_voltage_group_id = linked_voltage_group_id
     config.manual_voltage_base_kv = manual_voltage_base_kv
     config.manual_ibase_ka = None
+    config.base_authority = BASE_AUTHORITY_MANUAL
     current_config_registry.upsert(config)
     return config
 
@@ -213,6 +215,7 @@ def set_current_base_manual(
     config.equipment_rating_mva = None
     config.linked_voltage_group_id = None
     config.manual_voltage_base_kv = None
+    config.base_authority = BASE_AUTHORITY_MANUAL
     current_config_registry.upsert(config)
     return config
 
@@ -241,6 +244,7 @@ def set_current_base_none(
     config.linked_voltage_group_id = None
     config.manual_voltage_base_kv = None
     config.manual_ibase_ka = None
+    config.base_authority = BASE_AUTHORITY_MANUAL
     current_config_registry.upsert(config)
     return config
 

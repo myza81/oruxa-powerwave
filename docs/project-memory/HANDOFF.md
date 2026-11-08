@@ -4,7 +4,171 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-08** (VLT-REF-001 Voltage PU reference-side safety — final local verification complete; awaiting owner review).
+Last updated: **2026-11-08** (Slices 5A–5D-3 full — authority gate + PS model + resolver integration + strict secondary gate + automatic base service + frontend auto-switch + status banner + AT-1–AT-15 backend + AT-11/AT-13/AT-14 browser, local only).
+
+## Automatic PU Slices 5A–5D-3 — complete; awaiting owner authorization for PR/push
+
+Branch: `feature/vlt-ref-001-voltage-reference-safety` (Slice 5A/5B/5C-1 files are untracked/modified
+on this branch, local only — the branch name reflects its PR-7-era origin).
+
+**What changed (Slice 5C-1):**
+
+**Authority gate wired into live resolvers:**
+- `resolve_voltage_base_for_group()` now checks `base_authority` before the group-status gate
+- `resolve_current_base_for_group()` mirrors identically
+- `needs_review` / `unavailable` → `base_required("base_invalidated")` regardless of group lifecycle
+- `auto_resolved` BYPASSES the group-status gate (suggested group + valid auto config → CONFIGURED)
+- `legacy_manual` / `manual` preserve existing group-status gate behavior (confirmed/manual required)
+
+**Service layer transitions:**
+- `set_voltage_base()` → sets `base_authority = "manual"` via `update_voltage_configuration()`
+- `set_current_base_equipment_rating()`, `set_current_base_manual()`, `set_current_base_none()` → all set `base_authority = "manual"`
+- Reference-only operations (`set_manual_voltage_reference`, `return_voltage_reference_to_auto`) do NOT touch `base_authority`
+- `VoltageGroupConfigRegistry.update_fields()` now accepts `base_authority` parameter
+
+**Other changes:**
+- `calculated_current_per_unit.py:108` inline tuple `("confirmed", "manual")` → `AUTHORITATIVE_GROUP_STATUSES` from domain
+- `compliance_series.py` and `per_unit_provenance_service.py` both handle `"base_invalidated"` reason
+- `test_base_authority_domain.py`: 87 → 92 tests (5 added for Slice 5C-1; 3 inert-state tests updated to assert gate behavior)
+- New `backend/tests/test_slice5c1_authority_gate.py`: 39 tests → 54 after hardening (+15)
+
+**What changed (Slices 5A + 5B, recap):**
+- 5A: `backend/app/domain/auto_base_evidence.py` — pure-domain evidence resolver (59 tests)
+- 5B: `backend/app/domain/base_authority.py` — authority vocabulary + field on config dataclasses (original 87 tests)
+- Numerical correction: 76.2 × √3 = 131.9822715..., not 131.952
+
+**Slice 5C-1 closure correction (Slice 5C-2 session):** `auto_resolved` bypass incorrectly applied to
+ALL group statuses including `needs_review`. Fixed: bypass only when `group.status == STATUS_SUGGESTED`.
+Both `voltage_group_config.py` and `current_group_config.py` updated. 2 new tests in
+`test_base_authority_domain.py` (now 94). Full 6-row authority matrix verified in `test_slice5c2_primary_secondary.py`.
+
+**What changed (Slice 5C-2):**
+- New `backend/app/domain/voltage_primary_secondary.py` — pure-domain Primary/Secondary model:
+  - `VtRatio(primary_winding_v, secondary_winding_v, winding_ref: "phase"|"ll")` dataclass
+  - `vt_primary_ll_v()`, `vt_secondary_ll_v()` — L-L equivalent from VT winding (phase × √3)
+  - `VoltageReferenceSideResolution` — (status, denominator_v, denominator_kv, side, repr, provenance)
+  - `resolve_ps_voltage_denominator()` — primary/secondary/unknown denominator, pure function
+  - `resolve_ps_voltage_denominator_from_vt_ratio()` — VT-ratio-derived path
+  - 59 tests in `backend/tests/test_slice5c2_primary_secondary.py`
+- `VoltageBaseConfiguration.secondary_voltage_ll_v: float | None = None` added (additive, backward-compatible)
+- Live resolver (`resolve_voltage_base_for_group`) UNCHANGED — still uses `nominal_voltage_ll_kv`.
+  Connecting the PS model to the live resolver is a controlled step for Slice 5D.
+- Numerical contracts verified: Cases A–F from spec §4; VT phase-winding 76200/63.5 produces
+  131,982.277... V (not 132,000) and 109.985... V (not 110) — no silent rounding.
+- Current compatibility verified: 100 MVA / 132 kV → Ibase_primary = 0.4373865676 kA.
+  Secondary CT 1200/1 path → 437.3865676/1200 = 0.36448... A (manual Ibase entry path).
+
+**What changed (Slice 5D-1 + Final Safety Verification):**
+`resolve_voltage_base_for_group()` now implements the secondary path with strict gating:
+- **Strict secondary gate (confirmed safe):** `base_reference_side=="secondary"` requires a valid
+  `secondary_voltage_ll_v`. Without it, returns `base_required("secondary_equivalent_not_configured")`.
+  SAFETY FINDING: the alternative (additive fallback to primary nominal) was confirmed unsafe by the
+  Final Safety Verification — `apply_voltage_reference()` classifies secondary/secondary as "compatible"
+  and does not catch the wrong denominator case. E.g., 63.5 V / 132 kV = 0.00048 pu (wrong; should be ~1 pu).
+  The strict gate enforces the spec §2 invariant: "a missing secondary denominator must not silently fall
+  back to the primary nominal-system denominator."
+- When gate is met (both `base_reference_side=="secondary"` AND valid `secondary_voltage_ll_v`):
+  denominator = `secondary_voltage_ll_v` for LL; `÷√3` for LG.
+  Secondary path comes before the nominal kV check — no primary nominal required.
+- `"primary"` or `"unknown"` → existing primary path using `nominal_voltage_ll_kv`. Unchanged.
+- Authority gates and group-status gate both remain active before the secondary path.
+- Stale-secondary clearing: `update_voltage_configuration()` clears `secondary_voltage_ll_v` when
+  `nominal_voltage_ll_kv` changes without an explicit secondary value. `set_voltage_base()` triggers this.
+  Reference-only operations do NOT clear secondary.
+**COMTRADE PS Semantics Correction (2026-11-08):**
+IEEE C37.111 / IEC 60255-24: `PS` (pors field) is the engineering-value scale for `a × raw + b`.
+  PS=P → Primary-referred values. PS=S → Secondary-referred values.
+PS has nothing to do with physical VT/CT wiring. `measurement_side` is the scaled-value scale,
+not the physical acquisition terminal.
+Prior `recording()` only changed the pors field (PS marker) without rescaling `a`, producing
+malformed COMTRADE (kV values labeled PS=S). Fixed: `recording(marker="S")` now ALSO rescales
+`a` by `secondary/primary`:
+  N275_VR: a_secondary = 158.77 × (1.0/275.0) = 0.577345 kV — genuinely Secondary-referred.
+  E275_VRY: a_secondary = 275.0 × (1.0/275.0) = 1.0 kV — genuinely Secondary-referred.
+  VT secondary circuit: secondary=1.0 kV in CFG → `secondary_voltage_ll_v=1000.0 V`.
+`setup_voltage_base(base_side="secondary")` now provides `secondary_voltage_ll_v=1000.0`.
+Parametrize case `("S","secondary","compatible",True)` restored and now valid.
+`test_voltage_reference_side_change_takes_effect_immediately` → "secondary" base, 1000 V, "compatible".
+`test_voltage_group_path_takes_precedence_over_source_default` → "secondary" base, 1000 V, "compatible".
+`test_vlt_ref_001_compat_secondary_with_equivalent_configured` → `test_vlt_ref_001_compat_secondary_realistic_vt_equivalent`
+  (132 kV/110 V LL-referred VT; denominator=110 V; not 132,000 V).
+109/109 targeted tests pass. Full backend suite running (b32f0p3nt2).
+Files changed:
+- `backend/app/domain/voltage_group_config.py` (resolver: strict gate replacing additive gate)
+- `backend/app/services/voltage_group_config_registry.py` (update_fields: update_secondary flag + secondary_voltage_ll_v param)
+- `backend/app/services/voltage_group_config_service.py` (sentinel + stale-clear logic + secondary_voltage_ll_v_valid import)
+- `backend/app/schemas/measurement_group.py` (VoltageGroupConfigOut + VoltageGroupConfigUpdateRequest: secondary_voltage_ll_v field)
+- `backend/app/api/v1/measurement_groups.py` (view builder + PUT endpoint: secondary_voltage_ll_v passthrough)
+- `backend/app/services/measurement_group_view_service.py` (VoltageGroupConfigView + _build_voltage_view: secondary_voltage_ll_v field)
+- `backend/tests/test_slice5d1_ps_integration.py` (new, untracked — 57 tests: 49 integration + 8 safety regression)
+- `backend/tests/test_per_unit_voltage_reference_safety.py` (modified: setup_voltage_base now provides secondary_voltage_ll_v for secondary scope; test inline PUT updated)
+
+**Validation (pre-5D-2):** 342/342 combined targeted + VLT-REF-001 90/90 + PS-correction 109/109.
+Full backend suite (post-PS-correction): exit 0 (bh3yfqgw3).
+**Validation (Slice 5D-2 session):** 219/219 targeted (5D-2 10 + 5D-1 57 + 5C-1 53 + prep-service 21 + VLT-REF-001 33 + evidence 51).
+**Regression fix:** 8 tests fixed in test_base_authority_domain.py / test_compliance_readiness_api.py /
+test_compliance_trace_api.py / test_measurement_group_lifecycle_api.py — caused by auto_base_service
+running on every COMTRADE upload; tests updated to reflect new auto-resolved behavior.
+Combined targeted + regression: 227/227. Full backend suite post-all-fixes: exit 0 (b96i4qidf).
+**Slice 5D-3 §1 guard tests:** 2 additional focused tests added (lifecycle + phantom-config check).
+**Slice 5D-3 §10 AT-1–AT-10:** 18 new tests in `test_slice5d3_auto_pu_display.py` — all 18 pass.
+**Slice 5D-3 AT-12 + AT-15:** 5 additional backend tests appended to `test_slice5d3_auto_pu_display.py` — all 23 pass.
+**Slice 5D-3 AT-11/AT-13/AT-14:** 7 Playwright tests in `browser-tests/auto-pu-import.spec.js` — all 7 pass.
+**Slice 5D-3 combined targeted:** 458/458 backend + 7/7 browser. No push, no merge.
+
+**Modified/untracked files (Slices 5A/5B/5C-1/5C-2/5D-1/5D-2/5D-3 combined):**
+- `backend/app/domain/auto_base_evidence.py` (new, untracked — Slice 5A)
+- `backend/app/domain/base_authority.py` (new, untracked — Slice 5B)
+- `backend/app/domain/voltage_primary_secondary.py` (new, untracked — Slice 5C-2)
+- `backend/app/domain/voltage_group_config.py` (modified: authority gate + STATUS_SUGGESTED + secondary_voltage_ll_v field + 5D-1 strict resolver)
+- `backend/app/domain/current_group_config.py` (modified: authority gate + STATUS_SUGGESTED import)
+- `backend/app/services/voltage_group_config_registry.py` (modified: `update_fields` base_authority + update_secondary params)
+- `backend/app/services/voltage_group_config_service.py` (modified: authority transitions + 5D-1 stale-clear)
+- `backend/app/services/current_group_config_service.py` (modified: authority transitions)
+- `backend/app/services/calculated_current_per_unit.py` (modified: inline tuple → domain constant)
+- `backend/app/services/compliance_series.py` (modified: base_invalidated reason)
+- `backend/app/services/per_unit_provenance_service.py` (modified: base_invalidated copy entry)
+- `backend/app/services/measurement_group_view_service.py` (modified: VoltageGroupConfigView + builder — secondary_voltage_ll_v)
+- `backend/app/schemas/measurement_group.py` (modified: Out + Request schemas — secondary_voltage_ll_v field)
+- `backend/app/api/v1/measurement_groups.py` (modified: view builder + endpoint — secondary_voltage_ll_v passthrough)
+- `backend/tests/test_auto_base_evidence.py` (new, untracked — 59 tests)
+- `backend/tests/test_base_authority_domain.py` (new, untracked — 94 tests)
+- `backend/tests/test_slice5c1_authority_gate.py` (new, untracked — 54 tests)
+- `backend/tests/test_slice5c2_primary_secondary.py` (new, untracked — 59 tests)
+- `backend/tests/test_slice5d1_ps_integration.py` (new, untracked — 57 tests)
+- `backend/tests/test_per_unit_voltage_reference_safety.py` (modified: recording() now rescales a AND b for PS=S; setup_voltage_base provides secondary_voltage_ll_v=1000.0; parametrize restored to "secondary"/"compatible")
+- `docs/project-memory/CURRENT_STATE.md` (modified)
+- `docs/project-memory/HANDOFF.md` (modified)
+
+**Additional files from Slice 5D-2:**
+- `backend/app/services/auto_base_service.py` (new, untracked — auto-base service: primary/secondary/needs_review paths, never-raises, idempotent)
+- `backend/app/services/workspace_preparation_service.py` (modified: `voltage_config_registry` optional param; calls `configure_auto_bases_for_source`; `WorkspaceSourcePreparationResult.auto_bases_configured/auto_bases_error` fields added)
+- `backend/app/api/v1/sources.py` (modified: `upload_comtrade_source` wires `voltage_config_registry` → `prepare_workspace_source`)
+- `backend/app/api/v1/preparation_sources.py` (modified: `post_convert_preparation_source` wires `voltage_config_registry` → `prepare_workspace_source`)
+- `backend/tests/test_slice5d2_auto_base_service.py` (new, untracked — 10 tests: primary auto, E275 L-L 275 kV, current groups skipped, manual/legacy preservation, needs_review for unknown PS, idempotency, never-raises, prepare wiring)
+- `backend/tests/test_slice5c1_authority_gate.py` (modified: removed `test_no_auto_base_service_exists` — module now exists)
+- `backend/tests/test_base_authority_domain.py` (modified: duplicate scope guard also removed)
+- `backend/tests/test_compliance_readiness_api.py` (modified: 5 tests updated — auto-base now resolves base on upload, needs_base=False after import)
+- `backend/tests/test_compliance_trace_api.py` (modified: renamed test → `test_pu_with_auto_resolved_base_plots_traces` — auto-resolved base means traces ARE produced)
+- `backend/tests/test_measurement_group_lifecycle_api.py` (modified: count assertion → existence assertion — auto-base adds extra configs)
+
+**Additional files from Slice 5D-3 (full):**
+- `frontend/index.html` (modified: §2 auto-switch + §5 status banner — `wwCheckAndApplyAutoImportPuMode`, `wwShowImportPuStatus`, `wwClearImportPuStatus`, `isFirstRecording` capture in `submitSourceUpload`, banner clear in `resetToNewWorkspace` + source-delete handler)
+- `backend/tests/test_slice5d3_auto_pu_display.py` (new, untracked — 23 tests: AT-1 through AT-15 backend)
+- `backend/tests/test_measurement_group_lifecycle_api.py` (modified: §1 guard — `test_deleting_workspace_removes_all_voltage_configs_including_auto_resolved`)
+- `backend/tests/test_slice5d2_auto_base_service.py` (modified: §1 guard — `test_no_phantom_configs_after_upload`)
+- `browser-tests/auto-pu-import.spec.js` (new, untracked — 7 Playwright tests: AT-11, AT-13 ×2, AT-14 ×4)
+
+**Slice 5D-3 coverage notes:**
+- §6–§9: verified as covered by existing infrastructure (banner links to PU Settings modal; existing
+  PU browser specs cover numerical correctness; fire-and-forget design ensures no repeated requests).
+- AT-12 (browser): covered by backend AT-12 tests in `test_slice5d3_auto_pu_display.py`.
+- AT-15 (browser): covered by backend AT-15 numerical equivalence tests in `test_slice5d3_auto_pu_display.py`.
+
+**Next step:** Owner authorizes Slices 5A–5D-3 for PR/push. Remaining automatic-secondary items for a future slice:
+- CT ratio storage in `CurrentBaseConfiguration` for automatic secondary Ibase
+- `base_reference_side="secondary"` COMTRADE activation (now supported by resolver; held pending owner UAT)
+Prerequisites met: (a) full backend suite green (b96i4qidf), (b) 458/458 backend + 7/7 browser tests pass.
 
 ## VLT-REF-001 — final local verification complete; stop for owner review
 

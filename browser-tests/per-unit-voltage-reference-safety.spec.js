@@ -179,8 +179,10 @@ test("VLT-REF-001: side switch primary→secondary makes PS=S channel compatible
   const c = await setup(page, { marker: "S", baseSide: "primary" });
   await expect.poll(() => displayed(page, c.sid, "VA")).toMatchObject({ status: "base_required", compatibility: "incompatible" });
 
+  // secondary_voltage_ll_v is required by the strict secondary gate (VLT-REF-001): without it
+  // base_reference_side="secondary" returns base_required("secondary_equivalent_not_configured").
   await json(await page.request.put(`${c.groupsUrl}/${c.group.id}/voltage-config`, {
-    data: { nominal_voltage_ll_kv: 275, reference_mode: "manual", reference_override: "line_to_line", base_reference_side: "secondary" },
+    data: { nominal_voltage_ll_kv: 275, reference_mode: "manual", reference_override: "line_to_line", base_reference_side: "secondary", secondary_voltage_ll_v: 110 },
   }));
   await page.evaluate(() => wwRefreshWaveformDisplayBasis());
 

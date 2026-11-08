@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from app.domain.calculated_channel import MULTI_OPERATIONS, UNARY_OPERATIONS, OP_ROCOF, CalculatedChannel
 from app.domain.channel_classification import CURRENT, VOLTAGE
 from app.domain.calculated_current_config import CalculatedCurrentConfiguration
+from app.domain.current_group_config import AUTHORITATIVE_GROUP_STATUSES
 from app.domain.measurement_group import KIND_CURRENT
 from app.domain.per_unit import (
     STATUS_BASE_REQUIRED, STATUS_CONFIGURED, PerUnitResolution,
@@ -105,7 +106,7 @@ def resolve_calculated_current_per_unit(*, workspace_id, channel: CalculatedChan
             group = group_registry.get(workspace_id, group_id)
             if group is None or group.kind != KIND_CURRENT:
                 return unavailable("current_dependency_unavailable", kind, identity)
-            if manual and group.status not in ("confirmed", "manual"):
+            if manual and group.status not in AUTHORITATIVE_GROUP_STATUSES:
                 return unavailable("current_group_unconfirmed", measurement=metadata.measurement_side,
                                    base_side=configuration.base_reference_side)
             config = current_config_registry.get(workspace_id, group_id)

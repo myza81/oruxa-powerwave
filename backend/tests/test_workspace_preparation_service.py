@@ -55,6 +55,7 @@ def _registries(client):
         "group_registry": app.state.measurement_group_registry,
         "context_registry": app.state.engineering_context_registry,
         "calculated_channel_registry": app.state.calculated_channel_registry,
+        "voltage_config_registry": app.state.voltage_group_config_registry,
     }
 
 

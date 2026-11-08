@@ -166,15 +166,17 @@ class TestRequirementComesFromTheReference:
 
 class TestCaseAPuRequiredNothingPrepared:
     def test_action_required_with_both_actions_never_a_false_ready(self, client):
+        # After Slice 5D-2 auto-base: upload auto-resolves the PU base from COMTRADE PS markers,
+        # so needs_base is False and unit_state is "ready". The status is still "action_required"
+        # because L-L channels have not been prepared yet.
         _add_reference(client)
         readiness = _readiness(client, "KPDN1")
         assert readiness["status"] == "action_required"
-        assert readiness["needs_base"] is True
+        assert readiness["needs_base"] is False   # auto-base resolved from COMTRADE import
         assert _states(readiness) == {"AB": "needs_line_to_line", "BC": "needs_line_to_line", "CA": "needs_line_to_line"}
         assert [s["kind"] for s in readiness["steps"]] == ["line_to_line"] * 3
         assert all(s["executable"] for s in readiness["steps"])
-        assert readiness["references"][0]["unit_state"] == "action_required"
-        assert "voltage base" in readiness["references"][0]["unit_message"]
+        assert readiness["references"][0]["unit_state"] == "ready"  # base is auto-resolved
 
     def test_readiness_itself_never_creates_anything(self, client):
         _add_reference(client)
@@ -193,10 +195,10 @@ class TestSharedRmsPreparation:
         assert {c["id"] for c in outcome["created"]} <= set(listed)
         assert [c["operation"] for c in _calc_channels(client)].count("rms") == 3
         assert all(c["name"].startswith("RMS (") for c in outcome["created"] if c["operation"] == "rms")
-        # Only the pu base remains.
-        assert outcome["readiness"]["status"] == "action_required"
+        # After Slice 5D-2: auto-base resolved the PU base, so status is "ready" once channels exist.
+        assert outcome["readiness"]["status"] == "ready"
         assert outcome["readiness"]["steps"] == []
-        assert outcome["readiness"]["needs_base"] is True
+        assert outcome["readiness"]["needs_base"] is False  # auto-base resolved from COMTRADE import
         assert set(_states(outcome["readiness"]).values()) == {"reused"}
 
     def test_prepare_is_idempotent_no_duplicate_rms_channels(self, client):
@@ -315,7 +317,8 @@ class TestCaseCBaseIsTheSharedGroupConfiguration:
     def test_base_configured_through_the_existing_group_endpoint_is_reused(self, client):
         _add_reference(client, representation="phase_ground_rms", unit="pu")
         _prepare(client, "KPDN1")
-        assert _readiness(client, "KPDN1")["status"] == "action_required"
+        # After Slice 5D-2: auto-base already resolved the PU base during import, so status may
+        # already be "ready". Verify that explicitly setting the base overwrites the auto value.
         _set_base(client, "KPDN1", 132.0)  # the SAME endpoint Per-Unit Settings / Waveform use
         readiness = _readiness(client, "KPDN1")
         assert readiness["base"]["nominal_voltage_ll_kv"] == 132.0
@@ -327,19 +330,26 @@ class TestCaseCBaseIsTheSharedGroupConfiguration:
         group = _groups(client)["KPDN1"]
         registry = client.app.state.voltage_group_config_registry
         _add_reference(client, unit="pu")
-        assert registry.get(WS, group["id"]) is None
-        _prepare(client, "KPDN1")  # preparing never writes a base
-        assert registry.get(WS, group["id"]) is None
+        # After Slice 5D-2: auto-base wrote an auto_resolved config during import.
+        assert registry.get(WS, group["id"]) is not None
+        assert registry.get(WS, group["id"]).base_authority == "auto_resolved"
+        _prepare(client, "KPDN1")  # preparing never writes an additional base
+        assert registry.get(WS, group["id"]) is not None  # auto-base config still present
         _set_base(client, "KPDN1", 275.0)
         stored = registry.get(WS, group["id"])
         assert stored is not None and stored.nominal_voltage_ll_kv == 275.0
         assert _readiness(client, "KPDN1")["base"]["nominal_voltage_ll_kv"] == 275.0
 
     def test_base_is_per_group(self, client):
+        # After Slice 5D-2: auto-base resolves bases for all voltage groups on import,
+        # so both KPDN1 and MCRS have auto-resolved bases. Verify per-group isolation:
+        # setting KPDN1 to 132 kV does not affect MCRS's base.
         _add_reference(client, representation="phase_ground_rms", unit="pu")
         _set_base(client, "KPDN1", 132.0)
         assert _readiness(client, "KPDN1")["needs_base"] is False
-        assert _readiness(client, "MCRS")["needs_base"] is True
+        assert _readiness(client, "MCRS")["needs_base"] is False   # MCRS has its own auto-resolved base
+        assert _readiness(client, "KPDN1")["base"]["nominal_voltage_ll_kv"] == 132.0
+        assert _readiness(client, "MCRS")["base"]["nominal_voltage_ll_kv"] != 132.0
 
 
 class TestSeveralReferences:

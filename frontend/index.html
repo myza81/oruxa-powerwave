@@ -3841,6 +3841,20 @@
         .upload-status.ok { background: var(--ok-wash); color: var(--ok); }
         .upload-status.error { background: var(--error-wash); color: var(--error); }
 
+        /* §5 (5D-3): compact non-blocking PU status shown after import */
+        .ww-import-pu-banner {
+            margin-top: 8px;
+            font-size: 0.82rem;
+            border-radius: var(--radius);
+            padding: 7px 11px;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+        .ww-import-pu-banner.pu-ready   { background: var(--ok-wash); color: var(--ok); }
+        .ww-import-pu-banner.pu-partial { background: var(--warn-wash); color: var(--warn); }
+        .ww-import-pu-banner a.ww-pu-banner-action { color: inherit; font-weight: 600; cursor: pointer; }
+
         .spinner {
             display: inline-block;
             width: 12px;
@@ -11067,6 +11081,11 @@
                     <span id="recordingsSearchCount"></span>
                 </div>
 
+                <!-- §5 (5D-3): compact non-blocking PU status after import.
+                     Hidden by default; shown/hidden by wwShowImportPuStatus()
+                     and wwClearImportPuStatus(). Never blocks other actions. -->
+                <div id="wwImportPuStatusBanner" class="ww-import-pu-banner" hidden role="status" aria-live="polite"></div>
+
                 <!-- Phase 3A-UAT3/UAT4 containment precedent (Finding B):
                      an intentional horizontal-scroll wrapper around the
                      table, not a column count that assumes the Work Area
@@ -16581,6 +16600,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             focusedSourceId = null;
             lastImportedSourceId = null;
             clearUploadStatus();
+            wwClearImportPuStatus();
             wwResetWorkspaceRecordingsPanel();
             wwClearWorkspace({ resetSourceBounds: true });
             document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
@@ -16867,6 +16887,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     return;
                 }
 
+                // §2 (5D-3): capture first-recording state BEFORE refreshAllSourceViews()
+                // updates latestSourcesCount. Only auto-switch to PU on the FIRST
+                // import; subsequent imports preserve the engineer's current mode.
+                const isFirstRecording = latestSourcesCount === 0;
                 lastImportedSourceId = body.source_id;
                 await refreshAllSourceViews();
                 // Section 24: upload -> list -> user chooses Open/Analyse.
@@ -16877,6 +16901,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 document.getElementById("uploadModalOverlay").hidden = true;
                 document.getElementById("uploadModalForm").reset();
                 clearUploadStatus();
+
+                // §2/§5 (5D-3): fetch PU availability for the new source, show compact
+                // status banner, and auto-switch to PU mode on first import when
+                // at least one voltage group has a reliable auto-resolved base.
+                // Fire-and-forget: a failure here must never block the upload success path.
+                void wwCheckAndApplyAutoImportPuMode(body.source_id, isFirstRecording);
             } catch (error) {
                 setUploadStatus("error", "Could not reach the backend. Check your connection and try again.");
             } finally {
@@ -16884,6 +16914,113 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 submitBtn.disabled = false;
                 document.getElementById("uploadModalCancelBtn").disabled = false;
                 document.getElementById("uploadModalCloseBtn").disabled = false;
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // §2/§5 (DEC-050 Slice 5D-3): automatic PU display mode and
+        // compact import status.
+        //
+        // Fetches measurement groups for the new source once, computes a
+        // summary (configured vs needs-review voltage groups), shows the
+        // non-blocking banner (§5), and optionally switches the global
+        // unit mode to per_unit (§2) if this is the first import and at
+        // least one voltage group resolved a reliable base.
+        //
+        // Rules (§2):
+        //   - Only auto-switch on the FIRST recording upload (isFirstRecording).
+        //   - Only auto-switch from engineering → per_unit; never override
+        //     an engineer who explicitly chose a mode.
+        //   - A group with pu_status == "configured" means auto_resolved (or
+        //     manual/legacy_manual) base is eligible -- no Measurement Group
+        //     confirmation is required (the authority gate handles that).
+        //   - needs_review / base_required groups do NOT trigger auto-switch.
+        //   - Voltage PU and Current PU are independent; this gate checks
+        //     voltage groups only (§3).
+        //   - BEN with unknown PS → needs_review → pu_status == "base_required"
+        //     → no auto-switch (§10 test 5).
+        //
+        // Never raises, never blocks the upload success path.
+        // ----------------------------------------------------------------
+
+        async function wwFetchSourceMeasurementGroupsSummary(sourceId) {
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups"
+                );
+            } catch (_) { return null; }
+            if (!response.ok) return null;
+            let groups;
+            try { groups = await response.json(); } catch (_) { return null; }
+            if (!Array.isArray(groups)) return null;
+
+            const voltageGroups = groups.filter((g) => g.kind === "voltage");
+            let configuredVoltageGroups = 0;
+            let needsReviewVoltageGroups = 0;
+            let configuredVoltageChannels = 0;
+            let configuredCurrentGroups = 0;
+
+            for (const g of voltageGroups) {
+                if (g.pu_status === "configured") {
+                    configuredVoltageGroups += 1;
+                    configuredVoltageChannels += (g.channel_refs || []).length;
+                } else if (g.pu_status === "base_required") {
+                    needsReviewVoltageGroups += 1;
+                }
+            }
+            for (const g of groups) {
+                if (g.kind === "current" && g.pu_status === "configured") {
+                    configuredCurrentGroups += 1;
+                }
+            }
+            return { configuredVoltageGroups, needsReviewVoltageGroups, configuredVoltageChannels, configuredCurrentGroups };
+        }
+
+        function wwShowImportPuStatus(summary) {
+            const banner = document.getElementById("wwImportPuStatusBanner");
+            if (!banner) return;
+            if (summary.configuredVoltageGroups === 0 && summary.needsReviewVoltageGroups === 0) {
+                banner.hidden = true;
+                return;
+            }
+            const parts = [];
+            if (summary.configuredVoltageGroups > 0) {
+                const ch = summary.configuredVoltageChannels;
+                const gr = summary.configuredVoltageGroups;
+                parts.push(ch + " Voltage channel" + (ch === 1 ? "" : "s") +
+                    " in " + gr + " group" + (gr === 1 ? "" : "s") + " — PU ready");
+            }
+            if (summary.needsReviewVoltageGroups > 0) {
+                const gr = summary.needsReviewVoltageGroups;
+                parts.push(gr + " group" + (gr === 1 ? "" : "s") + " need base configuration");
+            }
+            const hasPartial = summary.needsReviewVoltageGroups > 0;
+            banner.className = "ww-import-pu-banner " + (hasPartial ? "pu-partial" : "pu-ready");
+            banner.innerHTML = parts.join(" · ") +
+                ' <a class="ww-pu-banner-action" role="button" ' +
+                'onclick="wwOpenPerUnitSettingsModal()" tabindex="0">Per-Unit Settings</a>';
+            banner.hidden = false;
+        }
+
+        function wwClearImportPuStatus() {
+            const banner = document.getElementById("wwImportPuStatusBanner");
+            if (banner) { banner.hidden = true; banner.className = "ww-import-pu-banner"; }
+        }
+
+        async function wwCheckAndApplyAutoImportPuMode(sourceId, isFirstRecording) {
+            try {
+                const summary = await wwFetchSourceMeasurementGroupsSummary(sourceId);
+                if (summary === null) return;
+                wwShowImportPuStatus(summary);
+                // §2: auto-switch only on first import, only from default engineering mode,
+                // only when at least one voltage group has a reliable resolved base.
+                if (isFirstRecording && ww.unitMode === "engineering" && summary.configuredVoltageGroups > 0) {
+                    await wwApplyUnitMode("per_unit");
+                }
+            } catch (_) {
+                // Never propagate -- the upload success path must not be affected.
             }
         }
 
@@ -28015,6 +28152,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // actually describes the source just removed.
             if (lastImportedSourceId === sourceId) {
                 clearUploadStatus();
+                wwClearImportPuStatus();
                 lastImportedSourceId = null;
             }
             // Phase 2C-A: this source's own copy is now gone server-side --

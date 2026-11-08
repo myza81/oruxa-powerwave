@@ -23,11 +23,34 @@ VNAMES = ["N275_VR", "N275_VY"]
 
 def recording(client, fixtures, marker="P"):
     """Upload synth_measurement_groups.cfg with all Voltage rows rewritten
-    to the requested PS marker."""
+    to the requested PS marker.
+
+    IEEE C37.111 / IEC 60255-24: PS is the engineering-value scale identifier,
+    not the physical acquisition side.
+      PS="P": a×raw+b produces Primary-referred values (e.g. kV primary).
+      PS="S": a×raw+b produces Secondary-referred values (e.g. kV or V secondary).
+
+    When marker="S", the scaling factor `a` is also rescaled by secondary/primary so
+    that the resulting COMTRADE file is internally consistent: the scaled values are
+    genuinely Secondary-referred. For N275_VR (a=158.77 kV, primary=275.0, secondary=1.0):
+      a_secondary = 158.77 × (1.0/275.0) = 0.577345 kV  (secondary L-G at nominal)
+    The VT secondary circuit L-L voltage = secondary=1.0 kV = 1000 V.
+    For other markers (P, C, empty), only the pors field is changed and `a` is preserved.
+    """
     lines = (fixtures / "synth_measurement_groups.cfg").read_text().splitlines()
     for index in range(2, 11):   # rows 1-9 are Voltage channels (kV)
         fields = lines[index].split(",")
         if fields[4].strip().lower() == "kv":
+            if marker == "S":
+                # Rescale a and b by secondary/primary: produces genuinely Secondary-referred values.
+                # Both scaling coefficients must be rescaled (spec §1). All fixture channels have
+                # b=0.0, so the b rescaling is a no-op here but required for general correctness.
+                a_primary = float(fields[5])
+                b_primary = float(fields[6])
+                primary = float(fields[10])
+                secondary = float(fields[11])
+                fields[5] = f"{a_primary * secondary / primary:.6g}"
+                fields[6] = f"{b_primary * secondary / primary:.6g}"
             fields[-1] = marker
             lines[index] = ",".join(fields)
     sid = checked(client.post(ROOT + "/sources", files={
@@ -50,12 +73,17 @@ def setup_voltage_base(client, sid, base_side="primary", scope="group"):
             "channel_refs": [{"kind": "source", "source_id": sid, "channel_name": n} for n in VNAMES],
         }), 201)
         path = url + "/" + group["id"] + "/voltage-config"
-        checked(client.put(path, json={
+        body: dict = {
             "nominal_voltage_ll_kv": 275,
             "reference_mode": "manual",
             "reference_override": "line_to_line",
             "base_reference_side": base_side,
-        }))
+        }
+        if base_side == "secondary":
+            # Fixture: secondary=1.0 kV (LL) in the CFG primary/secondary ratio fields.
+            # VT secondary circuit L-L voltage = 1.0 kV = 1000 V.
+            body["secondary_voltage_ll_v"] = 1000.0
+        checked(client.put(path, json=body))
         return path, group["id"]
     else:
         path = f"{ROOT}/per-unit/sources/{sid}"
@@ -251,17 +279,22 @@ def test_voltage_incompatible_does_not_mutate_stored_state(client, comtrade_fixt
 
 
 def test_voltage_reference_side_change_takes_effect_immediately(client, comtrade_fixtures_dir):
-    """Changing base_reference_side from incompatible to compatible resolves inline."""
+    """Changing base_reference_side from incompatible to compatible resolves inline.
+    recording(marker="S") produces genuinely Secondary-referred values (a rescaled by
+    secondary/primary). After correcting base to "secondary" with the matching
+    secondary_voltage_ll_v, the classifier yields "compatible" and PU is enabled."""
     sid = recording(client, comtrade_fixtures_dir, "S")
     path, _gid = setup_voltage_base(client, sid, "primary", scope="group")
     prov = provenance(client, sid, VNAMES[0])
     assert prov["status"] == "base_required"
-    # Fix: set base to secondary (matches recording)
+    # Fix: set base to secondary with the VT secondary circuit L-L voltage from the fixture
+    # (secondary=1.0 kV in the CFG → secondary_voltage_ll_v=1000 V).
     checked(client.put(path, json={
         "nominal_voltage_ll_kv": 275,
         "reference_mode": "manual",
         "reference_override": "line_to_line",
         "base_reference_side": "secondary",
+        "secondary_voltage_ll_v": 1000.0,
     }))
     prov2 = provenance(client, sid, VNAMES[0])
     assert prov2["status"] == "configured"
@@ -358,11 +391,13 @@ def test_voltage_current_lim001_unaffected(client, comtrade_fixtures_dir):
 
 def test_voltage_group_path_takes_precedence_over_source_default(client, comtrade_fixtures_dir):
     """When both a Measurement Group and Source Default are configured,
-    the Group path's base_reference_side wins."""
+    the Group path's base_reference_side wins.
+    recording(marker="S") produces genuinely Secondary-referred values; the Group
+    declares secondary with the correct VT circuit voltage → "compatible"."""
     sid = recording(client, comtrade_fixtures_dir, "S")
-    # Source Default says primary (would be incompatible with Secondary recording)
+    # Source Default says primary (incompatible with Secondary-referred recording)
     setup_voltage_base(client, sid, "primary", scope="default")
-    # Group says secondary (compatible)
+    # Group says secondary with matching secondary_voltage_ll_v (compatible)
     setup_voltage_base(client, sid, "secondary", scope="group")
     prov = provenance(client, sid, VNAMES[0])
     # Group wins: secondary vs secondary = compatible

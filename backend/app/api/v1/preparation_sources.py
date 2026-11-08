@@ -139,6 +139,7 @@ from app.services.working_overlay_service import (
     summarize_working_overlay,
     undo_working_change,
 )
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_preparation_service import prepare_workspace_source
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -231,6 +232,10 @@ def get_engineering_context_registry(request: Request) -> EngineeringContextRegi
 
 def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
     return request.app.state.calculated_channel_registry
+
+
+def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigRegistry:
+    return request.app.state.voltage_group_config_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -1144,6 +1149,7 @@ def post_convert_preparation_source(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     calculated_channel_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
 ) -> SourceSummaryOut:
     """Slice 10 (DEC-072): canonical conversion into Powerwave's own
     `DisturbanceRecord`. Readiness is re-checked live here regardless of
@@ -1190,6 +1196,7 @@ def post_convert_preparation_source(
         workspace_id=workspace_id, source_id=source_id,
         source_registry=workspace_registry, group_registry=measurement_group_registry,
         context_registry=engineering_context_registry, calculated_channel_registry=calculated_channel_registry,
+        voltage_config_registry=voltage_group_config_registry,
     )
 
     return SourceSummaryOut.from_domain(metadata)

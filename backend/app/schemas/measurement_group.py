@@ -62,6 +62,7 @@ class VoltageGroupConfigOut(BaseModel):
     evidence_names: list[str]
     detection_reason: str
     base_reference_side: ReferenceSide = "unknown"
+    secondary_voltage_ll_v: float | None = None
 
 
 class CurrentGroupConfigOut(BaseModel):
@@ -130,6 +131,7 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     reference_mode: VoltageReferenceMode = "auto"
     reference_override: VoltageReferenceValue | None = None
     base_reference_side: ReferenceSide = "unknown"
+    secondary_voltage_ll_v: float | None = None
 
 
 class CurrentGroupConfigUpdateRequest(BaseModel):

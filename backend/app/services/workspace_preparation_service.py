@@ -75,11 +75,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from app.services.auto_base_service import configure_auto_bases_for_source
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.engineering_context_service import generate_suggested_contexts_for_source
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_service import generate_suggested_groups_for_source
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 logger = logging.getLogger(__name__)
@@ -95,6 +97,8 @@ class WorkspaceSourcePreparationResult:
     measurement_groups_error: str | None = None
     engineering_contexts_created: int = 0
     engineering_contexts_error: str | None = None
+    auto_bases_configured: int = 0
+    auto_bases_error: str | None = None
 
 
 def prepare_workspace_source(
@@ -105,6 +109,7 @@ def prepare_workspace_source(
     group_registry: MeasurementGroupRegistry,
     context_registry: EngineeringContextRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
 ) -> WorkspaceSourcePreparationResult:
     """Runs every existing, already-tested, single-source-scoped
     discovery mechanism this newly-registered source is eligible for.
@@ -142,9 +147,32 @@ def prepare_workspace_source(
             workspace_id, source_id,
         )
 
+    auto_bases_configured = 0
+    auto_bases_error: str | None = None
+    if voltage_config_registry is not None:
+        try:
+            auto_result = configure_auto_bases_for_source(
+                workspace_id=workspace_id, source_id=source_id,
+                source_registry=source_registry, group_registry=group_registry,
+                voltage_config_registry=voltage_config_registry,
+            )
+            if auto_result.error:
+                auto_bases_error = auto_result.error
+            else:
+                auto_bases_configured = auto_result.voltage_groups_configured
+        except Exception:
+            auto_bases_error = "auto_base_configuration_failed"
+            logger.exception(
+                "Shared post-upload preparation: Auto-base configuration failed for workspace %s source %s "
+                "-- the upload itself is unaffected.",
+                workspace_id, source_id,
+            )
+
     return WorkspaceSourcePreparationResult(
         measurement_groups_created=measurement_groups_created,
         measurement_groups_error=measurement_groups_error,
         engineering_contexts_created=engineering_contexts_created,
         engineering_contexts_error=engineering_contexts_error,
+        auto_bases_configured=auto_bases_configured,
+        auto_bases_error=auto_bases_error,
     )

@@ -166,6 +166,7 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             evidence_names=view.voltage_config.evidence_names,
             detection_reason=view.voltage_config.detection_reason,
             base_reference_side=view.voltage_config.base_reference_side,
+            secondary_voltage_ll_v=view.voltage_config.secondary_voltage_ll_v,
         )
         if view.voltage_config is not None
         else None
@@ -375,12 +376,16 @@ def put_voltage_config(
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     try:
+        kw: dict = {}
+        if "secondary_voltage_ll_v" in body.model_fields_set:
+            kw["secondary_voltage_ll_v"] = body.secondary_voltage_ll_v
         update_voltage_configuration(
             workspace_id=workspace_id, measurement_group_id=measurement_group_id,
             nominal_voltage_ll_kv=body.nominal_voltage_ll_kv,
             reference_mode=body.reference_mode, reference_override=body.reference_override,
             base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            **kw,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc

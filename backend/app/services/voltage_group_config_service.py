@@ -35,6 +35,8 @@ combined operation).
 from __future__ import annotations
 
 from app.domain.measurement_group import KIND_VOLTAGE, MeasurementGroup
+from app.domain.base_authority import BASE_AUTHORITY_MANUAL
+from app.domain.voltage_primary_secondary import secondary_voltage_ll_v_valid
 from app.domain.voltage_group_config import (
     KNOWN_VOLTAGE_REFERENCE_MODES,
     VOLTAGE_REFERENCE_MODE_AUTO,
@@ -53,6 +55,9 @@ from app.services.errors import (
     MeasurementGroupNotFoundError,
     VoltageConfigurationNotApplicableError,
 )
+
+# Sentinel distinguishing "secondary not given" from "explicitly clear to None".
+_SECONDARY_NOT_GIVEN: object = object()
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 
@@ -84,6 +89,7 @@ def update_voltage_configuration(
     reference_mode: str | None = None,
     reference_override: str | None = None,
     base_reference_side: str | None = None,
+    secondary_voltage_ll_v: object = _SECONDARY_NOT_GIVEN,
 ) -> VoltageBaseConfiguration:
     """Validate the entire requested edit before one registry replacement.
 
@@ -92,6 +98,23 @@ def update_voltage_configuration(
     default 'auto'. Auto clears overrides, manual requires a valid override.
     None base_reference_side preserves the existing side declaration.
     No live configuration object is modified while validating.
+
+    Authority rule (Slice 5C-1): an accepted nominal_voltage_ll_kv value
+    atomically establishes base_authority="manual", regardless of the
+    previous state (including auto_resolved, needs_review, or unavailable).
+    Reference-only changes (nominal_voltage_ll_kv=None) leave authority
+    unchanged. base_authority is NOT a parameter — it is derived internally
+    to prevent callers from injecting automatic states (auto_resolved may
+    only be set by the future auto-resolution service).
+
+    Secondary reference rule (Slice 5D-1): when nominal_voltage_ll_kv is
+    being changed and secondary_voltage_ll_v is not explicitly supplied, the
+    existing secondary_voltage_ll_v is cleared. This prevents a stale
+    secondary reference from remaining authoritative after the primary nominal
+    is updated. To preserve secondary while changing primary, supply both.
+    To explicitly clear secondary, pass secondary_voltage_ll_v=None with the
+    sentinel sentinel distinguished from "not given" by using this function's
+    own _SECONDARY_NOT_GIVEN default.
     """
     from app.domain.reference_side import REFERENCE_SIDES
     _get_voltage_group(workspace_id, measurement_group_id, group_registry=group_registry)
@@ -107,11 +130,28 @@ def update_voltage_configuration(
         raise InvalidVoltageBaseValueError(
             f"base_reference_side={base_reference_side!r} must be one of {REFERENCE_SIDES}."
         )
+    # Validate and resolve secondary_voltage_ll_v update intent.
+    sec_given = secondary_voltage_ll_v is not _SECONDARY_NOT_GIVEN
+    sec_value = secondary_voltage_ll_v if sec_given else None
+    if sec_given and sec_value is not None and not secondary_voltage_ll_v_valid(sec_value):
+        raise InvalidVoltageBaseValueError(
+            f"secondary_voltage_ll_v={sec_value!r} must be a finite, positive number."
+        )
+    # Stale-secondary clearing: if primary nominal is being updated without an explicit secondary
+    # value, invalidate any previously stored secondary_voltage_ll_v.
+    if not sec_given and nominal_voltage_ll_kv is not None:
+        sec_given = True
+        sec_value = None
+    # Derive authority from the content of the edit — never from caller-supplied value.
+    effective_authority = BASE_AUTHORITY_MANUAL if nominal_voltage_ll_kv is not None else None
     return voltage_config_registry.update_fields(
         workspace_id, measurement_group_id, nominal_voltage_ll_kv=nominal_voltage_ll_kv,
         reference_mode=reference_mode,
         reference_override=reference_override if reference_mode == VOLTAGE_REFERENCE_MODE_MANUAL else None,
         base_reference_side=base_reference_side,
+        base_authority=effective_authority,
+        secondary_voltage_ll_v=sec_value,
+        update_secondary=sec_given,
     )
 
 
