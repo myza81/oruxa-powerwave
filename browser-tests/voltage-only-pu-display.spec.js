@@ -20,6 +20,7 @@
 //   VD-13: Switching to PU mode and back preserves Current channel engineering values
 //   VD-14: Calculated Current channel is NOT guarded — can follow PU if configured
 //   VD-15: Waveform base summary shows "Nominal Voltage: X.XX kV · Auto · Phase-to-Ground"
+//   VD-16: Current group Edit drawer has no Nominal Voltage PU config field (DEC-212)
 
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
@@ -462,14 +463,21 @@ test("VD-14: calculated Current channel is not guarded by DEC-212 — can show P
   await expect(page.locator("#wwErUnitPerUnitBtn")).toHaveAttribute("aria-pressed", "true");
   await page.waitForTimeout(1000);
 
+  // Wait for resolution to settle (not "pending").
+  await expect.poll(async () => {
+    return page.evaluate(({ calcId }) => wwErChannelUnitDisplay("calculated", calcId, "-IA").state, { calcId: negIA.id });
+  }, { timeout: 5000 }).not.toBe("pending");
+
   const display = await page.evaluate(({ calcId }) => {
     return wwErChannelUnitDisplay("calculated", calcId, "-IA");
   }, { calcId: negIA.id });
   // The calculated channel goes through the normal resolution path (not the DEC-212 guard).
-  // It may be "unavailable" (no base) or "pending" — but NOT "engineering" via the DEC-212 fast path.
-  // The key assertion is that kind="calculated" does NOT trigger the Current guard.
-  expect(display.state).not.toBe("engineering");  // must NOT be forced engineering by DEC-212 guard
-  // (It may be "unavailable" if no current PU is configured, which is expected.)
+  // With no Current base configured: state must be "unavailable" (base_required), NOT:
+  //   - "engineering" (the DEC-212 guard only fires for kind==="analog")
+  //   - "per_unit"   (no Ibase configured — cannot accidentally normalize)
+  expect(display.state).not.toBe("engineering");  // DEC-212 guard must NOT fire for calculated
+  expect(display.state).not.toBe("per_unit");     // must NOT accidentally normalize without explicit Ibase
+  expect(display.state).toBe("unavailable");      // correct: base_required, no Current Ibase configured
 });
 
 // ---------------------------------------------------------------------------
@@ -501,4 +509,35 @@ test("VD-15: Measurement Group base summary shows correct Nominal Voltage format
     // Format: "Nominal Voltage: <strong>275.00 kV</strong> · Auto · Phase-to-Ground"
     expect(summaryHtml).toMatch(/275\.00 kV/);
   }
+});
+
+// ---------------------------------------------------------------------------
+// VD-16: Current group Edit drawer lacks Voltage PU config controls (DEC-212)
+// ---------------------------------------------------------------------------
+
+test("VD-16: Current group edit drawer has no Nominal Voltage PU config field", async ({ page }) => {
+  await page.goto("/index.html");
+  await uploadWith275kVVoltageGroup(page, "VD16");
+
+  // Open Per-Unit Settings then Measurement Groups sub-dialog.
+  await page.locator("#mainNavWaveformBtn").click();
+  await page.locator("#wwOpenPerUnitSettingsBtn").click();
+  await expect(page.locator("#perUnitSettingsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
+  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+  await expect(page.locator("#measurementGroupsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
+
+  // Find the Current group Edit button and open the drawer.
+  const mgBody = page.locator("#measurementGroupsBody");
+  await expect(mgBody.getByText("Current Groups", { exact: false })).toBeVisible({ timeout: 5000 });
+
+  // Locate the Edit button for a Current group row (IA channel group).
+  const currentRow = mgBody.locator(".ww-mg-row").filter({ hasText: "IA" }).first();
+  await currentRow.locator("button", { hasText: "Edit" }).click();
+  await expect(page.locator("#wwMgDrawerBackdrop")).not.toHaveAttribute("hidden", { timeout: 5000 });
+
+  // The Current group drawer must NOT show the Nominal Voltage PU-config field
+  // (that's the Voltage group field — wwMgVoltageKvInput with label "Nominal Voltage (kV, Line-to-Line)").
+  await expect(page.locator("#wwMgVoltageKvInput")).toHaveCount(0);
+  // Current group drawer shows Ibase controls, not Voltage PU display controls.
+  await expect(page.getByText("Current Base Method", { exact: false })).toBeVisible({ timeout: 3000 });
 });

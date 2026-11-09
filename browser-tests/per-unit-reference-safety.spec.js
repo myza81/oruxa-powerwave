@@ -68,23 +68,33 @@ function displayed(page, id, name) {
 }
 
 async function verify(page, c, eligible, compatibility, denominator = 2000) {
-  for (const [id, name, factor] of [[c.sid, "IA", 1], [c.child.id, c.child.name, 2]]) {
-    await expect.poll(() => displayed(page, id, name)).toMatchObject({ status: eligible ? "configured" : "base_required",
-      unit: eligible ? "pu" : "A", compatibility });
-    const d = await displayed(page, id, name);
-    expect(d.values).toHaveLength(c.physical.values.length); expect(d.plotted).toEqual(d.values);
-    d.values.forEach((v, i) => expect(v).toBeCloseTo(Math.abs(c.physical.values[i]) * factor / (eligible ? denominator : 1) *
-      (factor === 1 && c.physical.values[i] < 0 ? -1 : 1), 12));
-    expect(d.identity).toBe(`${id}::${name}`);
-    const badge = row(page, id, name).locator(".ww-pu-reference-status");
-    if (compatibility === "unverified" && eligible) {
-      await expect(badge).toHaveText("Unverified reference"); await expect(badge).toHaveAttribute("aria-label", /has not been verified/);
-      expect(d.hover).toContain("Unverified reference");
-    } else if (compatibility === "incompatible") {
-      await expect(badge).toHaveText("PU unavailable"); await expect(badge).toHaveAttribute("title", /reference sides are incompatible/);
-      expect(d.hover).toContain("PU unavailable");
-    } else await expect(badge).toHaveCount(0);
-  }
+  // DEC-212: raw source Current channels in Waveform (engineeringType "Current") are always
+  // fetched in engineering mode. Calculated channels (engineeringType "Calculated") still
+  // follow the Voltage Display toggle and use the original eligible/compatibility logic.
+
+  // Raw IA — always engineering after DEC-212.
+  await expect.poll(() => displayed(page, c.sid, "IA"), { timeout: 10000 }).toMatchObject({ status: null, unit: "A" });
+  const dIA = await displayed(page, c.sid, "IA");
+  expect(dIA.values).toHaveLength(c.physical.values.length); expect(dIA.plotted).toEqual(dIA.values);
+  dIA.values.forEach((v, i) => expect(v).toBeCloseTo(c.physical.values[i], 12));
+  expect(dIA.identity).toBe(`${c.sid}::IA`);
+  await expect(row(page, c.sid, "IA").locator(".ww-pu-reference-status")).toHaveCount(0);
+
+  // Calculated child — DEC-212 does not apply; original PU-mode behaviour.
+  await expect.poll(() => displayed(page, c.child.id, c.child.name), { timeout: 10000 }).toMatchObject({
+    status: eligible ? "configured" : "base_required", unit: eligible ? "pu" : "A", compatibility });
+  const dChild = await displayed(page, c.child.id, c.child.name);
+  expect(dChild.values).toHaveLength(c.physical.values.length); expect(dChild.plotted).toEqual(dChild.values);
+  dChild.values.forEach((v, i) => expect(v).toBeCloseTo(Math.abs(c.physical.values[i]) * 2 / (eligible ? denominator : 1), 12));
+  expect(dChild.identity).toBe(`${c.child.id}::${c.child.name}`);
+  const badge = row(page, c.child.id, c.child.name).locator(".ww-pu-reference-status");
+  if (compatibility === "unverified" && eligible) {
+    await expect(badge).toHaveText("Unverified reference"); await expect(badge).toHaveAttribute("aria-label", /has not been verified/);
+    expect(dChild.hover).toContain("Unverified reference");
+  } else if (compatibility === "incompatible") {
+    await expect(badge).toHaveText("PU unavailable"); await expect(badge).toHaveAttribute("title", /reference sides are incompatible/);
+    expect(dChild.hover).toContain("PU unavailable");
+  } else await expect(badge).toHaveCount(0);
 }
 
 async function editGroup(page, c, side, value = "2", status = 200) {
@@ -124,7 +134,9 @@ test("known Secondary/Secondary stays eligible under one established authority",
 test("historical Unknown is explicit beside arrays, cursors, legends and annotations across modes", async ({ page }, info) => {
   const c = await setup(page, { marker: "C" });
   await verify(page, c, true, "unverified");
-  await expect(page.locator(".ww-legend-item .ww-pu-reference-status")).toHaveCount(2);
+  // DEC-212: raw IA stays in A (no badge); the calculated child is still in PU mode
+  // ("Unverified reference"), so the legend has exactly one PU-reference-status badge.
+  await expect(page.locator(".ww-legend-item .ww-pu-reference-status")).toHaveCount(1);
   await page.locator("#wwCursorModeBtn").click();
   await page.evaluate(async sid => {
     const state = wwTimeGroupCursorState(wwTimeGroupIdForDisplaySourceId(sid));
@@ -135,8 +147,13 @@ test("historical Unknown is explicit beside arrays, cursors, legends and annotat
     wwEndAnnotationEdit(Array.from(ww.annotations.values()).find(a => a.type === "callout").id, true);
     await wwCreatePeakFromClick(panel, channel, "max");
   }, c.sid);
+  // DEC-212 forces engineering for the waveform TRACE, but the cursor fetch uses ww.unitMode
+  // (per_unit here, no DEC-212 override), so cursor cells show PU values: 0.5 A / 2000 = 0.00025 pu.
   await expect.poll(async () => Number(await row(page, c.sid, "IA").locator(".cur-value--a").textContent())).toBeCloseTo(.00025, 5);
   await expect.poll(async () => Number(await row(page, c.sid, "IA").locator(".cur-value--b").textContent())).toBeCloseTo(-.00025, 5);
+  // The cursor fetch uses ww.unitMode (per_unit, no DEC-212 override), so it updates
+  // channel.perUnitStatus to "unverified". The callout and peak, created after the cursor
+  // fetch, reflect that status and show the PU reference badge.
   await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveText("Unverified reference");
   await expect(page.locator(".ww-peak-value-line")).toContainText("pu · Unverified reference");
   const anchors = await page.evaluate(() => Array.from(ww.annotations.values()).map(a => [a.id, a.data.sampleIndex, wwAnchoredAnnotationTime(a)]));
@@ -145,6 +162,8 @@ test("historical Unknown is explicit beside arrays, cursors, legends and annotat
   await expect(row(page, c.sid, "IA").locator(".ww-pu-reference-status")).toHaveCount(0);
   await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveCount(0);
   await page.locator("#wwUnitPerUnitBtn").click(); await verify(page, c, true, "unverified");
+  // After PU re-toggle the cursor auto-re-fetches in PU mode, updating channel.perUnitStatus
+  // back to "unverified" — the callout badge reappears (DEC-212 applies to the trace, not the cursor).
   await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveText("Unverified reference");
   expect(await page.evaluate(() => Array.from(ww.annotations.values()).map(a => [a.id, a.data.sampleIndex, wwAnchoredAnnotationTime(a)]))).toEqual(anchors);
 });

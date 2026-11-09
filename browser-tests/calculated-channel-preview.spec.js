@@ -24,6 +24,14 @@ async function uploadFixture(page) {
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  // Slice 6B may auto-configure the Voltage base and auto-switch to PU mode asynchronously
+  // after the table row becomes visible. Wait for the import-PU banner (the auto-switch
+  // indicator) to appear before navigating away, so the Engineering reset fires after the
+  // switch has completed rather than before it.
+  await page.locator("#wwImportPuStatusBanner").waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
+  await page.locator("#mainNavWaveformBtn").click();
+  await page.locator("#wwUnitEngineeringBtn").click();
+  await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true");
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }

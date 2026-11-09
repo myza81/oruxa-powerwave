@@ -21,6 +21,9 @@ const path = require("path");
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const FIXTURE = "line_to_line_multibay";
+// Smoke fixture uses primary_ratio=1.0 V — Slice 6B Convention A/B resolver does NOT
+// auto-configure a voltage base from it, giving tests a "no base configured" starting state.
+const FIXTURE_SMOKE = "compliance_smoke_multibay";
 
 async function workspaceIdOf(page) {
   return page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -34,6 +37,18 @@ async function uploadMultibay(page) {
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${FIXTURE}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${FIXTURE}.dat`));
+  await page.locator("#uploadModalSubmitBtn").click();
+  await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+  await expect(page.locator("#recordingsTableBody tr[data-source-id]").last()).toBeVisible();
+}
+
+async function uploadSmokeMultibay(page) {
+  await page.goto("/index.html");
+  await page.locator("#mainNavRecordingsBtn").click();
+  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+  await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${FIXTURE_SMOKE}.cfg`));
+  await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${FIXTURE_SMOKE}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   await expect(page.locator("#recordingsTableBody tr[data-source-id]").last()).toBeVisible();
@@ -147,7 +162,8 @@ test.describe("DEC-167 -- requirements come from the active Reference, read-only
 
 test.describe("DEC-167 -- per-unit is required only when the Reference unit is pu", () => {
   test("pu reference without a base: a loud critical row, Configure Base, status Action required", async ({ page }) => {
-    await uploadMultibay(page);
+    // Use smoke fixture (primary_ratio=1.0 V) — Slice 6B does not auto-configure its base.
+    await uploadSmokeMultibay(page);
     await addReference(page); // Line-Line RMS, Each Phase, pu
     await openComplianceAndSelect(page, "KPDN1");
     await expect(status(page)).toHaveText("⚠ Action required");
@@ -188,13 +204,14 @@ test.describe("DEC-167 -- per-unit is required only when the Reference unit is p
     await openComplianceAndSelect(page, "KPDN1");
     const unitRow = page.locator('.ww-compliance-readiness-row[data-row="unit"]');
     await expect(unitRow).toHaveAttribute("data-state", "ready");
-    await expect(unitRow).toContainText("132 kV");
+    await expect(unitRow).toContainText("132.00 kV"); // .toFixed(2) display (Slice 6C)
     await expect(unitRow).toContainText("kV L-");
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeHidden();
   });
 
   test("Configure Base opens the existing group editor on the selected group; saving there updates Compliance and the shared configuration", async ({ page }) => {
-    await uploadMultibay(page);
+    // Use smoke fixture (primary_ratio=1.0 V) — Slice 6B does not auto-configure its base.
+    await uploadSmokeMultibay(page);
     await addReference(page, { representation: "phase_ground_rms" });
     await openComplianceAndSelect(page, "KPDN1");
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeVisible();
@@ -213,7 +230,7 @@ test.describe("DEC-167 -- per-unit is required only when the Reference unit is p
     // Compliance re-checked readiness: the base is reused, the blocker is gone.
     const unitRow = page.locator('.ww-compliance-readiness-row[data-row="unit"]');
     await expect(unitRow).toHaveAttribute("data-state", "ready");
-    await expect(unitRow).toContainText("275 kV");
+    await expect(unitRow).toContainText("275.00 kV"); // .toFixed(2) display (Slice 6C)
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeHidden();
 
     // One shared configuration: the group's own voltage config now holds it (what Waveform reads).
@@ -254,7 +271,8 @@ test.describe("DEC-167 -- shared RMS preparation, reuse and duplicate prevention
   });
 
   test("Line-Line RMS from instantaneous phases prepares line-to-line voltages then RMS; the base stays the only action left", async ({ page }) => {
-    await uploadMultibay(page);
+    // Use smoke fixture (primary_ratio=1.0 V) — Slice 6B does not auto-configure its base.
+    await uploadSmokeMultibay(page);
     await addReference(page); // pu
     await openComplianceAndSelect(page, "KPDN1");
     await page.locator("#wwCompliancePrepareBtn").click();
