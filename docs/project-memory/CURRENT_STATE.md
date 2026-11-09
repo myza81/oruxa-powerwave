@@ -109,11 +109,12 @@ Test changes in Slice 6C.1:
   - `voltage-only-pu-display.spec.js`: added VD-16 (Current group edit drawer has no Nominal Voltage
     PU config field) and VD-17 (mixed Voltage PU + Current ENG cursors from same source batch correctly).
 
-Integration audit complete (2026-11-09):
+Integration audit complete (2026-11-09/10):
 - 5-spec 61-test browser suite: **61/61 pass, EXIT=0**
   (calculated-channel-preview, compliance_readiness, event-reconstruction-per-unit,
    per-unit-reference-safety, voltage-only-pu-display)
-- Backend full suite: exit 0 (pending confirmation from background run; all prior passes confirmed)
+- Backend `test_frontend_per_unit_mode.py`: 1 additional test updated (`test_cursor_peak_and_annotation_anchor_requests_all_carry_unit_mode`) — Slice 6C DEC-212 cursor partitioning uses `batchUnitMode` (not `ww.unitMode` directly) for non-calculated path; `>= 2` → `>= 1` + `batchUnitMode in body`; full-source `>= 6` → `>= 3` + DEC-212 conditional `>= 3`
+- Backend full suite: **exit 0 confirmed**
 - No recordings, no temp artifacts staged
 
 [PENDING] Local commit creation; then owner review of Slices 6A–6C + 6C.1. Do not proceed to Slice 6D without authorization.
