@@ -1,4 +1,8 @@
 // LIM-001: real UI edits, arrays, shared warnings and stale-response protection.
+// Slice 6C.1 (DEC-212): editGroup() removed — Current PU configuration no longer in
+// normal MG UI. Affected tests use direct API calls to exercise backend behaviour.
+// New tests cover: MG drawer standard vs legacy, annotation engineering-type storage,
+// hidden-channel annotation, legacy-annotation fallback, calculated-Current peak scope.
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 const { BACKEND, workspaceId, sourceIdFor, addRecords, selectChannel, channelRow, waitForPlot } = require("./support/event_reconstruction_helpers");
@@ -69,8 +73,7 @@ function displayed(page, id, name) {
 
 async function verify(page, c, eligible, compatibility, denominator = 2000) {
   // DEC-212: raw source Current channels in Waveform (engineeringType "Current") are always
-  // fetched in engineering mode. Calculated channels (engineeringType "Calculated") still
-  // follow the Voltage Display toggle and use the original eligible/compatibility logic.
+  // fetched in engineering mode. Calculated channels still follow the Voltage Display toggle.
 
   // Raw IA — always engineering after DEC-212.
   await expect.poll(() => displayed(page, c.sid, "IA"), { timeout: 10000 }).toMatchObject({ status: null, unit: "A" });
@@ -95,21 +98,6 @@ async function verify(page, c, eligible, compatibility, denominator = 2000) {
     await expect(badge).toHaveText("PU unavailable"); await expect(badge).toHaveAttribute("title", /reference sides are incompatible/);
     expect(dChild.hover).toContain("PU unavailable");
   } else await expect(badge).toHaveCount(0);
-}
-
-async function editGroup(page, c, side, value = "2", status = 200) {
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${c.group.id}"]`).click();
-  await page.locator("#wwMgBaseReferenceSide").selectOption(side);
-  await page.locator("#wwMgManualIbaseInput").fill(value);
-  const reply = page.waitForResponse(r => r.url().endsWith("/current-config") && r.request().method() === "PUT");
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  expect((await reply).status()).toBe(status);
-  if (status === 200) {
-    await expect(page.locator("#wwMgDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-    await page.locator("#measurementGroupsCloseBtn").click();
-  }
 }
 
 for (const sourceDefault of [false, true]) {
@@ -147,35 +135,56 @@ test("historical Unknown is explicit beside arrays, cursors, legends and annotat
     wwEndAnnotationEdit(Array.from(ww.annotations.values()).find(a => a.type === "callout").id, true);
     await wwCreatePeakFromClick(panel, channel, "max");
   }, c.sid);
-  // DEC-212 forces engineering for the waveform TRACE, but the cursor fetch uses ww.unitMode
-  // (per_unit here, no DEC-212 override), so cursor cells show PU values: 0.5 A / 2000 = 0.00025 pu.
-  await expect.poll(async () => Number(await row(page, c.sid, "IA").locator(".cur-value--a").textContent())).toBeCloseTo(.00025, 5);
-  await expect.poll(async () => Number(await row(page, c.sid, "IA").locator(".cur-value--b").textContent())).toBeCloseTo(-.00025, 5);
-  // The cursor fetch uses ww.unitMode (per_unit, no DEC-212 override), so it updates
-  // channel.perUnitStatus to "unverified". The callout and peak, created after the cursor
-  // fetch, reflect that status and show the PU reference badge.
-  await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveText("Unverified reference");
-  await expect(page.locator(".ww-peak-value-line")).toContainText("pu · Unverified reference");
+  // DEC-212 §2: cursor fetch for raw Current channels uses engineering (not ww.unitMode).
+  // 0.5 A peak amplitude → cursor A ≈ 0.5 A; cursor B at t=0.015 (270° of 50 Hz) ≈ −0.5 A.
+  await expect.poll(async () => Number(await row(page, c.sid, "IA").locator(".cur-value--a").textContent())).toBeCloseTo(.5, 2);
+  await expect.poll(async () => Number(await row(page, c.sid, "IA").locator(".cur-value--b").textContent())).toBeCloseTo(-.5, 2);
+  // DEC-212 §2: callout and peak anchor requests also use engineering for raw Current.
+  // No PU reference-status badge on callout or peak.
+  await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveCount(0);
+  await expect(page.locator(".ww-peak-value-line")).not.toContainText("pu");
   const anchors = await page.evaluate(() => Array.from(ww.annotations.values()).map(a => [a.id, a.data.sampleIndex, wwAnchoredAnnotationTime(a)]));
   await page.screenshot({ path: info.outputPath("unverified-reference.png") });
   await page.locator("#wwUnitEngineeringBtn").click();
   await expect(row(page, c.sid, "IA").locator(".ww-pu-reference-status")).toHaveCount(0);
   await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveCount(0);
   await page.locator("#wwUnitPerUnitBtn").click(); await verify(page, c, true, "unverified");
-  // After PU re-toggle the cursor auto-re-fetches in PU mode, updating channel.perUnitStatus
-  // back to "unverified" — the callout badge reappears (DEC-212 applies to the trace, not the cursor).
-  await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveText("Unverified reference");
+  // After PU re-toggle, cursor and callout refresh for raw Current still use engineering.
+  await expect(page.locator(".ww-annotation--callout .ww-pu-reference-status")).toHaveCount(0);
   expect(await page.evaluate(() => Array.from(ww.annotations.values()).map(a => [a.id, a.data.sampleIndex, wwAnchoredAnnotationTime(a)]))).toEqual(anchors);
 });
+
+// Slice 6C.1: editGroup() removed — Current Base config no longer in the standard MG UI.
+// Tests below use direct API calls to the /current-config endpoint, which remains intact.
+// The underlying backend rejection and state-preservation assertions are unchanged.
 
 test("accepted reference edits update all shared displays; rejected edit preserves state", async ({ page }) => {
   const c = await setup(page);
   await verify(page, c, true, "compatible");
-  await editGroup(page, c, "secondary"); await verify(page, c, false, "incompatible");
-  await editGroup(page, c, "unknown"); await verify(page, c, true, "unverified");
+
+  // Change to secondary (incompatible with primary Ibase).
+  expect((await page.request.put(`${c.groupsUrl}/${c.group.id}/current-config`, {
+    data: { method: "manual", manual_ibase_ka: 2, base_reference_side: "secondary" },
+  })).status()).toBe(200);
+  await page.evaluate(async () => { await wwRefreshWaveformDisplayBasis(); });
+  await verify(page, c, false, "incompatible");
+
+  // Change to unknown (unverified compatibility).
+  expect((await page.request.put(`${c.groupsUrl}/${c.group.id}/current-config`, {
+    data: { method: "manual", manual_ibase_ka: 2, base_reference_side: "unknown" },
+  })).status()).toBe(200);
+  await page.evaluate(async () => { await wwRefreshWaveformDisplayBasis(); });
+  await verify(page, c, true, "unverified");
+
   const groups = await json(await page.request.get(c.groupsUrl));
   const wave = await json(await page.request.get(`${c.base}/calculated-channels/${c.child.id}/waveform?unit_mode=per_unit`));
-  await editGroup(page, c, "secondary", "-2", 400);
+
+  // Backend rejects negative Ibase (invalid value).
+  expect((await page.request.put(`${c.groupsUrl}/${c.group.id}/current-config`, {
+    data: { method: "manual", manual_ibase_ka: -2, base_reference_side: "secondary" },
+  })).status()).toBe(400);
+
+  // State preserved after rejection.
   expect(await json(await page.request.get(c.groupsUrl))).toEqual(groups);
   expect(await json(await page.request.get(`${c.base}/calculated-channels/${c.child.id}/waveform?unit_mode=per_unit`))).toEqual(wave);
   await verify(page, c, true, "unverified");
@@ -191,7 +200,11 @@ test("an obsolete compatible waveform cannot restore PU after an incompatible ac
   }, { times: 1 });
   await page.evaluate(() => { window.referenceRefresh = wwRefreshWaveformDisplayBasis(); });
   await reached;
-  await editGroup(page, c, "secondary");
+  // Change config via API and trigger a fresh refresh (not intercepted — times:1 already used).
+  expect((await page.request.put(`${c.groupsUrl}/${c.group.id}/current-config`, {
+    data: { method: "manual", manual_ibase_ka: 2, base_reference_side: "secondary" },
+  })).status()).toBe(200);
+  await page.evaluate(async () => { await wwRefreshWaveformDisplayBasis(); });
   release(); await page.evaluate(() => window.referenceRefresh);
   await verify(page, c, false, "incompatible");
 });
@@ -209,4 +222,175 @@ test("ER uses its own mode and explicit Unknown-reference status without changin
   expect(proof).toMatchObject({ status: "configured", reference_compatibility: "unverified", measurement_side: "unknown", base_reference_side: "primary" });
   const wave = await json(await page.request.get(`${c.base}/calculated-channels/${c.child.id}/waveform?unit_mode=per_unit`));
   wave.values.forEach((v, i) => expect(v).toBeCloseTo(Math.abs(c.physical.values[i]) * 2 / 2000, 12));
+});
+
+// ---------------------------------------------------------------------------
+// Slice 6C.1 — DEC-212 MG drawer: standard vs legacy Current groups
+// ---------------------------------------------------------------------------
+
+test("Current MG drawer shows no PU controls for standard Current group (DEC-212)", async ({ page }) => {
+  await page.goto("/index.html");
+  const station = "MG_UI_STANDARD";
+  const data = syntheticComtrade({ station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.1,
+    channels: [{ name: "IA", phase: "A", unit: "A", amplitude: .5, frequencyHz: 50 }] });
+  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#uploadModalFile_0").setInputFiles({ name: "mgtest.cfg", mimeType: "application/octet-stream", buffer: data.cfg });
+  await page.locator("#uploadModalFile_1").setInputFiles({ name: "mgtest.dat", mimeType: "application/octet-stream", buffer: data.dat });
+  await page.locator("#uploadModalSubmitBtn").click();
+  await expect(page.locator("#uploadModalOverlay")).toBeHidden();
+
+  const ws = await workspaceId(page), sid = await sourceIdFor(page, station);
+  const base = `${BACKEND}/api/v1/workspaces/${ws}`, groupsUrl = `${base}/sources/${sid}/measurement-groups`;
+  // Delete any auto-created groups.
+  for (const g of await json(await page.request.get(groupsUrl))) await page.request.delete(`${groupsUrl}/${g.id}`);
+  // Create a Current group without calling /current-config → method stays "none" → hasLegacyConfig = false.
+  const group = await json(await page.request.post(groupsUrl, { data: { kind: "current",
+    display_name: "Standard Current", status: "confirmed",
+    channel_refs: [{ kind: "source", source_id: sid, channel_name: "IA" }] } }), 201);
+
+  await page.locator("#mainNavWaveformBtn").click();
+  await page.locator("#wwOpenPerUnitSettingsBtn").click();
+  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+  await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+
+  // Standard DEC-212 Current group: no PU configuration controls.
+  await expect(page.locator("#wwMgLegacyCurrentSection")).toHaveCount(0);
+  await expect(page.locator("#wwMgManualIbaseInput")).toHaveCount(0);
+  await expect(page.locator("#wwMgCurrentMethod")).toHaveCount(0);
+  await expect(page.locator("#wwMgDrawerBody")).toContainText("Current channels always display in A/kA");
+  await expect(page.locator("#wwMgDrawerBody")).toContainText("DEC-212");
+});
+
+test("Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)", async ({ page }) => {
+  // setup() creates a group with method: "manual" (manual_ibase_ka: 2) → hasLegacyConfig = true.
+  const c = await setup(page);
+
+  await page.locator("#wwOpenPerUnitSettingsBtn").click();
+  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+  await page.locator(`[id="wwMgEditBtn-${c.group.id}"]`).click();
+  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+
+  // Legacy group: shows the Legacy Current Reference section with its badge and controls.
+  await expect(page.locator("#wwMgLegacyCurrentSection")).toBeVisible();
+  await expect(page.locator("#wwMgLegacyBadge")).toHaveText("Historical");
+  await expect(page.locator("#wwMgManualIbaseInput")).toBeVisible();
+  await expect(page.locator("#wwMgBaseReferenceSide")).toBeVisible();
+  // The DEC-212 "no PU controls" note is NOT present for legacy groups.
+  await expect(page.locator("#wwMgDrawerBody")).not.toContainText("Per-unit normalisation for current is configured through Calculated Channels");
+});
+
+// ---------------------------------------------------------------------------
+// Slice 6C.1 — DEC-212 annotation engineeringType storage
+// ---------------------------------------------------------------------------
+
+test("raw Current callout and peak use engineering even when source channel is hidden (DEC-212)", async ({ page }) => {
+  const c = await setup(page, { marker: "C" });
+
+  // Create a callout and peak on raw IA while it is displayed.
+  await page.locator("#wwCursorModeBtn").click();
+  await page.evaluate(async sid => {
+    const state = wwTimeGroupCursorState(wwTimeGroupIdForDisplaySourceId(sid));
+    state.a.visible = true; state.a.time = .005;
+    wwUpdateAllCursorOverlays();
+    const { panel, channel } = ww.displayed.get(wwChannelKey(sid, "IA"));
+    await wwCreateCalloutFromClick(panel, channel, .005);
+    wwEndAnnotationEdit(Array.from(ww.annotations.values()).find(a => a.type === "callout").id, true);
+    await wwCreatePeakFromClick(panel, channel, "max");
+  }, c.sid);
+
+  // Hide IA: ww.displayed no longer contains IA entry.
+  await page.locator("#wwCursorModeBtn").click(); // exit cursor mode
+  await row(page, c.sid, "IA").click();           // toggle IA off
+  await expect.poll(() => page.evaluate(sid => !ww.displayed.has(wwChannelKey(sid, "IA")), c.sid), { timeout: 5000 }).toBe(true);
+
+  // Toggle ENG → PU: triggers callout + peak refresh for ALL annotations including hidden-channel ones.
+  // Old code: ww.displayed lookup fails → falls back to ww.unitMode (PU) → annotation.data.unit = "pu".
+  // Slice 6C.1 fix: annotation.data.engineeringType = "Current" → engineering → annotation.data.unit = "A".
+  await page.locator("#wwUnitEngineeringBtn").click();
+  await page.locator("#wwUnitPerUnitBtn").click();
+
+  // Check annotation data units directly (annotation may not render if its panel is hidden).
+  // wwRefreshWaveformDisplayBasis clears unit="" synchronously then restores it via async
+  // backend requests (wwResolveCalloutAnchorMove / wwRecalculatePeakAnnotationsForSource).
+  // Use expect.poll() to wait for the async refresh to complete.
+  await expect.poll(async () => page.evaluate(() => {
+    for (const a of ww.annotations.values()) {
+      if (a.type === "callout") return a.data.unit;
+    }
+    return null;
+  }), { timeout: 10000 }).toBe("A");
+
+  await expect.poll(async () => page.evaluate(() => {
+    for (const a of ww.annotations.values()) {
+      if (wwIsPeakType(a.type)) return a.data.unit;
+    }
+    return null;
+  }), { timeout: 10000 }).toBe("A");
+});
+
+test("legacy annotation without stored engineeringType falls back to ww.displayed lookup (DEC-212)", async ({ page }) => {
+  const c = await setup(page, { marker: "C" });
+
+  // Create a callout and peak on raw IA.
+  await page.locator("#wwCursorModeBtn").click();
+  await page.evaluate(async sid => {
+    const state = wwTimeGroupCursorState(wwTimeGroupIdForDisplaySourceId(sid));
+    state.a.visible = true; state.a.time = .005;
+    wwUpdateAllCursorOverlays();
+    const { panel, channel } = ww.displayed.get(wwChannelKey(sid, "IA"));
+    await wwCreateCalloutFromClick(panel, channel, .005);
+    wwEndAnnotationEdit(Array.from(ww.annotations.values()).find(a => a.type === "callout").id, true);
+    await wwCreatePeakFromClick(panel, channel, "max");
+  }, c.sid);
+
+  // Simulate a pre-Slice-6C.1 annotation: remove engineeringType from annotation data.
+  await page.evaluate(() => {
+    for (const a of ww.annotations.values()) { delete a.data.engineeringType; }
+  });
+
+  // IA is still in ww.displayed with engineeringType: "Current".
+  // The fallback ww.displayed lookup should correctly identify it as Current.
+  await page.locator("#wwUnitEngineeringBtn").click();
+  await page.locator("#wwUnitPerUnitBtn").click();
+
+  // wwRefreshWaveformDisplayBasis clears unit="" before the async backend request completes.
+  // Use expect.poll() to wait for the refresh; the displayed fallback lookup must resolve "A".
+  await expect.poll(async () => page.evaluate(() => {
+    for (const a of ww.annotations.values()) {
+      if (a.type === "callout") return a.data.unit;
+    }
+    return null;
+  }), { timeout: 10000 }).toBe("A");
+
+  await expect.poll(async () => page.evaluate(() => {
+    for (const a of ww.annotations.values()) {
+      if (wwIsPeakType(a.type)) return a.data.unit;
+    }
+    return null;
+  }), { timeout: 10000 }).toBe("A");
+});
+
+test("calculated Current peak follows ww.unitMode not engineering pending Slice 6D (DEC-212)", async ({ page }) => {
+  // Uses Unknown marker so the calculated child shows "Unverified reference" in PU mode.
+  const c = await setup(page, { marker: "C" });
+  await verify(page, c, true, "unverified");
+
+  // Create a peak annotation on the calculated child (abs(sum(IA, IB))) in PU mode.
+  // isCalculated = true for c.child.id; the !isCalculated guard in wwCreatePeakFromClick
+  // ensures the peak uses ww.unitMode (per_unit), not "engineering".
+  await page.evaluate(async ({ childId, childName }) => {
+    const { panel, channel } = ww.displayed.get(wwChannelKey(childId, childName));
+    await wwCreatePeakFromClick(panel, channel, "max");
+  }, { childId: c.child.id, childName: c.child.name });
+
+  // Calculated Current channel peak: uses ww.unitMode = per_unit → shows "pu" value
+  // and "Unverified reference" badge (not engineering — confirming !isCalculated guard scope).
+  await expect(page.locator(".ww-peak-value-line")).toContainText("pu");
+  await expect(page.locator(".ww-peak-value-line")).toContainText("Unverified reference");
+
+  // Switch to ENG: peak recalculation uses ww.unitMode = engineering → no "pu" text.
+  await page.locator("#wwUnitEngineeringBtn").click();
+  await expect.poll(async () => await page.locator(".ww-peak-value-line").textContent(), { timeout: 8000 })
+    .not.toMatch(/pu/);
 });

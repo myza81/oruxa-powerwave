@@ -36051,9 +36051,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const cfg = group.current_config || {};
             let voltageSourceMode = "linked";
             if (cfg.method === "equipment_rating" && !cfg.linked_voltage_group_id && cfg.manual_voltage_base_kv != null) voltageSourceMode = "manual";
+            // hasLegacyConfig: true only for groups that were configured before DEC-212 removed
+            // Current PU from the standard MG workflow. These groups retain a legacy editing section.
+            const hasLegacyConfig = cfg.method === "equipment_rating" || cfg.method === "manual";
             return {
                 groupId: group.id, kind: "current", displayName: group.display_name, channelRefs: group.channel_refs,
                 originalStatus: group.status,
+                hasLegacyConfig,
                 method: cfg.method || "none",
                 equipmentRatingMva: cfg.equipment_rating_mva,
                 voltageSourceMode,
@@ -36090,7 +36094,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Nominal Voltage (kV, Line-to-Line)</span>';
             html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgVoltageKvInput" min="0" step="any" value="' + (state.nominalKv != null ? state.nominalKv : "") + '"><span class="ww-pu-suffix">kV</span></div>';
             html += '</label>';
-            html += '<p class="hint" style="margin-top:6px;">Always entered as the familiar nominal system line-to-line voltage &mdash; e.g. enter 275 for a 275 kV system, even if this group’s own channels measure phase-to-ground. Powerwave derives 275/&radic;3 automatically for phase channels.</p>';
+            html += '<p class="hint" style="margin-top:6px;">Always entered as the familiar nominal system line-to-line voltage &mdash; e.g. enter 275 for a 275 kV system, even if this group\'s own channels measure phase-to-ground. Powerwave derives 275/&radic;3 automatically for phase channels.</p>';
             html += '</div>';
 
             html += '<div class="ww-pu-section">';
@@ -36117,6 +36121,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Primary. The "Derived Current Base" preview below is COSMETIC
         // JS-side math ONLY (see module header comment) -- Save always
         // re-resolves it authoritatively on the backend.
+        //
+        // DEC-212 (Slice 6C.1): standard (new) Current groups show no PU
+        // configuration controls. The Legacy Current Reference section is
+        // only rendered for groups that already had a Current base configured
+        // before DEC-212 (hasLegacyConfig = true from wwMgGroupToEditState).
         function wwRenderMgCurrentDrawerHtml(state) {
             let html = "";
             html += '<div class="ww-pu-section ww-pu-section--first">';
@@ -36124,14 +36133,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<p class="hint">' + escapeHtml(state.displayName) + '<br><span style="font-size:0.68rem;">' + escapeHtml(wwMgChannelsText(state.channelRefs, 8)) + '</span></p>';
             html += '</div>';
 
-            html += '<div class="ww-pu-section">';
-            html += '<h4 class="ww-pu-section-title">Current Base Method</h4>';
+            if (!state.hasLegacyConfig) {
+                // Standard DEC-212 Current group: no PU configuration needed.
+                html += '<div class="ww-pu-section">';
+                html += '<p class="hint">Current channels always display in A/kA (DEC-212). Per-unit normalisation for current is configured through Calculated Channels.</p>';
+                html += '</div>';
+                return html;
+            }
+
+            // Legacy Current Reference: groups that had a Current base configured
+            // before DEC-212. Shown separately to distinguish from standard workflow.
+            html += '<div class="ww-pu-section" id="wwMgLegacyCurrentSection">';
+            html += '<h4 class="ww-pu-section-title" style="display:flex;align-items:center;gap:6px;">Legacy Current Reference <span style="font-size:0.65rem;font-weight:normal;background:var(--ww-badge-bg,#e8e3d8);color:inherit;padding:1px 5px;border-radius:3px;" id="wwMgLegacyBadge">Historical</span></h4>';
+            html += '<p class="hint" style="font-size:0.72rem;margin-bottom:6px;">This group has an existing Current base from before DEC-212. It remains active for historical recordings. New Current groups no longer configure a Current base here.</p>';
             html += wwMgModeRow("wwMgMethodEquipment", "wwMgCurrentMethod", "equipment_rating", state.method === "equipment_rating",
                 "Equipment Rating", "Derive Ibase from equipment MVA and a voltage base");
             html += wwMgModeRow("wwMgMethodManual", "wwMgCurrentMethod", "manual", state.method === "manual",
                 "Manual Ibase", "Enter the known current base directly");
             html += wwMgModeRow("wwMgMethodNone", "wwMgCurrentMethod", "none", state.method === "none",
-                "None", "Per-unit normalization is disabled for this current group");
+                "None", "Per-unit normalisation is disabled for this current group");
             html += '</div>';
 
             if (state.method === "equipment_rating") {
@@ -36144,7 +36164,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '<div class="ww-pu-section">';
                 html += '<h4 class="ww-pu-section-title">Voltage Base Source</h4>';
                 html += wwMgModeRow("wwMgVoltSrcLinked", "wwMgVoltageSource", "linked", state.voltageSourceMode === "linked",
-                    "Link Voltage Measurement Group", "Use another group’s own nominal LL voltage");
+                    "Link Voltage Measurement Group", "Use another group's own nominal LL voltage");
                 html += wwMgModeRow("wwMgVoltSrcManual", "wwMgVoltageSource", "manual", state.voltageSourceMode === "manual",
                     "Manual nominal LL voltage", "For a current group with no corresponding Voltage group in this recording");
 
@@ -36179,7 +36199,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '</div>';
             } else {
                 html += '<div class="ww-pu-section">';
-                html += '<p class="hint">Per-unit normalization is disabled for this current group. Engineering-unit values remain available as always.</p>';
+                html += '<p class="hint">Per-unit normalisation is disabled for this current group. Engineering-unit values remain available as always.</p>';
                 html += '</div>';
             }
             return html;
@@ -36284,6 +36304,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             errorEl.hidden = true;
             const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups/" + encodeURIComponent(state.groupId);
+            // DEC-212: standard (non-legacy) Current groups have no PU config to save.
+            // Only promote status if needed, then close.
+            if (state.kind === "current" && !state.hasLegacyConfig) {
+                if (state.originalStatus === "suggested" || state.originalStatus === "needs_review") {
+                    try {
+                        await fetch(base, { method: "PATCH", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ status: "confirmed" }) });
+                    } catch (error) { /* best-effort promotion */ }
+                }
+                wwCloseMgDrawer();
+                await wwLoadAndRenderMeasurementGroupsBody();
+                if (shell.currentPage === "compliance") wwComplianceRefreshReadiness();
+                return;
+            }
             let url, body;
             if (state.kind === "voltage") {
                 url = base + "/voltage-config";
@@ -37525,7 +37559,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         body: JSON.stringify(
                             isCalculated
                                 ? { approximate_elapsed_seconds: requestedTime, unit_mode: ww.unitMode }
-                                : { channel_name: channelName, approximate_elapsed_seconds: requestedTime, unit_mode: ww.unitMode }
+                                : { channel_name: channelName, approximate_elapsed_seconds: requestedTime,
+                                    // DEC-212 §2: raw Current channels always use engineering units.
+                                    // Primary: annotation.data.engineeringType (reliable even when channel is hidden).
+                                    // Fallback: live ww.displayed lookup for annotations created before Slice 6C.1.
+                                    unit_mode: ((annotation.data?.engineeringType ?? ww.displayed.get(wwChannelKey(sourceId, channelName))?.channel?.engineeringType) === "Current") ? "engineering" : ww.unitMode }
                         ),
                     }
                 );
@@ -38265,7 +38303,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         body: JSON.stringify(
                             isCalculated
                                 ? { approximate_elapsed_seconds: approximateElapsedSeconds, unit_mode: ww.unitMode }
-                                : { channel_name: channelName, approximate_elapsed_seconds: approximateElapsedSeconds, unit_mode: ww.unitMode }
+                                : { channel_name: channelName, approximate_elapsed_seconds: approximateElapsedSeconds,
+                                    // DEC-212 §2: raw Current channels always use engineering units.
+                                    unit_mode: channel.engineeringType === "Current" ? "engineering" : ww.unitMode }
                         ),
                     }
                 );
@@ -38301,6 +38341,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 perUnitStatus: body.per_unit_status,
                 perUnitReferenceCompatibility: body.per_unit_reference_compatibility,
                 unit: body.unit,
+                // DEC-212 §2: stored at creation for reliable Current detection
+                // even after the channel is hidden (ww.displayed lookup unreliable).
+                engineeringType: channel.engineeringType,
                 // Section 62: a sensible default that avoids covering the
                 // clicked waveform point -- never elaborate auto-placement.
                 boxOffset: { x: 80, y: -60 },
@@ -38388,7 +38431,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                 ],
                                 start_time: startTime,
                                 end_time: endTime,
-                                unit_mode: ww.unitMode,
+                                // DEC-212 §2: raw (non-calculated) Current channels always use engineering units.
+                                // Calculated channels follow ww.unitMode pending Slice 6D explicit normalisation.
+                                unit_mode: (!isCalculated && channel.engineeringType === "Current") ? "engineering" : ww.unitMode,
                             }),
                         }
                     );
@@ -38446,6 +38491,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
                     unit: result.unit,
                     available: true,
+                    // DEC-212 §2: stored at creation for reliable Current detection
+                    // even after the channel is hidden (ww.displayed lookup unreliable).
+                    engineeringType: channel.engineeringType,
                     // Section 23: same sensible default Callout already uses --
                     // avoids covering the clicked waveform point.
                     boxOffset: { x: 80, y: -60 },
@@ -38504,80 +38552,94 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // scoped) when `sourceId` is actually a calculated channel's
             // own id -- see wwCreatePeakFromClick()'s own matching comment.
             const isCalculated = wwIsCalculatedSourceId(sourceId);
-            const requests = items.map((annotation) => (
-                isCalculated
-                    ? { calculated_channel_id: sourceId, mode: annotation.data.mode }
-                    : { channel_name: annotation.data.channelName, mode: annotation.data.mode }
-            ));
 
-            let response;
-            try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                    (isCalculated
-                        ? "/calculated-channels/peak-values"
-                        : "/sources/" + encodeURIComponent(sourceId) + "/peak-values"),
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ requests: requests, start_time: startTime, end_time: endTime, unit_mode: ww.unitMode }),
-                    }
+            // DEC-212 §2: raw Current channels always use engineering units.
+            // Partition peak annotations by channel engineering type so
+            // Current peaks are never normalised to per_unit by the backend.
+            // Calculated sources are not split (they follow ww.unitMode per §3).
+            // Primary lookup: annotation.data.engineeringType (stored at creation,
+            // reliable even when the source channel is hidden from the display).
+            // Fallback: live ww.displayed lookup for annotations created before Slice 6C.1.
+            const dec212CurrentItems = !isCalculated
+                ? items.filter(a => {
+                    const et = a.data.engineeringType ?? ww.displayed.get(wwChannelKey(a.data.sourceId, a.data.channelName))?.channel?.engineeringType;
+                    return et === "Current";
+                })
+                : [];
+            const dec212OtherItems = items.filter(a => !dec212CurrentItems.includes(a));
+
+            const isFresh = () =>
+                wwPeakValuesGeneration.get(sourceId) === generation &&
+                displayContext === wwWaveformDisplayContext(sourceId) &&
+                timingAtStart === wwDisplayTimingFingerprint(sourceId) &&
+                epochAtStart === ww.epoch &&
+                currentWorkspaceId() === workspaceId;
+
+            // Sends one peak-values batch and updates the annotations in batchItems.
+            // Returns false if the batch should abort further processing (stale / network
+            // error / non-OK); true if the batch completed successfully.
+            const processPeakBatch = async (batchItems, batchUnitMode) => {
+                if (batchItems.length === 0) return true;
+                const batchRequests = batchItems.map(a =>
+                    isCalculated
+                        ? { calculated_channel_id: sourceId, mode: a.data.mode }
+                        : { channel_name: a.data.channelName, mode: a.data.mode }
                 );
-            } catch (error) {
-                // Section 68: a transient network failure during a routine
-                // recalculation leaves each annotation's last-known value
-                // in place rather than clearing it -- the NEXT viewport
-                // change (or the engineer retrying) will resolve it again;
-                // only a FAILED CREATION (above) is treated as a hard
-                // error, since nothing valid has ever been shown yet there.
-                return;
-            }
-            if (wwPeakValuesGeneration.get(sourceId) !== generation || displayContext !== wwWaveformDisplayContext(sourceId)) return;
-            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-
-            let body = null;
-            try { body = await response.json(); } catch (error) { /* handled below */ }
-            if (wwPeakValuesGeneration.get(sourceId) !== generation || displayContext !== wwWaveformDisplayContext(sourceId)) return;
-            if (timingAtStart !== wwDisplayTimingFingerprint(sourceId) || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-            if (!response.ok || !body || !Array.isArray(body.results)) return;
-
-            // Section 33's own alignment contract: `results[i]` corresponds
-            // to `requests[i]`/`items[i]` -- the backend never reorders or
-            // drops batch items (see resolve_source_peak_values()'s own
-            // per-item try/except, which always appends exactly one result
-            // per request).
-            for (let i = 0; i < items.length; i++) {
-                const annotation = items[i];
-                // Section 35: this SPECIFIC annotation may have been
-                // deleted (or its source removed, which deletes it too --
-                // section 46) while this request was in flight; skip it,
-                // never resurrect it.
-                if (!ww.annotations.has(annotation.id)) continue;
-                const result = body.results[i];
-                if (!result) continue;
-                if (!result.available) {
-                    // Section 12/67: preserve the annotation's identity in
-                    // state/list, but mark it unavailable so the render
-                    // path stops presenting the LAST valid value as
-                    // current for this new interval.
-                    wwUpdateAnnotation(annotation.id, { data: { available: false } });
-                    continue;
+                let batchResponse;
+                try {
+                    batchResponse = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                        (isCalculated
+                            ? "/calculated-channels/peak-values"
+                            : "/sources/" + encodeURIComponent(sourceId) + "/peak-values"),
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ requests: batchRequests, start_time: startTime, end_time: endTime, unit_mode: batchUnitMode }),
+                        }
+                    );
+                } catch (error) {
+                    // Section 68: a transient network failure during a routine
+                    // recalculation leaves each annotation's last-known value
+                    // in place rather than clearing it.
+                    return false;
                 }
-                // Section 19: update the SAME annotation id in place --
-                // never a new annotation, never reordering the list
-                // (createdAt is untouched by wwUpdateAnnotation()).
-                wwUpdateAnnotation(annotation.id, {
-                    data: {
-                        available: true,
-                        sampleIndex: result.sample_index,
-                        peakElapsedSeconds: result.elapsed_seconds,
-                        peakValue: result.value,
-                        perUnitStatus: result.per_unit_status,
-                        perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
-                        unit: result.unit,
-                    },
-                });
-            }
+                if (!isFresh()) return false;
+                let batchBody = null;
+                try { batchBody = await batchResponse.json(); } catch (error) { /* handled below */ }
+                if (!isFresh()) return false;
+                if (!batchResponse.ok || !batchBody || !Array.isArray(batchBody.results)) return false;
+                // Section 33's own alignment contract: results[i] corresponds to batchItems[i].
+                for (let i = 0; i < batchItems.length; i++) {
+                    const annotation = batchItems[i];
+                    // Section 35: this SPECIFIC annotation may have been deleted while in flight.
+                    if (!ww.annotations.has(annotation.id)) continue;
+                    const result = batchBody.results[i];
+                    if (!result) continue;
+                    if (!result.available) {
+                        // Section 12/67: mark unavailable without clearing identity.
+                        wwUpdateAnnotation(annotation.id, { data: { available: false } });
+                        continue;
+                    }
+                    // Section 19: update the SAME annotation id in place.
+                    wwUpdateAnnotation(annotation.id, {
+                        data: {
+                            available: true,
+                            sampleIndex: result.sample_index,
+                            peakElapsedSeconds: result.elapsed_seconds,
+                            peakValue: result.value,
+                            perUnitStatus: result.per_unit_status,
+                            perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
+                            unit: result.unit,
+                        },
+                    });
+                }
+                return true;
+            };
+
+            // Non-Current peaks follow ww.unitMode; Current peaks always use engineering.
+            if (dec212OtherItems.length > 0) { if (!await processPeakBatch(dec212OtherItems, ww.unitMode)) return; }
+            if (dec212CurrentItems.length > 0) { await processPeakBatch(dec212CurrentItems, "engineering"); }
         }
 
         // Section 31: the ONE dispatcher wwApplyAndFetchGroupViewport()
@@ -47088,54 +47150,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // never needs a digital branch.
             const isCalculated = wwIsCalculatedSourceId(sourceId);
 
-            let body = null;
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    (isCalculated
-                        ? "/calculated-channels/cursor-values"
-                        : "/sources/" + encodeURIComponent(sourceId) + "/cursor-values"),
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(
-                            isCalculated
-                                ? { calculated_channel_ids: [sourceId], cursor_a_time: nativeATime, cursor_b_time: nativeBTime, unit_mode: ww.unitMode }
-                                : {
-                                    analog_channel_names: analogNames,
-                                    digital_channel_names: digitalNames,
-                                    cursor_a_time: nativeATime,
-                                    cursor_b_time: nativeBTime,
-                                    unit_mode: ww.unitMode,
-                                }
-                        ),
+            if (isCalculated) {
+                // Calculated path: unchanged (calculated channels follow ww.unitMode per DEC-212 §3).
+                let calcBody = null;
+                try {
+                    const calcResponse = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/calculated-channels/cursor-values",
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ calculated_channel_ids: [sourceId], cursor_a_time: nativeATime, cursor_b_time: nativeBTime, unit_mode: ww.unitMode }),
+                        }
+                    );
+                    if (!isCurrent()) return;
+                    if (!calcResponse.ok) {
+                        wwClearCursorValuesForChannels(sourceId, analogNames);
+                        wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
+                        return;
                     }
-                );
-                if (!isCurrent()) return;
-                if (!response.ok) {
-                    // Section 38 (Phase 4C1)/30 (Phase 4C2): never
-                    // fabricate a value/state on failure -- clear whatever
-                    // might be cached for these channels so the sidebar
-                    // honestly falls back to "—" instead of silently
-                    // keeping an old (now unverifiable) number/state.
+                    calcBody = await calcResponse.json();
+                } catch (error) {
+                    if (!isCurrent()) return;
                     wwClearCursorValuesForChannels(sourceId, analogNames);
                     wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
-                    wwClearDigitalCursorValuesForChannels(sourceId, digitalNames);
-                    wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
                     return;
                 }
-                body = await response.json();
-            } catch (error) {
                 if (!isCurrent()) return;
-                wwClearCursorValuesForChannels(sourceId, analogNames);
-                wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
-                wwClearDigitalCursorValuesForChannels(sourceId, digitalNames);
-                wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
-                return;
-            }
-
-            if (!isCurrent()) return; // includes a basis change during response parsing
-            if (isCalculated) {
                 // Section 54: exactly one item, this pseudo-source's own
                 // calculated channel -- keyed by the SAME wwChannelKey()
                 // every real channel uses. `aSampleTime`/`bSampleTime` are
@@ -47145,7 +47186,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // resolved-sample-time echo some UI surfaces show is
                 // narrower here, a deliberate, documented Phase 5A scope
                 // trim (section 58: smallest clean abstraction).
-                for (const channel of body.channels) {
+                for (const channel of calcBody.channels) {
                     if (!wwIsAnalogChannelVisible(sourceId, channel.name)) continue;
                     ww.cursorValues.set(wwChannelKey(sourceId, channel.name), {
                         aValue: channel.a_value, bValue: channel.b_value,
@@ -47155,30 +47196,94 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
                 return;
             }
-            const aSampleTimeNative = body.cursor_a ? body.cursor_a.sample_time : null;
-            const bSampleTimeNative = body.cursor_b ? body.cursor_b.sample_time : null;
-            for (const channel of body.channels) {
-                if (!wwIsAnalogChannelVisible(sourceId, channel.channel_name)) continue;
-                ww.cursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
-                    aValue: channel.a_value,
-                    bValue: channel.b_value,
-                    // Slice 1: shifted back into workspace time so this
-                    // echo (currently unused by any renderer, but kept
-                    // correct as reserved state) never disagrees with the
-                    // workspace-time cursor position it was resolved for.
-                    aSampleTime: aSampleTimeNative === null ? null : aSampleTimeNative + alignmentOffset,
-                    bSampleTime: bSampleTimeNative === null ? null : bSampleTimeNative + alignmentOffset,
-                });
+
+            // DEC-212 §2: raw Current channels always use engineering units.
+            // Partition analog channel names by engineering type so Current
+            // channels are never sent with unit_mode "per_unit" to the backend.
+            // Digital channels (boolean state, no unit) go with the non-Current batch.
+            const dec212CurrentNames = analogNames.filter(n =>
+                ww.displayed.get(wwChannelKey(sourceId, n))?.channel?.engineeringType === "Current");
+            const dec212OtherNames = analogNames.filter(n => !dec212CurrentNames.includes(n));
+
+            // Fetches one raw cursor-values batch. Returns false if the batch is stale
+            // or failed (caller should return); true on success.
+            const fetchRawCursorBatch = async (batchAnalogNames, batchDigitalNames, batchUnitMode) => {
+                if (batchAnalogNames.length === 0 && batchDigitalNames.length === 0) return true;
+                let batchBody = null;
+                try {
+                    const batchResponse = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/sources/" + encodeURIComponent(sourceId) + "/cursor-values",
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                analog_channel_names: batchAnalogNames,
+                                digital_channel_names: batchDigitalNames,
+                                cursor_a_time: nativeATime,
+                                cursor_b_time: nativeBTime,
+                                unit_mode: batchUnitMode,
+                            }),
+                        }
+                    );
+                    if (!isCurrent()) return false;
+                    if (!batchResponse.ok) {
+                        // Section 38/30: never keep a stale cached value on failure.
+                        wwClearCursorValuesForChannels(sourceId, batchAnalogNames);
+                        wwUpdateCursorValueCellsForChannels(sourceId, batchAnalogNames);
+                        if (batchDigitalNames.length > 0) {
+                            wwClearDigitalCursorValuesForChannels(sourceId, batchDigitalNames);
+                            wwUpdateDigitalCursorBadgesForChannels(sourceId, batchDigitalNames);
+                        }
+                        return false;
+                    }
+                    batchBody = await batchResponse.json();
+                } catch (error) {
+                    if (!isCurrent()) return false;
+                    wwClearCursorValuesForChannels(sourceId, batchAnalogNames);
+                    wwUpdateCursorValueCellsForChannels(sourceId, batchAnalogNames);
+                    if (batchDigitalNames.length > 0) {
+                        wwClearDigitalCursorValuesForChannels(sourceId, batchDigitalNames);
+                        wwUpdateDigitalCursorBadgesForChannels(sourceId, batchDigitalNames);
+                    }
+                    return false;
+                }
+                if (!isCurrent()) return false;
+                const aSampleTimeNative = batchBody.cursor_a ? batchBody.cursor_a.sample_time : null;
+                const bSampleTimeNative = batchBody.cursor_b ? batchBody.cursor_b.sample_time : null;
+                for (const channel of batchBody.channels) {
+                    if (!wwIsAnalogChannelVisible(sourceId, channel.channel_name)) continue;
+                    ww.cursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
+                        aValue: channel.a_value,
+                        bValue: channel.b_value,
+                        // Slice 1: shifted back into workspace time so this
+                        // echo (currently unused by any renderer, but kept
+                        // correct as reserved state) never disagrees with the
+                        // workspace-time cursor position it was resolved for.
+                        aSampleTime: aSampleTimeNative === null ? null : aSampleTimeNative + alignmentOffset,
+                        bSampleTime: bSampleTimeNative === null ? null : bSampleTimeNative + alignmentOffset,
+                    });
+                }
+                for (const channel of batchBody.digital_channels || []) {
+                    if (!wwIsDigitalChannelVisible(sourceId, channel.channel_name)) continue;
+                    ww.digitalCursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
+                        aState: channel.a_state,
+                        bState: channel.b_state,
+                    });
+                }
+                wwUpdateCursorValueCellsForChannels(sourceId, batchAnalogNames);
+                if (batchDigitalNames.length > 0) wwUpdateDigitalCursorBadgesForChannels(sourceId, batchDigitalNames);
+                return true;
+            };
+
+            // Non-Current channels (and digital channels) use ww.unitMode.
+            if (dec212OtherNames.length > 0 || digitalNames.length > 0) {
+                if (!await fetchRawCursorBatch(dec212OtherNames, digitalNames, unitMode)) return;
             }
-            for (const channel of body.digital_channels) {
-                if (!wwIsDigitalChannelVisible(sourceId, channel.channel_name)) continue;
-                ww.digitalCursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
-                    aState: channel.a_state,
-                    bState: channel.b_state,
-                });
+            // Current channels always use engineering (DEC-212 §2).
+            if (dec212CurrentNames.length > 0) {
+                await fetchRawCursorBatch(dec212CurrentNames, [], "engineering");
             }
-            wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
-            wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
         }
 
         // TG-D2: every source with at least one displayed analog OR

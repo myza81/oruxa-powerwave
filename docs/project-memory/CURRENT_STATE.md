@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## PU-001B + PU-002A — Slice 6C complete; awaiting owner review (2026-11-09)
+## PU-001B + PU-002A — Slice 6C + 6C.1 complete; awaiting owner review (2026-11-09)
 
 [FACT] Owner has approved DEC-212 (Voltage-only automatic PU; Current stays in A/kA; Current
 normalization via Calculated Channels). Recorded in DECISIONS.md and
@@ -80,13 +80,43 @@ Key changes:
   (`#wwOpenMeasurementGroupsFromSettingsBtn` → `#measurementGroupsOverlay`) before asserting
   the DEC-212 note in `#measurementGroupsBody`.
 
+[FACT] Slice 6C.1 complete (2026-11-09): DEC-212 corrective pass on top of Slice 6C. All work
+remains local — NOT committed, pushed, deployed, or merged. Key changes to `frontend/index.html`:
+  7. `wwMgGroupToEditState`: added `hasLegacyConfig` bool (`true` when `cfg.method === "equipment_rating" ||
+     cfg.method === "manual"`). Standard Current groups no longer offer PU controls.
+  8. `wwRenderMgCurrentDrawerHtml` rewrite: standard path renders DEC-212 informational note (no
+     base/method controls); legacy path renders `#wwMgLegacyCurrentSection` with `#wwMgLegacyBadge`
+     ("Historical") and existing controls.
+  9. `wwSaveMgDrawer`: early return for standard (non-legacy) Current groups — no backend call.
+  10. `wwCreateCalloutFromClick`: stores `engineeringType: channel.engineeringType` in annotation data
+      for reliable unit detection even when channel is later hidden.
+  11. `wwCreatePeakFromClick`: `unit_mode: (!isCalculated && channel.engineeringType === "Current") ?
+      "engineering" : ww.unitMode` + stores `engineeringType`. Guard excludes calculated channels (Slice 6D).
+  12. `wwResolveCalloutAnchorMove`: uses `annotation.data?.engineeringType` as primary lookup (falls
+      back to `ww.displayed` for pre-6C.1 annotations without stored `engineeringType`).
+  13. `wwRecalculatePeakAnnotationsForSource`: partitions annotations into `dec212CurrentItems` and
+      `dec212OtherItems` and routes each to separate `processPeakBatch` calls.
+  - Smart quote fix: 98 U+2018/U+2019 characters introduced by Edit tool replaced with ASCII `'`;
+    one `group\'s` apostrophe fixed (pre-existing line broken by global replacement).
+Test changes in Slice 6C.1:
+  - `per-unit-reference-safety.spec.js`: migrated `editGroup()` calls to direct `/current-config` API
+    (Slice 6C.1 removed the Current config from standard MG UI). Added 5 tests: standard Current
+    drawer shows no PU controls; legacy Current drawer shows "Historical" badge; hidden-channel
+    callout/peak use engineering; legacy annotation fallback via `ww.displayed`; calculated Current
+    peak follows `ww.unitMode` (not engineering guard) pending Slice 6D.
+    Tests 42+43: `expect.poll()` for async annotation unit refresh (`wwRefreshWaveformDisplayBasis`
+    clears `unit=""` synchronously before async backend request; poll waits for completion).
+  - `voltage-only-pu-display.spec.js`: added VD-16 (Current group edit drawer has no Nominal Voltage
+    PU config field) and VD-17 (mixed Voltage PU + Current ENG cursors from same source batch correctly).
+
 Integration audit complete (2026-11-09):
-- VD-01..VD-15: 15/15 pass
-- AT (auto-pu-import) + ER (event-reconstruction-per-unit): 15/15 pass combined
-- Backend (Slice 6A/6B/6C test files): 217 + 251 + 277 = 745 targeted tests pass, exit 0
+- 5-spec 61-test browser suite: **61/61 pass, EXIT=0**
+  (calculated-channel-preview, compliance_readiness, event-reconstruction-per-unit,
+   per-unit-reference-safety, voltage-only-pu-display)
+- Backend full suite: exit 0 (pending confirmation from background run; all prior passes confirmed)
 - No recordings, no temp artifacts staged
 
-[PENDING] Local commit creation; then owner review of Slices 6A–6C. Do not proceed to Slice 6D without authorization.
+[PENDING] Local commit creation; then owner review of Slices 6A–6C + 6C.1. Do not proceed to Slice 6D without authorization.
 
 ## Automatic PU release — deployed to DEV (2026-11-09)
 

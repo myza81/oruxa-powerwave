@@ -21,6 +21,7 @@
 //   VD-14: Calculated Current channel is NOT guarded — can follow PU if configured
 //   VD-15: Waveform base summary shows "Nominal Voltage: X.XX kV · Auto · Phase-to-Ground"
 //   VD-16: Current group Edit drawer has no Nominal Voltage PU config field (DEC-212)
+//   VD-17: Mixed Voltage PU and Current ENG cursors from same source batch correctly (DEC-212)
 
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
@@ -538,6 +539,55 @@ test("VD-16: Current group edit drawer has no Nominal Voltage PU config field", 
   // The Current group drawer must NOT show the Nominal Voltage PU-config field
   // (that's the Voltage group field — wwMgVoltageKvInput with label "Nominal Voltage (kV, Line-to-Line)").
   await expect(page.locator("#wwMgVoltageKvInput")).toHaveCount(0);
-  // Current group drawer shows Ibase controls, not Voltage PU display controls.
-  await expect(page.getByText("Current Base Method", { exact: false })).toBeVisible({ timeout: 3000 });
+});
+
+// ---------------------------------------------------------------------------
+// VD-17: Mixed Voltage PU and Current ENG cursors from same source (DEC-212)
+// ---------------------------------------------------------------------------
+
+test("VD-17: mixed Voltage PU and Current ENG cursors from same source batch correctly (DEC-212)", async ({ page }) => {
+  await page.goto("/index.html");
+  await uploadWith275kVVoltageGroup(page, "VD17");
+  const { sid } = await configureVoltageGroup(page, "VD17", ["VA"]);
+
+  // Add a Current group with Ibase = 1.5 kA = 1500 A.
+  // DEC-212 §2 still forces IA cursor to engineering (A) regardless of Ibase.
+  const url = await wsUrl(page, `/sources/${sid}/measurement-groups`);
+  const currentGroup = await (await page.request.post(url, {
+    data: { kind: "current", display_name: "IA", status: "confirmed",
+            channel_refs: [{ kind: "source", source_id: sid, channel_name: "IA" }] },
+  })).json();
+  await page.request.put(`${url}/${currentGroup.id}/current-config`, {
+    data: { method: "manual", manual_ibase_ka: 1.5, base_reference_side: "primary" },
+  });
+
+  // Navigate to Waveform and display both VA and IA.
+  await page.locator("#mainNavWaveformBtn").click();
+  const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if (!(await details.evaluate(el => el.open))) await details.locator(":scope > summary").click();
+  const chRow = (name) => page.locator(`tr.channel-row--toggle[data-source-id="${sid}"][data-channel-name="${name}"]`);
+  await chRow("VA").click();
+  await chRow("IA").click();
+
+  // Switch to PU mode.
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 5000 }).toBe("per_unit");
+  // Wait for VA to load with pu unit (confirms the Voltage PU fetch completed).
+  await expect.poll(() => channelState(page, sid, "VA"), { timeout: 10000 }).toMatchObject({ unit: "pu" });
+
+  // Set cursor at t=0.005s — 90° of 50 Hz at rateHz=1000:
+  //   VA = LG_BASE_KV * sin(90°) = LG_BASE_KV → 1.0 pu  (Voltage PU batch)
+  //   IA = 1500 A * sin(90°) = 1500 A              (Current engineering batch, DEC-212 §2)
+  await page.locator("#wwCursorModeBtn").click();
+  await page.evaluate(async sid => {
+    const state = wwTimeGroupCursorState(wwTimeGroupIdForDisplaySourceId(sid));
+    state.a.visible = true; state.a.time = 0.005;
+    wwUpdateAllCursorOverlays();
+    await wwFetchCursorValuesForSource(sid);
+  }, sid);
+
+  // VA cursor: Voltage PU batch → ≈ 1.0 pu.
+  await expect.poll(async () => Number(await chRow("VA").locator(".cur-value--a").textContent()), { timeout: 10000 }).toBeCloseTo(1.0, 1);
+  // IA cursor: engineering batch (DEC-212 §2) → ≈ 1500 A, not 1.0 pu.
+  await expect.poll(async () => Number(await chRow("IA").locator(".cur-value--a").textContent()), { timeout: 10000 }).toBeCloseTo(1500, 0);
 });

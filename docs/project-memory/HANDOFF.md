@@ -4,9 +4,9 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-09** (Slice 6C integration audit complete; local commits pending; awaiting owner review).
+Last updated: **2026-11-09** (Slice 6C.1 complete; 61/61 browser tests pass; local commits pending; awaiting owner review).
 
-## PU-001B + PU-002A — Slice 6C complete; awaiting owner review (2026-11-09)
+## PU-001B + PU-002A — Slice 6C + 6C.1 complete; awaiting owner review (2026-11-09)
 
 **Status:** Slice 6C implemented and locally verified. All work is local — NOT committed, pushed,
 deployed, or merged. The running DEV release is unmodified.
@@ -58,11 +58,59 @@ deployed, or merged. The running DEV release is unmodified.
   Backend still returns `base_required` for Current groups with no Ibase; frontend now ignores
   that (renders engineering mode directly). Backend full suite exit 0 (all prior tests unchanged).
 
+**What Slice 6C.1 changed (DEC-212 corrective pass):**
+
+7. **`wwMgGroupToEditState` — `hasLegacyConfig`**: `true` when `cfg.method === "equipment_rating" ||
+   cfg.method === "manual"`. Standard Current groups (no config) get the DEC-212 informational note;
+   legacy groups (existing Ibase config) keep the "Historical" controls.
+
+8. **`wwRenderMgCurrentDrawerHtml` rewrite**: Standard path renders a DEC-212 note only (no base/method
+   controls); legacy path renders `id="wwMgLegacyCurrentSection"` with `id="wwMgLegacyBadge"` text
+   "Historical" and the existing controls. `wwSaveMgDrawer` has early return for standard groups.
+
+9. **`engineeringType` annotation storage** (`wwCreateCalloutFromClick`, `wwCreatePeakFromClick`):
+   `engineeringType: channel.engineeringType` stored in `annotation.data` at creation time. Used by
+   the refresh path so hidden-channel annotations are still routed to engineering even when `ww.displayed`
+   no longer holds the entry.
+
+10. **`wwCreatePeakFromClick` `!isCalculated &&` guard**: peak requests use engineering only for
+    `!isCalculated && channel.engineeringType === "Current"`. Calculated Current channels follow
+    `ww.unitMode` (Slice 6D scope).
+
+11. **`wwResolveCalloutAnchorMove` stored-type primary lookup**: `annotation.data?.engineeringType`
+    is checked first; falls back to `ww.displayed` lookup for pre-6C.1 annotations without stored
+    `engineeringType`. Removes the race condition where `ww.displayed` lookup fails for hidden channels.
+
+12. **`wwRecalculatePeakAnnotationsForSource` DEC-212 partitioning**: annotations split into
+    `dec212CurrentItems` (raw Current, `!isCalculated`, stored/lookup `engineeringType === "Current"`)
+    and `dec212OtherItems` and routed to separate `processPeakBatch` calls.
+
+13. **Smart quote fix**: 98 U+2018/U+2019 characters introduced by Edit tool during the
+    `wwRenderMgCurrentDrawerHtml` rewrite replaced with ASCII `'`; one `group\'s` apostrophe
+    fixed. V8 rejects smart quotes as "Invalid or unexpected token" — silently prevents ALL
+    event listeners from registering. Validation: `node --check` on extracted JS before tests.
+
+**Test changes in Slice 6C.1:**
+
+- `per-unit-reference-safety.spec.js`: migrated `editGroup()` calls to direct `/current-config` API.
+  Added 5 new tests (40–44):
+  - test 40: standard Current drawer shows no PU controls (DEC-212)
+  - test 41: legacy Current drawer shows "Historical" badge and controls
+  - test 42: hidden-channel callout and peak use engineering (stored `engineeringType`)
+  - test 43: legacy annotation without stored `engineeringType` falls back to `ww.displayed`
+  - test 44: calculated Current peak follows `ww.unitMode` (not engineering guard) pending Slice 6D
+  - Tests 42+43 use `expect.poll({ timeout: 10000 })` — `wwRefreshWaveformDisplayBasis` clears
+    `data.unit = ""` synchronously before the async `wwResolveCalloutAnchorMove` completes.
+
+- `voltage-only-pu-display.spec.js`: added VD-16 (Current group edit drawer has no Nominal Voltage
+  PU config field) and VD-17 (mixed Voltage PU + Current ENG cursors from same source batch correctly).
+
 **Integration audit results (2026-11-09):**
-- VD-01..VD-15: **15/15 pass**
-- auto-pu-import + event-reconstruction-per-unit: **15/15 pass** combined
+- **5-spec 61-test browser suite: 61/61 pass, EXIT=0**
+  (calculated-channel-preview, compliance_readiness, event-reconstruction-per-unit,
+   per-unit-reference-safety, voltage-only-pu-display)
 - Backend targeted (Slice 6A/6B/6C files): **217 + 251 + 277 = 745 tests pass, exit 0**
-- Full backend suite: exit 0 (confirmed by background run)
+- Full backend suite: exit 0 (confirmed)
 - No recordings, no temp artifacts staged
 
 **Key design decisions:**
@@ -72,11 +120,13 @@ deployed, or merged. The running DEV release is unmodified.
   The guard checks `wwErState.channelsBySource[sourceId].analog_channels[].engineering_type`.
 - `kind === "calculated"` channels skip the guard entirely — Slice 6D will configure
   Current normalization via Calculated Channels.
-- No backend schema changes required for Slice 6C.
+- No backend schema changes required for Slice 6C or 6C.1.
+- After large `index.html` edits: always run `node --check` on extracted JS to catch smart quotes
+  or other syntax errors before running Playwright.
 
-**Next step:** Create local commits for Slices 6A/6B/6C, then owner reviews. Slice 6D (Calculated
-Channel current normalization) is the next authorized step — do NOT begin Slice 6D without
-separate owner authorization.
+**Next step:** Create local commits for Slices 6A/6B/6C/6C.1, then owner reviews. Slice 6D
+(Calculated Channel current normalization) is the next authorized step — do NOT begin Slice 6D
+without separate owner authorization.
 
 ---
 
