@@ -856,3 +856,164 @@ class TestNumericalPrecision:
 
 def _all_close(values: list[float], expected: float, rel_tol: float = 0.01) -> bool:
     return all(math.isclose(v, expected, rel_tol=rel_tol) for v in values)
+
+
+# ---------------------------------------------------------------------------
+# PU-001 regression tests — Convention A (direct nominal) for L-G channels
+#
+# UAT Finding PU-001 showed that L-G primary_ratio values that ARE the nominal
+# system L-L voltage (e.g. 275.0 kV on a 275 kV system) were being incorrectly
+# multiplied by √3, producing 476.31 kV instead of 275.0 kV.
+#
+# The fix: _is_near_standard_nominal_kv() disambiguates Convention A
+# (primary_ratio = nominal L-L voltage) from Convention B (primary_ratio =
+# phase-winding voltage, needs ×√3).
+# ---------------------------------------------------------------------------
+
+class TestConventionALGChannels:
+    """L-G channels where primary_ratio encodes the nominal system L-L voltage directly."""
+
+    def test_275kv_lg_convention_a_pulu_scenario(self):
+        """PULU scenario: 275 kV L-G channels → nominal 275 kV (Convention A, not ×√3)."""
+        channels = [
+            _vchan("VR", side="primary", primary_ratio=275.0),
+            _vchan("VY", side="primary", primary_ratio=275.0),
+            _vchan("VB", side="primary", primary_ratio=275.0),
+        ]
+        ev = resolve_voltage_group_evidence(channels)
+        assert ev.sufficient_for_auto_nominal, ev.insufficient_reasons
+        winding_cands = [c for c in ev.primary_nominal_candidates if "ll" in c.source]
+        assert winding_cands, "expected an L-L candidate (Convention A)"
+        assert math.isclose(winding_cands[0].value_kv, 275.0, rel_tol=1e-6)
+        assert "primary" in winding_cands[0].source
+
+    def test_132kv_lg_ambiguous_without_group_name(self):
+        """132.0 kV L-G channels without group_name → ambiguous (Slice 6B).
+
+        132.0 kV is near both IEC 132 kV (Convention A) and ANSI 230 kV via
+        Convention B (132.0 × √3 ≈ 228.6 kV ≈ 230 kV), so the multi-hypothesis
+        resolver returns is_ambiguous=True.  Without group-name context the
+        resolver cannot exclude either hypothesis; automatic authority is
+        withheld and REASON_HYPOTHESIS_AMBIGUOUS is added.
+        Supply group_name="132KV" to resolve (see test_6b_integration tests).
+        """
+        channels = [
+            _vchan("VR", side="primary", primary_ratio=132.0),
+            _vchan("VY", side="primary", primary_ratio=132.0),
+            _vchan("VB", side="primary", primary_ratio=132.0),
+        ]
+        ev = resolve_voltage_group_evidence(channels)
+        assert not ev.sufficient_for_auto_nominal, (
+            "132.0 kV L-G without group name must not grant auto authority (ambiguous)"
+        )
+        from app.domain.auto_base_evidence import REASON_HYPOTHESIS_AMBIGUOUS
+        assert REASON_HYPOTHESIS_AMBIGUOUS in ev.insufficient_reasons
+        assert ev.hypothesis_resolution is not None
+        assert ev.hypothesis_resolution.is_ambiguous
+
+    def test_275kv_lg_produces_correct_per_unit_denominator(self):
+        """275 kV nominal → denominator for L-G PU must be 275/√3 ≈ 158.77 kV."""
+        channels = [_vchan("VR", side="primary", primary_ratio=275.0)]
+        ev = resolve_voltage_group_evidence(channels)
+        assert ev.sufficient_for_auto_nominal
+        winding_cands = [c for c in ev.primary_nominal_candidates if "ll" in c.source]
+        nominal_ll = winding_cands[0].value_kv
+        expected_lg_denom = nominal_ll / SQRT_3
+        assert math.isclose(expected_lg_denom, 275.0 / SQRT_3, rel_tol=1e-9)
+        assert math.isclose(expected_lg_denom, 158.771, rel_tol=1e-4)
+
+    def test_275kv_lg_pv_value_1023pu(self):
+        """162.42 kV measured / 158.77 kV base ≈ 1.023 pu (numerical PU sanity check)."""
+        channels = [_vchan("VR", side="primary", primary_ratio=275.0)]
+        ev = resolve_voltage_group_evidence(channels)
+        assert ev.sufficient_for_auto_nominal
+        winding_cands = [c for c in ev.primary_nominal_candidates if "ll" in c.source]
+        nominal_ll = winding_cands[0].value_kv
+        lg_denom = nominal_ll / SQRT_3
+        measured_lg = 162.42  # kV — representative voltage from PULU recording
+        pu = measured_lg / lg_denom
+        assert math.isclose(pu, 1.023, rel_tol=1e-3), f"expected ≈1.023 pu, got {pu:.4f}"
+
+    def test_ambiguous_lg_primary_ratio_no_auto_authority(self):
+        """L-G channels with primary_ratio=50.0 kV (not near any standard level) → needs_review."""
+        channels = [
+            _vchan("VR", side="primary", primary_ratio=50.0),
+            _vchan("VY", side="primary", primary_ratio=50.0),
+            _vchan("VB", side="primary", primary_ratio=50.0),
+        ]
+        ev = resolve_voltage_group_evidence(channels)
+        assert not ev.sufficient_for_auto_nominal, (
+            "ambiguous winding ratio should not grant auto authority"
+        )
+        winding_cands = [c for c in ev.primary_nominal_candidates if "ll" in c.source]
+        assert not winding_cands, "no L-L candidate should be generated for ambiguous ratio"
+
+    def test_convention_b_still_works_132kv_via_sqrt3(self):
+        """VRN/VYN/VBN with primary=76.2 kV → 131.98 kV L-L (Convention B, backward compat).
+
+        Convention B candidates carry source tag "comtrade_primary_lg" (not "ll"),
+        so we filter by "lg" here, matching the existing TestPrimaryLGVoltage tests.
+        """
+        channels = [
+            _vchan("VRN", side="primary", primary_ratio=76.2),
+            _vchan("VYN", side="primary", primary_ratio=76.2),
+            _vchan("VBN", side="primary", primary_ratio=76.2),
+        ]
+        ev = resolve_voltage_group_evidence(channels)
+        assert ev.sufficient_for_auto_nominal, ev.insufficient_reasons
+        winding_cands = [c for c in ev.primary_nominal_candidates if "lg" in c.source]
+        assert winding_cands, "Convention B (×√3) must produce a lg-tagged candidate"
+        expected = 76.2 * SQRT_3  # ≈ 131.98 kV
+        assert math.isclose(winding_cands[0].value_kv, expected, rel_tol=1e-4)
+
+    def test_multi_bay_independent_275kv_and_132kv(self):
+        """275 kV resolves; 132 kV without group name is ambiguous (Slice 6B).
+
+        275.0 kV is unambiguous (Convention A matches IEC 275 kV, Convention B
+        would give 476 kV which matches no standard).  132.0 kV is ambiguous;
+        see test_132kv_lg_ambiguous_without_group_name.
+        """
+        channels_275 = [_vchan("VR", side="primary", primary_ratio=275.0)]
+        channels_132 = [_vchan("VR", side="primary", primary_ratio=132.0)]
+
+        ev_275 = resolve_voltage_group_evidence(channels_275)
+        ev_132 = resolve_voltage_group_evidence(channels_132)
+
+        assert ev_275.sufficient_for_auto_nominal
+        assert not ev_132.sufficient_for_auto_nominal, (
+            "132 kV L-G without group name is ambiguous — no auto authority"
+        )
+
+        cands_275 = [c for c in ev_275.primary_nominal_candidates if "ll" in c.source]
+        assert math.isclose(cands_275[0].value_kv, 275.0, rel_tol=1e-6)
+
+        from app.domain.auto_base_evidence import REASON_HYPOTHESIS_AMBIGUOUS
+        assert REASON_HYPOTHESIS_AMBIGUOUS in ev_132.insufficient_reasons
+
+    def test_convention_a_does_not_fire_for_ll_channels(self):
+        """L-L channels (VRY) pass primary_ratio through unchanged regardless of standard match."""
+        channels = [
+            _vchan("VRY", side="primary", primary_ratio=275.0),
+            _vchan("VYB", side="primary", primary_ratio=275.0),
+        ]
+        ev = resolve_voltage_group_evidence(channels)
+        assert ev.sufficient_for_auto_nominal
+        winding_cands = [c for c in ev.primary_nominal_candidates if "ll" in c.source]
+        assert winding_cands
+        assert math.isclose(winding_cands[0].value_kv, 275.0, rel_tol=1e-6)
+
+    def test_secondary_path_275kv_lg_convention_a(self):
+        """secondary_measured.primary_ll_kv_from_ratio for L-G 275 kV is 275, not 476."""
+        channels = [
+            _vchan("VR", side="primary", primary_ratio=275.0, secondary_ratio=0.11),
+            _vchan("VY", side="primary", primary_ratio=275.0, secondary_ratio=0.11),
+            _vchan("VB", side="primary", primary_ratio=275.0, secondary_ratio=0.11),
+        ]
+        ev = resolve_voltage_group_evidence(channels)
+        if ev.secondary_measured is not None and ev.secondary_measured.primary_ll_kv_from_ratio is not None:
+            assert math.isclose(
+                ev.secondary_measured.primary_ll_kv_from_ratio, 275.0, rel_tol=1e-6
+            ), (
+                f"secondary path must not multiply by √3 for Convention A "
+                f"(got {ev.secondary_measured.primary_ll_kv_from_ratio:.4f} kV)"
+            )

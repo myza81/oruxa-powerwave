@@ -19,13 +19,19 @@ const { BACKEND, workspaceId, sourceIdFor } = require("./support/event_reconstru
 // so AT-11 ENG value and PU value are clearly different (224.7 kV vs 1.414 pu).
 const NOMINAL_KV  = 275;
 const PEAK_KV     = NOMINAL_KV * Math.sqrt(2 / 3);   // ≈ 224.7 kV
-const P_RATIO_KV  = (NOMINAL_KV / Math.sqrt(3)).toFixed(4); // "158.7707" kV (L-G primary, kV-unit channels)
-const P_RATIO_V   = ((NOMINAL_KV / Math.sqrt(3)) * 1000).toFixed(1); // "158770.7" V (L-G primary, V-unit channels)
+// Convention A: primary_ratio IS the nominal system L-L voltage (275 kV on a 275 kV system),
+// as declared by IEC/EN protection relay COMTRADE files (the PULU real-data scenario).
+// Using Convention A (275.0 kV) avoids the 158.77 kV ≈ 161 kV (ANSI) ambiguity introduced
+// by the Slice 6B multi-hypothesis resolver — 275.0 × √3 = 476.3 kV which matches no standard,
+// so the resolver unambiguously selects Hypothesis A. PU denominator = 275/√3 = 158.77 kV
+// (unchanged from before), so all PU-value assertions remain valid.
+const P_RATIO_KV  = NOMINAL_KV.toFixed(4);                     // "275.0000" kV (Convention A)
+const P_RATIO_V   = (NOMINAL_KV * 1000).toFixed(1);            // "275000.0" V  (Convention A)
 
 // cfgPostProcess for default-unit (V) synthetic COMTRADE uploads that must trigger
 // the auto-switch.  The minimum-voltage gate in auto_base_evidence.py requires
 // nominal_ll_kv >= 2.0 kV; primary_ratio=1.0 V gives 0.0017 kV (too small), so we
-// supply the realistic 275 kV L-G primary winding value instead.
+// supply the realistic 275 kV Convention-A primary winding value instead.
 const withAutoBase = (cfgText) => cfgText.replaceAll(",1.0,1.0,P", `,${P_RATIO_V},1.0,P`);
 
 // ---------------------------------------------------------------------------

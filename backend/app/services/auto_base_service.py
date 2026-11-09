@@ -22,12 +22,25 @@ Design constraints (from Slice 5D-2 Final Engineering Contract):
   C6  Never raises -- all exceptions are caught, logged, and surfaced in the
       result only.  An auto-base failure NEVER turns an upload into an error.
   C7  Idempotent -- safe to call multiple times on the same source.
+  C8  When an optional ``waveform_provider`` callable is supplied, waveform RMS
+      evidence is used to annotate the hypothesis resolution (Slice 6B) for
+      transparency and provenance only.  A ``magnitude_disagreement`` verdict
+      does NOT downgrade automatic authority — a voltage sag, fault, or other
+      non-nominal recording condition is physically valid and does not indicate
+      an incorrect nominal reference.  Only independent metadata contradictions
+      (conflicting primary_ratio, conflicting side declarations, missing channel
+      reference) may block automatic authority.  All waveform code is wrapped in
+      try/except (C6) — a provider failure never blocks primary/secondary
+      configuration.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Callable, Sequence
+
+import numpy as np
 
 from app.domain.auto_base_evidence import (
     ChannelAutoMetadata,
@@ -79,6 +92,7 @@ def configure_auto_bases_for_source(
     source_registry: WorkspaceRegistry,
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
+    waveform_provider: Callable[[str, str, Sequence[str]], dict[str, tuple[np.ndarray, np.ndarray]]] | None = None,
 ) -> AutoBaseResult:
     """Auto-configure PU bases for voltage measurement groups of one source.
 
@@ -88,6 +102,10 @@ def configure_auto_bases_for_source(
 
     Never raises (C6).  Idempotent (C7).  Never overwrites manual/legacy (C4).
     Current groups are skipped entirely (C3).
+
+    ``waveform_provider`` is an optional callable ``(workspace_id, source_id,
+    channel_names) → dict[str, (time_s, values_kv)]`` for Slice 6B waveform
+    corroboration (C8).  Absent means no waveform annotation.
     """
     try:
         active = source_registry.get(workspace_id, source_id)
@@ -113,6 +131,7 @@ def configure_auto_bases_for_source(
                     group=group,
                     channel_map=channel_map,
                     voltage_config_registry=voltage_config_registry,
+                    waveform_provider=waveform_provider,
                 )
             except Exception:
                 logger.exception(
@@ -151,7 +170,15 @@ def configure_auto_bases_for_source(
 # Per-group helper
 # ---------------------------------------------------------------------------
 
-def _configure_voltage_group(*, workspace_id, source_id, group, channel_map, voltage_config_registry):
+def _configure_voltage_group(
+    *,
+    workspace_id,
+    source_id,
+    group,
+    channel_map,
+    voltage_config_registry,
+    waveform_provider=None,
+):
     group_id = group.id
 
     # C4: never overwrite engineer-set authority
@@ -189,7 +216,26 @@ def _configure_voltage_group(*, workspace_id, source_id, group, channel_map, vol
             reason="no_source_channels_in_group",
         )
 
-    evidence = resolve_voltage_group_evidence(metadata_list)
+    # Optionally build waveform evidence for Slice 6B corroboration (C8).
+    waveform_evidence = None
+    if waveform_provider is not None:
+        try:
+            channel_names = [m.name for m in metadata_list]
+            raw_waveforms = waveform_provider(workspace_id, source_id, channel_names)
+            if raw_waveforms:
+                from app.domain.waveform_evidence import extract_waveform_evidence  # noqa: PLC0415
+                waveform_evidence = extract_waveform_evidence(raw_waveforms)
+        except Exception:
+            logger.warning(
+                "Auto-base: waveform evidence unavailable for group %s — skipping corroboration",
+                group_id,
+            )
+
+    evidence = resolve_voltage_group_evidence(
+        metadata_list,
+        group_name=group.display_name,
+        waveform_evidence=waveform_evidence,
+    )
 
     # --- Secondary path ---
     # C2: REASON_SECONDARY_REQUIRES_REDESIGN is now resolved by Slice 5D-1.
@@ -219,6 +265,10 @@ def _configure_voltage_group(*, workspace_id, source_id, group, channel_map, vol
     # --- Primary path ---
     if evidence.measurement_side == "primary" and evidence.sufficient_for_auto_nominal:
         nominal_kv = _best_candidate_kv(evidence.primary_nominal_candidates)
+        # C8: waveform corroboration is attached to hypothesis_resolution for transparency
+        # only — it does NOT change authority.  A magnitude_disagreement may reflect a
+        # voltage sag, fault, or other non-nominal condition in the recorded event, which
+        # is physically valid and does not indicate an incorrect nominal reference.
         voltage_config_registry.update_fields(
             workspace_id, group_id,
             nominal_voltage_ll_kv=nominal_kv,

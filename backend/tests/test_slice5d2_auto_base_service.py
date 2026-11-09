@@ -96,6 +96,15 @@ def _all_voltage_groups(client, source_id):
 class TestPrimaryAutoConfiguration:
 
     def test_primary_voltage_groups_get_auto_resolved(self, client, comtrade_fixtures_dir):
+        """N275 and E275 groups resolve automatically; S132 is correctly ambiguous (Slice 6B).
+
+        S132 channels have primary_ratio=132.0 kV on L-G channels.  With the
+        Slice 6B multi-hypothesis resolver, 132.0 kV is ambiguous — it matches
+        both IEC 132 kV (Convention A) and ANSI 230 kV via Convention B
+        (132.0 × √3 ≈ 228.6 kV ≈ 230 kV).  The channel names "S132_VR/VY/VB"
+        contain no "KV" token, so the name-token dimension cannot break the tie.
+        Result: needs_review for S132, auto_resolved for N275 and E275.
+        """
         source_id = _upload(client, comtrade_fixtures_dir)
         regs = _registries(client)
         result = configure_auto_bases_for_source(workspace_id="ws-1", source_id=source_id, **regs)
@@ -108,14 +117,26 @@ class TestPrimaryAutoConfiguration:
 
         for group in voltage_groups:
             group_id = group["id"]
+            channel_names = [r["channel_name"] for r in group.get("channel_refs", [])]
             cfg = regs["voltage_config_registry"].get("ws-1", group_id)
             assert cfg is not None, f"No config for voltage group {group_id}"
-            assert cfg.base_authority == BASE_AUTHORITY_AUTO, (
-                f"Expected auto_resolved, got {cfg.base_authority!r} for group {group_id}"
-            )
-            assert cfg.base_reference_side == "primary"
-            assert cfg.nominal_voltage_ll_kv is not None
-            assert cfg.nominal_voltage_ll_kv > 0
+
+            has_n275 = any("N275" in n for n in channel_names)
+            has_e275 = any("E275" in n for n in channel_names)
+            has_s132 = any("S132" in n for n in channel_names)
+
+            if has_n275 or has_e275:
+                assert cfg.base_authority == BASE_AUTHORITY_AUTO, (
+                    f"Expected auto_resolved for N275/E275 group, got {cfg.base_authority!r}"
+                )
+                assert cfg.base_reference_side == "primary"
+                assert cfg.nominal_voltage_ll_kv is not None and cfg.nominal_voltage_ll_kv > 0
+            elif has_s132:
+                # 132.0 kV L-G without group-name kV token → ambiguous (Slice 6B)
+                assert cfg.base_authority == BASE_AUTHORITY_NEEDS_REVIEW, (
+                    f"S132 group should be needs_review (ambiguous 132 kV), "
+                    f"got {cfg.base_authority!r}"
+                )
 
     def test_e275_ll_group_gets_275kv_nominal(self, client, comtrade_fixtures_dir):
         """E275 group has L-L channels (E275_VRY/VYB/VBR, primary=275.0).

@@ -24,9 +24,13 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from app.domain.reference_side import ReferenceSide
+
+if TYPE_CHECKING:
+    from app.domain.voltage_hypothesis import VoltageHypothesisResolution
+    from app.domain.waveform_evidence import WaveformEvidence
 from app.domain.voltage_reference import (
     LINE_TO_GROUND,
     LINE_TO_LINE,
@@ -58,6 +62,7 @@ REASON_SECONDARY_REQUIRES_REDESIGN = "secondary_nominal_requires_vbc_redesign_c1
 REASON_NO_VOLTAGE_CHANNELS = "no_voltage_channels_in_group"
 REASON_NO_CURRENT_CHANNELS = "no_current_channels_in_group"
 REASON_NOMINAL_BELOW_MINIMUM = "nominal_below_minimum_voltage"
+REASON_HYPOTHESIS_AMBIGUOUS = "hypothesis_ambiguous_needs_confirmation"
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -87,6 +92,45 @@ _I_UNIT_TO_KA: dict[str, float] = {"a": 1e-3, "ka": 1.0}
 
 # Nominal-candidate consistency: maximum relative spread across candidates
 _CONSISTENCY_TOLERANCE = 0.05  # 5 %
+
+# ---------------------------------------------------------------------------
+# Standard nominal voltage levels for L-G winding-reference disambiguation
+# ---------------------------------------------------------------------------
+
+# Power-system nominal L-L voltage levels (kV) used to determine whether a
+# COMTRADE VT ``primary_ratio`` for a Line-to-Ground channel represents the
+# nominal system L-L voltage directly (Convention A — the dominant encoding in
+# IEC protection relay COMTRADE files) or a phase-winding voltage that needs
+# × √3 correction (Convention B).  Covers IEC/EN, IEEE/ANSI and additional
+# common regional levels.
+_STANDARD_NOMINAL_KV: tuple[float, ...] = (
+    # IEC/EN standard nominal voltages
+    3.3, 6.6, 11.0, 22.0, 33.0, 66.0, 110.0, 132.0, 220.0, 275.0, 400.0, 500.0, 765.0,
+    # IEEE/ANSI nominal voltages
+    4.16, 13.8, 34.5, 69.0, 115.0, 138.0, 161.0, 230.0, 345.0,
+    # Additional common levels (European, Asian, Australian)
+    6.0, 10.0, 12.0, 15.0, 20.0, 30.0, 35.0, 60.0, 90.0, 150.0, 380.0,
+)
+# 2 % relative tolerance: handles minor rounding (e.g. 76.2 kV → 131.98 kV ≈ 132 kV).
+_STANDARD_NOMINAL_KV_TOL = 0.02
+
+
+def _is_near_standard_nominal_kv(kv: float) -> bool:
+    """True when ``kv`` is within ``_STANDARD_NOMINAL_KV_TOL`` (relative) of any
+    recognised power-system nominal voltage level.
+
+    Used in Step 3b of ``resolve_voltage_group_evidence`` to disambiguate the
+    winding-reference geometry of a Line-to-Ground COMTRADE channel:
+
+    * Convention A — primary_ratio IS the nominal system L-L voltage (275 kV on a
+      275 kV system).  Most common in IEC protection relay COMTRADE files.
+    * Convention B — primary_ratio is a phase-winding voltage (76.2 kV for a
+      132 kV system); nominal L-L = primary_ratio × √3.
+    """
+    for std in _STANDARD_NOMINAL_KV:
+        if abs(kv - std) / std <= _STANDARD_NOMINAL_KV_TOL:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +246,9 @@ class VoltageGroupEvidence:
     sufficient_for_auto_side: bool       # Can auto-configure base_reference_side?
     insufficient_reasons: tuple[str, ...]
 
+    # Multi-hypothesis resolution detail (populated for L-G groups, Slice 6B)
+    hypothesis_resolution: VoltageHypothesisResolution | None = None
+
 
 # ---------------------------------------------------------------------------
 # Output types — Current
@@ -311,12 +358,23 @@ def _common_side(
 
 def resolve_voltage_group_evidence(
     channels: list[ChannelAutoMetadata],
+    *,
+    group_name: str | None = None,
+    waveform_evidence: WaveformEvidence | None = None,
 ) -> VoltageGroupEvidence:
     """Resolve engineering evidence for a candidate voltage measurement group.
 
     Accepts ``ChannelAutoMetadata`` for every channel in the candidate group.
     Channels with ``engineering_type != "voltage"`` are silently excluded
     (a group may contain mixed types if the caller has not pre-filtered).
+
+    Args:
+        channels: Channel metadata list.
+        group_name: Optional group/source name forwarded to the multi-hypothesis
+            resolver for kV-token corroboration (Slice 6B).
+        waveform_evidence: Optional waveform evidence forwarded to the resolver
+            as a corroboration annotation (Slice 6B).  Waveform evidence does
+            NOT change the nominal candidate selected; it is advisory only.
 
     Returns ``VoltageGroupEvidence`` with candidates, provenance, and
     sufficiency flags.  Does not modify configuration or assert authority.
@@ -377,10 +435,24 @@ def resolve_voltage_group_evidence(
             ))
 
     # 3b. VT primary winding field (geometry-corrected) — C2: transformation data
-    # Build per-channel winding candidates first, then aggregate
+    #
+    # For L-L channels: primary_ratio is already the L-L voltage, used directly.
+    #
+    # For L-G channels: primary_ratio may encode the nominal system L-L voltage
+    # directly (Convention A, IEC dominant) or a phase-winding voltage needing
+    # × √3 correction (Convention B).  Disambiguation is delegated to the
+    # multi-hypothesis resolver (Slice 6B), which evaluates both hypotheses
+    # against standard-nominal tables, name tokens, group name tokens, and VT
+    # winding ratio plausibility.  When both hypotheses remain plausible (e.g.
+    # 132.0 kV on L-G channels, which matches both IEC 132 kV and ANSI 230 kV),
+    # the resolver returns "ambiguous" and no winding candidate is generated —
+    # ``REASON_HYPOTHESIS_AMBIGUOUS`` is added to insufficient_reasons.
     winding_cand_kvs: list[float] = []
     winding_cand_chs: list[str] = []
     unit_unrecognized_chs: list[str] = []
+    _lg_convention: str | None = None  # "direct" (A) | "sqrt3" (B); for backward compat
+    _hypothesis_resolution_result = None  # VoltageHypothesisResolution | None
+    _hyp_ambiguous_reason = False        # True when resolver returns "ambiguous"
 
     for ch in voltage_chs:
         if ch.primary_ratio is None:
@@ -392,34 +464,68 @@ def resolve_voltage_group_evidence(
         if channel_reference == LINE_TO_LINE:
             winding_cand_kvs.append(kv)
             winding_cand_chs.append(ch.name)
-        elif channel_reference == LINE_TO_GROUND:
-            winding_cand_kvs.append(kv * SQRT_3)
-            winding_cand_chs.append(ch.name)
-        # channel_reference is None: cannot apply geometry — skip
+        # L-G and None-reference cases handled by the hypothesis resolver below
+
+    if channel_reference == LINE_TO_GROUND and voltage_chs:
+        # Delegate L-G disambiguation to the multi-hypothesis resolver (Slice 6B).
+        # Local import avoids a circular dependency (voltage_hypothesis imports from here).
+        from app.domain.voltage_hypothesis import evaluate_voltage_hypotheses as _eval_hyp  # noqa: PLC0415
+        _hypothesis_resolution_result = _eval_hyp(
+            voltage_chs,
+            group_name=group_name,
+            waveform_evidence=waveform_evidence,
+        )
+        hyp_res = _hypothesis_resolution_result
+        if hyp_res.selected in ("A", "B") and hyp_res.nominal_ll_kv is not None:
+            nominal_kv_resolved = hyp_res.nominal_ll_kv
+            if nominal_kv_resolved >= _MIN_NOMINAL_LL_KV:
+                winding_cand_kvs.append(nominal_kv_resolved)
+                winding_cand_chs.extend(list(channel_names))
+                _lg_convention = "direct" if hyp_res.selected == "A" else "sqrt3"
+        elif hyp_res.is_ambiguous:
+            _hyp_ambiguous_reason = True
 
     winding_inconsistent = False
     if winding_cand_kvs and _candidates_consistent(winding_cand_kvs):
-        ref_text = "L-L" if channel_reference == LINE_TO_LINE else "L-G × √3"
+        # Build source tag and human-readable reference text based on geometry.
+        if channel_reference == LINE_TO_LINE:
+            ref_text = "L-L"
+            source_tag = "comtrade_primary_ll"
+        elif _lg_convention == "direct":
+            # Convention A: the raw primary_ratio IS the nominal L-L voltage.
+            ref_text = "L-L (nominal system voltage, Convention A via multi-hypothesis)"
+            source_tag = "comtrade_primary_ll"
+        elif _lg_convention == "sqrt3":
+            # Convention B: phase-winding voltage corrected by × √3.
+            ref_text = "L-G × √3 (Convention B via multi-hypothesis)"
+            source_tag = "comtrade_primary_lg"
+        else:
+            ref_text = "L-L"
+            source_tag = "comtrade_primary_ll"
+
+        # Confidence from hypothesis resolver when available; fall back to measurement-side.
+        if _hypothesis_resolution_result is not None and _hypothesis_resolution_result.confidence:
+            hyp_conf = _hypothesis_resolution_result.confidence
+            confidence: Confidence = hyp_conf if hyp_conf in ("high", "medium", "low") else "medium"
+        elif measurement_side == "primary":
+            confidence = "medium"
+        else:
+            confidence = "low"
+
         if measurement_side == "primary":
-            confidence: Confidence = "medium"
-            source_tag = "comtrade_primary_ll" if channel_reference == LINE_TO_LINE else "comtrade_primary_lg"
             deriv = (
                 f"VT primary winding rating ({ref_text}), PS='P' — primary-side declaration "
                 f"(C2: transformation data, treated as candidate)."
             )
         elif measurement_side == "secondary":
-            # Primary winding of a secondary-side recording gives the primary system voltage
             confidence = "low"
-            source_tag = "comtrade_primary_ll" if channel_reference == LINE_TO_LINE else "comtrade_primary_lg"
             deriv = (
                 f"VT primary winding rating ({ref_text}), PS='S' — primary-side winding "
                 f"of a secondary-side recording.  Low confidence (C2).  "
                 f"Note C1: for PU use secondary_measured, not this value."
             )
         else:
-            # measurement_side == "unknown": no PS flag
             confidence = "low"
-            source_tag = "comtrade_primary_ll" if channel_reference == LINE_TO_LINE else "comtrade_primary_lg"
             deriv = (
                 f"VT primary winding rating ({ref_text}), no PS flag — measurement side "
                 f"unknown (C4).  Low confidence (C2)."
@@ -447,7 +553,7 @@ def resolve_voltage_group_evidence(
                 sec_kvs.append((kv, ch.name))
         if sec_kvs and _candidates_consistent([kv for kv, _ in sec_kvs]):
             sec_kv = sec_kvs[0][0]
-            # Primary nominal from winding ratio — same geometry as step 3b
+            # Primary nominal from winding ratio — same Convention A/B geometry as step 3b.
             pri_ll: float | None = None
             pri_kvs = [kv for kv, _ in [(
                 _to_kv(ch.primary_ratio, ch.unit), ch.name
@@ -457,7 +563,22 @@ def resolve_voltage_group_evidence(
                 if channel_reference == LINE_TO_LINE:
                     pri_ll = raw_pri
                 elif channel_reference == LINE_TO_GROUND:
-                    pri_ll = raw_pri * SQRT_3
+                    # Reuse the multi-hypothesis resolution from Step 3b when available;
+                    # fall back to the standard-nominal heuristic for edge cases.
+                    if (
+                        _hypothesis_resolution_result is not None
+                        and _hypothesis_resolution_result.selected in ("A", "B")
+                        and _hypothesis_resolution_result.nominal_ll_kv is not None
+                    ):
+                        pri_ll = _hypothesis_resolution_result.nominal_ll_kv
+                    else:
+                        _near_direct = _is_near_standard_nominal_kv(raw_pri)
+                        _near_sqrt3 = _is_near_standard_nominal_kv(raw_pri * SQRT_3)
+                        if _near_direct:
+                            pri_ll = raw_pri           # Convention A: L-L nominal directly
+                        elif _near_sqrt3:
+                            pri_ll = raw_pri * SQRT_3  # Convention B: phase-winding × √3
+                        # else: ambiguous — pri_ll stays None
             secondary_measured = MeasuredSecondaryVoltage(
                 value_kv=sec_kv,
                 channel_reference=channel_reference,
@@ -515,6 +636,8 @@ def resolve_voltage_group_evidence(
     if measurement_side == "secondary" and secondary_measured is not None:
         if REASON_SECONDARY_REQUIRES_REDESIGN not in insufficient_reasons:
             insufficient_reasons.append(REASON_SECONDARY_REQUIRES_REDESIGN)
+    if _hyp_ambiguous_reason and REASON_HYPOTHESIS_AMBIGUOUS not in insufficient_reasons:
+        insufficient_reasons.append(REASON_HYPOTHESIS_AMBIGUOUS)
 
     # sufficient_for_auto_nominal: needs ≥ 1 medium/high candidate, consistent, reference
     # resolved, no contradictions, and nominal voltage >= _MIN_NOMINAL_LL_KV.
@@ -551,6 +674,7 @@ def resolve_voltage_group_evidence(
         sufficient_for_auto_nominal=sufficient_for_auto_nominal,
         sufficient_for_auto_side=sufficient_for_auto_side,
         insufficient_reasons=tuple(insufficient_reasons),
+        hypothesis_resolution=_hypothesis_resolution_result,
     )
 
 
