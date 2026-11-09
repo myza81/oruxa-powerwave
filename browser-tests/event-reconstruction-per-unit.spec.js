@@ -124,10 +124,11 @@ test.describe("Event Reconstruction Per-Unit Display -- ownership and selector",
     const consoleErrors = collectConsoleErrors(page);
     await setup(page);
     await selectAll(page, [["STN_A", "VA"], ["STN_A", "IA"]]);
-    await expect(page.locator("#wwErUnitModeToggle")).toHaveAttribute("aria-label", "Unit Mode");
-    // DEC-143: ENG/PU are now icon buttons (owner-supplied
-    // engineering_unit.svg/per_unit.svg) -- the "wording" this test's own
-    // title refers to now lives in title/aria-label, not visible text.
+    await expect(page.locator("#wwErUnitModeToggle")).toHaveAttribute("aria-label", "Voltage Display");
+    // DEC-143/DEC-212: ENG/PU are now icon buttons (owner-supplied
+    // engineering_unit.svg/per_unit.svg) grouped under "Voltage Display"
+    // (DEC-212: controls Voltage channel display only) -- the "wording"
+    // this test's own title refers to now lives in title/aria-label.
     await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveAttribute("title", "Engineering Units");
     await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveAttribute("aria-label", "Engineering Units");
     await expect(page.locator("#wwErUnitPerUnitBtn")).toHaveAttribute("title", "Per Unit");
@@ -176,9 +177,9 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     await setUnits(page, "per_unit");
     await settle(page, 6);
     state = await plotState(page);
-    // Voltage and Current each their own pu panel; Power / Frequency stay
-    // engineering (Waveform: not applicable) -- never one "pu" collapse.
-    expect(titles(state)).toEqual(["Voltage (pu)", "Current (pu)", "Active Power (MW)", "Reactive Power (Mvar)", "Frequency (Hz)"]);
+    // DEC-212: Voltage goes to pu; Current always stays in A/kA engineering;
+    // Power / Frequency stay engineering (not applicable) -- never one "pu" collapse.
+    expect(titles(state)).toEqual(["Voltage (pu)", "Current (A)", "Active Power (MW)", "Reactive Power (Mvar)", "Frequency (Hz)"]);
     expect(state.groups[0].traces).toEqual(["STN_A · VA", "STN_A · VB"]);
     const va = traceOf(state, "STN_A · VA");
     expect(va.unit).toBe("pu");
@@ -191,7 +192,8 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     const peak = Math.max(...va.values);
     expect(peak).toBeGreaterThan(1.0);
     expect(peak).toBeLessThan(1.01);
-    expectScaledSamples(traceOf(state, "STN_A · IA").values, eng["STN_A · IA"].values, IBASE_KA * 1000);
+    // DEC-212: IA stays in engineering mode (A) -- values unchanged from ENG.
+    expect(traceOf(state, "STN_A · IA").values).toEqual(eng["STN_A · IA"].values);
     expect(traceOf(state, "STN_A · P").values).toEqual(eng["STN_A · P"].values);
     // The basis Event Reconstruction consumed is Waveform's resolved one.
     const resolved = await api(page, `/sources/${sourceA}/per-unit-resolution?channel_name=VA`);
@@ -199,11 +201,12 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     expect(resolved.effective_base_amount).toBeCloseTo(LG_BASE_KV, 9);
 
     // Combined: one panel, one Y axis per quantity; the unit mode stays.
+    // DEC-212: Current axis stays "Current (A)" even when Voltage is "pu".
     await page.locator("#wwErViewCombinedBtn").click();
     await settle(page, 6);
     state = await plotState(page);
     expect(state.groups[0].axes.map((a) => a.title)).toEqual([
-      "Voltage (pu)", "Current (pu)", "Active Power (MW)", "Reactive Power (Mvar)", "Frequency (Hz)",
+      "Voltage (pu)", "Current (A)", "Active Power (MW)", "Reactive Power (Mvar)", "Frequency (Hz)",
     ]);
     expect(traceOf(state, "STN_A · VA").values).toEqual(va.values);
     await expect(page.locator("#wwErUnitPerUnitBtn")).toHaveAttribute("aria-pressed", "true");
@@ -214,7 +217,7 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     expect(consoleErrors).toEqual([]);
   });
 
-  test("no per-unit basis: stays selected, PU unavailable in the tree and notice, never plotted or valued; Engineering restores it", async ({ page }) => {
+  test("no per-unit basis: Voltage stays selected and PU unavailable; Current always engineering (DEC-212); Engineering restores Voltage", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await setup(page);
     await selectAll(page, [["STN_A", "VA"], ["STN_B", "VA"], ["STN_B", "IA"]]);
@@ -223,26 +226,31 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     const viewport = (await plotState(page)).viewport;
 
     await setUnits(page, "per_unit");
-    await settle(page, 1);
+    // DEC-212: in PU mode, STN_A.VA → pu (plotted), STN_B.VA → unavailable (not plotted),
+    // STN_B.IA → DEC-212 engineering guard → plotted in A. 2 traces total.
+    await settle(page, 2);
     const state = await plotState(page);
-    expect(state.panels.map((c) => c.label)).toEqual(["STN_A · VA"]);
-    expect(state.viewport).toEqual(viewport); // Fit All still counts STN_B
-    for (const name of ["VA", "IA"]) {
-      const row = await channelRow(page, "STN_B", name);
-      await expect(row).toHaveAttribute("aria-pressed", "true"); // still selected
-      await expect(await unavailableBadge(page, "STN_B", name)).toHaveText("PU unavailable");
-      await expect(await unavailableBadge(page, "STN_B", name)).toHaveAttribute("title", /Configure it in Waveform/);
-      // No fake PU cursor value.
-      await expect(row.locator(".cur-value--a")).toHaveText("PU n/a");
-      await expect(row.locator(".cur-value--a")).toHaveAttribute("title", /^PU unavailable/);
-      await expect(row.locator(".cur-value--b")).toHaveText("PU n/a");
-      await expect(row.locator(".cur-value--delta")).toHaveText("—");
-    }
+    const labels = state.panels.map((c) => c.label);
+    expect(labels).toContain("STN_A · VA");
+    expect(labels).toContain("STN_B · IA"); // DEC-212: Current always plotted in engineering
+    expect(labels).not.toContain("STN_B · VA"); // Voltage with no base → not plotted
+    expect(state.viewport).toEqual(viewport); // Fit All still counts all selected channels
+    // STN_B.VA: Voltage with no configured base → PU unavailable.
+    const rowVA = await channelRow(page, "STN_B", "VA");
+    await expect(rowVA).toHaveAttribute("aria-pressed", "true"); // still selected
+    await expect(await unavailableBadge(page, "STN_B", "VA")).toHaveText("PU unavailable");
+    await expect(await unavailableBadge(page, "STN_B", "VA")).toHaveAttribute("title", /Configure it in Waveform/);
+    await expect(rowVA.locator(".cur-value--a")).toHaveText("PU n/a");
+    await expect(rowVA.locator(".cur-value--a")).toHaveAttribute("title", /^PU unavailable/);
+    // DEC-212: STN_B.IA (Current) has no "PU unavailable" badge — always engineering.
+    await expect(await unavailableBadge(page, "STN_B", "IA")).toHaveCount(0);
+    // STN_A.VA configured — no badge there.
     await expect(await unavailableBadge(page, "STN_A", "VA")).toHaveCount(0);
+    // Notice: only the one Voltage channel is PU unavailable.
     await expect(page.locator("#wwErUnitNotice")).toBeVisible();
-    await expect(page.locator("#wwErUnitNotice")).toContainText("2 selected channels are PU unavailable");
+    await expect(page.locator("#wwErUnitNotice")).toContainText("1 selected channel");
     await expect(page.locator("#wwErUnitNotice")).toContainText("STN_B · VA");
-    await expect(page.locator("#wwErCanvasMeta")).toContainText("2 PU unavailable");
+    await expect(page.locator("#wwErCanvasMeta")).toContainText("1 PU unavailable");
 
     // Engineering: the same channels, plotted again at once, no badge.
     await setUnits(page, "engineering");
@@ -255,14 +263,15 @@ test.describe("Event Reconstruction Per-Unit Display -- values, grouping, unavai
     // A setting made in Waveform reaches Event Reconstruction on the next
     // visit -- no new reconstruction needed.
     await setUnits(page, "per_unit");
-    await settle(page, 1);
+    await settle(page, 2); // STN_A.VA + STN_B.IA still plotted; STN_B.VA still unavailable
     await configure(page, "STN_B", { voltage: ["VA"] });
     await page.locator("#mainNavWaveformBtn").click();
     await openEventReconstruction(page);
-    await settle(page, 2);
+    await settle(page, 3); // STN_A.VA + STN_B.VA (now pu) + STN_B.IA (always engineering)
     expect((await plotState(page)).groups[0].traces).toEqual(["STN_A · VA", "STN_B · VA"]);
     await expect(await unavailableBadge(page, "STN_B", "VA")).toHaveCount(0);
-    await expect(await unavailableBadge(page, "STN_B", "IA")).toHaveText("PU unavailable");
+    // DEC-212: IA never shows PU unavailable; always displays in A.
+    await expect(await unavailableBadge(page, "STN_B", "IA")).toHaveCount(0);
     expect(consoleErrors).toEqual([]);
   });
 

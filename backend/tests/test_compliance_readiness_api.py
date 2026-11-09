@@ -341,15 +341,17 @@ class TestCaseCBaseIsTheSharedGroupConfiguration:
         assert _readiness(client, "KPDN1")["base"]["nominal_voltage_ll_kv"] == 275.0
 
     def test_base_is_per_group(self, client):
-        # After Slice 5D-2: auto-base resolves bases for all voltage groups on import,
-        # so both KPDN1 and MCRS have auto-resolved bases. Verify per-group isolation:
-        # setting KPDN1 to 132 kV does not affect MCRS's base.
+        # Verify per-group isolation: setting KPDN1 to 132 kV does not affect MCRS's base.
+        # Slice 6B: MCRS channels (primary_ratio=158.77 kV on L-G) are ambiguous — 158.77 kV
+        # matches both ANSI 161 kV (Convention A) and IEC 275 kV (Convention B, 158.77×√3≈275).
+        # The resolver correctly withholds auto-authority; MCRS must be set explicitly here.
         _add_reference(client, representation="phase_ground_rms", unit="pu")
         _set_base(client, "KPDN1", 132.0)
+        _set_base(client, "MCRS", 275.0)  # 158.77 kV L-G = 275 kV system (Convention B)
         assert _readiness(client, "KPDN1")["needs_base"] is False
-        assert _readiness(client, "MCRS")["needs_base"] is False   # MCRS has its own auto-resolved base
+        assert _readiness(client, "MCRS")["needs_base"] is False
         assert _readiness(client, "KPDN1")["base"]["nominal_voltage_ll_kv"] == 132.0
-        assert _readiness(client, "MCRS")["base"]["nominal_voltage_ll_kv"] != 132.0
+        assert _readiness(client, "MCRS")["base"]["nominal_voltage_ll_kv"] == 275.0
 
 
 class TestSeveralReferences:

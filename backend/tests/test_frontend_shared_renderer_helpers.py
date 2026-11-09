@@ -80,7 +80,8 @@ def test_waveform_fetch_wrapper_keeps_waveform_inputs():
     for expected in (
         "requestState: channelEntry,",
         "isCalculated: wwIsCalculatedSourceId(channelEntry.sourceId),",
-        "unitMode: ww.unitMode,",
+        # DEC-212: Current channels always use "engineering"; other channels use ww.unitMode.
+        'channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode',
         "timeOffsetS: alignmentOffset,",
     ):
         assert expected in wrapper

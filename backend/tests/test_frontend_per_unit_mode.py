@@ -34,12 +34,15 @@ def test_ww_state_has_unit_mode_and_per_unit_source_configs():
 
 def test_every_channel_waveform_fetch_requests_unit_mode():
     """Slice 3A (DEC-127): the request itself is built by the shared
-    fetch core; Waveform's wrapper passes its own ww.unitMode."""
+    fetch core; Waveform's wrapper passes its own ww.unitMode.
+    DEC-212: raw Current channels always pass "engineering" regardless of
+    the toggle -- the wrapper applies the guard before calling the core."""
     source = _source()
     wrapper = _function_body(
         source, "async function wwFetchChannelRange(channelEntry", "async function wwFetchWaveformRange(request)"
     )
-    assert "unitMode: ww.unitMode," in wrapper
+    # DEC-212: Current channels always use engineering; other channels use ww.unitMode.
+    assert 'channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode' in wrapper
     core = _function_body(source, "async function wwFetchWaveformRange(request)", "function wwFriendlyError(code, message)")
     assert 'url.searchParams.set("unit_mode", unitMode);' in core
 

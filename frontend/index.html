@@ -10127,7 +10127,7 @@
                              same handler (wwOpenPerUnitSettingsModal()),
                              no longer reached through a dropdown menu
                              item, but never removed or hidden. -->
-                        <div class="theme-toggle ww-icon-group" id="wwUnitModeToggle" role="group" aria-label="Unit Mode">
+                        <div class="theme-toggle ww-icon-group" id="wwUnitModeToggle" role="group" aria-label="Voltage Display">
                             <button type="button" id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units">
                                 <span class="ww-icon" data-ww-icon="UNIT_ENGINEERING"></span>
                             </button>
@@ -10815,7 +10815,7 @@
                              engineering_unit.svg/per_unit.svg -- not the former
                              "Units" text label + ENG/PU text toggle. Display only --
                              no per-unit configuration lives on this page. -->
-                        <div class="theme-toggle ww-icon-group" id="wwErUnitModeToggle" role="group" aria-label="Unit Mode">
+                        <div class="theme-toggle ww-icon-group" id="wwErUnitModeToggle" role="group" aria-label="Voltage Display">
                             <button type="button" id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units">
                                 <span class="ww-icon" data-ww-icon="UNIT_ENGINEERING"></span>
                             </button>
@@ -18690,8 +18690,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // { state: "engineering" | "per_unit" | "unavailable" | "pending",
         //   unitMode (the unit_mode its values are requested in), key (its
         //   display identity -- a changed resolution changes it), resolution }.
+        // DEC-212: raw source Current channels always stay in engineering mode;
+        // only Voltage (and Calculated) channels follow the Voltage Display toggle.
         function wwErChannelUnitDisplay(kind, sourceId, channelName, unitMode = wwErState.unitMode) {
             if (unitMode !== "per_unit") return { state: "engineering", unitMode: "engineering", key: "engineering", resolution: null };
+            if (kind === "analog") {
+                const ch = ((wwErState.channelsBySource[sourceId] || {}).analog_channels || [])
+                    .find((c) => c.name === channelName);
+                if (ch && ch.engineering_type === "Current") {
+                    return { state: "engineering", unitMode: "engineering", key: "engineering", resolution: null };
+                }
+            }
             const resolution = wwErState.perUnit.resolutions[wwErPerUnitKey(kind, sourceId, channelName)];
             if (resolution === undefined) return { state: "pending", unitMode: null, key: "pending", resolution: null };
             const signature = JSON.stringify(resolution);
@@ -33726,7 +33735,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // currently-displayed channel's current viewport (see
                 // wwApplyUnitMode() below), never a second, frontend-side
                 // division formula.
-                unitMode: ww.unitMode,
+                // DEC-212: raw Current channels always stay in engineering mode
+                // regardless of the Voltage Display toggle.
+                unitMode: channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode,
                 timeOffsetS: alignmentOffset,
             });
             if (workspaceId !== currentWorkspaceId() || epochAtStart !== ww.epoch) return { superseded: true };
@@ -35824,11 +35835,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwMgBaseSummaryHtml(group) {
             if (group.kind === "voltage") {
                 const cfg = group.voltage_config;
-                if (!cfg || cfg.nominal_voltage_ll_kv == null) return "Base: Not configured";
+                if (!cfg || cfg.nominal_voltage_ll_kv == null) return "Nominal Voltage: Not configured";
                 const refLabel = cfg.effective_reference === "line_to_line" ? "Line-to-Line"
                     : cfg.effective_reference === "line_to_ground" ? "Phase-to-Ground" : "Unrecognized";
                 const refMode = cfg.reference_mode === "manual" ? "Manual" : "Auto";
-                return "Base: <strong>" + cfg.nominal_voltage_ll_kv + " kV</strong> · " + escapeHtml(refMode) + " · " + escapeHtml(refLabel);
+                return "Nominal Voltage: <strong>" + Number(cfg.nominal_voltage_ll_kv).toFixed(2) + " kV</strong> · " + escapeHtml(refMode) + " · " + escapeHtml(refLabel);
             }
             const cfg = group.current_config;
             if (!cfg || cfg.method === "none") return "Method: Not configured";
@@ -35892,7 +35903,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<h4 class="ww-mg-section-heading">Voltage Groups</h4>';
             html += voltageGroups.length ? voltageGroups.map(wwRenderMeasurementGroupRow).join("") : '<p class="hint">No Voltage groups yet.</p>';
             html += '<h4 class="ww-mg-section-heading">Current Groups</h4>';
-            html += currentGroups.length ? currentGroups.map(wwRenderMeasurementGroupRow).join("") : '<p class="hint">No Current groups yet.</p>';
+            html += '<p class="hint" style="margin:4px 0 8px;">Current channels always display in A/kA (DEC-212). Per-unit normalisation for current is configured through Calculated Channels.</p>';
+            if (currentGroups.length) html += currentGroups.map(wwRenderMeasurementGroupRow).join("");
             bodyEl.innerHTML = html;
             for (const group of groups) {
                 const btn = document.getElementById("wwMgEditBtn-" + group.id);
@@ -36075,7 +36087,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             html += '<div class="ww-pu-section">';
             html += '<h4 class="ww-pu-section-title">Nominal System Voltage</h4>';
-            html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Nominal voltage (line-to-line)</span>';
+            html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Nominal Voltage (kV, Line-to-Line)</span>';
             html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgVoltageKvInput" min="0" step="any" value="' + (state.nominalKv != null ? state.nominalKv : "") + '"><span class="ww-pu-suffix">kV</span></div>';
             html += '</label>';
             html += '<p class="hint" style="margin-top:6px;">Always entered as the familiar nominal system line-to-line voltage &mdash; e.g. enter 275 for a 275 kV system, even if this group’s own channels measure phase-to-ground. Powerwave derives 275/&radic;3 automatically for phase channels.</p>';
@@ -36142,7 +36154,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     html += '<option value="">Select a Voltage group&hellip;</option>';
                     for (const c of candidates) {
                         const label = c.display_name + (c.voltage_config && c.voltage_config.nominal_voltage_ll_kv != null
-                            ? " — " + c.voltage_config.nominal_voltage_ll_kv + " kV" : " — not configured");
+                            ? " — " + Number(c.voltage_config.nominal_voltage_ll_kv).toFixed(2) + " kV" : " — not configured");
                         html += '<option value="' + escapeHtml(c.id) + '"' + (state.linkedVoltageGroupId === c.id ? " selected" : "") + '>' + escapeHtml(label) + '</option>';
                     }
                     html += '</select></label>';
@@ -54384,7 +54396,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (reference.unit_state === "ready") {
                 const refLabel = base && base.effective_reference === "line_to_line" ? "L-L" : "L-G";
-                const text = base ? ("✓ " + base.nominal_voltage_ll_kv + " kV " + refLabel) : "✓ Per-unit base configured";
+                const text = base ? ("✓ " + Number(base.nominal_voltage_ll_kv).toFixed(2) + " kV " + refLabel) : "✓ Per-unit base configured";
                 return '<div class="ww-compliance-readiness-row" data-row="unit" data-state="ready">' +
                     '<span class="ww-compliance-readiness-label">Base</span>' +
                     '<span class="ww-compliance-readiness-value">' + escapeHtml(text) + '</span></div>';
