@@ -9,6 +9,85 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## PU-001B + PU-002A — Slice 6C complete; awaiting owner review (2026-11-09)
+
+[FACT] Owner has approved DEC-212 (Voltage-only automatic PU; Current stays in A/kA; Current
+normalization via Calculated Channels). Recorded in DECISIONS.md and
+[PU_001B_PU_002A_DESIGN.md](PU_001B_PU_002A_DESIGN.md).
+
+[FACT] PU-001 numerical fix applied locally (not yet pushed/deployed): Convention A/B
+disambiguation added to `auto_base_evidence.py` Step 3b and Step 4. PULU case: 275.00 kV
+correctly identified (was 476.31 kV). Frontend: "Nominal Voltage:" label + `.toFixed(2)`.
+68/68 `test_auto_base_evidence.py` + full backend suite (exit 0) pass.
+
+[FACT] PU-001B multi-hypothesis resolver prototype: `backend/app/domain/voltage_hypothesis.py` +
+49 decision-matrix tests (`test_voltage_hypothesis.py`). NOT yet wired into live import lifecycle.
+Key finding: 132.0 kV on L-G channels is genuinely ambiguous (matches both IEC 132 kV and
+ANSI 230 kV via ×√3). The resolver returns `ambiguous` without a name token; `suitable_for_auto`
+requires `group_name` corroboration for 132 kV systems.
+
+[FACT] Slice 6A complete: `backend/app/domain/waveform_evidence.py` + 69-test suite
+(`test_waveform_evidence.py`). Pure-domain waveform evidence extractor using sliding one-cycle RMS
+(cumsum, vectorised). NOT connected to live import lifecycle.
+
+[FACT] Slice 6B complete (2026-11-09): Multi-hypothesis resolver wired into live automatic PU
+configuration. All work remains local — NOT committed, pushed, deployed, or merged.
+Key changes:
+- `waveform_evidence.py`: renamed verdict "inconsistent" → "magnitude_disagreement"; added
+  `notable_magnitude_gap` bool field (factual observation, NOT authority verdict). A stable
+  0.577 pu waveform is electrically possible — it must not reject a hypothesis.
+- `voltage_hypothesis.py`: removed waveform tie-breaking block entirely. Waveform corroboration
+  is annotation only — it does NOT change `selected` from "ambiguous" to "A"/"B".
+- `auto_base_evidence.py` Step 3b: replaced per-channel Convention A/B heuristic with call to
+  `evaluate_voltage_hypotheses()` via local import (avoids circular dep). Added `group_name` and
+  `waveform_evidence` parameters. Added `hypothesis_resolution` field to `VoltageGroupEvidence`.
+  Added `REASON_HYPOTHESIS_AMBIGUOUS` constant. 132.0 kV on L-G without group name → ambiguous,
+  `needs_review`. With `group_name="132KV"` → resolves to Hypothesis A.
+- `auto_base_service.py`: passes `group_name=group.display_name` to `resolve_voltage_group_evidence()`
+  (bug fix: domain model uses `display_name`, not `name` — `getattr(group, "name", None)` always
+  returned `None`); added optional `waveform_provider` parameter (annotation only — waveform
+  magnitude_disagreement does NOT downgrade authority; a voltage sag/fault in a valid recording
+  must not block auto config).
+- Tests: 186 baseline tests updated (2 existing tests updated for new 132 kV ambiguous behavior);
+  20 new acceptance tests in `test_auto_base_6b_integration.py`.
+  Total: 217/217 core + service tests pass.
+
+Authority policy (Slice 6B, immutable until further authorization):
+- Only independent metadata contradictions block automatic authority.
+- Waveform magnitude_disagreement is diagnostic provenance only.
+- A waveform magnitude_disagreement does NOT downgrade BASE_AUTHORITY_AUTO to NEEDS_REVIEW.
+
+[FACT] Slice 6C complete (2026-11-09): Voltage-only ENG/PU display (DEC-212) implemented in
+frontend. All work remains local — NOT committed, pushed, deployed, or merged.
+Key changes:
+- `frontend/index.html`: 6 changes applied
+  1. Waveform toolbar: `aria-label="Unit Mode"` → `aria-label="Voltage Display"`
+  2. ER toolbar: same `aria-label` change
+  3. `wwErChannelUnitDisplay()`: DEC-212 guard — `kind==="analog"` Current channels always
+     return `state:"engineering"` regardless of toggle position (uses `wwErState.channelsBySource`
+     lookup; guard does NOT apply to `kind==="calculated"` for Slice 6D)
+  4. `wwFetchChannelRange()`: `unitMode: channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode`
+  5. MG modal Current Groups section: added DEC-212 note ("Current channels always display in
+     A/kA. Per-unit normalisation for current is configured through Calculated Channels.")
+  6. Voltage drawer field: "Nominal voltage (line-to-line)" → "Nominal Voltage (kV, Line-to-Line)"
+- `backend/tests/test_frontend_event_reconstruction.py`: aria-label assertion updated (`"Unit Mode"` → `"Voltage Display"`)
+- `backend/tests/test_frontend_per_unit_mode.py`: unitMode assertion updated for DEC-212 conditional
+- `backend/tests/test_frontend_shared_renderer_helpers.py`: unitMode assertion updated for DEC-212 conditional
+- `browser-tests/event-reconstruction-per-unit.spec.js`: 5 existing test assertions updated to
+  reflect DEC-212 behavior (toggle aria-label, panel titles, IA values, combined axes, "no PU basis" test)
+- `browser-tests/voltage-only-pu-display.spec.js`: 15 new Slice 6C regression tests (VD-01 … VD-15)
+  VD-09 navigates Per-Unit Settings → "Manage Measurement Groups" sub-dialog
+  (`#wwOpenMeasurementGroupsFromSettingsBtn` → `#measurementGroupsOverlay`) before asserting
+  the DEC-212 note in `#measurementGroupsBody`.
+
+Integration audit complete (2026-11-09):
+- VD-01..VD-15: 15/15 pass
+- AT (auto-pu-import) + ER (event-reconstruction-per-unit): 15/15 pass combined
+- Backend (Slice 6A/6B/6C test files): 217 + 251 + 277 = 745 targeted tests pass, exit 0
+- No recordings, no temp artifacts staged
+
+[PENDING] Local commit creation; then owner review of Slices 6A–6C. Do not proceed to Slice 6D without authorization.
+
 ## Automatic PU release — deployed to DEV (2026-11-09)
 
 [FACT] Commit `7d4c26371d96661f51b250dabce44501f8cbe5ed` on `feature/vlt-ref-001-voltage-reference-safety`

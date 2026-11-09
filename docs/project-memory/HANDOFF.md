@@ -4,7 +4,106 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-09** (Slices 5A–5D-3 + VLT-REF-001 committed, pushed, CI passed, deployed to DEV `7d4c26371d96661f51b250dabce44501f8cbe5ed`; awaiting owner UAT).
+Last updated: **2026-11-09** (Slice 6C integration audit complete; local commits pending; awaiting owner review).
+
+## PU-001B + PU-002A — Slice 6C complete; awaiting owner review (2026-11-09)
+
+**Status:** Slice 6C implemented and locally verified. All work is local — NOT committed, pushed,
+deployed, or merged. The running DEV release is unmodified.
+
+**What Slice 6C changed (DEC-212 Voltage-only UI):**
+
+1. **ENG/PU toggle label** — both Waveform toolbar (`#wwUnitModeToggle`) and ER toolbar
+   (`#wwErUnitModeToggle`) aria-labels changed from `"Unit Mode"` → `"Voltage Display"`.
+
+2. **`wwErChannelUnitDisplay()` DEC-212 guard** — `kind === "analog"` Current channels
+   (looked up via `wwErState.channelsBySource[sid].analog_channels[].engineering_type`) always
+   return `{ state: "engineering", unitMode: "engineering" }` regardless of toggle. Guard does
+   NOT apply to `kind === "calculated"` (reserved for Slice 6D).
+
+3. **`wwFetchChannelRange()` guard** — `unitMode: channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode`.
+   Raw Current channels never send a per-unit fetch request to the backend.
+
+4. **MG modal Current Groups section** — added DEC-212 note below the heading:
+   "Current channels always display in A/kA (DEC-212). Per-unit normalisation for current is
+   configured through Calculated Channels."
+
+5. **Voltage drawer label** — "Nominal voltage (line-to-line)" → "Nominal Voltage (kV, Line-to-Line)".
+
+**Test changes:**
+
+- `backend/tests/test_frontend_event_reconstruction.py`: 1 assertion updated
+  - `test_unit_selector_uses_waveforms_wording_as_a_labelled_mode_selector`: both toggle
+    aria-label assertions changed from `"Unit Mode"` → `"Voltage Display"` (DEC-212)
+- `backend/tests/test_frontend_per_unit_mode.py`: 1 assertion updated
+  - `test_every_channel_waveform_fetch_requests_unit_mode`: `"unitMode: ww.unitMode,"` →
+    DEC-212 conditional `'channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode'`
+- `backend/tests/test_frontend_shared_renderer_helpers.py`: 1 assertion updated
+  - `test_waveform_fetch_wrapper_keeps_waveform_inputs`: same DEC-212 conditional string
+- `browser-tests/event-reconstruction-per-unit.spec.js`: 5 assertion updates
+  - Toggle aria-label check updated
+  - Panel titles: `"Current (pu)"` → `"Current (A)"`
+  - IA values: previously expected PU-scaled → now expects engineering (unchanged) values
+  - Combined axes: same `"Current (pu)"` → `"Current (A)"` fix
+  - "no per-unit basis" test: STN_B.IA now plots engineering (not "PU unavailable")
+
+- `browser-tests/voltage-only-pu-display.spec.js`: **15 new Slice 6C regression tests** (VD-01 … VD-15)
+  covering: toggle aria-labels, Current channel unit stays A/kA in PU mode, Current never shows
+  "PU unavailable" badge, MG DEC-212 note, voltage drawer label, auto-switch behavior,
+  PU cycle preserves values, calculated Current not guarded, base summary format.
+  VD-09 fix: navigates Per-Unit Settings → `#wwOpenMeasurementGroupsFromSettingsBtn` →
+  `#measurementGroupsOverlay` unhides → asserts DEC-212 note in `#measurementGroupsBody`.
+
+- Backend test suite: **no backend changes in Slice 6C** — DEC-212 is a pure frontend change.
+  Backend still returns `base_required` for Current groups with no Ibase; frontend now ignores
+  that (renders engineering mode directly). Backend full suite exit 0 (all prior tests unchanged).
+
+**Integration audit results (2026-11-09):**
+- VD-01..VD-15: **15/15 pass**
+- auto-pu-import + event-reconstruction-per-unit: **15/15 pass** combined
+- Backend targeted (Slice 6A/6B/6C files): **217 + 251 + 277 = 745 tests pass, exit 0**
+- Full backend suite: exit 0 (confirmed by background run)
+- No recordings, no temp artifacts staged
+
+**Key design decisions:**
+
+- DEC-212 guard uses `engineeringType` lookup, NOT `kind` parameter: `kind` in
+  `wwErChannelUnitDisplay` is "analog"/"calculated" (ER protocol), not "voltage"/"current".
+  The guard checks `wwErState.channelsBySource[sourceId].analog_channels[].engineering_type`.
+- `kind === "calculated"` channels skip the guard entirely — Slice 6D will configure
+  Current normalization via Calculated Channels.
+- No backend schema changes required for Slice 6C.
+
+**Next step:** Create local commits for Slices 6A/6B/6C, then owner reviews. Slice 6D (Calculated
+Channel current normalization) is the next authorized step — do NOT begin Slice 6D without
+separate owner authorization.
+
+---
+
+---
+
+## UAT Finding PU-001 — Incorrect Nominal Voltage + Frontend Label (fix applied, not pushed)
+
+**Status:** Code fixed locally on `feature/vlt-ref-001-voltage-reference-safety`. Do NOT push or redeploy DEV until owner approves.
+
+**Root cause:** `auto_base_evidence.py` Step 3b blindly multiplied all L-G `primary_ratio` values by √3, treating every L-G channel as a phase-winding VT (Convention B). Real IEC/protection relay COMTRADE files (e.g. KPDN1 PULU) write the nominal system L-L voltage directly in `primary_ratio` (Convention A: `primary_ratio=275.0 kV` on a 275 kV system). This produced `276.0 × √3 = 476.31 kV` instead of `275.0 kV`.
+
+**Fix: `backend/app/domain/auto_base_evidence.py` (Step 3b + Step 4 secondary path):**
+- Added `_STANDARD_NOMINAL_KV` table (IEC + ANSI + regional) and `_is_near_standard_nominal_kv()` helper (2 % relative tolerance).
+- For each L-G channel: if `primary_ratio` matches a standard level directly → Convention A (use as-is); if `primary_ratio × √3` matches → Convention B (multiply by √3); if neither → ambiguous (skipped → `needs_review`).
+- Convention B backward-compatibility preserved: `primary_ratio=76.2 kV` (phase-winding) → `76.2 × √3 ≈ 131.98 kV` still works.
+- Same disambiguation added to the Step 4 secondary `primary_ll_kv_from_ratio` path.
+
+**Fix: `frontend/index.html` (3 locations):**
+- `wwMgBaseSummaryHtml()`: "Base:" → "Nominal Voltage:" + `.toFixed(2)` formatting.
+- Dropdown option label: `.toFixed(2)` formatting.
+- Compliance readiness text: `.toFixed(2)` formatting.
+
+**Regression tests added:** 9 new tests in `TestConventionALGChannels` class in `backend/tests/test_auto_base_evidence.py` covering: PULU 275 kV scenario, 132 kV Convention A, correct L-G denominator (275/√3 ≈ 158.77 kV), PU sanity (162.42 kV / 158.77 kV ≈ 1.023 pu), ambiguous ratio → no auto authority, Convention B backward-compat, multi-bay independence, L-L channels unaffected, secondary path check.
+
+**Test results (local):** 68/68 `test_auto_base_evidence.py` pass. 135/135 targeted suite (evidence + auto-base service + display + VLT-REF-001) pass. Full backend suite: exit 0 (no test count in output — buffered by pytest on Windows, but exit code confirmed clean).
+
+**Preserved:** Commits `7d4c263` (feature) and `f6f9470` (docs) remain intact. No COMTRADE recording files committed.
 
 ## DEV Deployment — 2026-11-09
 

@@ -29291,3 +29291,67 @@ Measurement Group and Source Default paths).
   Full existing backend suite (pre-new-tests) passes without regression.
   Implementation: `feature/vlt-ref-001-voltage-reference-safety` branch.
   Audit: [PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md](PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md).
+
+---
+
+## DEC-212 — Voltage-only automatic Per-Unit workflow; Current remains in engineering units
+
+Date: 2026-11-09. Status: **Owner-approved policy.**
+Authority: owner engineering decision, PU-001B + PU-002A task statement (2026-11-09).
+
+Decision:
+
+1. **Automatic PU is applicable to Voltage only.** The standard waveform ENG/PU display
+   selector controls Voltage channel display. When PU mode is selected, Voltage channels
+   with a configured nominal reference are shown in per-unit; Voltage channels without a
+   configured reference fall back to engineering units.
+
+2. **Raw Current waveforms always retain physical engineering units (A / kA).**
+   The ENG/PU selector has no effect on raw Current traces. Current traces cannot silently
+   share a Voltage PU axis or be incorrectly normalized by the Voltage display mode.
+
+3. **Current normalization is performed explicitly through Calculated Channels.**
+   An engineer who needs a Current quantity divided by a reference creates it as a Calculated
+   Channel with an explicitly chosen reference. The result type, reference value, and numerical
+   interpretation (instantaneous waveform vs. RMS waveform) are all engineer-specified.
+
+4. **CT primary winding ratings are never automatically used as equipment nominal-current
+   references.** CT primary rating is transformation metadata, not a machine-current reference.
+
+5. **Existing Current PU domain services remain available pending dependency review.**
+   `current_group_config.py`, `auto_base_evidence.py` (Current resolver), `group_aware_per_unit.py`
+   (Current path), `calculated_current_per_unit.py`, and related compliance/power services
+   remain in place until a full dependency audit (DEC-212 §6) has been completed and the owner
+   has approved a migration plan. These services must not be deleted prematurely.
+
+6. **A dependency audit of all Current PU consumers is required before any changes to Current
+   PU behaviour.** Consumers include: raw waveform rendering, measurement group configuration,
+   source default, calculated channels, result-specific manual Current PU, Power Calculator,
+   V-I Phasors, compliance analysis, event reconstruction, cursor/annotation readouts, ENG/PU
+   display-mode handling, and all browser tests that assert Current PU behaviour.
+
+7. **This change must not silently break existing calculated results, saved configurations, or
+   other engineering functions.** Any Calculated Channel that uses a Current PU reference
+   continues to function; any manual Current base established by an engineer continues to
+   produce the same numerical output; any compliance result derived from a Current PU
+   measurement continues to be valid.
+
+Reason:
+The owner determined that the automatic Voltage PU workflow (Slices 5A–5D-3) delivers clear
+engineering value, while automatic Current PU from COMTRADE metadata does not have a reliable
+enough evidence chain (CT primary ≠ equipment nominal current; DEC-050 §11 / C5). Explicit
+Current normalization through Calculated Channels is the appropriate path, preserving engineer
+control and clear provenance. This supersedes the earlier goal of providing automatic Current PU
+through the normal Measurement Group workflow.
+
+Impact on PU-001 work:
+- PU-001 Convention A/B fix (`auto_base_evidence.py`) remains in place as a provisional
+  improvement; it is subject to PU-001B multi-hypothesis design review before promotion to
+  permanent policy.
+- The `frontend/index.html` "Nominal Voltage:" relabelling and `.toFixed(2)` formatting
+  (PU-001 fix) are consistent with this decision and are retained.
+- The critical regression risk (§9 of the PU-001B task): an incorrect Voltage nominal can
+  contaminate Current PU calculations through the equipment-rating path
+  (`CurrentBaseConfiguration.method == METHOD_EQUIPMENT_RATING` with a linked Voltage group).
+  This risk must be addressed before any Voltage nominal evidence is promoted to
+  `base_authority="auto_resolved"` for a group that has a Current group linked to it.

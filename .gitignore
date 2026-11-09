@@ -34,3 +34,8 @@ venv/
 node_modules/
 browser-tests/test-results/
 browser-tests/playwright-report/
+
+# Audit / evidence / test-run artifact directories (never commit these)
+.audit/
+.slice1-evidence/
+test-results/
