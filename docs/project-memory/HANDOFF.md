@@ -4,12 +4,31 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-08** (Slices 5A–5D-3 full — authority gate + PS model + resolver integration + strict secondary gate + automatic base service + frontend auto-switch + status banner + AT-1–AT-15 backend + AT-11/AT-13/AT-14 browser, local only).
+Last updated: **2026-11-09** (Slices 5A–5D-3 + VLT-REF-001 committed, pushed, CI passed, deployed to DEV `7d4c26371d96661f51b250dabce44501f8cbe5ed`; awaiting owner UAT).
 
-## Automatic PU Slices 5A–5D-3 — complete; awaiting owner authorization for PR/push
+## DEV Deployment — 2026-11-09
 
-Branch: `feature/vlt-ref-001-voltage-reference-safety` (Slice 5A/5B/5C-1 files are untracked/modified
-on this branch, local only — the branch name reflects its PR-7-era origin).
+[FACT] Commit `7d4c26371d96661f51b250dabce44501f8cbe5ed` (`feat(pu): automatic primary-secondary per-unit
+configuration and display`) pushed to `origin/feature/vlt-ref-001-voltage-reference-safety` and
+deployed to DEV via GitHub Actions run #42539322148.
+
+CI (run #42528569648): `Validate Compose overlays` ✓, `Backend tests` ✓.
+Deploy (run #42539322148): backend tests 11,780 passed 303 skipped ✓; Docker images built with expected SHA ✓; DEV containers started ✓; internal health check passed ✓.
+
+Post-deployment verification (2026-11-09, automated):
+- Frontend `https://dev.powerwave.oruxa.uk`: HTTP 200, TLS valid ✓
+- Backend `https://api.dev.powerwave.oruxa.uk/health`: `{"status":"ok","environment":"development","version":"7d4c263","git_sha":"7d4c26371d96661f51b250dabce44501f8cbe5ed"}` ✓
+- SHA and environment confirmed ✓; `main` and PROD unchanged ✓
+- Browser tests (local, same commit): `auto-pu-import.spec.js` 7/7 ✓; `per-unit-voltage-reference-safety.spec.js` 7/7 ✓
+- DEV API smoke (live): Primary COMTRADE → 2/2 voltage groups `pu_status=configured`, `base_reference_side=primary` ✓; No-PS COMTRADE → `pu_status=base_required` ✓; test workspaces deleted ✓
+- OpenAPI schema: 122 endpoints registered, no startup errors ✓
+
+Rollback: previous DEV SHA `e6d77345cb5f244d2205741dcbe4de1aaf297576` (PR #7 merge).
+Next: owner UAT — see SLICE_5D3_FINAL_REPORT.md §9 for UAT procedure.
+
+## Automatic PU Slices 5A–5D-3 — deployed to DEV; awaiting owner UAT
+
+Branch: `feature/vlt-ref-001-voltage-reference-safety` (committed and pushed 2026-11-09).
 
 **What changed (Slice 5C-1):**
 

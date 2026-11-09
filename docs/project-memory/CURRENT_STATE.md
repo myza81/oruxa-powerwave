@@ -9,7 +9,17 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## Automatic PU Slices 5A + 5B + 5C-1 + 5C-2 + 5D-1 + 5D-2 — Evidence resolver, authority, gate integration, Primary/Secondary reference model, PS resolver, Auto-base service (2026-11-08, local only)
+## Automatic PU release — deployed to DEV (2026-11-09)
+
+[FACT] Commit `7d4c26371d96661f51b250dabce44501f8cbe5ed` on `feature/vlt-ref-001-voltage-reference-safety`
+deployed to `https://dev.powerwave.oruxa.uk` / `https://api.dev.powerwave.oruxa.uk` via GitHub Actions
+run #42539322148. SHA confirmed by `/health` endpoint. Browser tests (auto-pu-import 7/7,
+per-unit-voltage-reference-safety 7/7) pass against same codebase. DEV API smoke: Primary COMTRADE
+auto-resolves 2 voltage groups to `pu_status=configured`; No-PS COMTRADE correctly returns
+`base_required`. Awaiting owner UAT — see SLICE_5D3_FINAL_REPORT.md §9. `main` and PROD unchanged.
+Rollback: `e6d77345cb5f244d2205741dcbe4de1aaf297576`.
+
+## Automatic PU Slices 5A + 5B + 5C-1 + 5C-2 + 5D-1 + 5D-2 — Evidence resolver, authority, gate integration, Primary/Secondary reference model, PS resolver, Auto-base service (2026-11-08, deployed 2026-11-09)
 
 [FACT] Slice 5A: new pure-domain engineering evidence resolver (`backend/app/domain/auto_base_evidence.py`).
 Accepts `ChannelAutoMetadata` per channel; returns `VoltageGroupEvidence` / `CurrentGroupEvidence` with
