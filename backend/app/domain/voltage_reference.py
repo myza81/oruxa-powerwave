@@ -55,6 +55,7 @@ re-interpretation of any name this module already classified.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 LINE_TO_GROUND = "line_to_ground"
@@ -84,6 +85,14 @@ _LG_SINGLE_TOKENS = frozenset({"R", "Y", "B", "A", "C"})
 #: VOLTAGE" are all common vendor conventions for an already-phase-to-
 #: phase measurement.
 _LL_EXPLICIT_SUBSTRINGS = ("BUS", "LL")
+
+#: Well-delimited winding-side qualifiers that may trail a phase token in
+#: transformer/multi-winding channel names (e.g. "SGT1 VR_HV",
+#: "SGT1 VY_LV"). The qualifier is separated by "_" or " ", contains only
+#: uppercase letters, and optionally a trailing digit for multi-winding
+#: numbering (HV1/LV2). The pattern is intentionally restrictive: only
+#: recognised winding-side vocabulary, not arbitrary trailing letter runs.
+_WINDING_QUALIFIER_RE = re.compile(r"[_ ](?:HV|LV)\d*$", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -152,6 +161,29 @@ def _classify_one_channel_name(channel_name: str) -> str | None:
             return LINE_TO_GROUND
     if any(marker in upper for marker in _LL_EXPLICIT_SUBSTRINGS):
         return LINE_TO_LINE
+
+    # Check for a phase token that precedes a well-delimited winding-side
+    # qualifier (e.g. "SGT1 VR_HV" → strip "_HV" → "SGT1 VR" → L-G).
+    # Only the phase-token checks are applied on the stripped name — the
+    # generic BUS/LL fallback is never used here — to prevent accidental
+    # matches on names that contain the qualifier but no genuine phase token.
+    m = _WINDING_QUALIFIER_RE.search(upper)
+    if m:
+        base = upper[:m.start()]
+
+        def base_matches(token: str) -> bool:
+            return base == token or _ends_with_v_token(base, token)
+
+        for token in _LL_PAIR_TOKENS:
+            if base_matches(token):
+                return LINE_TO_LINE
+        for token in _LG_NEUTRAL_TOKENS:
+            if base_matches(token):
+                return LINE_TO_GROUND
+        for token in _LG_SINGLE_TOKENS:
+            if base_matches(token):
+                return LINE_TO_GROUND
+
     return None
 
 

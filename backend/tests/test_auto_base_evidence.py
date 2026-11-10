@@ -1017,3 +1017,74 @@ class TestConventionALGChannels:
                 f"secondary path must not multiply by √3 for Convention A "
                 f"(got {ev.secondary_measured.primary_ll_kv_from_ratio:.4f} kV)"
             )
+
+
+# ---------------------------------------------------------------------------
+# PULU auto-reference root-cause correction — real-file regression tests
+# ---------------------------------------------------------------------------
+
+class TestPULURealFileAutoBaseEvidence:
+    """Regression tests using the PULU COMTRADE metadata exactly:
+    primary_ratio=275.0 kV, secondary_ratio=0.110 kV (110 V = typical VT
+    secondary), unit='kV', PS=P.  The existing DM-11 suite omitted
+    secondary_ratio and therefore did not expose the WRP dimension bug.
+    """
+
+    def test_kpdn1_275kv_with_real_secondary_sufficient_for_auto_nominal(self):
+        """KPDN1 VR/VY/VB with real PULU metadata must be sufficient for auto-nominal."""
+        channels = [
+            _vchan("KPDN1 VR", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("KPDN1 VY", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("KPDN1 VB", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+        ]
+        ev = resolve_voltage_group_evidence(channels, group_name="KPDN1 VOLTAGE")
+        assert ev.channel_reference == "line_to_ground"
+        assert ev.measurement_side == "primary"
+        assert ev.sufficient_for_auto_nominal, (
+            f"expected sufficient_for_auto_nominal=True; "
+            f"reasons={ev.insufficient_reasons}")
+        assert any(
+            math.isclose(c.value_kv, 275.0, rel_tol=1e-4)
+            for c in ev.primary_nominal_candidates
+        )
+
+    def test_sgt1_hv_275kv_with_qualifier_sufficient_for_auto_nominal(self):
+        """SGT1 VR_HV style (qualifier suffix) must resolve to 275 kV auto-nominal."""
+        channels = [
+            _vchan("SGT1 VR_HV", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("SGT1 VY_HV", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("SGT1 VB_HV", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+        ]
+        ev = resolve_voltage_group_evidence(channels, group_name="SGT1_HV VOLTAGE")
+        assert ev.channel_reference == "line_to_ground"
+        assert ev.sufficient_for_auto_nominal, (
+            f"expected sufficient_for_auto_nominal=True; "
+            f"reasons={ev.insufficient_reasons}")
+
+    def test_sgt1_lv_132kv_remains_needs_review_but_primary_side_is_known(self):
+        """SGT1 LV (132 kV) is genuinely ambiguous — needs_review — but
+        measurement_side and sufficient_for_auto_side must still be correct
+        so the auto_base_service can record base_reference_side='primary'."""
+        channels = [
+            _vchan("SGT1 VR_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+            _vchan("SGT1 VY_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+            _vchan("SGT1 VB_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+        ]
+        ev = resolve_voltage_group_evidence(channels, group_name="SGT1_LV VOLTAGE")
+        assert ev.channel_reference == "line_to_ground"
+        assert not ev.sufficient_for_auto_nominal
+        assert ev.measurement_side == "primary"
+        assert ev.sufficient_for_auto_side
+
+    def test_needs_review_group_does_not_falsely_claim_nominal_configured(self):
+        """needs_review must never produce a primary_nominal_candidate with
+        high confidence — that would falsely imply PU is configured."""
+        channels = [
+            _vchan("SGT1 VR_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+        ]
+        ev = resolve_voltage_group_evidence(channels, group_name="SGT1_LV VOLTAGE")
+        assert not ev.sufficient_for_auto_nominal
+        # No candidate should be listed either (ambiguous verdict produces none)
+        assert len(ev.primary_nominal_candidates) == 0, (
+            f"needs_review group must not have nominal candidates: {ev.primary_nominal_candidates}"
+        )

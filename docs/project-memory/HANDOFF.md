@@ -4,7 +4,36 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-09** (Slice 6C.1 complete; 61/61 browser tests pass; local commits pending; awaiting owner review).
+Last updated: **2026-11-10** (PULU Auto-Reference Root-Cause Correction bounded verification complete; 67/67 browser tests pass; local commit pending; awaiting owner sign-off before push/deploy/Slice 6D).
+
+## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction; bounded verification complete (2026-11-10)
+
+**Status:** Five backend bugs fixed and browser-verified locally. All work is local — NOT committed, pushed, deployed, or merged. No Slice 6D work undertaken.
+
+**Five bugs corrected (all in backend only — no frontend changes):**
+
+1. **WRP false "support"** (`voltage_hypothesis.py`): `wrp_result` changed from `"support"` → `"neutral"` for plausible VT ratios. After fix: Convention A selected unambiguously for all PULU 275 kV groups (SNM evidence alone discriminates).
+2. **Geometry parse fails for `_HV`/`_LV` qualifier names** (`voltage_reference.py`): `_WINDING_QUALIFIER_RE` strips winding qualifier before phase-token check. `"SGT1 VR_HV"` → `LINE_TO_GROUND`.
+3. **Channel identity grouping fails for `_HV`/`_LV` qualifier names** (`channel_engineering_identity.py`): `_WINDING_QUALIFIER_RE` fallback in `_match_name_role` using separated-match-only paths. `"SGT1 VR_HV"` → `context="SGT1_HV"`, `"SGT1 VR_LV"` → `context="SGT1_LV"` (separate MGs). `"FAVR_HV"` → NO ROLE TOKEN (safeguard preserved).
+4. **Provenance reads `base_reference_side` from wrong config** (`per_unit_provenance_service.py`): `_provenance_from_group()` now reads from `view.voltage_config.base_reference_side` for Voltage channels (was incorrectly reading `view.current_config.base_reference_side` which is always None for Voltage).
+5. **`needs_review` path never writes `base_reference_side`** (`auto_base_service.py`): When `measurement_side=="primary"` and `sufficient_for_auto_side`, the needs_review fallback now also writes `base_reference_side="primary"`. C4 guard prevents overwrite of manual/legacy configs.
+
+**16 new backend regression tests** (12 in existing test classes, 4 new class `TestPULURealFileAutoBaseEvidence`, 4 new class `TestDM11b_PULUWithRealSecondaryRatio`, 6 new class `TestWindingQualifierDetection` × 2).
+
+**New browser spec**: `browser-tests/pulu-auto-reference.spec.js` (4 tests: PULU-01 through PULU-04).
+
+**Test results (all local):**
+- Backend full suite: **exit 0** (confirmed × 2 runs)
+- Backend PU subset (220 tests): **220/220 pass**
+- Backend provenance (34 tests): **34/34 pass**
+- PULU browser spec: **4/4 pass** (exit 0)
+- 5-spec regression suite: **63/63 pass** (exit 0) — compliance_readiness, event-reconstruction-per-unit, per-unit-reference-safety, per-unit-voltage-reference-safety, voltage-only-pu-display
+
+**9 modified files** (Fixes 1–5: 5 source files; 3 test files; CURRENT_STATE.md). 1 new untracked file (`browser-tests/pulu-auto-reference.spec.js`). 5 pre-existing untracked test-run TXT files untouched.
+
+**Next step:** Owner reviews and approves. Then: single local corrective commit, push to `feature/vlt-ref-001-voltage-reference-safety`, DEV deployment, owner UAT. Do NOT begin Slice 6D without separate authorization.
+
+---
 
 ## PU-001B + PU-002A — Slice 6C + 6C.1 complete; awaiting owner review (2026-11-09)
 

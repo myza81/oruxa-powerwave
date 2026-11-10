@@ -400,6 +400,70 @@ class TestDM12_SGT1LV:
 
 
 # ---------------------------------------------------------------------------
+# DM-11b — PULU with real secondary_ratio=0.110 kV (110 V)
+#
+# Regression for the PULU auto-reference root-cause correction:
+# secondary_ratio=0.110 kV = 110 V is a typical protection VT secondary
+# voltage. The old WRP implementation granted "support" (weight=1.0) to
+# BOTH Convention A (ratio ≈1443:1) and Convention B (ratio ≈2500:1)
+# because both are within the 100-5000 plausible range, making both
+# equally "supported" and forcing an ambiguous verdict even though the
+# SNM dimension unambiguously selects A (275 kV is a standard nominal;
+# 476.3 kV is not). After the fix, WRP is "neutral" for both.
+# ---------------------------------------------------------------------------
+
+class TestDM11b_PULUWithRealSecondaryRatio:
+    """DM-11 variant: KPDN1 with real PULU secondary_ratio=0.110 kV."""
+
+    def test_pulu_275kv_with_secondary_ratio_selects_a(self):
+        """With real secondary_ratio, hypothesis resolver must still select A."""
+        r = _resolve([
+            _vchan("KPDN1 VR", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("KPDN1 VY", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("KPDN1 VB", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+        ])
+        assert r.selected == "A"
+        assert math.isclose(r.nominal_ll_kv, 275.0, rel_tol=1e-6)
+        assert not r.is_ambiguous
+
+    def test_pulu_sgt1_hv_275kv_with_qualifier_selects_a(self):
+        """SGT1 VR_HV style (qualifier suffix) also resolves to 275 kV."""
+        r = _resolve([
+            _vchan("SGT1 VR_HV", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("SGT1 VY_HV", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+            _vchan("SGT1 VB_HV", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+        ])
+        assert r.selected == "A"
+        assert math.isclose(r.nominal_ll_kv, 275.0, rel_tol=1e-6)
+        assert not r.is_ambiguous
+
+    def test_wrp_dimension_neutral_for_both_when_secondary_matches_typical(self):
+        """WRP must be 'neutral' (weight=0) for both — not 'support' — when both
+        A and B produce plausible VT ratios because secondary=110 V is typical."""
+        r = _resolve([
+            _vchan("KPDN1 VR", side="primary", primary_ratio=275.0, secondary_ratio=0.110),
+        ])
+        wrp_a = next(d for d in r.hypothesis_a.evidence if "winding_ratio" in d.name)
+        wrp_b = next(d for d in r.hypothesis_b.evidence if "winding_ratio" in d.name)
+        assert wrp_a.result in ("neutral", "absent"), (
+            f"WRP-A must not 'support': got {wrp_a.result!r}")
+        assert wrp_b.result in ("neutral", "absent"), (
+            f"WRP-B must not 'support': got {wrp_b.result!r}")
+        assert wrp_a.weight == 0.0, f"WRP-A weight must be 0.0, got {wrp_a.weight}"
+        assert wrp_b.weight == 0.0, f"WRP-B weight must be 0.0, got {wrp_b.weight}"
+
+    def test_sgt1_lv_132kv_remains_ambiguous_even_with_secondary_ratio(self):
+        """132 kV is still genuinely ambiguous (A=132, B≈228.6≈230 kV) after WRP fix."""
+        r = _resolve([
+            _vchan("SGT1 VR_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+            _vchan("SGT1 VY_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+            _vchan("SGT1 VB_LV", side="primary", primary_ratio=132.0, secondary_ratio=0.110),
+        ])
+        assert r.selected == "ambiguous"
+        assert r.is_ambiguous
+
+
+# ---------------------------------------------------------------------------
 # DM-13 — Conflicting channel metadata
 # ---------------------------------------------------------------------------
 

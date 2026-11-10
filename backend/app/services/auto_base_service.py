@@ -283,10 +283,22 @@ def _configure_voltage_group(
         )
 
     # --- Insufficient evidence: mark needs_review ---
+    # Even when the nominal voltage cannot be auto-resolved, the measurement
+    # side (primary/secondary) may still be unambiguously known from PS flags.
+    # Writing base_reference_side here prevents the provenance layer from
+    # returning reference_compatibility="unverified" solely because the side
+    # field was never written — a false "Unverified reference" warning on a
+    # channel whose measurement side is entirely unambiguous (PS=P/S declared).
     insufficient = ",".join(evidence.insufficient_reasons) or "evidence_insufficient"
+    side_kwargs: dict = {}
+    if (evidence.measurement_side == "primary" and evidence.sufficient_for_auto_side):
+        side_kwargs["base_reference_side"] = "primary"
+    elif (evidence.measurement_side == "secondary" and evidence.sufficient_for_auto_side):
+        side_kwargs["base_reference_side"] = "secondary"
     voltage_config_registry.update_fields(
         workspace_id, group_id,
         base_authority=BASE_AUTHORITY_NEEDS_REVIEW,
+        **side_kwargs,
     )
     return VoltageGroupAutoResult(group_id=group_id, action="needs_review", reason=insufficient)
 

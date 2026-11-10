@@ -9,6 +9,48 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction complete; awaiting owner review (2026-11-10)
+
+[FACT] PULU "Unverified reference" root-cause correction applied. All work remains local — NOT committed, pushed, deployed, or merged. No Slice 6D work undertaken.
+
+Five bugs identified and corrected:
+
+**Bug 1 — WRP dimension false "support" (`voltage_hypothesis.py` line 503)**
+Root cause: `_evaluate_lg_hypothesis()` granted `wrp_result="support", wrp_weight=1.0` whenever a hypothesis's implied VT ratio fell in 100–5000 range AND secondary_ratio matched a typical protection VT secondary (63.5/110/115/120 V). With PULU's `secondary_ratio=0.110 kV = 110 V`, BOTH Convention A (ratio ≈1443:1) and Convention B (ratio ≈2500:1) satisfied this check → both `is_supported=True` → `selected="ambiguous"` → `needs_review` for ALL PULU voltage groups, despite SNM unambiguously selecting A (275 kV matched; 476.3 kV not). Fix: change `wrp_result="support"` to `wrp_result="neutral"` (weight=0). WRP now only opposes implausible ratios (sec_v>500), never positively supports.
+
+**Bug 2 — Geometry parser fails for `_HV`/`_LV` qualifier names (`voltage_reference.py`)**
+Root cause: `_ends_with_v_token` only checked FINAL suffix. `"SGT1 VR_HV"` ends in `_HV`, not `VR` → returned None → `channel_reference=None` → `sufficient_for_auto_nominal=False`. Fix: added `_WINDING_QUALIFIER_RE` to strip recognised winding-side qualifiers (`_HV`, `_LV`, etc.) before phase-token checks. Word-boundary safeguard preserved: `"FAVR_HV"` and `"AVR_HV"` still return None.
+
+**Bug 3 — Channel identity grouping fails for `_HV`/`_LV` qualifier names (`channel_engineering_identity.py`)**
+Root cause: `_match_name_role("SGT1 VR_HV")` only tried `"HV"` as the final role → not recognised → `has_role=False` → SGT1 HV/LV channels never auto-grouped → no Measurement Group → no auto-base. Fix: added `_WINDING_QUALIFIER_RE` fallback that strips qualifier, retries with SEPARATED-MATCH–only paths (not fused-suffix), and appends qualifier back to context_hint (e.g. `"SGT1_HV"`) so HV and LV form SEPARATE groups.
+
+**Bug 4 — Provenance reads `base_reference_side` from wrong config (`per_unit_provenance_service.py` line 253)**
+Root cause: `_provenance_from_group()` unconditionally read `base_reference_side` from `view.current_config`. For Voltage groups, `view.current_config` is None → `base_reference_side="unknown"` → `reference_compatibility="unverified"` → "Unverified reference" warning even when auto_base correctly resolved primary/secondary. Fix: read from `view.voltage_config.base_reference_side` for Voltage channels; `view.current_config.base_reference_side` for Current channels.
+
+**Bug 5 — Structural gap: `needs_review` path never writes `base_reference_side` (`auto_base_service.py`)**
+Root cause: The `needs_review` fallback only wrote `base_authority=BASE_AUTHORITY_NEEDS_REVIEW`, never `base_reference_side`. For PS=P groups that reach `needs_review` (e.g. genuinely ambiguous 132 kV SGT1 LV), `base_reference_side` stayed `"unknown"` → after Bug 4 fix, still "unverified". Fix: when `evidence.measurement_side=="primary"` and `evidence.sufficient_for_auto_side`, additionally write `base_reference_side="primary"` in the needs_review path.
+
+Validated resolution outcomes (Step 1 — reproduce):
+- KPDN1 VR/VY/VB (275 kV, PS=P): `selected="A"`, `nominal=275.0`, `sufficient_for_auto_nominal=True` → `configured_primary`; reference_compatibility="compatible"
+- SGT1 VR_HV/VY_HV/VB_HV (275 kV, PS=P): same → `configured_primary`; reference_compatibility="compatible"
+- SGT1 VR_LV/VY_LV/VB_LV (132 kV, PS=P): `selected="ambiguous"`, `needs_review` (genuinely undetermined); `base_reference_side="primary"` written; reference_compatibility="compatible"
+- Safety checks: `FAVR_HV`, `AVR_HV` → geometry=None, identity=NO ROLE TOKEN (safeguards preserved)
+
+New regression tests added (Step 5):
+- `test_voltage_reference.py`: class `TestWindingQualifierDetection` (8 tests: SGT1 HV/LV L-G, fused-word safeguards, L-L pair with qualifier, independent group detection)
+- `test_voltage_hypothesis.py`: class `TestDM11b_PULUWithRealSecondaryRatio` (4 tests: 275 kV with secondary_ratio=0.110 selects A, SGT1 HV qualifier resolves, WRP dimension verified neutral, 132 kV still ambiguous)
+- `test_auto_base_evidence.py`: class `TestPULURealFileAutoBaseEvidence` (4 tests: KPDN1 sufficient_for_auto_nominal, SGT1 HV sufficient, SGT1 LV needs_review with primary side known, needs_review never claims nominal configured)
+
+Backend test results: **full suite exit 0** (both runs confirmed). PU-related subset: **220/220 passed** (test_voltage_reference + test_voltage_hypothesis + test_auto_base_evidence + test_slice5d2_auto_base_service + test_auto_base_6b_integration + test_per_unit_voltage_reference_safety). Provenance: **34/34 passed** (test_per_unit_provenance_service + test_per_unit_provenance_api).
+
+Browser test results (bounded verification pass, 2026-11-10):
+- **PULU spec (new): 4/4 passed** (`pulu-auto-reference.spec.js`): PULU-01 (275 kV auto-resolve end-to-end with real primary=275.0/secondary=0.110/PS=P metadata), PULU-02 (SGT1 HV/LV separate MGs), PULU-03 (needs_review shows no false Unverified Reference badge), PULU-04 (manual 132 kV confirmation resolves to configured/compatible).
+- **Regression suite: 63/63 passed** (compliance_readiness × 11, event-reconstruction-per-unit × 7, per-unit-reference-safety × 13, per-unit-voltage-reference-safety × 7, voltage-only-pu-display × 25). EXIT=0.
+
+[PENDING] Owner review before commit, push, deploy, or Slice 6D.
+
+---
+
 ## PU-001B + PU-002A — Slice 6C + 6C.1 complete; awaiting owner review (2026-11-09)
 
 [FACT] Owner has approved DEC-212 (Voltage-only automatic PU; Current stays in A/kA; Current

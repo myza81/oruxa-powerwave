@@ -244,13 +244,25 @@ def _provenance_from_group(
 
     effective_base_amount, effective_base_unit = _effective_base(resolution)
 
+    # Voltage groups carry base_reference_side on voltage_config; current
+    # groups carry it on current_config. Reading from the wrong config
+    # would always return "unknown" for voltage channels (current_config
+    # is None for a voltage group), triggering a false "Unverified reference"
+    # warning even when auto-base correctly resolved primary/secondary.
+    if view is not None and view.voltage_config is not None:
+        _base_ref_side = view.voltage_config.base_reference_side
+    elif view is not None and view.current_config is not None:
+        _base_ref_side = view.current_config.base_reference_side
+    else:
+        _base_ref_side = "unknown"
+
     return PerUnitChannelProvenance(
         status=resolution.status,
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_MEASUREMENT_GROUP,
         reference_compatibility=resolution.reference_compatibility,
         reason=_reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason),
-        base_reference_side=view.current_config.base_reference_side if view and view.current_config else "unknown",
+        base_reference_side=_base_ref_side,
         measurement_group_id=measurement_group_id,
         measurement_group_name=group.display_name if group is not None else None,
         nominal_base_kv=nominal_base_kv,

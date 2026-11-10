@@ -501,11 +501,21 @@ def _evaluate_lg_hypothesis(
                 for tv in _TYPICAL_VT_SECONDARY_V
             )
             if sec_typical and 100 < vt_ratio < 5000:
-                wrp_result = "support"
-                wrp_weight = 1.0
+                # A plausible VT ratio is a necessary but not sufficient
+                # condition. When both Convention A and B produce ratios in
+                # the typical range (e.g. secondary=110 V → A=1443:1,
+                # B=2500:1) this dimension cannot discriminate between them.
+                # Granting "support" weight to both would make them equally
+                # "supported" and force an ambiguous verdict even though the
+                # SNM dimension already unambiguously selects one candidate.
+                # Plausibility is therefore "neutral" (no score contribution);
+                # only an implausible ratio actively opposes a hypothesis.
+                wrp_result = "neutral"
+                wrp_weight = 0.0
                 wrp_detail = (f"VT winding ratio {vt_ratio:.0f}:1 "
                               f"(primary phase {primary_phase_kv:.4g} kV / "
-                              f"secondary {sec_v:.1f} V) plausible")
+                              f"secondary {sec_v:.1f} V) plausible — "
+                              f"neutral: does not discriminate between hypotheses")
             elif sec_v > 500:
                 wrp_result = "oppose"
                 wrp_weight = -0.5
