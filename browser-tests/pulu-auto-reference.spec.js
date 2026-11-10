@@ -15,15 +15,31 @@
 //            SGT1 VR_HV/VY_HV/VB_HV and SGT1 VR_LV/VY_LV/VB_LV land in
 //            distinct groups so each side can be configured independently.
 //
-//   PULU-03  A needs_review Voltage group (primary_ratio below the 2 kV
-//            minimum gate) shows NO false "Unverified reference" badge in
-//            the waveform display (Fix 5 writes base_reference_side=primary;
-//            authority gate blocks PU giving status=base_required; frontend
-//            never fires the warning for base_required channels).
+//   PULU-03  MINIMUM-VOLTAGE GATE: A needs_review Voltage group whose
+//            primary_ratio is below the 2 kV floor (synthetic primary=1.0 kV)
+//            shows NO false "Unverified reference" badge (Fix 5 writes
+//            base_reference_side=primary; authority gate blocks PU giving
+//            status=base_required; frontend never fires the warning for
+//            base_required channels).
 //
-//   PULU-04  Manual 132 kV configuration of a needs_review LV group sets
-//            base_authority=manual and resolves the channel to configured/
-//            compatible status.
+//   PULU-04  Manual 132 kV configuration of the minimum-gate needs_review
+//            group (synthetic primary=1.0 kV) sets base_authority=manual and
+//            resolves the channel to configured/compatible.
+//
+//   PULU-05  GENUINE HYPOTHESIS AMBIGUITY: Real SGT1 LV metadata
+//            (primary=132.0 kV, secondary=0.110 kV, PS=P) hits needs_review
+//            because both Convention A (IEC 132 kV) and Convention B
+//            (132×√3=228.6 kV ≈ 230 kV ANSI, within 2% tolerance) pass the
+//            standard-nominal test. Distinct from PULU-03 (minimum-voltage
+//            gate): here the primary exceeds the 2 kV floor but the hypothesis
+//            remains ambiguous. Verifies pu_status=base_required,
+//            nominal_voltage_ll_kv=null, base_reference_side=primary (Fix 5),
+//            and no false "Unverified reference" badge.
+//
+//   PULU-06  Manual 132 kV confirmation of the genuine-ambiguity LV group
+//            (real primary=132.0 kV) sets base_authority=manual and resolves
+//            to configured/compatible with effective_base_amount ≈ 132/√3
+//            (≈ 76.21 kV).
 //
 // At least one test here (PULU-01) is a real end-to-end browser test: an
 // actual COMTRADE CFG/DAT is uploaded through the Recordings UI with the
@@ -46,6 +62,14 @@ const LG_BASE_KV  = NOMINAL_KV / Math.sqrt(3);    // ≈ 158.77 kV (the PU denom
 // IEC/EN PULU-style: primary_ratio = L-L nominal stated directly (Convention A)
 const PRIMARY_KV  = "275.0000";                    // used in CFG text
 const SECONDARY_KV = "0.1100";                     // 110 V secondary → 0.110 kV in CFG
+
+// Real SGT1 LV metadata (PULU-05/PULU-06): primary=132 kV, secondary=0.110 kV
+// 132 kV is genuinely ambiguous: Convention A=132 kV (IEC) passes SNM; Convention B=
+// 132×√3=228.6 kV (within 2% of ANSI 230 kV) also passes SNM → hypothesis ambiguous
+// → needs_review (NOT the minimum-voltage gate which only fires for primary < 2 kV).
+const LV_PRIMARY_KV  = "132.0000";
+const LV_NOMINAL_KV  = 132;
+const LV_LG_BASE_KV  = LV_NOMINAL_KV / Math.sqrt(3); // ≈ 76.21 kV (the L-G PU denominator)
 
 // Tolerance for effective_base_amount ≈ 275/√3 kV (floating-point round-trip)
 const LG_TOLERANCE = 0.01;                         // kV
@@ -91,7 +115,8 @@ function makePuluChannels() {
 
 // Apply primary/secondary metadata to the CFG text.
 // KPDN1 and SGT1 HV channels: primary=275.0 kV, secondary=0.110 kV.
-// SGT1 LV channels: keep synthetic default (1.0,1.0) → needs_review.
+// SGT1 LV channels: keep synthetic default (1.0,1.0) → needs_review (minimum-voltage gate).
+// Used by PULU-01 through PULU-04.
 function puluCfgPostProcess(cfgText) {
   return cfgText
     .split(/\r\n|\n/)
@@ -107,8 +132,28 @@ function puluCfgPostProcess(cfgText) {
     .join("\r\n");
 }
 
+// Real SGT1 LV metadata variant (PULU-05/PULU-06).
+// SGT1 LV channels: primary=132.0 kV, secondary=0.110 kV, PS=P — real PULU LV metadata.
+// This triggers genuine hypothesis ambiguity (not the minimum-voltage gate):
+// Convention A=132 kV (IEC) and Convention B=228.6 kV (≈ANSI 230 kV) both match SNM.
+function puluRealLvCfgPostProcess(cfgText) {
+  return cfgText
+    .split(/\r\n|\n/)
+    .map((line) => {
+      if (/,SGT1 V[RYB]_LV,/.test(line)) {
+        return line.replace(",1.0,1.0,P", `,${LV_PRIMARY_KV},${SECONDARY_KV},P`);
+      }
+      if (/,KPDN1 V[RYB],/.test(line) || /,SGT1 V[RYB]_HV,/.test(line)) {
+        return line.replace(",1.0,1.0,P", `,${PRIMARY_KV},${SECONDARY_KV},P`);
+      }
+      return line;
+    })
+    .join("\r\n");
+}
+
 // Upload the PULU-like COMTRADE through the Recordings UI and return
 // {ws, sid, base, groupsUrl} for further API calls.
+// Uses puluCfgPostProcess: LV channels get synthetic primary=1.0 kV (minimum-voltage gate).
 async function uploadPulu(page, station = "PULU_SGT1") {
   await page.goto("/index.html");
   const data = syntheticComtrade({
@@ -120,6 +165,43 @@ async function uploadPulu(page, station = "PULU_SGT1") {
   });
   const cfg = Buffer.from(
     puluCfgPostProcess(data.cfg.toString("latin1")),
+    "latin1",
+  );
+  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+  await page.locator("#uploadModalFile_0").setInputFiles({
+    name: `${station}.cfg`,
+    mimeType: "application/octet-stream",
+    buffer: cfg,
+  });
+  await page.locator("#uploadModalFile_1").setInputFiles({
+    name: `${station}.dat`,
+    mimeType: "application/octet-stream",
+    buffer: data.dat,
+  });
+  await page.locator("#uploadModalSubmitBtn").click();
+  await expect(page.locator("#uploadModalOverlay")).toBeHidden();
+
+  const ws = await workspaceId(page);
+  const sid = await sourceIdFor(page, station);
+  const base = `${BACKEND}/api/v1/workspaces/${ws}`;
+  const groupsUrl = `${base}/sources/${sid}/measurement-groups`;
+  return { ws, sid, base, groupsUrl };
+}
+
+// Upload the PULU-like COMTRADE using real LV metadata (primary=132.0 kV).
+// Uses puluRealLvCfgPostProcess: LV channels get primary=132 kV, secondary=0.110 kV, PS=P.
+async function uploadPuluRealLv(page, station = "PULU_RLV") {
+  await page.goto("/index.html");
+  const data = syntheticComtrade({
+    station,
+    startClock: "10:00:00.000000",
+    rateHz: 1000,
+    durationS: 0.1,
+    channels: makePuluChannels(),
+  });
+  const cfg = Buffer.from(
+    puluRealLvCfgPostProcess(data.cfg.toString("latin1")),
     "latin1",
   );
   await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
@@ -340,6 +422,127 @@ test("PULU-04: manual 132 kV confirmation of needs_review LV group sets base_aut
   expect(resolution.reference_compatibility).toBe("compatible");
 
   // Waveform display: open SGT1 VR_LV in PU mode — now configured, no badge
+  await page.locator("#mainNavWaveformBtn").click();
+  const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if (!(await details.evaluate((el) => el.open))) {
+    await details.locator(":scope > summary").click();
+  }
+  await row(page, sid, "SGT1 VR_LV").click();
+  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwRefreshWaveformDisplayBasis());
+
+  await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 10000 })
+    .toMatchObject({ status: "configured", unit: "pu", compatibility: "compatible" });
+  await expect(row(page, sid, "SGT1 VR_LV").locator(".ww-pu-reference-status")).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// PULU-05: Real SGT1 LV metadata — genuine hypothesis ambiguity → needs_review
+// ---------------------------------------------------------------------------
+//
+// Distinct from PULU-03 (which uses synthetic primary=1.0 kV to trigger the
+// minimum-voltage gate). Here the SGT1 LV channels carry the REAL PULU file
+// metadata: primary=132.0 kV, secondary=0.110 kV, PS=P. The primary (132 kV)
+// exceeds the 2 kV floor, so the auto-base service runs the full hypothesis
+// evaluation. It finds genuine ambiguity:
+//   Convention A: 132 kV (IEC standard) → SNM: support
+//   Convention B: 132×√3 ≈ 228.6 kV (within 2% of ANSI 230 kV) → SNM: support
+// Both conventions pass the standard-nominal test → selected=ambiguous →
+// base_authority=needs_review → authority gate → pu_status=base_required.
+// Fix 5: base_reference_side="primary" is still written (PS=P declared; side unambiguous).
+// No false "Unverified reference" badge (frontend only warns for status=configured).
+
+test("PULU-05: real SGT1 LV (primary=132.0, secondary=0.110, PS=P) — genuinely ambiguous hypothesis → needs_review, no false badge", async ({ page }, info) => {
+  const { sid, base, groupsUrl } = await uploadPuluRealLv(page, "PULU_05");
+
+  const groups = await json(await page.request.get(groupsUrl));
+  const lvGroup = findGroupForChannel(groups, "SGT1 VR_LV");
+  expect(lvGroup, "SGT1 LV group missing").not.toBeNull();
+
+  // Genuine hypothesis ambiguity (NOT minimum-voltage gate):
+  // pu_status=base_required (authority gate fires because base_authority=needs_review)
+  expect(lvGroup.pu_status).toBe("base_required");
+  // nominal_voltage_ll_kv=null — ambiguous hypothesis → no nominal written
+  expect(lvGroup.voltage_config.nominal_voltage_ll_kv).toBeNull();
+  // Fix 5: side is unambiguous (PS=P) → base_reference_side must still be "primary"
+  expect(lvGroup.voltage_config.base_reference_side).toBe("primary");
+
+  // Per-unit-resolution: authority gate blocks → status=base_required
+  const resolution = await json(
+    await page.request.get(`${base}/sources/${sid}/per-unit-resolution?channel_name=SGT1 VR_LV`)
+  );
+  expect(resolution.status).toBe("base_required");
+
+  // Waveform display: SGT1 VR_LV stays in kV (ENG) — no PU denominator, NO badge
+  await page.locator("#mainNavWaveformBtn").click();
+  const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if (!(await details.evaluate((el) => el.open))) {
+    await details.locator(":scope > summary").click();
+  }
+  await row(page, sid, "SGT1 VR_LV").click();
+  await page.locator("#wwUnitPerUnitBtn").click();
+
+  await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 10000 })
+    .toMatchObject({ status: "base_required", unit: "kV" });
+  await expect(row(page, sid, "SGT1 VR_LV").locator(".ww-pu-reference-status")).toHaveCount(0);
+
+  await page.screenshot({ path: info.outputPath("pulu-05-real-lv-no-badge.png") });
+});
+
+// ---------------------------------------------------------------------------
+// PULU-06: Manual 132 kV confirmation of real SGT1 LV (genuine ambiguity path)
+// ---------------------------------------------------------------------------
+//
+// Starts from the genuine-ambiguity needs_review state (PULU-05 scenario).
+// The engineer manually confirms 132 kV as the LV system nominal:
+//   Step 1 — PATCH group status to "confirmed" (required by status gate)
+//   Step 2 — PUT voltage-config with nominal_voltage_ll_kv=132 kV
+// After confirmation the group must resolve to configured/compatible with
+// effective_base_amount ≈ 132/√3 ≈ 76.21 kV (the L-G denominator).
+
+test("PULU-06: manual 132 kV confirmation of real SGT1 LV (genuine ambiguity) resolves to configured (L-G denominator ≈ 76.21 kV)", async ({ page }) => {
+  const { sid, base, groupsUrl } = await uploadPuluRealLv(page, "PULU_06");
+
+  const groups = await json(await page.request.get(groupsUrl));
+  const lvGroup = findGroupForChannel(groups, "SGT1 VR_LV");
+  expect(lvGroup, "SGT1 LV group missing").not.toBeNull();
+  // Confirm we start from the genuine-ambiguity needs_review state
+  expect(lvGroup.pu_status).toBe("base_required");
+  expect(lvGroup.voltage_config.nominal_voltage_ll_kv).toBeNull();
+  expect(lvGroup.voltage_config.base_reference_side).toBe("primary");
+
+  // Manual confirmation workflow (same canonical steps as PULU-04):
+  //   Step 1 — promote group status to "confirmed" (status gate requirement)
+  await json(await page.request.patch(`${groupsUrl}/${lvGroup.id}`, {
+    data: { status: "confirmed" },
+  }));
+  //   Step 2 — set nominal_voltage_ll_kv=132 kV
+  await json(await page.request.put(`${groupsUrl}/${lvGroup.id}/voltage-config`, {
+    data: {
+      nominal_voltage_ll_kv: 132,
+      reference_mode: "auto",
+      base_reference_side: "primary",
+    },
+  }));
+
+  // After manual confirmation: pu_status=configured, nominal=132 kV
+  const updated = await json(await page.request.get(groupsUrl));
+  const updatedLv = findGroupForChannel(updated, "SGT1 VR_LV");
+  expect(updatedLv.pu_status).toBe("configured");
+  expect(updatedLv.voltage_config.nominal_voltage_ll_kv).toBeCloseTo(LV_NOMINAL_KV, 3);
+  expect(updatedLv.voltage_config.base_reference_side).toBe("primary");
+
+  // Per-unit-resolution: status=configured, compatible, L-G denominator ≈ 132/√3 ≈ 76.21 kV
+  const resolution = await json(
+    await page.request.get(`${base}/sources/${sid}/per-unit-resolution?channel_name=SGT1 VR_LV`)
+  );
+  expect(resolution.status).toBe("configured");
+  expect(resolution.reference_compatibility).toBe("compatible");
+  expect(resolution.measurement_side).toBe("primary");
+  expect(resolution.base_reference_side).toBe("primary");
+  expect(resolution.effective_base_amount).toBeCloseTo(LV_LG_BASE_KV, 1);
+
+  // Waveform display: configured, PU mode, no badge
   await page.locator("#mainNavWaveformBtn").click();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
   if (!(await details.evaluate((el) => el.open))) {
