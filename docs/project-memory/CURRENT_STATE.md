@@ -9,9 +9,9 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction complete; awaiting owner review (2026-11-10)
+## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction complete; pushed to origin (2026-11-10)
 
-[FACT] PULU "Unverified reference" root-cause correction applied. All work remains local — NOT committed, pushed, deployed, or merged. No Slice 6D work undertaken.
+[FACT] PULU "Unverified reference" root-cause correction applied and pushed. Branch `feature/vlt-ref-001-voltage-reference-safety` pushed to origin. HEAD: `24633ba`. NOT merged to main, NOT deployed. No Slice 6D work undertaken.
 
 Five bugs identified and corrected:
 
@@ -43,11 +43,15 @@ New regression tests added (Step 5):
 
 Backend test results: **full suite exit 0** (both runs confirmed). PU-related subset: **220/220 passed** (test_voltage_reference + test_voltage_hypothesis + test_auto_base_evidence + test_slice5d2_auto_base_service + test_auto_base_6b_integration + test_per_unit_voltage_reference_safety). Provenance: **34/34 passed** (test_per_unit_provenance_service + test_per_unit_provenance_api).
 
-Browser test results (bounded verification pass, 2026-11-10):
-- **PULU spec (new): 4/4 passed** (`pulu-auto-reference.spec.js`): PULU-01 (275 kV auto-resolve end-to-end with real primary=275.0/secondary=0.110/PS=P metadata), PULU-02 (SGT1 HV/LV separate MGs), PULU-03 (needs_review shows no false Unverified Reference badge), PULU-04 (manual 132 kV confirmation resolves to configured/compatible).
+Browser test results (final verification pass, 2026-11-10):
+- **PULU spec: 6/6 passed** (`pulu-auto-reference.spec.js`): PULU-01 (275 kV auto-resolve end-to-end), PULU-02 (SGT1 HV/LV separate MGs), PULU-03 (minimum-voltage gate needs_review — synthetic primary=1.0 kV, no false badge), PULU-04 (manual 132 kV confirmation from min-voltage state), PULU-05 (real SGT1 LV primary=132.0/secondary=0.110/PS=P — genuine hypothesis ambiguity needs_review, no false badge), PULU-06 (manual 132 kV confirmation from genuine-ambiguity state → effective_base ≈ 76.21 kV).
 - **Regression suite: 63/63 passed** (compliance_readiness × 11, event-reconstruction-per-unit × 7, per-unit-reference-safety × 13, per-unit-voltage-reference-safety × 7, voltage-only-pu-display × 25). EXIT=0.
 
-[PENDING] Owner review before commit, push, deploy, or Slice 6D.
+Commits on branch (not yet merged):
+- `1c97f7e` — fix(pu): PULU auto-reference root-cause correction — Fixes 1-5 + browser regression tests
+- `24633ba` — test(pu): extend PULU browser tests — real SGT1 LV genuine-ambiguity cases (PULU-05/PULU-06)
+
+[PENDING] Owner review and merge to main. GitHub CI status to be confirmed by owner (gh CLI not authenticated in current session). Do NOT merge to main, deploy DEV/PROD, or begin Slice 6D.
 
 ---
 
