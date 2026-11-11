@@ -4,12 +4,46 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-11** (Stage 3A Physical Calibration Authority foundation implemented locally; 73/73 new tests pass; full backend suite running; awaiting owner review before Stage 3B).
+Last updated: **2026-11-11** (Stage 3B-1 BEN5K calibration authority propagation committed — `4718f0d`; metadata-only, no calculation gate active; full backend suite pass; awaiting owner direction for Stage 3B-2).
+
+## Stage 3B-1 — BEN5K calibration authority propagation (2026-11-11)
+
+**Status:** Committed locally as `4718f0d` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No calculation gate activated.
+Metadata propagation only — no correction factor applied, waveform arrays unchanged.
+
+**Files changed (5):**
+- `backend/app/providers/ben/normalize.py` — inject `_BEN5K_CHANNEL_AUTHORITY` on each BEN5K
+  `AnalogChannel` via explicit `is_legacy_ben5k` condition (time-basis decision remains independent)
+- `backend/app/domain/source.py` — additive `calibration_status`/`calibration_reason` on `AnalogChannelSummary`
+- `backend/app/services/import_service.py` — copy fields from `ch.calibration_authority` in `_build_source_metadata()`
+- `backend/app/schemas/source.py` — additive `calibration_status`/`calibration_reason` on `AnalogChannelOut`
+- `backend/tests/test_ben5k_calibration_authority.py` (NEW — 46 tests, A–H + refinement 2 assertions)
+
+**Test results:** 46/46 new tests pass. 463/463 targeted regression tests pass (sources API,
+preparation import service, preparation sources API, physical calibration, BEN5K normalize,
+BEN5K physical mapping, Stage 3B-1). Full backend suite: exit code 0 (pass, no failures).
+
+**Key design decisions:**
+- `is_legacy_ben5k` is an explicit, independently named condition. `unknown_time_basis`
+  reuses it today but remains conceptually separate — a future BEN5K with verified UTC
+  would change the time-basis decision without changing the calibration authority.
+- `AnalogChannel.calibration_authority` holds the **full** `PhysicalCalibrationAuthority`
+  object including `transform_id` and `evidence_refs`. The `AnalogChannelSummary` and
+  `AnalogChannelOut` expose only `calibration_status`/`calibration_reason` as a limited
+  API projection. Stage 3B-2 evaluators must source the authority from
+  `ActiveSource.record.analog_channels[i].calibration_authority`, not from the summary strings.
+- `transform_id="ben5k_v1_raw_s16_linear_scale_offset"` describes the current actual
+  decoder formula (`raw_s16 * scale + offset`) — prevents double-application if Stage
+  3B-2 applies a correction under a new `transform_id`.
+
+**Next step:** Owner authorization required before Stage 3B-2 (calculation gates),
+Stage 3B-3 (UI warnings), BEN5K voltage correction, or BEN5K current calibration.
 
 ## Stage 3A — Physical Calibration Authority foundation (2026-11-11)
 
-**Status:** Implemented locally on `feature/vlt-ref-001-voltage-reference-safety`.
-NOT committed, pushed, deployed, or merged. No production enforcement activated.
+**Status:** Committed as `34c396f` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No production enforcement activated.
 No BEN5K numerical correction applied.
 
 **Files changed:**
