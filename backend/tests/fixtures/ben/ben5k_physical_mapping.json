@@ -1,0 +1,463 @@
+{
+  "purpose": "Owner-reviewed physical-column goldens for October BEN5K recordings. Raw packed words and existing gain/offset only; not absolute calibration or COMTRADE parity. Recordings are not committed.",
+  "records": [
+    {
+      "id": "permas_jaya",
+      "name": "261016_175827403_Permas_Jaya.ben",
+      "sha256": "bc9f78ac3008b79308a7230f0f0a61f1e308b4bc10e16a346748e529c007ee87",
+      "size": 941793,
+      "sample_count": 7719,
+      "words_per_sample": 60,
+      "payload_offset": 15513,
+      "affected_channels": 14,
+      "channels": [
+        {
+          "name": "PGPS2 IY",
+          "logical_word_index": 5,
+          "physical_word_index": 5,
+          "descriptor_offset": 3222,
+          "packed_words_sha256": "73d07d182e8fb3be75f64e16b74e4461086ec8a0e48b44071b6dcad098f45a74"
+        },
+        {
+          "name": "PGPS2 IB",
+          "logical_word_index": 6,
+          "physical_word_index": 6,
+          "descriptor_offset": 3514,
+          "packed_words_sha256": "9bfa5a00475be53c8e161419a6afde5d4cbdc4eecf534d646fd4217c1703fe13"
+        },
+        {
+          "name": "PGPS2 IN",
+          "logical_word_index": 7,
+          "physical_word_index": 7,
+          "descriptor_offset": 3842,
+          "packed_words_sha256": "c659810fd7cb96dbe419d6cf483860d6126f218b5d512813c26bcfc2a8ca1a0d"
+        },
+        {
+          "name": "PLTG1 VR",
+          "logical_word_index": 8,
+          "physical_word_index": 8,
+          "descriptor_offset": 4134,
+          "packed_words_sha256": "7622cc37e2394fa813c4377fb1322006a02f72750a344621bdabdaa47bd005de"
+        },
+        {
+          "name": "PLTG1 VY",
+          "logical_word_index": 9,
+          "physical_word_index": 9,
+          "descriptor_offset": 4462,
+          "packed_words_sha256": "936b9c14a9ba61f6675c704c162841c0a8c40d89089e3023ff443806331305d2"
+        },
+        {
+          "name": "PLTG1 VB",
+          "logical_word_index": 10,
+          "physical_word_index": 10,
+          "descriptor_offset": 4826,
+          "packed_words_sha256": "261341ef27e27707973df9f3b57d6ad9417eb827dfb3486ba9f16baa27a910b1"
+        },
+        {
+          "name": "PLTG1 IR",
+          "logical_word_index": 12,
+          "physical_word_index": 12,
+          "descriptor_offset": 5132,
+          "packed_words_sha256": "c48beb7f5ba6f99d33bb38fb7da5a696bbf6d6986be677cbe1e49234f0a3137d"
+        },
+        {
+          "name": "PLTG1 IY",
+          "logical_word_index": 13,
+          "physical_word_index": 13,
+          "descriptor_offset": 5250,
+          "packed_words_sha256": "59bfba526646af1f6fed7e06107b8229f3b56e240eb8e5eb7c724509a6dbc582"
+        },
+        {
+          "name": "PLTG1 IB",
+          "logical_word_index": 14,
+          "physical_word_index": 14,
+          "descriptor_offset": 5368,
+          "packed_words_sha256": "91d69c7288721ee24f50d50bbdd28fd9009cbbc0c10f392f98c846fe9ad05dc8"
+        },
+        {
+          "name": "KTBR2 VR",
+          "logical_word_index": 16,
+          "physical_word_index": 15,
+          "descriptor_offset": 5640,
+          "packed_words_sha256": "79824ad40611d708a7634d626ff9a759d55f726e873fcff24e6ee849e1700f67"
+        },
+        {
+          "name": "KTBR2 VY",
+          "logical_word_index": 17,
+          "physical_word_index": 16,
+          "descriptor_offset": 5968,
+          "packed_words_sha256": "2789606bcc240b54d7ee086587a8058587e166d6996192569f735c1c766d0033"
+        },
+        {
+          "name": "KTBR2 VB",
+          "logical_word_index": 18,
+          "physical_word_index": 17,
+          "descriptor_offset": 6296,
+          "packed_words_sha256": "7d3b90eac5d675fc6cefedd18b48f2bc56683b3687eb373e62e19a323d13c814"
+        },
+        {
+          "name": "KTBR2 IR",
+          "logical_word_index": 20,
+          "physical_word_index": 19,
+          "descriptor_offset": 6874,
+          "packed_words_sha256": "cda90bc5e5c25b4d4cc13812683092f779314fd38a981c33af38925ac55dee4e"
+        },
+        {
+          "name": "KTBR2 IY",
+          "logical_word_index": 21,
+          "physical_word_index": 20,
+          "descriptor_offset": 7166,
+          "packed_words_sha256": "f30bcef4871a896e7da5698446b45bd074696beb9e81ae2be3ccf3b077f045c4"
+        },
+        {
+          "name": "KTBR2 IB",
+          "logical_word_index": 22,
+          "physical_word_index": 21,
+          "descriptor_offset": 7458,
+          "packed_words_sha256": "5f331512046a0420c034e2e4d9f8e13a22e4f0c4849a5ccecf726fb6f9c5878d"
+        },
+        {
+          "name": "KTBR2 IN",
+          "logical_word_index": 23,
+          "physical_word_index": 22,
+          "descriptor_offset": 7786,
+          "packed_words_sha256": "e7c6175b0c09c50026fee678960a0296fba3017a99c422e02e1f7d598752e8b7"
+        },
+        {
+          "name": "PGPS1 VR",
+          "logical_word_index": 24,
+          "physical_word_index": 23,
+          "descriptor_offset": 8078,
+          "packed_words_sha256": "da102fe1fa816ed1818b719694828af3617cb8b8c00e4b7c2caa8d5ece46c5ea"
+        },
+        {
+          "name": "PGPS1 VY",
+          "logical_word_index": 25,
+          "physical_word_index": 24,
+          "descriptor_offset": 8442,
+          "packed_words_sha256": "d22c190f3c5c6c3ade7a392869fb816ba6712b5289b9233cfcde0b52ac93438d"
+        },
+        {
+          "name": "PGPS1 VB",
+          "logical_word_index": 26,
+          "physical_word_index": 25,
+          "descriptor_offset": 8770,
+          "packed_words_sha256": "f9f1c4e26e39a0445b2a81f4f7b398c0f64783af4e5c3beedda2a710fdc2c9b7"
+        },
+        {
+          "name": "PGPS1 IR",
+          "logical_word_index": 28,
+          "physical_word_index": 27,
+          "descriptor_offset": 9076,
+          "packed_words_sha256": "04d40a861c4282d4e754cf81c8e4a2ecefe6ec90097e045d72c4afdb5f2c68bb"
+        },
+        {
+          "name": "PGPS1 IY",
+          "logical_word_index": 29,
+          "physical_word_index": 28,
+          "descriptor_offset": 9194,
+          "packed_words_sha256": "aca60dda8280c4452652e487db497bc33c563de6c7a56dc59e94a158c1e212fd"
+        },
+        {
+          "name": "PGPS1 IB",
+          "logical_word_index": 30,
+          "physical_word_index": 29,
+          "descriptor_offset": 9312,
+          "packed_words_sha256": "859ff3ad849c33a0b0ce43256fce6b81c7721837d9f518a1b949f7958fb3b3f1"
+        },
+        {
+          "name": "PGPS1 IN",
+          "logical_word_index": 31,
+          "physical_word_index": 30,
+          "descriptor_offset": 9466,
+          "packed_words_sha256": "f2cff4c20bd41d02e2ff92af892cf43806fd60243b23b5c7a76946f2b9b483e4"
+        },
+        {
+          "name": "PLTG2 VR",
+          "logical_word_index": 0,
+          "physical_word_index": 0,
+          "descriptor_offset": 10907,
+          "packed_words_sha256": "edf9d507548357026210175d8bf43d4009f2c4f3c7282fc41ba894ce6d4569ef"
+        },
+        {
+          "name": "PLTG2 VY",
+          "logical_word_index": 1,
+          "physical_word_index": 1,
+          "descriptor_offset": 11235,
+          "packed_words_sha256": "f9abf5a722270726a386aed0132186c150db7c18e7124c8faf41364a26fe4f84"
+        },
+        {
+          "name": "PLTG2 VB",
+          "logical_word_index": 2,
+          "physical_word_index": 2,
+          "descriptor_offset": 11599,
+          "packed_words_sha256": "6b7af178c2d9c3697677629434a0502b887ccbe70d2f9ade2372e45ba01b5601"
+        },
+        {
+          "name": "PLTG2 IR",
+          "logical_word_index": 4,
+          "physical_word_index": 4,
+          "descriptor_offset": 12141,
+          "packed_words_sha256": "01f8d6a6ab51f84cef1e046a33cd364af0aeefc207ce15ee7ebac7172be9aa6b"
+        }
+      ]
+    },
+    {
+      "id": "gpth",
+      "name": "261016_180314535_GPTH_275kV.ben",
+      "sha256": "55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88",
+      "size": 1629786,
+      "sample_count": 8262,
+      "words_per_sample": 97,
+      "payload_offset": 26958,
+      "affected_channels": 21,
+      "channels": [
+        {
+          "name": "TBIN1 VR",
+          "logical_word_index": 0,
+          "physical_word_index": 0,
+          "descriptor_offset": 3002,
+          "packed_words_sha256": "4c262fcf6efc9d795a9c0568df028a5ea18b107885392366bcc12351a7eea6f2"
+        },
+        {
+          "name": "TBIN1 VY",
+          "logical_word_index": 1,
+          "physical_word_index": 1,
+          "descriptor_offset": 3366,
+          "packed_words_sha256": "2664000c56a1544392c189435853cadbb695dbac621af98bc6d3fe258db6e691"
+        },
+        {
+          "name": "TBIN1 VB",
+          "logical_word_index": 2,
+          "physical_word_index": 2,
+          "descriptor_offset": 3694,
+          "packed_words_sha256": "1b2d29509e373a15f27850062c21acb1926854b68ae4ff2881be85fb0ccaef4d"
+        },
+        {
+          "name": "TBIN1 IR",
+          "logical_word_index": 4,
+          "physical_word_index": 4,
+          "descriptor_offset": 4236,
+          "packed_words_sha256": "ed6ba1058dfa203a83b51aada12a436e910221a944d7f8ea04388de308ff6660"
+        },
+        {
+          "name": "TBIN1 IY",
+          "logical_word_index": 5,
+          "physical_word_index": 5,
+          "descriptor_offset": 4528,
+          "packed_words_sha256": "c06c8546b82a584e51544fa5200e59f544a6a1e5638c96174ef069c9b7d3f699"
+        },
+        {
+          "name": "TBIN1 IB",
+          "logical_word_index": 6,
+          "physical_word_index": 6,
+          "descriptor_offset": 4820,
+          "packed_words_sha256": "d3ad857d01a943121a73958f5303d95ed0e3198d3a403432c4cb84a4f188cef6"
+        },
+        {
+          "name": "TBIN1 IN",
+          "logical_word_index": 7,
+          "physical_word_index": 7,
+          "descriptor_offset": 5148,
+          "packed_words_sha256": "0a266579cd6ab143bb0adbecfe2b0352fb9556a80e7f9fc1883a146a469e6d6a"
+        },
+        {
+          "name": "SDAI1 VR",
+          "logical_word_index": 8,
+          "physical_word_index": 8,
+          "descriptor_offset": 5440,
+          "packed_words_sha256": "7ca8086379a77a72ee4e32ee10263a60c02f77fda2f68792ecefc172d0e26cf3"
+        },
+        {
+          "name": "SDAI1 VY",
+          "logical_word_index": 9,
+          "physical_word_index": 9,
+          "descriptor_offset": 5768,
+          "packed_words_sha256": "e06a9a5354a4fe871d44d928667032239a91dd6f143543a153d51137ef950c08"
+        },
+        {
+          "name": "SDAI1 VB",
+          "logical_word_index": 10,
+          "physical_word_index": 10,
+          "descriptor_offset": 6132,
+          "packed_words_sha256": "e15369e8c9ffff036b94b51c25a479e1d49bff44f5a0ed5ed7d131ac692742dc"
+        },
+        {
+          "name": "SDAI1 IR",
+          "logical_word_index": 12,
+          "physical_word_index": 12,
+          "descriptor_offset": 6438,
+          "packed_words_sha256": "c2c95f4132fcd4f951ccd8ee7b8e78610bd50cb94c87c1fa85224ebfe60799cc"
+        },
+        {
+          "name": "SDAI1 IY",
+          "logical_word_index": 13,
+          "physical_word_index": 13,
+          "descriptor_offset": 6556,
+          "packed_words_sha256": "d797a4d62d64884eb3d8b97ba528fa548849ba28b9d7272b002b1a1ceb42265d"
+        },
+        {
+          "name": "SDAI1 IB",
+          "logical_word_index": 14,
+          "physical_word_index": 14,
+          "descriptor_offset": 6674,
+          "packed_words_sha256": "27fe86f19d484e1b5c65f05022ba1aa1485f8cd0c9dd0b10a0df94e868592d8b"
+        },
+        {
+          "name": "SDNK1 VR",
+          "logical_word_index": 16,
+          "physical_word_index": 15,
+          "descriptor_offset": 6946,
+          "packed_words_sha256": "121a7fb44332e2c87c565ecbc8ff94de91702c1c9f61917cf5eacea50c4dd331"
+        },
+        {
+          "name": "SDNK1 VY",
+          "logical_word_index": 17,
+          "physical_word_index": 16,
+          "descriptor_offset": 7274,
+          "packed_words_sha256": "fc055356cfd940979a102df7100886fefde5f3429acbf42592a5a5f5cfbb779e"
+        },
+        {
+          "name": "SDNK1 VB",
+          "logical_word_index": 18,
+          "physical_word_index": 17,
+          "descriptor_offset": 7602,
+          "packed_words_sha256": "1c3c50ad2146d025f0bcb7122a1e9354916bc2c4db13484ee8c164f3e1367b53"
+        },
+        {
+          "name": "SDNK1 IR",
+          "logical_word_index": 20,
+          "physical_word_index": 19,
+          "descriptor_offset": 8180,
+          "packed_words_sha256": "b9d7d5517f19a8fb761ba9eaff6e1964e0248de9340015895c52fa2d8a14604b"
+        },
+        {
+          "name": "SDNK1 IY",
+          "logical_word_index": 21,
+          "physical_word_index": 20,
+          "descriptor_offset": 8472,
+          "packed_words_sha256": "c5d4a31345b0d618733fe088708fa3cb7ed9311a07c50f5310d074942b111b76"
+        },
+        {
+          "name": "SDNK1 IB",
+          "logical_word_index": 22,
+          "physical_word_index": 21,
+          "descriptor_offset": 8764,
+          "packed_words_sha256": "97cc940c1a0471b00bef11633ac57a7d49b0b33c16075119b2afa0f698ce6d7f"
+        },
+        {
+          "name": "SDNK1 IN",
+          "logical_word_index": 23,
+          "physical_word_index": 22,
+          "descriptor_offset": 9092,
+          "packed_words_sha256": "3b9c02428a910cf6dfb5d3c7d7a8def9a466fe1b33c671d30d969470650627f7"
+        },
+        {
+          "name": "TBIN2 VR",
+          "logical_word_index": 24,
+          "physical_word_index": 23,
+          "descriptor_offset": 9384,
+          "packed_words_sha256": "b1f5438338b992a2cb5a793a1abe3dd2bf938e2d1238cbf34e87f4f1648b8ce6"
+        },
+        {
+          "name": "TBIN2 VY",
+          "logical_word_index": 25,
+          "physical_word_index": 24,
+          "descriptor_offset": 9748,
+          "packed_words_sha256": "ffee851a6d74322cee47f05a00beb78927621d8210a8975bb58748020964c04d"
+        },
+        {
+          "name": "TBIN2 VB",
+          "logical_word_index": 26,
+          "physical_word_index": 25,
+          "descriptor_offset": 10076,
+          "packed_words_sha256": "75d56da85e796c128531100272b82fbe99e866de1b08dd883b42673bf593303d"
+        },
+        {
+          "name": "TBIN2 IR",
+          "logical_word_index": 28,
+          "physical_word_index": 26,
+          "descriptor_offset": 10382,
+          "packed_words_sha256": "66f77644632cac46247716264266ee3d31413a8ef3172c2a5c9485b7738d70b2"
+        },
+        {
+          "name": "TBIN2 IY",
+          "logical_word_index": 29,
+          "physical_word_index": 27,
+          "descriptor_offset": 10500,
+          "packed_words_sha256": "23318cd0864ea6d75b6ae2f6bf3031c12261096bef1c04845ff9ade031564bf8"
+        },
+        {
+          "name": "TBIN2 IB",
+          "logical_word_index": 30,
+          "physical_word_index": 28,
+          "descriptor_offset": 10618,
+          "packed_words_sha256": "4f25201b0c9f0c8bf96b250a2d1e2b2342a2a489d65478e93a95f48094499551"
+        },
+        {
+          "name": "TBIN2 IN",
+          "logical_word_index": 31,
+          "physical_word_index": 29,
+          "descriptor_offset": 10772,
+          "packed_words_sha256": "82d9b1bd3dc67ad9889257ea8c45e5293d09f51958a72226a0716c641c4a0988"
+        },
+        {
+          "name": "SDAI2 VR",
+          "logical_word_index": 32,
+          "physical_word_index": 30,
+          "descriptor_offset": 10890,
+          "packed_words_sha256": "403690309d54715bb4e13f7cccf2494dea4c3faecf1c5f5e8bb39e36c8a92053"
+        },
+        {
+          "name": "SDAI2 VY",
+          "logical_word_index": 33,
+          "physical_word_index": 31,
+          "descriptor_offset": 11218,
+          "packed_words_sha256": "f69e824fe2bd94f21e7c48a496eeb43c0cbbbc3771dce2c4eaaf3f538902613e"
+        },
+        {
+          "name": "SDAI2 VB",
+          "logical_word_index": 34,
+          "physical_word_index": 32,
+          "descriptor_offset": 11582,
+          "packed_words_sha256": "2e2130c5252e9d68f1b609c663b1e138f90ba7dbbe518dd6798a86508b3a5aa1"
+        },
+        {
+          "name": "SDAI2 IR",
+          "logical_word_index": 36,
+          "physical_word_index": 34,
+          "descriptor_offset": 12124,
+          "packed_words_sha256": "ded7906d5f9b05b3708e54b3715460bbe71bb4284dbd6de94d542f515d0e87ad"
+        },
+        {
+          "name": "SDAI2 IY",
+          "logical_word_index": 37,
+          "physical_word_index": 35,
+          "descriptor_offset": 12416,
+          "packed_words_sha256": "678a6a8e74c2591c18f3f8733e32cbbdfae7701479414a4299b06bb503b75718"
+        },
+        {
+          "name": "SDAI2 IB",
+          "logical_word_index": 38,
+          "physical_word_index": 36,
+          "descriptor_offset": 12708,
+          "packed_words_sha256": "8541a6e0e1fe08e86c48bb7265197408286e9e42cd9aab5da2109ee40b3428b2"
+        },
+        {
+          "name": "SDAI2 IN",
+          "logical_word_index": 39,
+          "physical_word_index": 37,
+          "descriptor_offset": 13036,
+          "packed_words_sha256": "b1b5fe7fe67d7eedfb7f824ad3f98614e93455cfd1004b70495434f7e925c006"
+        },
+        {
+          "name": "SGT1 VY_LV",
+          "logical_word_index": 11,
+          "physical_word_index": 11,
+          "descriptor_offset": 17233,
+          "packed_words_sha256": "c33280b953fa8fbe950a9184b73bb35f03d7eabfef118f823a4c009f42e932b2"
+        }
+      ]
+    }
+  ]
+}

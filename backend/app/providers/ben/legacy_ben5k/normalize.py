@@ -197,7 +197,9 @@ def parse_ben5k(data: bytes) -> BenRecord:
             unit_multiplier = 0
 
         slot = BenSampleSlot(
-            word_index=ch.word_index,
+            # Shared BenRecord consumers read this slot directly; preserve the
+            # classifier's physical mapping after absent (phantom) channels.
+            word_index=ch.physical_word_index,
             bit=0,
             slot_kind=0,
         )
