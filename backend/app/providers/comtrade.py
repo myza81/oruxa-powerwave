@@ -119,6 +119,8 @@ class _CfgData:
     timemult: float
     dat_file: Path
     time_code: str | None = None
+    # Keep declared authority separate from the parser's fallback revision.
+    declared_rev_yr: str = ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -510,6 +512,7 @@ def _parse_cfg(cfg_path: Path) -> _CfgData:
         timemult=timemult,
         dat_file=dat_file,
         time_code=time_code,
+        declared_rev_yr=rev_yr_raw,
     )
 
 
@@ -580,6 +583,15 @@ def _parse_ascii_dat(
     time_array = (raw_ts * cfg.timemult) / _MICROSECONDS_PER_SECOND
 
     analog_raw = data[:, 2 : 2 + cfg.n_analog]
+    if _NONSTANDARD_REV_YR_MAP.get(cfg.declared_rev_yr, cfg.declared_rev_yr) == "1999":
+        # COMTRADE-1999 reserves ASCII analog code 99999 for missing data
+        # (IEEE PSRC H5-c report, pp4-5: pes-psrc.org/kb/report/068.pdf).
+        # Decode before gain/offset, only for a declared supported revision;
+        # 2013, assumed revisions, timestamps and engineering values differ.
+        missing = analog_raw == 99999
+        if missing.any():
+            analog_raw = analog_raw.copy()
+            analog_raw[missing] = np.nan
 
     if cfg.n_digital > 0:
         digital_states = data[:, 2 + cfg.n_analog :].astype(np.int8)
