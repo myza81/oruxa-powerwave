@@ -1,6 +1,7 @@
 // PULU Auto-Reference Browser Regression Tests
 //
-// Covers the PULU Auto-Reference Root-Cause Correction (Fixes 1–5):
+// Covers the PULU Auto-Reference Root-Cause Correction (Fixes 1–5) and the
+// DEC-050 post-fetch regrouping fix for the auto-import PU-at-add-time defect:
 //
 //   PULU-01  275 kV PULU-style channel names (KPDN1 VR/VY/VB) auto-resolve
 //            with primary=275.0 kV, secondary=0.110 kV, PS=P. Verifies that
@@ -40,6 +41,24 @@
 //            (real primary=132.0 kV) sets base_authority=manual and resolves
 //            to configured/compatible with effective_base_amount ≈ 132/√3
 //            (≈ 76.21 kV).
+//
+//   PULU-07  Panel regrouping after UI-based MG save (Section C UAT regression).
+//            Clean ENG→PU flow; LV joins :pu panel without requiring a manual
+//            ENG/PU toggle after save.
+//
+//   PULU-08  Post-fetch regrouping when PU mode is already active at add time
+//            (DEC-050 regression: original auto-import failure scenario).
+//            Navigates to Waveform without switching away from PU first; adds
+//            HV+LV; verifies the DEC-050 fix creates separate :pu and
+//            :base_required panels without an ENG/PU toggle workaround.
+//
+//   PULU-09  Deterministic concurrency test (DEC-050 fix robustness).
+//            Uses page.route to hold LV's waveform response so HV's
+//            wwAddSelectedChannels always finishes first. Verifies that
+//            concurrent add batches converge to correct panels, retain trace
+//            data, produce no duplicates, and cause no Plotly lifecycle
+//            exceptions. Also covers mode-switch compatibility: ENG switch
+//            after Phase 1 must leave no stale :pu/:base_required panels.
 //
 // At least one test here (PULU-01) is a real end-to-end browser test: an
 // actual COMTRADE CFG/DAT is uploaded through the Recordings UI with the
@@ -555,4 +574,470 @@ test("PULU-06: manual 132 kV confirmation of real SGT1 LV (genuine ambiguity) re
   await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 10000 })
     .toMatchObject({ status: "configured", unit: "pu", compatibility: "compatible" });
   await expect(row(page, sid, "SGT1 VR_LV").locator(".ww-pu-reference-status")).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// PULU-09: Deterministic concurrency — overlapping channel-add fetches in PU
+// ---------------------------------------------------------------------------
+//
+// Two sequential row clicks each start their own wwAddSelectedChannels() call.
+// Because click() returns before the async fetch completes, the two calls can
+// run concurrently while their waveform responses are still in-flight.
+//
+// This test uses page.route to hold LV's waveform response at the HTTP layer
+// (the backend has already responded; the page's fetch() is still awaiting)
+// so that HV's wwAddSelectedChannels always finishes first. This establishes
+// the scenario deterministically and verifies:
+//
+//   Scenario 1 — Overlapping add calls: HV completes first; LV is in-flight.
+//   Scenario 2 — Correct final panels: HV in :pu, LV in :base_required;
+//                each channel appears exactly once; trace samples retained.
+//   Scenario 3 — Mode transition: an ENG switch after Phase 1 settles leaves
+//                no stale :pu/:base_required panels (normal mode cycle, exercising
+//                the same requestSeq stale guard already covered by the held
+//                per_unit fetch tests in per-unit-display-synchronization.spec.js).
+//                The DEC-050 fix's own guard (ww.unitMode === "per_unit") is
+//                structurally verified: after ENG is active, the guard is false
+//                so no spurious wwRebuildLayout() can fire from a stale add batch.
+//   Scenario 4 — No Plotly lifecycle exceptions (pageerror listener).
+
+test("PULU-09: overlapping channel-add fetches in PU mode converge to correct panels without duplicates or Plotly errors", async ({ page }, info) => {
+  const { sid } = await uploadPuluRealLv(page, "PULU_09");
+
+  // Collect page errors throughout both phases (scenario 4)
+  const pageErrors = [];
+  page.on("pageerror", (err) => { pageErrors.push(err.message); });
+
+  // Navigate; auto-import already switched to PU
+  await page.locator("#mainNavWaveformBtn").click();
+  await expect(page.locator("#wwUnitPerUnitBtn")).toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+
+  const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if (!(await details.evaluate((el) => el.open)))
+    await details.locator(":scope > summary").click();
+
+  // -------------------------------------------------------------------------
+  // Phase 1: Deterministic overlapping adds
+  // -------------------------------------------------------------------------
+  // Hold the first LV waveform fetch; let HV complete unimpeded.
+  // HV's wwAddSelectedChannels fires DEC-050's wwRebuildLayout() while LV's
+  // fetch is still pending, exercising the concurrent-rebuild path.
+
+  let releaseLv;
+  let lvHeld = false;
+  let resolveLvReached;
+  const lvReached = new Promise((resolve) => { resolveLvReached = resolve; });
+
+  await page.route(`**/sources/${sid}/waveform?**`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("channel_name") !== "SGT1 VR_LV" || lvHeld) {
+      return route.continue();
+    }
+    lvHeld = true;
+    const response = await route.fetch();
+    resolveLvReached(); // LV response in hand; page's fetch() still pending
+    await new Promise((r) => { releaseLv = r; });
+    await route.fulfill({ response });
+  });
+
+  // Both clicks return before their async fetches complete — concurrent execution
+  await row(page, sid, "SGT1 VR_HV").click();
+  await row(page, sid, "SGT1 VR_LV").click();
+
+  // LV backend response is in the buffer; HV fetch completes freely
+  await lvReached;
+
+  // HV's wwAddSelectedChannels must have settled: DEC-050 fires, creates :pu panel
+  await expect.poll(async () => {
+    const keys = await page.evaluate(() => ww.panels.map((p) => p.groupKey));
+    return keys.some((k) => k.endsWith(":pu"));
+  }, { timeout: 10000, intervals: [100, 200, 500] }).toBe(true);
+
+  // Both channels in ww.displayed while LV fetch is held (scenario 1)
+  const midDisplayed = await page.evaluate(({ sid }) => ({
+    hv: !!ww.displayed.get(wwChannelKey(sid, "SGT1 VR_HV")),
+    lv: !!ww.displayed.get(wwChannelKey(sid, "SGT1 VR_LV")),
+  }), { sid });
+  expect(midDisplayed.hv, "HV in ww.displayed while LV fetch held").toBe(true);
+  expect(midDisplayed.lv, "LV in ww.displayed while LV fetch held").toBe(true);
+
+  // Release LV — wwAddSelectedChannels for LV completes; DEC-050 fires again
+  releaseLv();
+
+  // Both channels must converge to separate correct panels (scenarios 1 & 2)
+  await expect.poll(async () => {
+    const keys = await page.evaluate(() => ww.panels.map((p) => p.groupKey));
+    return keys.some((k) => k.endsWith(":pu")) && keys.some((k) => k.endsWith(":base_required"));
+  }, { timeout: 10000, intervals: [100, 200, 500, 1000] }).toBe(true);
+
+  const phase1 = await page.evaluate(({ sid }) => {
+    const panels = ww.panels.map((p) => ({
+      key: p.groupKey,
+      channels: p.channels.map((c) => c.channelName),
+    }));
+    const hvEntry = ww.displayed.get(wwChannelKey(sid, "SGT1 VR_HV"));
+    const lvEntry = ww.displayed.get(wwChannelKey(sid, "SGT1 VR_LV"));
+    const all = panels.flatMap((p) => p.channels);
+    return {
+      panels,
+      hvUnit: hvEntry && hvEntry.channel.unit,
+      lvUnit: lvEntry && lvEntry.channel.unit,
+      hvLen: (hvEntry && hvEntry.channel.values || []).length,
+      lvLen: (lvEntry && lvEntry.channel.values || []).length,
+      hvPeak: hvEntry ? Math.max(...hvEntry.channel.values) : null,
+      hvCount: all.filter((n) => n === "SGT1 VR_HV").length,
+      lvCount: all.filter((n) => n === "SGT1 VR_LV").length,
+    };
+  }, { sid });
+
+  // Scenario 2: correct panel assignments
+  const puPanel = phase1.panels.find((p) => p.key.endsWith(":pu"));
+  const brPanel = phase1.panels.find((p) => p.key.endsWith(":base_required"));
+  expect(puPanel, ":pu panel exists after overlapping adds").toBeTruthy();
+  expect(brPanel, ":base_required panel exists after overlapping adds").toBeTruthy();
+  expect(puPanel.channels, "HV in :pu panel").toContain("SGT1 VR_HV");
+  expect(brPanel.channels, "LV in :base_required panel").toContain("SGT1 VR_LV");
+  expect(phase1.hvUnit, "HV unit is pu").toBe("pu");
+  expect(phase1.lvUnit, "LV unit is kV (base not set)").toBe("kV");
+  expect(phase1.hvLen, "HV samples retained through concurrent wwRebuildLayout calls").toBeGreaterThan(0);
+  expect(phase1.lvLen, "LV samples retained through concurrent wwRebuildLayout calls").toBeGreaterThan(0);
+  expect(phase1.hvPeak, "HV peak ≈ 1.0 pu").toBeCloseTo(1.0, 1);
+  // Scenario 4: no channel duplicated by wwRebuildLayout firing twice
+  expect(phase1.hvCount, "HV appears exactly once across all panels").toBe(1);
+  expect(phase1.lvCount, "LV appears exactly once across all panels").toBe(1);
+
+  // -------------------------------------------------------------------------
+  // Phase 2: ENG mode switch after PU-active concurrent adds (scenario 3)
+  // -------------------------------------------------------------------------
+  // Switch to ENG: wwRefreshWaveformDisplayBasis re-fetches all displayed channels
+  // in engineering mode and rebuilds to plain panels. After settling, there must be
+  // no stale :pu or :base_required panels — confirming the DEC-050 add-time rebuilds
+  // are compatible with subsequent normal mode cycling.
+
+  await page.locator("#wwUnitEngineeringBtn").click();
+  await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+
+  await expect.poll(async () => {
+    const keys = await page.evaluate(() => ww.panels.map((p) => p.groupKey));
+    return !keys.some((k) => k.endsWith(":pu")) && !keys.some((k) => k.endsWith(":base_required"));
+  }, { timeout: 10000, intervals: [200, 500, 1000] }).toBe(true);
+
+  expect(await page.evaluate(() => ww.unitMode), "mode is engineering after ENG switch").toBe("engineering");
+
+  // Scenario 4: no Plotly lifecycle exceptions throughout both phases
+  const plotlyErrors = pageErrors.filter((e) => /plotly|_redrawFromAutoMarginCount|purge/i.test(e));
+  expect(plotlyErrors, `no Plotly lifecycle exceptions (got: ${JSON.stringify(plotlyErrors)})`).toHaveLength(0);
+
+  // eslint-disable-next-line no-console
+  console.log("PULU-09 phase1 panels:", JSON.stringify(phase1.panels));
+
+  await page.screenshot({ path: info.outputPath("pulu-09-final.png") });
+});
+
+// ---------------------------------------------------------------------------
+// PULU-08: Post-fetch regrouping when PU mode is already active at add time
+// ---------------------------------------------------------------------------
+//
+// Reproduces the ORIGINAL failure scenario from the UAT defect:
+//   PU mode is already active (auto-import fired during upload) when the
+//   engineer adds channels for the first time. This is distinct from PULU-07
+//   which starts from ENG mode and exercises the ENG→PU refresh workflow.
+//
+// PRE-FIX FAILURE (what this test catches against the pre-fix baseline):
+//   wwAddSelectedChannels creates panel keys BEFORE the first fetch, using
+//   meta.perUnitStatus = undefined → plain key for every channel. After the
+//   fetches resolve, perUnitStatus is set ("configured" for HV, "base_required"
+//   for LV) but NO wwRebuildLayout is triggered → both channels remain in the
+//   same plain :Voltage panel regardless of their PU state. Steps 5 & 6 (panel
+//   key assertions) would FAIL on pre-fix code.
+//
+// POST-FIX BEHAVIOR (DEC-050 fix):
+//   After all initial fetches complete, the fix detects that the actual
+//   wwPanelGroupKeyFor() result differs from the pre-fetch placeholder key
+//   and calls wwRebuildLayout(). Channels land in correct :pu/:base_required
+//   panels immediately — no ENG→PU toggle required.
+//
+// Also exercises the concurrent-add scenario: HV and LV row-clicks fire two
+// overlapping async wwAddSelectedChannels calls. Each call may independently
+// trigger wwRebuildLayout. The final state must converge correctly and all
+// trace data must be intact (not discarded by an intermediate rebuild).
+
+test("PULU-08: post-fetch regrouping fires when PU mode is already active at channel-add time", async ({ page }, info) => {
+  const { sid, groupsUrl } = await uploadPuluRealLv(page, "PULU_08");
+
+  // Confirm LV group is base_required (genuine ambiguity, primary=132 kV)
+  const groups = await json(await page.request.get(groupsUrl));
+  const lvGroup = findGroupForChannel(groups, "SGT1 VR_LV");
+  expect(lvGroup, "SGT1 LV group missing").not.toBeNull();
+  expect(lvGroup.pu_status).toBe("base_required");
+  expect(["suggested", "needs_review"]).toContain(lvGroup.status);
+
+  // Navigate to Waveform. Auto-import fires during upload (HV group
+  // auto-configured), so PU mode is already active — deliberately do NOT
+  // click #wwUnitEngineeringBtn. This is the original failure scenario.
+  await page.locator("#mainNavWaveformBtn").click();
+  await expect(page.locator("#wwUnitPerUnitBtn"))
+    .toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+
+  // Add HV (configured) and LV (base_required) while PU mode is already active.
+  // Both row-clicks start independent async wwAddSelectedChannels calls that
+  // run concurrently in the browser — exercises the concurrent-add scenario.
+  const details08 = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if (!(await details08.evaluate((el) => el.open))) {
+    await details08.locator(":scope > summary").click();
+  }
+  await row(page, sid, "SGT1 VR_HV").click();
+  await row(page, sid, "SGT1 VR_LV").click();
+
+  // === Step 5: Separate-panel assertion — the pre-fix regression catch ===
+  //
+  // PRE-FIX: both channels end up in one plain :Voltage panel (this poll times out).
+  // POST-FIX: wwRebuildLayout fires after fetches → HV in :pu, LV in :base_required.
+  await expect
+    .poll(
+      async () => {
+        const keys = await page.evaluate(() => ww.panels.map((p) => p.groupKey));
+        return keys.some((k) => k.endsWith(":pu")) && keys.some((k) => k.endsWith(":base_required"));
+      },
+      { timeout: 15000, intervals: [100, 200, 500, 1000] }
+    )
+    .toBe(true);
+
+  // === Step 6: Display-unit assertions ===
+  // HV must display in pu; LV must still display in kV (base not yet authoritative).
+  await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_HV"), { timeout: 5000 })
+    .toMatchObject({ status: "configured", unit: "pu" });
+  await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 5000 })
+    .toMatchObject({ status: "base_required", unit: "kV" });
+
+  // --- Waveform trace data must not be discarded by the post-fetch rebuild ---
+  // wwRebuildLayout() uses channel.time/channel.values (already loaded from the
+  // initial fetch) to call wwBuildTrace(). Verify data survived the rebuild so
+  // waveform analysis is usable immediately after auto-regrouping.
+  const initTraceData = await page.evaluate(({ sid }) => {
+    const hvEntry = ww.displayed.get(wwChannelKey(sid, "SGT1 VR_HV"));
+    const lvEntry = ww.displayed.get(wwChannelKey(sid, "SGT1 VR_LV"));
+    return {
+      hvLen: (hvEntry && hvEntry.channel.values || []).length,
+      lvLen: (lvEntry && lvEntry.channel.values || []).length,
+      hvUnit: hvEntry && hvEntry.channel.unit,
+      lvUnit: lvEntry && lvEntry.channel.unit,
+      hvPeak: hvEntry ? Math.max(...hvEntry.channel.values) : null,
+      lvPeak: lvEntry ? Math.max(...lvEntry.channel.values) : null,
+    };
+  }, { sid });
+  expect(initTraceData.hvLen, "HV trace data must survive rebuild").toBeGreaterThan(0);
+  expect(initTraceData.lvLen, "LV trace data must survive rebuild").toBeGreaterThan(0);
+  expect(initTraceData.hvUnit, "HV display unit must be pu").toBe("pu");
+  expect(initTraceData.lvUnit, "LV display unit must be kV").toBe("kV");
+  // HV amplitude = 275/√3 kV = Vbase → peak ≈ 1.0 pu
+  expect(initTraceData.hvPeak).toBeCloseTo(1.0, 1);
+
+  // --- Panel label / axis title verification (via wwPanelLabelFor) ---
+  const initPanelState = await page.evaluate(() =>
+    ww.panels.map((p) => ({ key: p.groupKey, label: p.label, channels: p.channels.map((c) => c.channelName) }))
+  );
+  // eslint-disable-next-line no-console
+  console.log("PULU-08 initial panel state:", JSON.stringify(initPanelState));
+
+  const initPuPanel = initPanelState.find((p) => p.key.endsWith(":pu"));
+  const initBrPanel = initPanelState.find((p) => p.key.endsWith(":base_required"));
+  expect(initPuPanel, ":pu panel must exist").toBeTruthy();
+  expect(initBrPanel, ":base_required panel must exist").toBeTruthy();
+  // wwPanelLabelFor: perUnitStatus=configured → "Voltage (pu)"
+  expect(initPuPanel.label, ":pu panel label must contain 'pu'").toContain("pu");
+  // wwPanelLabelFor: perUnitStatus=base_required → "Voltage (Base required)"
+  expect(initBrPanel.label, ":base_required panel label must contain 'Base required'").toContain("Base required");
+  expect(initPuPanel.channels, "HV channel identity in :pu panel").toContain("SGT1 VR_HV");
+  expect(initBrPanel.channels, "LV channel identity in :base_required panel").toContain("SGT1 VR_LV");
+
+  await page.screenshot({ path: info.outputPath("pulu-08-before-save.png") });
+
+  // === Steps 7–8: Configure LV while remaining in PU mode (no ENG→PU toggle) ===
+
+  await page.locator("#wwOpenPerUnitSettingsBtn").click();
+  await expect(page.locator("#perUnitSettingsOverlay")).not.toBeHidden();
+
+  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+  await expect(page.locator("#measurementGroupsOverlay")).not.toBeHidden();
+  await expect(page.locator("#measurementGroupsBody")).not.toHaveText(/Loading groups/);
+
+  await page.locator(`[id="wwMgEditBtn-${lvGroup.id}"]`).click();
+  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "false");
+
+  await page.locator("#wwMgVoltageKvInput").fill("132");
+
+  // Save — triggers wwSaveMgDrawer → PUT → PATCH → wwRefreshDisplayedChannelsForPerUnitChange
+  await page.locator("#wwMgDrawerSaveBtn").click();
+  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "true");
+
+  // LV must become configured/compatible WITHOUT any ENG→PU toggle
+  await expect
+    .poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 15000 })
+    .toMatchObject({ status: "configured", unit: "pu", compatibility: "compatible" });
+
+  // :base_required panel gone; both channels merged into :pu panel
+  const finalPanelState = await page.evaluate(() =>
+    ww.panels.map((p) => ({ key: p.groupKey, label: p.label, channels: p.channels.map((c) => c.channelName) }))
+  );
+  // eslint-disable-next-line no-console
+  console.log("PULU-08 final panel state:", JSON.stringify(finalPanelState));
+
+  expect(
+    finalPanelState.some((p) => p.key.endsWith(":base_required")),
+    ":base_required panel must be gone after save"
+  ).toBe(false);
+
+  const finalPuPanel = finalPanelState.find((p) => p.key.endsWith(":pu"));
+  expect(finalPuPanel, ":pu panel must exist after save").toBeTruthy();
+  expect(finalPuPanel.label, "merged :pu panel label").toContain("pu");
+  expect(finalPuPanel.channels, "HV channel identity after save").toContain("SGT1 VR_HV");
+  expect(finalPuPanel.channels, "LV must join :pu panel after save").toContain("SGT1 VR_LV");
+
+  // --- Final numerical check: both channels in pu with correct values ---
+  const finalTraceData = await page.evaluate(({ sid }) => {
+    const hvEntry = ww.displayed.get(wwChannelKey(sid, "SGT1 VR_HV"));
+    const lvEntry = ww.displayed.get(wwChannelKey(sid, "SGT1 VR_LV"));
+    return {
+      hvLen: (hvEntry && hvEntry.channel.values || []).length,
+      lvLen: (lvEntry && lvEntry.channel.values || []).length,
+      hvUnit: hvEntry && hvEntry.channel.unit,
+      lvUnit: lvEntry && lvEntry.channel.unit,
+      hvPeak: hvEntry ? Math.max(...hvEntry.channel.values) : null,
+      lvPeak: lvEntry ? Math.max(...lvEntry.channel.values) : null,
+    };
+  }, { sid });
+  expect(finalTraceData.hvLen, "HV trace data intact after save rebuild").toBeGreaterThan(0);
+  expect(finalTraceData.lvLen, "LV trace data intact after save rebuild").toBeGreaterThan(0);
+  expect(finalTraceData.hvUnit, "HV display unit after save").toBe("pu");
+  expect(finalTraceData.lvUnit, "LV display unit after save").toBe("pu");
+  // HV peak stays ≈ 1.0 pu (Vbase unchanged)
+  expect(finalTraceData.hvPeak).toBeCloseTo(1.0, 1);
+  // LV: amplitude = 275/√3 kV, now Vbase = 132/√3 kV → peak ≈ 275/132 ≈ 2.08 pu
+  expect(finalTraceData.lvPeak).toBeCloseTo(LG_BASE_KV / (LV_NOMINAL_KV / Math.sqrt(3)), 1);
+
+  await page.screenshot({ path: info.outputPath("pulu-08-after-save.png") });
+});
+
+// ---------------------------------------------------------------------------
+// PULU-07: Panel regrouping after UI-based MG save (Section C UAT regression)
+// ---------------------------------------------------------------------------
+//
+// Reproduces: "SGT1 LV waveform remains in separate panel after MG save;
+// ENG→PU toggle fixes it" (UAT defect, branch feature/vlt-ref-001-voltage-reference-safety)
+//
+// Key distinction from PULU-04/PULU-06: exercises the FULL UI save flow:
+//   Per-Unit Settings → Manage MGs modal → Edit drawer → Save button
+// This triggers wwSaveMgDrawer → wwRefreshDisplayedChannelsForPerUnitChange(sourceId)
+// rather than the direct API + explicit wwRefreshWaveformDisplayBasis() used in
+// PULU-04/06. The panel regrouping (base_required → pu) must happen automatically
+// without requiring the ENG→PU toggle workaround.
+//
+// Pre-condition: SGT1 LV is needs_review/base_required (genuine ambiguity, primary=132 kV).
+// Action: Save 132 kV nominal via UI drawer (not direct API calls).
+// Expected: LV channels join the existing :pu panel immediately — NO ENG→PU toggle.
+
+test("PULU-07: LV channels join :pu panel after UI-based MG save (no ENG/PU toggle)", async ({ page }, info) => {
+  const { sid, groupsUrl } = await uploadPuluRealLv(page, "PULU_07");
+
+  // Confirm initial: LV group is non-authoritative (suggested/needs_review) → pu_status=base_required
+  const groups = await json(await page.request.get(groupsUrl));
+  const lvGroup = findGroupForChannel(groups, "SGT1 VR_LV");
+  expect(lvGroup, "SGT1 LV group missing").not.toBeNull();
+  expect(lvGroup.pu_status).toBe("base_required");
+  // Both "suggested" and "needs_review" are non-authoritative → either triggers
+  // the PATCH status promotion in wwSaveMgDrawer.
+  expect(["suggested", "needs_review"]).toContain(lvGroup.status);
+
+  // Navigate to Waveform
+  await page.locator("#mainNavWaveformBtn").click();
+
+  // Ensure ENG mode before adding channels. The auto-import may have already
+  // switched to PU (HV group is auto-configured). Clicking ENG guarantees
+  // ww.unitMode === "engineering" so the subsequent explicit PU click properly
+  // triggers wwRefreshWaveformDisplayBasis and assigns correct :pu/:base_required panels.
+  await page.locator("#wwUnitEngineeringBtn").click();
+  await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+
+  // Add HV (configured) and LV (base_required) channels
+  const details07 = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if (!(await details07.evaluate((el) => el.open))) {
+    await details07.locator(":scope > summary").click();
+  }
+  await row(page, sid, "SGT1 VR_HV").click();
+  await row(page, sid, "SGT1 VR_LV").click();
+
+  // Switch to PU mode — from ENG mode so wwApplyUnitMode("per_unit") runs the full
+  // wwRefreshWaveformDisplayBasis path, re-fetching channels and calling wwRebuildLayout.
+  await page.locator("#wwUnitPerUnitBtn").click();
+
+  // Wait for PU layout: HV → :pu panel, LV → :base_required panel
+  await expect
+    .poll(
+      async () => {
+        const keys = await page.evaluate(() => ww.panels.map((p) => p.groupKey));
+        return keys.some((k) => k.endsWith(":pu")) && keys.some((k) => k.endsWith(":base_required"));
+      },
+      { timeout: 15000, intervals: [100, 200, 500, 1000] }
+    )
+    .toBe(true);
+
+  await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_HV"), { timeout: 5000 })
+    .toMatchObject({ status: "configured", unit: "pu" });
+  await expect.poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 5000 })
+    .toMatchObject({ status: "base_required", unit: "kV" });
+
+  const panelsBefore = await page.evaluate(() =>
+    ww.panels.map((p) => ({ key: p.groupKey, names: p.channels.map((c) => c.channelName) }))
+  );
+  // eslint-disable-next-line no-console
+  console.log("PULU-07 panels before save:", JSON.stringify(panelsBefore));
+  expect(panelsBefore.some((p) => p.key.endsWith(":pu"))).toBe(true);
+  expect(panelsBefore.some((p) => p.key.endsWith(":base_required"))).toBe(true);
+
+  await page.screenshot({ path: info.outputPath("pulu-07-before-save.png") });
+
+  // === UAT sequence: Per-Unit Settings → Manage MGs → Edit LV group → Save 132 kV ===
+
+  await page.locator("#wwOpenPerUnitSettingsBtn").click();
+  await expect(page.locator("#perUnitSettingsOverlay")).not.toBeHidden();
+
+  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+  await expect(page.locator("#measurementGroupsOverlay")).not.toBeHidden();
+  await expect(page.locator("#measurementGroupsBody")).not.toHaveText(/Loading groups/);
+
+  await page.locator(`[id="wwMgEditBtn-${lvGroup.id}"]`).click();
+  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "false");
+
+  await page.locator("#wwMgVoltageKvInput").fill("132");
+
+  // Save — triggers wwSaveMgDrawer → PUT /voltage-config → PATCH status=confirmed
+  //        → wwRefreshDisplayedChannelsForPerUnitChange(sourceId) → wwRebuildLayout
+  await page.locator("#wwMgDrawerSaveBtn").click();
+  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "true");
+
+  // --- Primary assertion: LV must resolve to configured WITHOUT ENG→PU toggle ---
+  // If this poll times out (15 s), the UAT defect is reproduced.
+  await expect
+    .poll(() => displayedChannel(page, sid, "SGT1 VR_LV"), { timeout: 15000 })
+    .toMatchObject({ status: "configured", unit: "pu", compatibility: "compatible" });
+
+  // --- Panel structure: LV must join the :pu panel (merge, not remain separate) ---
+  const panelsAfter = await page.evaluate(() =>
+    ww.panels.map((p) => ({ key: p.groupKey, names: p.channels.map((c) => c.channelName) }))
+  );
+  // eslint-disable-next-line no-console
+  console.log("PULU-07 panels after save:", JSON.stringify(panelsAfter));
+
+  expect(
+    panelsAfter.some((p) => p.key.endsWith(":base_required")),
+    ":base_required panel must be gone after save"
+  ).toBe(false);
+
+  const puPanel = panelsAfter.find((p) => p.key.endsWith(":pu"));
+  expect(puPanel, ":pu panel must exist after save").toBeTruthy();
+  expect(puPanel.names, "HV must be in :pu panel").toContain("SGT1 VR_HV");
+  expect(puPanel.names, "LV must join :pu panel after save").toContain("SGT1 VR_LV");
+
+  await page.screenshot({ path: info.outputPath("pulu-07-after-save.png") });
 });

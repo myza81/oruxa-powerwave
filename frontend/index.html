@@ -38909,8 +38909,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // duplicate-trace bug). A channel joining a panel that already
             // existed BEFORE this call (not in newlyCreatedPanels) still
             // correctly gets exactly one incremental addTraces() call here.
+            // Phase 5C (DEC-050 concurrency fix): a concurrent
+            // wwAddSelectedChannels batch for another channel can fire
+            // wwRebuildLayout() before this batch's Promise.all resolves,
+            // setting panel.plotlyReady = false and deferring Plotly.purge
+            // on the placeholder panel via requestAnimationFrame. Calling
+            // wwAddTraceToPanel() on that now-invalid panel (after purge)
+            // throws synchronously, preventing the DEC-050 guard below
+            // from running. Skip the incremental addTraces for any panel
+            // that has been invalidated by rebuild -- the DEC-050 guard
+            // below fires wwRebuildLayout() which draws the trace correctly
+            // from channelEntry.time/values via wwInitPanelPlot().
             for (const { panel, channelEntry } of jobs) {
-                if (!newlyCreatedPanels.includes(panel)) wwAddTraceToPanel(panel, channelEntry);
+                if (!newlyCreatedPanels.includes(panel) && panel.plotlyReady) wwAddTraceToPanel(panel, channelEntry);
             }
 
             // Phase 4A-UAT4 (owner clarification): Separate mode's own
@@ -38940,6 +38951,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // immediately, matching section 11's "if only one panel
             // exists, it may naturally be active."
             wwSyncActivePanelVisual();
+            // Phase 5C (DEC-050 fix): when PU mode is already active at the
+            // time channels are added, the initial panel key is a plain key
+            // because perUnitStatus is unknown until after the first fetch
+            // (wwPanelGroupKeyFor's own comment). Now that all initial fetches
+            // have resolved, regroup any channel whose actual perUnitStatus
+            // assigns it to a different panel than its pre-fetch placeholder.
+            // This is a no-op in Engineering mode and when the PU mode switch
+            // itself triggers wwRefreshWaveformDisplayBasis (that path already
+            // calls wwRebuildLayout after fetches complete).
+            if (ww.unitMode === "per_unit" && jobs.some(({ panel, channelEntry }) =>
+                    wwPanelGroupKeyFor(channelEntry) !== panel.groupKey)) {
+                wwRebuildLayout();
+            }
             // Phase 4C1 (section 14/29): every channel just added is now
             // visible -- if cursor mode is on, its Cur A/Cur B needs a
             // real value instead of the "—" wwCurValueText() already
