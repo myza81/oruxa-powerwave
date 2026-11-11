@@ -29355,3 +29355,94 @@ Impact on PU-001 work:
   (`CurrentBaseConfiguration.method == METHOD_EQUIPMENT_RATING` with a linked Voltage group).
   This risk must be addressed before any Voltage nominal evidence is promoted to
   `base_authority="auto_resolved"` for a group that has a Current group linked to it.
+
+---
+
+## DEC-213 — Physical Calibration Authority Stage 3A: foundation contract and evaluator
+
+Date: 2026-11-11. Status: **Conditionally approved — Stage 3A implemented; Stage 3B requires
+separate owner authorization.**
+Authority: owner brief (Stage 3A: Physical Calibration Authority Foundation, 2026-11-11).
+
+Decision:
+
+1. **A `PhysicalCalibrationAuthority` per-channel domain contract is introduced.**
+   It is an immutable frozen dataclass attached optionally to `AnalogChannel`
+   (`calibration_authority: PhysicalCalibrationAuthority | None = None`).
+   Fields: `status` (verified/unverified/invalid), `reason` (machine-readable string),
+   `transform_id` (versioned raw-word-to-engineering-value identifier),
+   `evidence_refs` (tuple of immutable `EvidenceRef` objects).
+
+2. **Absent authority (`None`) means NOT ASSESSED.**
+   It never counts as Verified. All existing providers (COMTRADE, CSV, SubBen/BEN32)
+   remain unaffected: their channels carry `calibration_authority=None` and preserve
+   existing compatibility behaviour throughout Stage 3A.
+
+3. **A pure domain eligibility evaluator is provided.**
+   `evaluate_calibration_eligibility(leaf_authorities, purpose) → CalibrationEligibility`.
+   Operation purposes: `raw_inspection`, `exploratory_analysis`,
+   `engineering_calculation`, `compliance_assessment`.
+   Availability reasons: `available`, `physical_calibration_unverified`,
+   `physical_calibration_invalid`, `not_assessed`, `not_fully_verified`.
+
+4. **Dependency-propagation rules (immutable):**
+   - Any Invalid leaf makes an authoritative result unavailable.
+   - Otherwise any explicitly Unverified leaf makes an authoritative result unavailable.
+   - A mix of Verified + not-assessed leaves cannot claim full Verified.
+   - All-Verified leaves are necessary (not sufficient) for eligibility.
+   - Not-assessed leaves alone preserve existing compatibility behaviour.
+
+5. **Policy per purpose:**
+   - `raw_inspection`: always eligible (reason reflects limitation).
+   - `exploratory_analysis`: eligible for Unverified (limitation inherited); blocked for Invalid.
+   - `engineering_calculation`: blocked for Unverified and Invalid; eligible for Verified;
+     compat for not-assessed.
+   - `compliance_assessment`: same as engineering_calculation.
+
+6. **Stage 3A does NOT activate enforcement in existing production paths.**
+   The evaluator and contract exist in the domain layer; no service, API endpoint or
+   frontend behaviour is changed. No BEN5K voltage or current correction is applied.
+   No BEN5K channels publish a `PhysicalCalibrationAuthority` object yet.
+
+7. **Stage 3B integration sequence (requires separate owner authorization):**
+   - `ben/legacy_ben5k/normalize.py`: publish Unverified authority on BEN5K channels.
+   - `waveform_service._resolve_effective_per_unit()`: gate PU conversions.
+   - `calculated_channel_service._resolve_input()`: propagate leaf authorities.
+   - `phasor_analysis_service._fetch_role_candidate()`: block unverified amplitudes.
+   - `compliance_readiness_service`: fail readiness before auto-preparation.
+   - Frontend: display "Physical calibration unverified" state.
+   - BEN5K voltage correction (√2 / >>4): after Verified achievable.
+   - BEN5K current calibration: after oracle evidence for H1/H2 obtained.
+
+8. **`transform_id` is a description, not a trigger.**
+   Its presence on a `PhysicalCalibrationAuthority` object does NOT trigger numerical
+   scaling. It identifies what transform was applied so consumers can detect
+   double-scaling. No production decoder is changed.
+
+9. **Calibration authority is independent of base authority (DEC-050), measurement
+   reference side (DEC-210/211), channel classification, group status, editable names,
+   and manual PU bases.** Renaming, regrouping, or manually saving a PU base does not
+   alter calibration authority.
+
+Reason:
+The BEN5K calibration investigation (Stages 1 and 2, November 2026) confirmed that
+structural decoding, channel mapping and missing-data corrections do not establish
+physical calibration. The voltage scale convention (√2 × gain × m12) is confirmed
+but pending production implementation; current calibration (H1 vs H2) remains
+unresolved pending independent oracle evidence. This contract provides the foundation
+so that Stage 3B can activate enforcement without redesigning the domain model.
+
+Risks:
+- Stage 3B activation must gate all engineering consumers consistently to prevent
+  Unverified BEN5K values from bypassing the contract via calculated channels, manual
+  override, or format conversion.
+- BEN5K current calibration remains unresolved; Verified status for current channels
+  cannot be published until oracle evidence is obtained (DEC-213 owner decision J-3/J-4).
+
+Open owner decisions:
+- J-1: Stage 3B integration sequence authorization (which services, which order).
+- J-2: Minimum evidence requirement for publishing Verified status.
+- J-3: CT primary rated current for TBIN1 feeder at GPTH (oracle evidence for current).
+- J-4: Approve/reject H2 for current after J-3 confirmed.
+- J-5: Assessment of Permas Jaya re-classification impact.
+- J-6: Whether exploratory analysis of Unverified channels requires a separate UI state.

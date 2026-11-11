@@ -9,6 +9,83 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3A — Physical Calibration Authority foundation (2026-11-11)
+
+[FACT] Stage 3A implemented locally on `feature/vlt-ref-001-voltage-reference-safety`.
+No production calibration enforcement activated. No BEN5K numerical correction applied.
+No existing calculation paths modified.
+
+**What Stage 3A introduced:**
+
+- `backend/app/domain/physical_calibration.py` — new pure domain module:
+  - `PhysicalCalibrationAuthority` (frozen dataclass) — immutable per-channel
+    calibration authority with `status`, `reason`, `transform_id`, `evidence_refs`.
+  - `EvidenceRef` (frozen dataclass) — immutable evidence pointer.
+  - `CalibrationEligibility` (frozen dataclass) — structured evaluator result.
+  - `evaluate_calibration_eligibility()` — pure domain evaluator taking a list of
+    leaf channel authorities and an operation purpose; returns eligibility with
+    dependency-propagation rules (invalid dominates unverified dominates not-assessed).
+  - Operation purposes: `raw_inspection`, `exploratory_analysis`,
+    `engineering_calculation`, `compliance_assessment`.
+  - Availability reasons: `available`, `physical_calibration_unverified`,
+    `physical_calibration_invalid`, `not_assessed`, `not_fully_verified`.
+  - Convenience predicates: `is_eligible`, `is_fully_verified`,
+    `is_blocked_by_calibration`, `is_compatibility_mode`.
+
+- `backend/app/domain/channels.py` — `AnalogChannel` gains an optional
+  `calibration_authority: PhysicalCalibrationAuthority | None = None` field
+  (additive, default `None` = not assessed; backward compatible).
+
+- `backend/tests/test_physical_calibration.py` — 73 tests covering: authority
+  contract (construction, validation, immutability), eligibility evaluator (all
+  status/purpose combinations), dependency propagation (invalid/unverified dominance,
+  mixed leaves, nested chains), convenience predicates, provenance integrity.
+
+**What remains inactive (Stage 3B):**
+
+- No BEN5K normalize.py publishes `PhysicalCalibrationAuthority` on channels yet.
+- No `waveform_service._resolve_effective_per_unit()` gate.
+- No `calculated_channel_service._resolve_input()` gate.
+- No `phasor_analysis_service._fetch_role_candidate()` gate.
+- No `compliance_readiness_service` gate.
+- No frontend calibration limitation display.
+- No BEN5K voltage correction (√2 / >>4).
+- No BEN5K current correction (H1/H2 unresolved pending oracle evidence).
+
+**Test results:** 73/73 `test_physical_calibration.py` pass. Full backend suite
+running (see HANDOFF.md for final count). No existing tests modified.
+
+[PENDING] Owner review before Stage 3B authorization. Do NOT activate enforcement
+or proceed to Stage 3B without separate owner approval.
+
+## BEN5K physical-channel mapping correction — local verification (2026-11-10)
+
+[FACT] Owner authorized the bounded mapping correction after accepting the
+calibration investigation. The legacy BEN5K normalizer now uses the existing
+classifier's `physical_word_index` in `BenSampleSlot`, rather than its logical
+descriptor index. No shared scaling/model, units, nominal detection,
+Primary/Secondary authority or PU rules change; **√2/16 calibration remains
+unapproved and unimplemented**. This does not certify BEN5K absolute values.
+
+[FACT] New tests first reproduced 41 failures/28 passes, then passed 69/69
+after correction. Independent binary-column goldens cover all 62 active
+channels and 497,583 samples, including the 14 Permas and 21 GPTH shifted
+channels, through normalized records, provider/import/API, cursors, peaks and
+calculated consumers. Two new real-browser plotted-value tests also pass.
+Expanded browser and full backend verification are in progress; final counts
+will be recorded in [the correction report](BEN5K_PHYSICAL_MAPPING_CORRECTION.md).
+
+[FACT] The owner event folder's `SOE PMJY.pdf` independently identifies the
+recorded PLTG1/PLTG2/PGPS1/KTBR2 bay names as 275 kV, alongside separate 132 kV
+bays. This supports the 275 kV network context without waveform fitting;
+recorder wiring, calibration and sample-side authority remain separate and
+unverified. No automatic nominal or side is assigned from this assessment.
+
+[READY FOR REVIEW] [Exact-event COMTRADE parity specification](BEN5K_EXACT_EVENT_COMTRADE_PARITY_SPEC.md)
+prepared; exact October exports remain required. Original audit/calibration
+evidence and pre-existing PULU edits are preserved. No commit/push/merge/deploy
+or Slice 6D work; await owner review.
+
 ## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction complete; pushed to origin (2026-11-10)
 
 [FACT] PULU "Unverified reference" root-cause correction applied and pushed. Branch `feature/vlt-ref-001-voltage-reference-safety` pushed to origin. HEAD: `24633ba`. NOT merged to main, NOT deployed. No Slice 6D work undertaken.

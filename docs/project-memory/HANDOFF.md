@@ -4,7 +4,77 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-10** (PULU Auto-Reference Root-Cause Correction bounded verification complete; 67/67 browser tests pass; local commit pending; awaiting owner sign-off before push/deploy/Slice 6D).
+Last updated: **2026-11-11** (Stage 3A Physical Calibration Authority foundation implemented locally; 73/73 new tests pass; full backend suite running; awaiting owner review before Stage 3B).
+
+## Stage 3A — Physical Calibration Authority foundation (2026-11-11)
+
+**Status:** Implemented locally on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT committed, pushed, deployed, or merged. No production enforcement activated.
+No BEN5K numerical correction applied.
+
+**Files changed:**
+- `backend/app/domain/physical_calibration.py` (NEW — pure domain contract + evaluator)
+- `backend/app/domain/channels.py` (additive: optional `calibration_authority` field on `AnalogChannel`)
+- `backend/tests/test_physical_calibration.py` (NEW — 73 tests)
+- `docs/project-memory/CURRENT_STATE.md` (updated)
+- `docs/project-memory/HANDOFF.md` (this file)
+
+**Test results:** 73/73 `test_physical_calibration.py` pass. Full backend suite running
+(result pending — will update when complete). No existing tests modified.
+
+**Key design decisions:**
+- `PhysicalCalibrationAuthority` is frozen — immutable once created.
+- `calibration_authority=None` on `AnalogChannel` means "not assessed" — existing
+  behaviour preserved for all existing providers (COMTRADE, CSV, SubBen/BEN32).
+- Evaluator returns `eligible=True` with `reason=not_assessed` for not-assessed
+  channels — does NOT block existing consumers, does NOT grant Verified status.
+- `all_verified=True` only when every contributing leaf is explicitly Verified with
+  no not-assessed leaves — the only condition under which a Verified claim is valid.
+- Dependency propagation: invalid > unverified > not_assessed > verified.
+- Operation purposes: `raw_inspection`, `exploratory_analysis`,
+  `engineering_calculation`, `compliance_assessment`.
+
+**Stage 3B integration sequence (not yet authorized):**
+1. `ben/legacy_ben5k/normalize.py` — publish `calibration_authority` with
+   `status=unverified, reason=ben5k_absolute_calibration_unverified` on all channels.
+2. `waveform_service._resolve_effective_per_unit()` — gate PU conversions.
+3. `calculated_channel_service._resolve_input()` — propagate leaf authorities.
+4. `phasor_analysis_service._fetch_role_candidate()` — block unverified amplitudes.
+5. `compliance_readiness_service` — fail readiness before auto-preparation.
+6. Frontend — display "Physical calibration unverified" state where applicable.
+7. BEN5K voltage correction (√2 / >>4) — after Verified status achievable.
+8. BEN5K current calibration — after oracle evidence for H1/H2 obtained.
+
+**Next step:** Owner reviews Stage 3A. Then: commit, push to origin, DEV deployment,
+owner UAT. Do NOT proceed to Stage 3B, Slice 6D, or any calibration activation
+without separate owner authorization.
+
+## BEN5K mapping-only correction — latest continuation (2026-11-10)
+
+Owner accepted the calibration investigation and authorized **physical mapping
+only**. One legacy-adapter field now retains `physical_word_index` in the
+shared sample slot. Raw packed-word gain/offset, units, nominal detection,
+reference authority and PU rules are unchanged; √2/16 is not implemented.
+
+New backend tests: 41 failed/28 passed before correction; 69/69 passed after.
+They pin all 62 active channels to original binary columns, including every
+14/21 affected channel in Permas/GPTH, and exercise normalized/provider/API and
+downstream paths. Two new browser tests compare every plotted sample with the
+original physical columns. Expanded browser/full backend verification is in
+progress; final counts belong in
+[BEN5K_PHYSICAL_MAPPING_CORRECTION.md](BEN5K_PHYSICAL_MAPPING_CORRECTION.md).
+
+The private event SOE independently lists all four recorded Voltage bay names
+as 275 kV; the historical blanket 132 kV description is inappropriate for those
+bays. This does not establish actual BEN terminal wiring/calibration or sample
+side. See the report's bounded assessment and
+[exact-event parity specification](BEN5K_EXACT_EVENT_COMTRADE_PARITY_SPEC.md).
+Exact October BEN32 exports are still required before calibration work.
+
+All changes remain local and uncommitted on
+`feature/vlt-ref-001-voltage-reference-safety`, parent `bb370678`. Preserve the
+pre-existing PULU test edit and protected evidence. Do not commit, push, merge,
+deploy, implement calibration or begin Slice 6D without owner authorization.
 
 ## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction; bounded verification complete (2026-11-10)
 
