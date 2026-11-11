@@ -62,6 +62,10 @@ class AnalogChannelSummary:
     # backward-compatibility mapping.
     engineering_quantity: str = UNDEFINED
     measurement_side: ReferenceSide = "unknown"
+    # Stage 3B-1 (DEC-213): calibration authority summary fields; None = not assessed.
+    # Derived from AnalogChannel.calibration_authority at import time; never re-derived.
+    calibration_status: str | None = None
+    calibration_reason: str | None = None
 
 
 @dataclass(slots=True)

@@ -309,6 +309,8 @@ def _build_source_metadata(
             primary_ratio=ch.primary_ratio,
             secondary_ratio=ch.secondary_ratio,
             measurement_side=ch.measurement_side,
+            calibration_status=ch.calibration_authority.status if ch.calibration_authority else None,
+            calibration_reason=ch.calibration_authority.reason if ch.calibration_authority else None,
         )
         for ch in record.analog_channels
     ]

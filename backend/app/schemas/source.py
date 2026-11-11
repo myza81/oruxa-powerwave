@@ -53,6 +53,9 @@ class AnalogChannelOut(BaseModel):
     primary_ratio: float | None = None
     secondary_ratio: float | None = None
     measurement_side: ReferenceSide = "unknown"
+    # Stage 3B-1 (DEC-213): calibration authority summary; null = not assessed.
+    calibration_status: str | None = None
+    calibration_reason: str | None = None
 
     def _display_axis(self) -> DisplayAxis:
         return resolve_display_axis(self.engineering_type, self.engineering_quantity, self.unit)
