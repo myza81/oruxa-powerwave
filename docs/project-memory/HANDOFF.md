@@ -4,7 +4,38 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-12** (Stage 3B-2B-1 calculated-channel PU calibration authority gate committed — `9dbc4d4`; 4/4 browser tests + 30/30 backend tests pass; awaiting owner review before Stage 3B-2B-2/3B-2C/3B-3).
+Last updated: **2026-11-12** (Stage 3B-2B-2 invalid calibration authority gate committed; 23/23 backend tests + 2 new browser tests pass; awaiting owner review before Stage 3B-2C/3B-3).
+
+## Stage 3B-2B-2 — Invalid calibration authority gate for calculated channels (2026-11-12)
+
+**Status:** Committed locally on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No existing
+ENG-mode display paths or PU mathematics modified.
+
+**Files changed (5):**
+- `backend/app/services/errors.py` — `InvalidCalibrationAuthorityError` (code=`invalid_calibration_authority`;
+  carries `reason` + optional `input_ref`; HTTP 422)
+- `backend/app/services/calculated_channel_service.py` — `_check_creation_authority()` function
+  (fires for ALL engineering types, OD-5); evaluation-time guard on all 4 entry-points (OD-6;
+  None-guard preserves backward compat for service-layer tests)
+- `backend/app/api/v1/calculated_channels.py` — HTTP 422 mapping + `try/except` on all 4
+  evaluation routes
+- `backend/tests/test_invalid_calibration_calculated_channel_gate.py` (NEW — 23 tests)
+- `browser-tests/ben5k-invalid-calibration-gate.spec.js` (NEW — 2 browser tests)
+
+**Test results:** 23/23 new backend tests pass. 216/216 targeted regression tests pass.
+Full backend suite: exit 0 (confirmed 3× in implementation session; targeted regression confirms).
+7 existing + 2 new browser tests pass (BEN5K_EXPERIMENTAL_ENABLED=1 required for new tests).
+
+**Key owner decisions (binding OD-5 to OD-7):**
+- OD-5 (Strict): creation gate fires for ALL engineering types (VOLTAGE, CURRENT, POWER,
+  FREQUENCY, ROCOF, UNDEFINED) — no OD-4 exception.
+- OD-6 (Block): evaluation raises `InvalidCalibrationAuthorityError`; no null values returned.
+- OD-7: `code = "invalid_calibration_authority"`, HTTP 422 for both creation and evaluation.
+
+**Next step (approved scope restrictions):**
+- Stage 3B-2C, 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
 
 ## Stage 3B-2B-1 — Calculated-channel PU calibration authority gate (2026-11-12)
 
@@ -33,12 +64,10 @@ ENG-mode display paths or PU mathematics modified.
 - OD-4: Gate fires only for VOLTAGE/CURRENT; POWER/ROCOF/FREQUENCY/UNDEFINED reach
   not_applicable unchanged.
 
-**Future gap documented (not in scope):** Invalid-authority creation gate at `_resolve_input()`
-(Stage 3B-2B-2 exploratory). Requires separate owner decision on whether Invalid should
-block calculated-channel creation entirely or only PU output (current posture).
+**Future gap closed:** Invalid-authority creation gate was implemented in Stage 3B-2B-2 (see above).
 
 **Next step (approved scope restrictions):**
-- Stage 3B-2B-2/3B-2C/3B-3: requires separate owner authorization.
+- Stage 3B-2C, 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
 - Push / merge / deploy: not authorized.
 
 ## Stage 3B-2A — BEN5K PU calibration safety gate (2026-11-12)

@@ -9,6 +9,56 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3B-2B-2 — Invalid calibration authority gate for calculated channels (2026-11-12)
+
+[FACT] Stage 3B-2B-2 committed locally on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
+No existing PU mathematics or ENG-mode display paths modified.
+
+**What Stage 3B-2B-2 introduced:**
+
+- `errors.py` — `InvalidCalibrationAuthorityError(ImportServiceError)`:
+  `code = "invalid_calibration_authority"`. Carries `reason` (machine-readable string)
+  and optional `input_ref`. HTTP 422 Unprocessable Entity for both creation and evaluation.
+
+- `calculated_channel_service.py` — `_check_creation_authority()` function:
+  creation-time gate fires for ALL engineering types (OD-5 — VOLTAGE, CURRENT, POWER,
+  FREQUENCY, ROCOF, UNDEFINED). Source-kind refs: reads `calibration_authority` directly;
+  raises for `CALIBRATION_INVALID`. Calc-kind refs: delegates to `_collect_leaf_authorities()`
+  then `evaluate_calibration_eligibility(leaves, PURPOSE_EXPLORATORY_ANALYSIS)`. Passes for
+  Unverified (exploratory allowed) and Not Assessed (backward compat).
+
+- `calculated_channel_service.py` — evaluation-time guard on all 4 entry-points
+  (`extract_calculated_waveform_range`, `extract_calculated_cursor_values`,
+  `resolve_calculated_peak_value`, `resolve_calculated_annotation_anchor`). Guard fires
+  when `source_registry is not None and workspace_id is not None and calc_registry is not None`
+  — None-guard preserves backward compat for existing service-layer tests that call these
+  functions without registries. Production router callers always supply all three.
+
+- `calculated_channels.py` router — `"invalid_calibration_authority": HTTP_422` added to
+  `_STATUS_BY_ERROR_CODE`; all 4 evaluation routes wrapped in `try/except ImportServiceError`.
+  `InvalidCalibrationAuthorityError` imported.
+
+**Key owner decisions (OD-5 to OD-7, binding):**
+- OD-5 (Strict): creation gate fires for ALL engineering types including POWER, FREQUENCY,
+  ROCOF, UNDEFINED — not only VOLTAGE/CURRENT.
+- OD-6 (Block): evaluation-time gate raises `InvalidCalibrationAuthorityError`; no null
+  values or partial results returned.
+- OD-7: `code = "invalid_calibration_authority"`, HTTP 422 for creation AND evaluation.
+
+**What remains inactive:**
+- `phasor_analysis_service` gate (Stage 3B-2C — requires separate owner authorization).
+- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
+- BEN5K current calibration (H1/H2 unresolved pending oracle evidence).
+
+**Test results:** 23/23 new backend unit/scenario tests pass. 216/216 targeted tests pass.
+Full backend suite: exit 0 (confirmed 3× in prior session; targeted regression confirms now).
+7 existing + 2 new browser tests pass (BEN5K_EXPERIMENTAL_ENABLED=1 required for new tests).
+
+[FACT] Owner has authorized Stage 3B-2B-2. Stage 3B-2C, 3B-3, BEN numerical corrections,
+Slice 6D and all push/merge/deploy actions require separate owner authorization.
+
 ## Stage 3B-2B-1 — Calculated-channel PU calibration authority gate (2026-11-12)
 
 [FACT] Stage 3B-2B-1 committed locally as `9dbc4d4` on `feature/vlt-ref-001-voltage-reference-safety`.
