@@ -55,7 +55,7 @@ from app.services.calculated_channel_service import (
 )
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
-from app.services.errors import ImportServiceError
+from app.services.errors import ImportServiceError, InvalidCalibrationAuthorityError
 from app.services.line_to_line_voltage_service import (
     create_line_to_line_voltage_channels,
     list_line_to_line_readiness,
@@ -115,6 +115,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "unconfirmed_voltage_reference": status.HTTP_400_BAD_REQUEST,
     "unconfirmed_phase_pairing": status.HTTP_400_BAD_REQUEST,
     "duplicate_phase_assignment": status.HTTP_400_BAD_REQUEST,
+    # Stage 3B-2B-2 (DEC-213): Invalid calibration authority — HTTP 422 for
+    # both creation-time and evaluation-time (OD-7, approved). No existing
+    # 409 usage in this codebase; 422 is consistent with the creation approval.
+    "invalid_calibration_authority": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -365,14 +369,17 @@ def get_channel_waveform(
         if unit_mode == "per_unit"
         else None
     )
-    result = extract_calculated_waveform_range(
-        channel, start_time=start_time, end_time=end_time, point_budget=point_budget,
-        unit_mode=unit_mode, per_unit_profile=per_unit_profile,
-        voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
-        workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-        voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
-        source_registry=source_registry, per_unit_registry=per_unit_registry,
-    )
+    try:
+        result = extract_calculated_waveform_range(
+            channel, start_time=start_time, end_time=end_time, point_budget=point_budget,
+            unit_mode=unit_mode, per_unit_profile=per_unit_profile,
+            voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
+            workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
+            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
     return CalculatedWaveformRangeOut.from_result(result)
 
 
@@ -513,14 +520,17 @@ def get_cursor_values(
             c.id: _voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profiles[c.id])
             for c in channels
         }
-    results = extract_calculated_cursor_values(
-        channels, cursor_a_time=body.cursor_a_time, cursor_b_time=body.cursor_b_time,
-        unit_mode=body.unit_mode, per_unit_profiles=per_unit_profiles,
-        voltage_channel_names_by_id=voltage_channel_names_by_id,
-        workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-        voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
-        source_registry=source_registry, per_unit_registry=per_unit_registry,
-    )
+    try:
+        results = extract_calculated_cursor_values(
+            channels, cursor_a_time=body.cursor_a_time, cursor_b_time=body.cursor_b_time,
+            unit_mode=body.unit_mode, per_unit_profiles=per_unit_profiles,
+            voltage_channel_names_by_id=voltage_channel_names_by_id,
+            workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
+            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
     return CalculatedCursorValuesOut(channels=[CalculatedCursorValuesItemOut.from_result(r) for r in results])
 
 
@@ -564,14 +574,17 @@ def get_peak_values(
             if body.unit_mode == "per_unit"
             else None
         )
-        result = resolve_calculated_peak_value(
-            channel, mode=item.mode, start_time=body.start_time, end_time=body.end_time,
-            unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
-            voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
-            workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
-        source_registry=source_registry, per_unit_registry=per_unit_registry,
-        )
+        try:
+            result = resolve_calculated_peak_value(
+                channel, mode=item.mode, start_time=body.start_time, end_time=body.end_time,
+                unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
+                voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
+                workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
+                voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+                source_registry=source_registry, per_unit_registry=per_unit_registry,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
         results.append(CalculatedPeakResultOut.from_result(result))
     return CalculatedPeakBatchOut(start_time=body.start_time, end_time=body.end_time, results=results)
 
@@ -600,14 +613,17 @@ def resolve_annotation_anchor(
         if body.unit_mode == "per_unit"
         else None
     )
-    result = resolve_calculated_annotation_anchor(
-        channel, approximate_elapsed_seconds=body.approximate_elapsed_seconds,
-        unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
-        voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
-        workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-        voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
-        source_registry=source_registry, per_unit_registry=per_unit_registry,
-    )
+    try:
+        result = resolve_calculated_annotation_anchor(
+            channel, approximate_elapsed_seconds=body.approximate_elapsed_seconds,
+            unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
+            voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
+            workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
+            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

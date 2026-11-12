@@ -189,6 +189,29 @@ class InvalidCalculatedOperationError(ImportServiceError):
     code = "invalid_calculated_operation"
 
 
+class InvalidCalibrationAuthorityError(ImportServiceError):
+    """A calculated channel cannot be created or evaluated because one or more
+    source-channel leaves in its dependency tree carry an explicitly Invalid
+    physical calibration authority (DEC-213 Stage 3B-2B-2, OD-7).
+
+    ``reason`` is the machine-readable reason from
+    ``evaluate_calibration_eligibility()`` or the traversal blocked_reason
+    string from ``_collect_leaf_authorities()``.
+
+    ``input_ref`` (optional) names the specific input reference — a channel
+    name or calculated-channel id — that triggered the rejection, for
+    user-facing error messages."""
+
+    code = "invalid_calibration_authority"
+
+    def __init__(
+        self, message: str, *, reason: str, input_ref: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.input_ref = input_ref
+
+
 # ---- Phase 5B: RMS Calculated Channel (DEC-048) ----
 
 
