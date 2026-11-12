@@ -9,6 +9,50 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3B-2B-1 — Calculated-channel PU calibration authority gate (2026-11-12)
+
+[FACT] Stage 3B-2B-1 committed locally as `9dbc4d4` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
+No existing PU mathematics or ENG-mode display paths modified.
+
+**What Stage 3B-2B-1 introduced:**
+
+- `calculated_channel_service.py` — `_LeafAuthorityResult` dataclass (result carrier) and
+  `_collect_leaf_authorities()` function: DFS traversal of the full calculated-channel
+  dependency tree, cycle detection via `_path_visited` frozenset, deduplication via
+  `_seen_leaves` set, 6 OD-1/OD-3 fail-closed `blocked_reason` strings.
+
+- Gate injected at the top of `_resolve_effective_per_unit_for_calculated_channel()`.
+  Fires ONLY for `engineering_type in (VOLTAGE, CURRENT)` (OD-4). POWER/ROCOF/FREQUENCY/
+  UNDEFINED reach `STATUS_NOT_APPLICABLE` unchanged.
+
+- OD-1: `source_registry=None` for VOLTAGE/CURRENT → `STATUS_CALIBRATION_UNAVAILABLE,
+  reason="source_registry_unavailable"` (fail-closed, not silent skip).
+
+- OD-3: blocked_reason is a machine-readable non-empty string; no fabricated
+  `PhysicalCalibrationAuthority` objects created for missing provenance.
+
+**Regression fix:**
+
+- `test_per_unit_eligibility_integration.py` line 167: added `source_registry=r.source`
+  to a direct call that omitted it. OD-1 now blocks VOLTAGE/CURRENT when absent.
+
+**What remains inactive:**
+
+- `phasor_analysis_service` gate (Stage 3B-2C — requires separate owner authorization).
+- `compliance_readiness_service` gate (Stage 3B-2C/later — requires authorization).
+- Frontend calibration limitation display / UI warnings (Stage 3B-3 — requires authorization).
+- BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
+- BEN5K current calibration (H1/H2 unresolved pending oracle evidence).
+- Invalid-authority creation gate at `_resolve_input()` (Stage 3B-2B-2 exploratory gap —
+  requires separate owner decision on whether Invalid should block creation entirely).
+
+**Test results:** 30/30 new backend unit/scenario tests pass. Full backend suite: exit 0.
+4/4 browser tests pass (BEN5K_EXPERIMENTAL_ENABLED=1 required). PULU-07/08/09: 3/3 pass.
+
+[FACT] Owner has authorized Stage 3B-2B-1. Stage 3B-2B-2/3B-2C/3B-3 and all
+push/merge/deploy actions require separate owner authorization before proceeding.
+
 ## Stage 3B-2A — BEN5K PU calibration safety gate (2026-11-12)
 
 [FACT] Stage 3B-2A committed locally as `06f6d3e` on `feature/vlt-ref-001-voltage-reference-safety`.

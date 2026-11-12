@@ -4,7 +4,42 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-12** (Stage 3B-2A BEN5K PU calibration safety gate committed — `06f6d3e`; gate active on all four waveform API entry-points; full backend + browser suite pass; awaiting owner review before Stage 3B-2B/3B-2C/3B-3).
+Last updated: **2026-11-12** (Stage 3B-2B-1 calculated-channel PU calibration authority gate committed — `9dbc4d4`; 4/4 browser tests + 30/30 backend tests pass; awaiting owner review before Stage 3B-2B-2/3B-2C/3B-3).
+
+## Stage 3B-2B-1 — Calculated-channel PU calibration authority gate (2026-11-12)
+
+**Status:** Committed locally as `9dbc4d4` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No existing
+ENG-mode display paths or PU mathematics modified.
+
+**Files changed (4):**
+- `backend/app/services/calculated_channel_service.py` — `_LeafAuthorityResult` dataclass +
+  `_collect_leaf_authorities()` function (DFS traversal, cycle detection, dedup, 6
+  blocked_reason strings); gate injected at top of
+  `_resolve_effective_per_unit_for_calculated_channel()` (fires only for VOLTAGE/CURRENT)
+- `backend/tests/test_per_unit_eligibility_integration.py` — 1-line regression fix:
+  added `source_registry=r.source` to a direct call that omitted it (OD-1 now blocks
+  VOLTAGE/CURRENT when source_registry is absent)
+- `backend/tests/test_ben5k_calculated_channel_pu_gate.py` (NEW — 30 tests)
+- `browser-tests/ben5k-calculated-channel-pu-gate.spec.js` (NEW — 4 browser tests)
+
+**Test results:** 30/30 new backend tests pass. Full backend suite: exit 0.
+4/4 browser tests pass (BEN5K_EXPERIMENTAL_ENABLED=1). PULU-07/08/09: 3/3 pass.
+
+**Key design decisions (owner-approved OD-1 to OD-4):**
+- OD-1: source_registry=None for VOLTAGE/CURRENT → calibration_unavailable (fail-closed).
+- OD-2: ENG mode unrestricted — gate fires only on PU dispatch, never on ENG path.
+- OD-3: blocked_reason is a machine-readable string; no fabricated authority objects.
+- OD-4: Gate fires only for VOLTAGE/CURRENT; POWER/ROCOF/FREQUENCY/UNDEFINED reach
+  not_applicable unchanged.
+
+**Future gap documented (not in scope):** Invalid-authority creation gate at `_resolve_input()`
+(Stage 3B-2B-2 exploratory). Requires separate owner decision on whether Invalid should
+block calculated-channel creation entirely or only PU output (current posture).
+
+**Next step (approved scope restrictions):**
+- Stage 3B-2B-2/3B-2C/3B-3: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
 
 ## Stage 3B-2A — BEN5K PU calibration safety gate (2026-11-12)
 
@@ -47,8 +82,8 @@ calculation logic or PU mathematics modified.
   determine display scale, not `perUnitStatus` alone.
 
 **Next step (approved scope restrictions):**
-- Stage 3B-2B/3B-2C (calculated channel and phasor service gates): requires separate owner
-  authorization. Do NOT begin without explicit approval.
+- Stage 3B-2B-1 (calculated channel gate): **completed** — see entry above.
+- Stage 3B-2B-2/3B-2C (phasor service gate): requires separate owner authorization.
 - Stage 3B-3 (UI calibration limitation display): requires separate owner authorization.
 - BEN5K voltage correction (√2/16 or other factor): requires calibration evidence + approval.
 - BEN5K current calibration (H1/H2): unresolved pending oracle evidence.
