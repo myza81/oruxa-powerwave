@@ -123,11 +123,18 @@ from app.domain.voltage_reference import (
 )
 from app.domain.per_unit import (
     PerUnitBaseProfile,
+    PerUnitResolution,
+    STATUS_CALIBRATION_UNAVAILABLE,
     apply_per_unit_to_array,
     apply_per_unit_to_value,
     derive_per_unit_profile_id,
     resolve_per_unit,
     resolve_conversion_eligibility,
+)
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.physical_calibration import (
+    evaluate_calibration_eligibility,
+    PURPOSE_ENGINEERING_CALCULATION,
 )
 from app.domain.rms_detector import (
     LIKELY_INSTANTANEOUS,
@@ -303,6 +310,167 @@ def _finite_or_none(value: float) -> float | None:
     source-channel code path -- which reuses those same primitives and
     has never produced NaN -- completely unaffected."""
     return float(value) if np.isfinite(value) else None
+
+
+@dataclass(slots=True)
+class _LeafAuthorityResult:
+    """Result of leaf calibration authority collection for a calculated channel.
+
+    Stage 3B-2B-1 (DEC-213). Returned by _collect_leaf_authorities().
+
+    When ``blocked_reason`` is non-None, the traversal encountered a
+    structural condition that prevents authority resolution (OD-3: missing
+    source, missing BEN5K channel, absent BEN5K authority, circular dependency,
+    or unreachable calc chain). No fabricated authority objects are used in
+    these cases — the reason string itself is the machine-readable signal.
+
+    When ``blocked_reason`` is None, ``authorities`` holds the full list of
+    PhysicalCalibrationAuthority objects (or None for not-assessed leaves)
+    from every deduplicated source-channel leaf in the dependency tree.
+    """
+
+    authorities: list  # list[PhysicalCalibrationAuthority | None]
+    blocked_reason: str | None  # "source_registry_unavailable" | "source_unavailable" |
+    # "channel_not_found_ben5k" | "ben5k_authority_absent" |
+    # "circular_dependency" | "calculated_channel_not_found" | None
+
+
+def _collect_leaf_authorities(
+    channel: CalculatedChannel,
+    *,
+    workspace_id: str | None,
+    source_registry: WorkspaceRegistry | None,
+    calc_registry: CalculatedChannelRegistry | None,
+    _path_visited: frozenset | None = None,
+    _seen_leaves: set | None = None,
+) -> _LeafAuthorityResult:
+    """Stage 3B-2B-1 (DEC-213): traverse the full dependency tree and collect
+    the original physical-leaf calibration authorities.
+
+    Design decisions
+    ----------------
+    OD-1 (fail-closed): if any source-kind ref exists in the tree and
+    ``source_registry`` or ``workspace_id`` is None, returns a
+    ``blocked_reason`` rather than silently skipping the gate.
+
+    OD-3 (machine-readable reasons): missing source, missing BEN5K channel,
+    absent BEN5K authority — each returns a specific ``blocked_reason`` string.
+    No synthetic PhysicalCalibrationAuthority objects are fabricated.
+
+    BEN5K identity: ``active.record.metadata.format_variant ==
+    FORMAT_VARIANT_BEN5K_LEGACY`` — same check as Stage 3B-2A, never derived
+    from channel names, timestamps or nominal values.
+
+    Deduplication: each ``(source_id, channel_name)`` leaf is collected once,
+    even when the same source channel appears in multiple branches of the tree.
+
+    Cycle detection: uses ``_path_visited`` (the set of calc-channel IDs on the
+    current DFS path). Real cycles are prevented at creation time by
+    ``would_create_cycle()``, but this provides a defensive safeguard.
+    """
+    if _path_visited is None:
+        _path_visited = frozenset()
+    if _seen_leaves is None:
+        _seen_leaves = set()
+
+    # Add the current channel to the DFS path.
+    current_path = _path_visited | frozenset({channel.id})
+
+    authorities: list = []
+
+    for ref in channel.inputs:
+        if ref.kind == "source":
+            # OD-1: fail closed if the registry or workspace_id is unavailable.
+            if source_registry is None or workspace_id is None:
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="source_registry_unavailable",
+                )
+            # Deduplication by stable (source_id, channel_name) identity.
+            leaf_key: tuple = (ref.source_id, ref.channel_name)
+            if leaf_key in _seen_leaves:
+                continue
+            _seen_leaves.add(leaf_key)
+
+            active = source_registry.get(workspace_id, ref.source_id)
+            if active is None:
+                # OD-3: source not found — fail closed.
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="source_unavailable",
+                )
+
+            is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+            full_ch = next(
+                (ch for ch in active.record.analog_channels
+                 if ch.name == ref.channel_name),
+                None,
+            )
+            if full_ch is None:
+                if is_ben5k:
+                    # OD-3: BEN5K channel missing from analog_channels — fail closed.
+                    return _LeafAuthorityResult(
+                        authorities=[],
+                        blocked_reason="channel_not_found_ben5k",
+                    )
+                # Non-BEN5K: treat missing channel as not-assessed (backward compat).
+                authorities.append(None)
+                continue
+
+            authority = full_ch.calibration_authority
+            if authority is None:
+                if is_ben5k:
+                    # OD-3: BEN5K channel with absent authority — fail closed;
+                    # no fabricated PhysicalCalibrationAuthority object (OD-3).
+                    return _LeafAuthorityResult(
+                        authorities=[],
+                        blocked_reason="ben5k_authority_absent",
+                    )
+                # Non-BEN5K: None authority = not-assessed; existing compat behaviour.
+                authorities.append(None)
+            else:
+                authorities.append(authority)
+
+        elif ref.kind == "calculated":
+            calc_id = ref.calculated_channel_id
+            # Defensive cycle detection (real cycles prevented at creation time).
+            if calc_id in current_path:
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="circular_dependency",
+                )
+            if calc_registry is None or workspace_id is None:
+                # Can't traverse the calc chain without its registry.
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="source_registry_unavailable",
+                )
+            inner = calc_registry.get(workspace_id, calc_id)
+            if inner is None:
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="calculated_channel_not_found",
+                )
+            inner_result = _collect_leaf_authorities(
+                inner,
+                workspace_id=workspace_id,
+                source_registry=source_registry,
+                calc_registry=calc_registry,
+                _path_visited=current_path,
+                _seen_leaves=_seen_leaves,
+            )
+            if inner_result.blocked_reason is not None:
+                return inner_result
+            authorities.extend(inner_result.authorities)
+
+        else:
+            # Unknown ChannelRef kind — fail closed (defensive).
+            return _LeafAuthorityResult(
+                authorities=[],
+                blocked_reason=f"unknown_ref_kind:{ref.kind}",
+            )
+
+    return _LeafAuthorityResult(authorities=authorities, blocked_reason=None)
 
 
 @dataclass(slots=True)
@@ -1423,6 +1591,38 @@ def _resolve_effective_per_unit_for_calculated_channel(
     resolution exactly as before. See
     `app.services.calculated_group_aware_per_unit`'s own module
     docstring for the full rule."""
+    # Stage 3B-2B-1 calibration authority gate (DEC-213).
+    # OD-4: Only VOLTAGE and CURRENT types can produce authoritative PU output.
+    # POWER, ROCOF, FREQUENCY and UNDEFINED reach STATUS_NOT_APPLICABLE via
+    # the existing resolve_per_unit() path below — that path is preserved
+    # unchanged and must not be overridden by this gate.
+    if channel.engineering_type in (VOLTAGE, CURRENT):
+        leaf_result = _collect_leaf_authorities(
+            channel,
+            workspace_id=workspace_id,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+        )
+        if leaf_result.blocked_reason is not None:
+            return PerUnitResolution(
+                status=STATUS_CALIBRATION_UNAVAILABLE,
+                profile_id=None,
+                base_amount=None,
+                base_unit=None,
+                reason=leaf_result.blocked_reason,
+            )
+        eligibility = evaluate_calibration_eligibility(
+            [a for a in leaf_result.authorities if a is not None],
+            PURPOSE_ENGINEERING_CALCULATION,
+        )
+        if not eligibility.eligible:
+            return PerUnitResolution(
+                status=STATUS_CALIBRATION_UNAVAILABLE,
+                profile_id=None,
+                base_amount=None,
+                base_unit=None,
+                reason=eligibility.reason,
+            )
     if (channel.engineering_type == CURRENT and all(reg is not None for reg in (
         workspace_id, source_registry, per_unit_registry, calc_registry, group_registry,
         voltage_config_registry, current_config_registry,
