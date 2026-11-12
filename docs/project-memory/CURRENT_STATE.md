@@ -9,6 +9,54 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3B-2A — BEN5K PU calibration safety gate (2026-11-12)
+
+[FACT] Stage 3B-2A committed locally as `06f6d3e` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
+No existing PU mathematics or calculation paths modified.
+
+**What Stage 3B-2A introduced:**
+
+- `metadata.py` — `FORMAT_VARIANT_BEN5K_LEGACY = "BEN5K_LEGACY"` constant (DEC-213).
+  `format_variant: str | None = None` trailing field on `RecordingMetadata`. Explicitly
+  set by BEN provider; `None` for all other providers. **Orthogonal to `time_basis`
+  (timestamp authority is an independent concept).**
+
+- `per_unit.py` — `STATUS_CALIBRATION_UNAVAILABLE = "calibration_unavailable"` constant.
+  Distinct from `STATUS_BASE_REQUIRED`: signals a calibration limitation the user cannot
+  resolve by configuring a base value. Frontend routes it to the "unavailable" branch;
+  channel never appears on a `:pu`-suffixed panel.
+
+- `ben/normalize.py` — sets `format_variant=FORMAT_VARIANT_BEN5K_LEGACY` on BEN5K records.
+
+- `waveform_service.py` — `_calibration_blocked_reason()` helper: sources authority from
+  the full `DisturbanceRecord.analog_channels` (not summary strings); uses `format_variant`
+  for the BEN5K identity check (not `time_basis`); defensive fallback blocks even when
+  `calibration_authority` is absent. Gate injected into `_resolve_effective_per_unit()`
+  (after angle guard, before base resolution) covering all 4 entry-points: waveform,
+  cursor, peak, annotation.
+
+**What remains inactive:**
+
+- `calculated_channel_service` gate (Stage 3B-2B — requires separate owner authorization).
+- `phasor_analysis_service` gate (Stage 3B-2C — requires separate owner authorization).
+- `compliance_readiness_service` gate (Stage 3B-2C/later — requires authorization).
+- Frontend calibration limitation display / UI warnings (Stage 3B-3 — requires authorization).
+- BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
+- BEN5K current calibration (H1/H2 unresolved pending oracle evidence).
+
+**Test results:** 46/46 calibration-gate backend tests pass. Full backend suite: exit code 0
+(12 501 tests). PULU-07/08/09: 3/3 pass. BEN5K gate browser spec: 3/3 pass, 0 skips
+(BEN5K_EXPERIMENTAL_ENABLED=1 required for the BEN5K upload). No existing tests modified.
+
+[FACT] Owner has authorized Stage 3B-2A. Stage 3B-2B/3B-2C/3B-3 and all push/merge/deploy
+actions require separate owner authorization before proceeding.
+
+## Stage 3B-1 — BEN5K calibration authority propagation (2026-11-11)
+
+[FACT] Stage 3B-1 committed locally as `4718f0d` on `feature/vlt-ref-001-voltage-reference-safety`.
+Metadata propagation only — no calculation gate, no numerical correction.
+
 ## Stage 3A — Physical Calibration Authority foundation (2026-11-11)
 
 [FACT] Stage 3A implemented locally on `feature/vlt-ref-001-voltage-reference-safety`.
@@ -41,22 +89,22 @@ No existing calculation paths modified.
   status/purpose combinations), dependency propagation (invalid/unverified dominance,
   mixed leaves, nested chains), convenience predicates, provenance integrity.
 
-**What remains inactive (Stage 3B):**
+**What Stage 3B activated (see Stage 3B-1 and 3B-2A sections above):**
 
-- No BEN5K normalize.py publishes `PhysicalCalibrationAuthority` on channels yet.
-- No `waveform_service._resolve_effective_per_unit()` gate.
-- No `calculated_channel_service._resolve_input()` gate.
-- No `phasor_analysis_service._fetch_role_candidate()` gate.
-- No `compliance_readiness_service` gate.
-- No frontend calibration limitation display.
-- No BEN5K voltage correction (√2 / >>4).
-- No BEN5K current correction (H1/H2 unresolved pending oracle evidence).
+- Stage 3B-1 (`4718f0d`): BEN5K normalize.py publishes `PhysicalCalibrationAuthority` on channels.
+- Stage 3B-2A (`06f6d3e`): `waveform_service._resolve_effective_per_unit()` gate active.
 
-**Test results:** 73/73 `test_physical_calibration.py` pass. Full backend suite
-running (see HANDOFF.md for final count). No existing tests modified.
+**What remains inactive:**
 
-[PENDING] Owner review before Stage 3B authorization. Do NOT activate enforcement
-or proceed to Stage 3B without separate owner approval.
+- `calculated_channel_service._resolve_input()` gate (Stage 3B-2B — not yet authorized).
+- `phasor_analysis_service._fetch_role_candidate()` gate (Stage 3B-2C — not yet authorized).
+- `compliance_readiness_service` gate.
+- Frontend calibration limitation display (Stage 3B-3 — not yet authorized).
+- BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
+- BEN5K current correction (H1/H2 unresolved pending oracle evidence).
+
+**Test results:** 73/73 `test_physical_calibration.py` pass. Full backend suite: exit code 0.
+No existing tests modified.
 
 ## BEN5K physical-channel mapping correction — local verification (2026-11-10)
 

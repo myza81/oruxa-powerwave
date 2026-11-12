@@ -4,7 +4,55 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-11** (Stage 3B-1 BEN5K calibration authority propagation committed — `4718f0d`; metadata-only, no calculation gate active; full backend suite pass; awaiting owner direction for Stage 3B-2).
+Last updated: **2026-11-12** (Stage 3B-2A BEN5K PU calibration safety gate committed — `06f6d3e`; gate active on all four waveform API entry-points; full backend + browser suite pass; awaiting owner review before Stage 3B-2B/3B-2C/3B-3).
+
+## Stage 3B-2A — BEN5K PU calibration safety gate (2026-11-12)
+
+**Status:** Committed locally as `06f6d3e` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No existing
+calculation logic or PU mathematics modified.
+
+**Files changed (7):**
+- `backend/app/domain/metadata.py` — `FORMAT_VARIANT_BEN5K_LEGACY` constant +
+  `format_variant: str | None = None` trailing field on `RecordingMetadata` (orthogonal
+  to `time_basis`; explicitly set by providers; `None` for COMTRADE/CSV/SubBen)
+- `backend/app/domain/per_unit.py` — `STATUS_CALIBRATION_UNAVAILABLE = "calibration_unavailable"`
+  (distinct from `base_required`; frontend routes to "unavailable" branch, not `:pu` panel)
+- `backend/app/providers/ben/normalize.py` — sets `format_variant=FORMAT_VARIANT_BEN5K_LEGACY`
+  on BEN5K records
+- `backend/app/services/waveform_service.py` — `_calibration_blocked_reason()` helper (sources
+  authority from `DisturbanceRecord.analog_channels`, not summary strings; defensive BEN5K
+  fallback via `format_variant`); gate injected into `_resolve_effective_per_unit()` covering
+  all 4 entry-points (waveform, cursor, peak, annotation)
+- `backend/tests/test_ben5k_pu_calibration_gate.py` (NEW — 46 tests)
+- `backend/tests/fixtures/ben/synthetic_ben5k.ben` (NEW — minimal BEN5K fixture)
+- `browser-tests/ben5k-pu-calibration-gate.spec.js` (NEW — 3 browser regression tests)
+
+**Test results:** 46/46 calibration-gate backend tests pass. Full backend suite: exit code 0
+(12 501 tests). PULU-07/08/09: 3/3 pass. BEN5K gate browser spec: 3/3 pass, 0 skips
+(BEN5K_EXPERIMENTAL_ENABLED=1). No existing tests modified.
+
+**Key design decisions:**
+- `format_variant == FORMAT_VARIANT_BEN5K_LEGACY` is the **explicit** BEN5K identity check —
+  it replaces the former `time_basis == UNKNOWN` proxy (DEC-213 Item 1 correction: timestamp
+  authority and calibration authority are independent concepts).
+- Defensive rule: if a BEN5K channel is missing from `analog_channels` OR its authority is
+  `None`, the gate still blocks (cannot silently authorize PU for unverified source via
+  metadata loss).
+- `STATUS_CALIBRATION_UNAVAILABLE` is distinct from `STATUS_BASE_REQUIRED` so the frontend
+  can distinguish "calibration limitation" (not fixable by configuring a base) from "setup
+  required".
+- `perUnitStatus = "calibration_unavailable"` is returned by the backend in both PU and ENG
+  modes (pre-computed for informational purposes); the frontend uses `unit` (always "kV") to
+  determine display scale, not `perUnitStatus` alone.
+
+**Next step (approved scope restrictions):**
+- Stage 3B-2B/3B-2C (calculated channel and phasor service gates): requires separate owner
+  authorization. Do NOT begin without explicit approval.
+- Stage 3B-3 (UI calibration limitation display): requires separate owner authorization.
+- BEN5K voltage correction (√2/16 or other factor): requires calibration evidence + approval.
+- BEN5K current calibration (H1/H2): unresolved pending oracle evidence.
+- Push / merge / deploy: not authorized.
 
 ## Stage 3B-1 — BEN5K calibration authority propagation (2026-11-11)
 
