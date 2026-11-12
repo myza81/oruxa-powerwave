@@ -41,6 +41,7 @@ from app.domain import (
     SamplingInformation,
     TimingInformation,
 )
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
 from app.providers.ben.model import BenRecord, BenRecordClass
 from app.domain.source_timezone import TimeBasis
 from app.domain.physical_calibration import (
@@ -133,6 +134,7 @@ def to_disturbance_record(
             provider_type=PROVIDER_TYPE,
             nominal_frequency=nominal_frequency_hz,
             timezone=source_timezone,
+            format_variant=FORMAT_VARIANT_BEN5K_LEGACY if is_legacy_ben5k else None,
         ),
         waveform_data=pd.DataFrame(columns),
         analog_channels=analog_channels,

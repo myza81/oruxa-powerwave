@@ -81,6 +81,11 @@ KNOWN_VOLTAGE_REFERENCE_MODES = (VOLTAGE_REFERENCE_MODE_AUTO, VOLTAGE_REFERENCE_
 STATUS_NOT_APPLICABLE = "not_applicable"
 STATUS_CONFIGURED = "configured"
 STATUS_BASE_REQUIRED = "base_required"
+#: Stage 3B-2A (DEC-213): a channel whose physical calibration authority is
+#: explicitly Unverified or Invalid is not eligible for authoritative PU output.
+#: Distinct from STATUS_BASE_REQUIRED (no base configured) so the frontend
+#: can distinguish "calibration limitation" from "setup required".
+STATUS_CALIBRATION_UNAVAILABLE = "calibration_unavailable"
 
 #: Section 23 (unchanged) -- the minimal explicit unit-normalization set
 #: for a MEASURED channel's own declared unit. Anything else (a measured
@@ -250,7 +255,7 @@ class PerUnitResolution:
     (derive_per_unit_profile_id() below), unchanged from the original
     DEC-049 implementation."""
 
-    status: str  # STATUS_NOT_APPLICABLE | STATUS_CONFIGURED | STATUS_BASE_REQUIRED
+    status: str  # STATUS_NOT_APPLICABLE | STATUS_CONFIGURED | STATUS_BASE_REQUIRED | STATUS_CALIBRATION_UNAVAILABLE
     profile_id: str | None
     base_amount: float | None
     base_unit: str | None

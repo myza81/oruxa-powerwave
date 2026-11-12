@@ -48,12 +48,19 @@ from app.domain.channel_classification import (
 )
 from app.domain.per_unit import (
     STATUS_NOT_APPLICABLE,
+    STATUS_CALIBRATION_UNAVAILABLE,
     PerUnitBaseProfile,
     PerUnitResolution,
     apply_per_unit_to_array,
     apply_per_unit_to_value,
     resolve_conversion_eligibility,
     resolve_per_unit,
+)
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.physical_calibration import (
+    PURPOSE_ENGINEERING_CALCULATION,
+    REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED,
+    evaluate_calibration_eligibility,
 )
 from app.domain.source import ActiveSource, DigitalChannelSummary
 from app.domain.per_unit_reference import apply_source_reference
@@ -90,6 +97,47 @@ def _analog_channel_engineering_quantity(active: ActiveSource, channel_name: str
     field's own API-level default."""
     matching = next((ch for ch in active.metadata.analog_channels if ch.name == channel_name), None)
     return matching.engineering_quantity if matching is not None else UNDEFINED
+
+
+def _calibration_blocked_reason(channel_name: str, active: ActiveSource) -> str | None:
+    """Stage 3B-2A (DEC-213): return a machine-readable blocking reason when
+    the named channel's physical calibration authority prevents authoritative
+    per-unit output, or None when PU eligibility is not limited by calibration.
+
+    Sources the full authority from ``active.record.analog_channels`` (the
+    ``DisturbanceRecord``), NOT from ``AnalogChannelSummary`` strings.
+
+    When a BEN5K channel's ``calibration_authority`` is absent (e.g. lost
+    during an older import), the record's ``format_variant`` field is used as
+    the explicit fallback identity (FORMAT_VARIANT_BEN5K_LEGACY, independent
+    of timestamp-authority properties) so the restriction cannot be silently
+    bypassed through metadata loss.
+    """
+    full_channel = next(
+        (ch for ch in active.record.analog_channels if ch.name == channel_name), None
+    )
+    is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+    if full_channel is None:
+        # Defensive: a BEN5K channel missing from analog_channels (e.g. older
+        # import with metadata loss) must still be blocked — cannot silently
+        # authorize PU for an unverified source.
+        if is_ben5k:
+            return REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED
+        return None
+    authority = full_channel.calibration_authority
+    if authority is None:
+        # Defensive: absent authority on a BEN5K record (format_variant is the
+        # explicit identity, independent of timestamp-authority properties).
+        if is_ben5k:
+            return REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED
+        return None
+    eligibility = evaluate_calibration_eligibility([authority], PURPOSE_ENGINEERING_CALCULATION)
+    if not eligibility.eligible:
+        # Return the authority's own machine-readable reason code, not the
+        # evaluator's category string, so the PerUnitResolution reason is
+        # channel-specific and traceable.
+        return authority.reason
+    return None
 
 
 def _resolve_effective_per_unit(
@@ -131,6 +179,16 @@ def _resolve_effective_per_unit(
         return PerUnitResolution(
             status=STATUS_NOT_APPLICABLE, profile_id=None, base_amount=None, base_unit=None,
             reason="engineering_quantity_angle",
+        )
+    # Stage 3B-2A calibration authority gate (DEC-213).
+    blocked_reason = _calibration_blocked_reason(channel_name, active)
+    if blocked_reason is not None:
+        return PerUnitResolution(
+            status=STATUS_CALIBRATION_UNAVAILABLE,
+            profile_id=None,
+            base_amount=None,
+            base_unit=None,
+            reason=blocked_reason,
         )
     resolution: PerUnitResolution | None = None
     group_config = None
