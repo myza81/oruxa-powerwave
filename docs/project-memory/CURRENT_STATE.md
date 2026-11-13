@@ -9,6 +9,54 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
+
+[FACT] Stage 3B-2C-1 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `d744b97`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
+No PU mathematics or ENG-mode display paths modified.
+
+**What Stage 3B-2C-1 introduced:**
+
+- `phasor_analysis_service.py` — `_CalibrationBlockedResult(reason: str)` frozen dataclass sentinel.
+  `_fetch_role_candidate()` return type changed to `_RoleCandidate | _CalibrationBlockedResult | None`.
+  Five calibration-block sites now return `_CalibrationBlockedResult(reason=...)` instead of `None`.
+  Callers set `ROLE_STATUS_CALIBRATION_UNAVAILABLE` (not `ROLE_STATUS_NEEDS_CONFIGURATION`) with
+  machine-readable `reason_code`. Covers Phasor Diagram, Impedance Analysis, Sequence Components
+  and Distance Protection — all share `_fetch_role_candidate()` as the single gate point.
+
+- `phasor.py` — `ROLE_STATUS_CALIBRATION_UNAVAILABLE = "calibration_unavailable"` constant added.
+  `KNOWN_ROLE_STATUSES` updated.
+
+- `test_phasor_calibration_gate.py` — 19 new tests covering scenarios A–Q (Unverified/Invalid/
+  fail-closed/COMTRADE/calc-kind/per-role/unconfigured distinction).
+
+- `test_time_reference_interpretation.py` — epoch regression hardened: BEN5K assertion now asserts
+  `isinstance(_phasor_cand, _CalibrationBlockedResult)`. New `test_phasor_epoch_consumer_not_assessed_source`
+  uses COMTRADE `synth_ascii` fixture to execute epoch consistency assertion unconditionally.
+
+**Key owner decisions honored (OD-8/OD-9/OD-13/OD-14):**
+- OD-8: Unverified blocks phasor/impedance/sequence analysis (`PURPOSE_ENGINEERING_CALCULATION`).
+- OD-9: Invalid blocks all derived analysis.
+- OD-13: Per-role blocking — eligible roles computed independently; combined results requiring
+  a blocked role remain unavailable.
+- OD-14: Distance Protection zone verdicts require engineering-calculation eligibility.
+
+**What remains inactive:**
+- Stage 3B-2C-2 (compliance gate, OD-10/OD-11 — requires separate authorization).
+- Stage 3B-2C-3 (POWER labeling, OD-12 — requires separate authorization).
+- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- BEN5K numerical correction (requires calibration evidence + approval).
+
+**Test results:** 47/47 calibration+epoch tests pass. 99/99 Stage 3B-2A/3B-2B regressions pass.
+Full backend suite: exit 0 (confirmed in prior session; no production code changes since).
+3/3 required browser tests pass + 7/7 existing regressions; 3 BEN5K-gated scenarios skipped
+(no owner .ben file — covered by backend unit tests).
+
+[FACT] Owner has authorized Stage 3B-2C-1. Stage 3B-2C-2, 3B-2C-3, 3B-3, BEN numerical corrections,
+Slice 6D and all push/merge/deploy actions require separate owner authorization.
+
+---
+
 ## Stage 3B-2B-2 — Invalid calibration authority gate for calculated channels (2026-11-12)
 
 [FACT] Stage 3B-2B-2 committed locally on `feature/vlt-ref-001-voltage-reference-safety`.

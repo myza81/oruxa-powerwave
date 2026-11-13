@@ -4,7 +4,39 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-12** (Stage 3B-2B-2 invalid calibration authority gate committed; 23/23 backend tests + 2 new browser tests pass; awaiting owner review before Stage 3B-2C/3B-3).
+Last updated: **2026-11-13** (Stage 3B-2C-1 phasor/impedance/sequence/distance calibration gate committed as `d744b97`; 47/47 backend tests + 3/6 browser tests (3 BEN5K-gated skips) pass; awaiting owner review before Stage 3B-2C-2/3B-2C-3).
+
+## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
+
+**Status:** Committed locally as `d744b97` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
+or ENG-mode display paths modified.
+
+**Files changed (7):**
+- `backend/app/domain/phasor.py` — `ROLE_STATUS_CALIBRATION_UNAVAILABLE` constant; `KNOWN_ROLE_STATUSES` updated
+- `backend/app/services/phasor_analysis_service.py` — `_CalibrationBlockedResult(reason: str)` sentinel;
+  5 calibration-block return sites; 3 callers updated to set `calibration_unavailable` status + reason_code
+- `backend/tests/test_phasor_calibration_gate.py` (NEW — 19 tests, scenarios A–Q)
+- `backend/tests/test_time_reference_interpretation.py` — epoch regression hardened; new COMTRADE epoch test
+- `browser-tests/ben5k-phasor-calibration-gate.spec.js` (NEW — scenarios A–K)
+- `docs/project-memory/STAGE_3B_2C_1_IMPLEMENTATION_REPORT.md` (NEW)
+- `docs/project-memory/STAGE_3B_2C_PHASOR_POWER_COMPLIANCE_ASSESSMENT.md` (NEW)
+
+**Test results:** 47/47 calibration+epoch backend tests pass. 99/99 Stage 3B-2A/3B-2B regressions pass.
+Full backend suite: exit 0. 3/6 browser tests pass (3 BEN5K-gated skips — no owner .ben file; covered
+by unit tests). 7/7 existing browser regressions pass.
+
+**Key owner decisions (OD-8/OD-9/OD-13/OD-14, binding):**
+- OD-8: Unverified blocks phasor/impedance/sequence analysis (PURPOSE_ENGINEERING_CALCULATION).
+- OD-9: Invalid blocks all derived analysis.
+- OD-13: Per-role blocking — eligible roles computed independently.
+- OD-14: Distance Protection zone verdicts require engineering-calculation eligibility.
+
+**Next steps (approved scope):**
+- Stage 3B-2C-2: Compliance ENG-mode gate (OD-10/OD-11) — requires separate owner authorization.
+- Stage 3B-2C-3: Calculated-channel POWER provenance labeling (OD-12) — requires separate authorization.
+- Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
 
 ## Stage 3B-2B-2 — Invalid calibration authority gate for calculated channels (2026-11-12)
 
