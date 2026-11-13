@@ -724,4 +724,101 @@ class TestGenuinelyUnconfigured:
         reg_present = _make_registry(active)
         result_blocked = _fetch_role_candidate("Va", _source_ref("src-a", "VA"), workspace_id=WS, source_registry=reg_present, calculated_channel_registry=_make_calc_registry())
         assert isinstance(result_blocked, _CalibrationBlockedResult)
-        assert result_missing is not result_blocked  # explicitly different sentinel types
+
+
+# ---------------------------------------------------------------------------
+# R: API schema serialization regression guard (35af9e1 schema fix)
+# ---------------------------------------------------------------------------
+
+class TestPhasorDiagramSchemaSerializationRegression:
+    """Req R: PhasorDiagramRoleStatus Literal must accept 'calibration_unavailable'.
+
+    Guards against regression of the Pydantic Literal gap fixed in 35af9e1,
+    where the domain/service produced ROLE_STATUS_CALIBRATION_UNAVAILABLE but
+    the API schema rejected it at serialization time (HTTP 500).
+
+    If 'calibration_unavailable' is removed from PhasorDiagramRoleStatus,
+    these tests will raise ValidationError and fail — that is the intended
+    regression signal.
+    """
+
+    def test_role_result_serializes_calibration_unavailable(self):
+        """PhasorDiagramRoleResultOut with status='calibration_unavailable' serializes without error."""
+        from app.schemas.phasor_analysis import PhasorDiagramRoleResultOut
+        from app.schemas.calculated_channel import ChannelRefOut
+
+        role = PhasorDiagramRoleResultOut(
+            status="calibration_unavailable",
+            channel_ref=ChannelRefOut(kind="source", source_id="src-a", channel_name="VA", calculated_channel_id=None),
+            magnitude_rms=None,
+            unit=None,
+            angle_deg_absolute=None,
+            angle_deg_relative=None,
+            reason_code="calibration_unverified",
+        )
+        # Pydantic v1: .dict(); Pydantic v2: .model_dump() — try both
+        try:
+            data = role.model_dump()
+        except AttributeError:
+            data = role.dict()
+
+        assert data["status"] == "calibration_unavailable"
+        assert data["reason_code"] == "calibration_unverified"
+        assert data["magnitude_rms"] is None
+
+    def test_diagram_result_round_trips_calibration_unavailable(self):
+        """Full PhasorDiagramResultOut with one blocked role serializes and deserializes without ValidationError."""
+        import json
+        from app.schemas.phasor_analysis import PhasorDiagramResultOut, PhasorDiagramRoleResultOut
+        from app.schemas.calculated_channel import ChannelRefOut
+
+        result = PhasorDiagramResultOut(
+            status="computed",
+            engineering_context_id="ec-1",
+            analysis_time=0.0,
+            reference_frequency_hz=50.0,
+            window_seconds=0.02,
+            algorithm_version="v1",
+            roles={
+                "Va": PhasorDiagramRoleResultOut(
+                    status="calibration_unavailable",
+                    channel_ref=ChannelRefOut(kind="source", source_id="src-a", channel_name="VA", calculated_channel_id=None),
+                    magnitude_rms=None,
+                    unit=None,
+                    angle_deg_absolute=None,
+                    angle_deg_relative=None,
+                    reason_code="calibration_unverified",
+                ),
+                "Ia": PhasorDiagramRoleResultOut(
+                    status="available",
+                    channel_ref=ChannelRefOut(kind="source", source_id="src-ct", channel_name="IA", calculated_channel_id=None),
+                    magnitude_rms=100.0,
+                    unit="A",
+                    angle_deg_absolute=-30.0,
+                    angle_deg_relative=None,
+                    reason_code=None,
+                ),
+            },
+            warnings=[],
+            reason_code=None,
+            message="",
+        )
+
+        try:
+            serialized = result.model_dump()
+            json_str = json.dumps(serialized)
+            # Round-trip: parse back
+            parsed_back = PhasorDiagramResultOut.model_validate(json.loads(json_str))
+        except AttributeError:
+            # Pydantic v1
+            serialized = result.dict()
+            json_str = json.dumps(serialized)
+            parsed_back = PhasorDiagramResultOut.parse_raw(json_str)
+
+        va_role = parsed_back.roles["Va"]
+        ia_role = parsed_back.roles["Ia"]
+        assert va_role.status == "calibration_unavailable"
+        assert va_role.reason_code == "calibration_unverified"
+        assert va_role.magnitude_rms is None
+        assert ia_role.status == "available"
+        assert ia_role.magnitude_rms == 100.0
