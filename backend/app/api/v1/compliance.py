@@ -97,6 +97,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_compliance_alignment": status.HTTP_400_BAD_REQUEST,
     "measurement_group_not_found": status.HTTP_404_NOT_FOUND,
     "compliance_measurement_group_not_voltage_kind": status.HTTP_400_BAD_REQUEST,
+    "invalid_calibration_authority": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -238,7 +239,7 @@ def _readiness_to_out(result: ReadinessResult) -> ComplianceReadinessOut:
                 members=[
                     ComplianceMemberReadinessOut(
                         member=m.member, state=m.state, message=m.message, channel_name=m.channel_name,
-                        calculated_channel_id=m.calculated_channel_id,
+                        calculated_channel_id=m.calculated_channel_id, reason_code=m.reason_code,
                     )
                     for m in r.members
                 ],

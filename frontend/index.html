@@ -7210,6 +7210,7 @@
         .ww-compliance-readiness-status { margin: 0; font-size: 0.7rem; font-weight: 700; }
         .ww-compliance-readiness-status--ready { color: #2f7a46; }
         .ww-compliance-readiness-status--action_required { color: #a86a00; }
+        .ww-compliance-readiness-status--calibration_unavailable { color: #a86a00; }
         .ww-compliance-readiness-status--incompatible { color: #a33; }
         .ww-compliance-reference-readiness {
             display: flex;
@@ -54407,6 +54408,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_COMPLIANCE_READINESS_LABEL = {
             ready: "✓ Ready for assessment",
             action_required: "⚠ Action required",
+            calibration_unavailable: "⚠ Calibration required for compliance assessment",
             incompatible: "✕ Measurement cannot satisfy this reference",
             no_reference: "Add a Reference Layer to define what must be assessed.",
         };
@@ -54418,6 +54420,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             needs_line_to_line: "line-to-line voltage + RMS need preparation",
             derived_at_assessment: "derived from instantaneous phases at assessment",
             blocked: "cannot be prepared here",
+            calibration_unavailable: "calibration status prevents compliance assessment",
             incompatible: "cannot be satisfied",
         };
 
@@ -54501,6 +54504,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const states = reference.members.map((m) => m.state);
             if (!reference.requirement.requires_rms) {
                 return { cls: "ok", text: "✓ No RMS preparation required" };
+            }
+            if (states.some((s) => s === "calibration_unavailable")) {
+                const blocked = reference.members.find((m) => m.state === "calibration_unavailable");
+                return { cls: "action", text: "⚠ " + (blocked.message || "Calibration status prevents compliance assessment.") };
             }
             if (states.some((s) => s === "needs_rms" || s === "needs_line_to_line")) {
                 return { cls: "action", text: "⚠ Fundamental RMS needs preparation" };

@@ -91,6 +91,7 @@ class ComplianceMemberReadinessOut(BaseModel):
     message: str | None = None
     channel_name: str | None = None
     calculated_channel_id: str | None = None
+    reason_code: str | None = None
 
 
 class ComplianceReferenceReadinessOut(BaseModel):

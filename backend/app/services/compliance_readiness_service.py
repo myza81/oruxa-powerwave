@@ -106,8 +106,12 @@ from app.services.compliance_measurement_service import (
 )
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.physical_calibration import evaluate_calibration_eligibility, PURPOSE_COMPLIANCE_ASSESSMENT
+from app.services.calculated_channel_service import _collect_leaf_authorities
 from app.services.errors import (
     ComplianceMeasurementGroupNotVoltageKindError,
+    InvalidCalibrationAuthorityError,
     MeasurementGroupNotFoundError,
 )
 from app.services.line_to_line_voltage_service import (
@@ -130,6 +134,7 @@ STATE_NEEDS_LINE_LINE = "needs_line_to_line"       # a line-to-line calculated c
 STATE_DERIVED_AT_ASSESSMENT = "derived_at_assessment"  # phasor-derived at assessment time; nothing to prepare
 STATE_BLOCKED = "blocked"                          # satisfiable, but not preparable here (needs manual action)
 STATE_INCOMPATIBLE = "incompatible"
+STATE_CALIBRATION_UNAVAILABLE = "calibration_unavailable"
 
 STEP_RMS = "rms"
 STEP_LINE_TO_LINE = "line_to_line"
@@ -166,6 +171,7 @@ class MemberReadiness:
     #: (`source_rms` / `reused`). `None` while something still has to be prepared.
     channel_ref: ChannelRef | None = None
     step: PreparationStep | None = None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,6 +355,46 @@ def _line_to_line_context_id(ctx: _Context, pair: str, operands: tuple[ChannelRe
     return context_id, None
 
 
+def _check_compliance_calibration(ref: ChannelRef, *, ctx: _Context) -> str | None:
+    """Returns reason code if this ref's calibration blocks compliance assessment, else None.
+
+    Uses the same fail-closed rules as Stage 3B-2A/3B-2B/3B-2C-1: BEN5K with
+    absent or non-Verified authority is blocked; non-BEN5K not-assessed passes."""
+    if ref.kind == "source":
+        active = ctx.source_registry.get(ctx.workspace_id, ref.source_id)
+        if active is None:
+            return None  # source gone — let normal flow raise SourceNotFoundError
+        _meta = next((ch for ch in active.record.analog_channels if ch.name == ref.channel_name), None)
+        _is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+        if _meta is None and _is_ben5k:
+            return "channel_not_found_ben5k"
+        if _meta is not None:
+            _auth = _meta.calibration_authority
+            if _auth is None and _is_ben5k:
+                return "ben5k_authority_absent"
+            if _auth is not None:
+                _elig = evaluate_calibration_eligibility([_auth], PURPOSE_COMPLIANCE_ASSESSMENT)
+                if not _elig.eligible:
+                    return _elig.reason
+        return None
+    # calculated-kind
+    calc_ch = ctx.calc_registry.get(ctx.workspace_id, ref.calculated_channel_id)
+    if calc_ch is None:
+        return None  # channel gone — let normal flow handle
+    _leaf = _collect_leaf_authorities(
+        calc_ch, workspace_id=ctx.workspace_id,
+        source_registry=ctx.source_registry, calc_registry=ctx.calc_registry,
+    )
+    if _leaf.blocked_reason is not None:
+        return _leaf.blocked_reason
+    _elig2 = evaluate_calibration_eligibility(
+        [a for a in _leaf.authorities if a is not None], PURPOSE_COMPLIANCE_ASSESSMENT,
+    )
+    if not _elig2.eligible:
+        return _elig2.reason
+    return None
+
+
 def _plan_phase_ground(ctx: _Context, member: str) -> MemberReadiness:
     role = _ROLE_BY_MEMBER[member]
     label = _role_text(role, ctx.display)
@@ -359,6 +405,14 @@ def _plan_phase_ground(ctx: _Context, member: str) -> MemberReadiness:
 
 
 def _plan_direct_channel(ctx: _Context, member: str, ref: ChannelRef, label: str) -> MemberReadiness:
+    # Stage 3B-2C-2: compliance calibration gate — checked before input-type classification
+    _calib_reason = _check_compliance_calibration(ref, ctx=ctx)
+    if _calib_reason is not None:
+        return MemberReadiness(
+            member=member, state=STATE_CALIBRATION_UNAVAILABLE,
+            reason_code=_calib_reason,
+            message=f"{label}: calibration status prevents compliance assessment ({_calib_reason}).",
+        )
     input_type = ctx.input_type(ref)
     if input_type is None:
         return MemberReadiness(
@@ -525,8 +579,16 @@ def _evaluate_reference(
         )
 
     incompatible = [m for m in members if m.state == STATE_INCOMPATIBLE]
+    calibration_unavail = [m for m in members if m.state == STATE_CALIBRATION_UNAVAILABLE]
     needs_action = [m for m in members if m.state in (STATE_NEEDS_RMS, STATE_NEEDS_LINE_LINE, STATE_BLOCKED)]
-    if incompatible:
+    # calibration_unavailable takes priority over incompatible (OD-10a): when any actual
+    # required member is blocked by calibration, the reference is calibration_unavailable
+    # even if other members are unassigned/incompatible. The individual member states
+    # (incompatible, calibration_unavailable) are always preserved in `members`.
+    if calibration_unavail:
+        status = "calibration_unavailable"
+        message = calibration_unavail[0].message
+    elif incompatible:
         status, message = READINESS_INCOMPATIBLE, incompatible[0].message
     elif needs_action or unit_state == "action_required":
         status = READINESS_ACTION_REQUIRED
@@ -610,6 +672,9 @@ def evaluate_readiness(
 
     if not references:
         status = READINESS_NO_REFERENCE
+    elif any(r.status == "calibration_unavailable" for r in references):
+        # calibration_unavailable bubbles to overall ahead of incompatible (OD-10a).
+        status = "calibration_unavailable"
     elif any(r.status == READINESS_INCOMPATIBLE for r in references):
         status = READINESS_INCOMPATIBLE
     elif any(r.status == READINESS_ACTION_REQUIRED for r in references):

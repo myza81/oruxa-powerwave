@@ -28,11 +28,17 @@ import numpy as np
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import UNDEFINED
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
 from app.domain.per_unit import STATUS_CONFIGURED, apply_per_unit_to_array
+from app.domain.physical_calibration import evaluate_calibration_eligibility, PURPOSE_COMPLIANCE_ASSESSMENT
 from app.domain.reference_profile import UNIT_KILOVOLT, UNIT_PER_UNIT, UNIT_VOLT
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
-from app.services.calculated_channel_service import _resolve_effective_per_unit_for_calculated_channel
+from app.services.calculated_channel_service import (
+    _collect_leaf_authorities,
+    _resolve_effective_per_unit_for_calculated_channel,
+)
+from app.services.errors import InvalidCalibrationAuthorityError
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
@@ -83,6 +89,21 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
         channel = get_calculated_result(workspace_id, ref.calculated_channel_id, source_registry=reg.source, calc_registry=reg.calc)
         if channel is None:
             return None
+        # Stage 3B-2C-2: compliance calibration gate (calc-kind)
+        _leaf = _collect_leaf_authorities(channel, workspace_id=workspace_id, source_registry=reg.source, calc_registry=reg.calc)
+        if _leaf.blocked_reason is not None:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' depends on a blocked source.",
+                reason=_leaf.blocked_reason,
+            )
+        _elig2 = evaluate_calibration_eligibility(
+            [a for a in _leaf.authorities if a is not None], PURPOSE_COMPLIANCE_ASSESSMENT,
+        )
+        if not _elig2.eligible:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' calibration is {_elig2.reason}.",
+                reason=_elig2.reason,
+            )
         profile_source = reg.per_unit.profile_for_calculated_channel(workspace_id, channel.id)
         profile = reg.per_unit.get(workspace_id, profile_source) if profile_source else None
         names = voltage_channel_names_for_source(reg.source, workspace_id, profile.source_id) if profile is not None else []
@@ -100,6 +121,28 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
     active = reg.source.get(workspace_id, ref.source_id)
     if active is None:
         return None
+    # Stage 3B-2C-2: compliance calibration gate (source-kind)
+    _meta = next((ch for ch in active.record.analog_channels if ch.name == ref.channel_name), None)
+    _is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+    if _meta is None and _is_ben5k:
+        raise InvalidCalibrationAuthorityError(
+            f"Channel '{ref.channel_name}' not found in BEN5K record.",
+            reason="channel_not_found_ben5k",
+        )
+    if _meta is not None:
+        _auth = _meta.calibration_authority
+        if _auth is None and _is_ben5k:
+            raise InvalidCalibrationAuthorityError(
+                f"Channel '{ref.channel_name}' has no calibration authority in BEN5K record.",
+                reason="ben5k_authority_absent",
+            )
+        if _auth is not None:
+            _elig = evaluate_calibration_eligibility([_auth], PURPOSE_COMPLIANCE_ASSESSMENT)
+            if not _elig.eligible:
+                raise InvalidCalibrationAuthorityError(
+                    f"Channel '{ref.channel_name}' calibration is {_elig.reason}.",
+                    reason=_elig.reason,
+                )
     data = active.record.waveform_data
     if ref.channel_name not in data.columns:
         return None
