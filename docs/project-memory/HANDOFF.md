@@ -4,8 +4,35 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-13** (Stage 3B-2C-2 committed as `c7b8388`; full suite 12,615 collected, exit 0, 0 failures;
-4/4 browser scenarios pass, 0 skipped; awaiting owner review before Stage 3B-2C-3).
+Last updated: **2026-11-13** (Stage 3B-2C-3 committed as `d30a4be`; full suite 12,640 collected, 12,271 passed, 391 skipped, exit 0, 0 failures;
+8/8 browser tests pass, 0 skipped; awaiting owner review before Stage 3B-3).
+
+## Stage 3B-2C-3 — Calculated POWER calibration provenance (2026-11-13)
+
+**Status:** Committed locally as `d30a4be` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
+or ENG-mode display paths modified.
+
+**Files changed (6 files):**
+- `backend/app/api/v1/calculated_channels.py` — `_collect_leaf_authorities()` DFS; `_compute_provenance()` router; provenance fields on POST/GET-list
+- `backend/app/schemas/calculated_channel.py` — `calibration_provenance_status` + `calibration_provenance_reason` on `CalculatedChannelOut`
+- `frontend/index.html` — badge CSS; `wwCalcChannelProvenanceBadgeHtml()`; sidebar + manager insertion; `wwPeakValueLineText()` ⚠ for `exploratory_unverified`
+- `backend/tests/test_power_provenance.py` (NEW — 25 tests, TestA–TestN)
+- `browser-tests/power-provenance.spec.js` (NEW — 8 browser tests, Scenarios A–H)
+- `docs/project-memory/STAGE_3B_2C_3_POWER_PROVENANCE_ASSESSMENT.md` (updated — implementation complete)
+
+**Test results:**
+- 25/25 power provenance tests pass. 8/8 browser tests pass (Scenarios A–H), 0 skipped.
+- Full backend suite: 12,640 collected, 12,271 passed, 391 skipped, exit 0, 0 failures.
+
+**Key owner decisions (OD-12, binding):**
+- OD-12: Calculated POWER channels from BEN5K sources carry `exploratory_unverified` provenance label.
+- Six status values: `all_verified`, `not_fully_verified`, `exploratory_unverified`, `not_assessed`, `blocked_invalid`, `blocked_structural`.
+- No active export pathway for calc channels; calc-channel export provenance labeling deferred to Stage 3B-3.
+
+**Next steps (approved scope):**
+- Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
 
 ## Stage 3B-2C-2 — Compliance calibration gate (2026-11-13)
 
@@ -34,7 +61,7 @@ or ENG-mode display paths modified.
 - OD-11: Invalid inputs → `InvalidCalibrationAuthorityError`; HTTP 422; not HTTP 500.
 
 **Next steps (approved scope):**
-- Stage 3B-2C-3: POWER provenance labeling (OD-12) — requires separate owner authorization.
+- Stage 3B-2C-3: committed as `d30a4be` — see section above.
 - Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
 - Push / merge / deploy: not authorized.
 
@@ -72,8 +99,8 @@ scenarios pass, 0 skipped.
 - OD-14: Distance Protection zone verdicts require engineering-calculation eligibility.
 
 **Next steps (approved scope):**
-- Stage 3B-2C-2: Compliance ENG-mode gate (OD-10/OD-11) — requires separate owner authorization.
-- Stage 3B-2C-3: Calculated-channel POWER provenance labeling (OD-12) — requires separate authorization.
+- Stage 3B-2C-2: committed as `c7b8388` — see section above.
+- Stage 3B-2C-3: committed as `d30a4be` — see section above.
 - Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
 - Push / merge / deploy: not authorized.
 

@@ -9,6 +9,61 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3B-2C-3 — Calculated POWER calibration provenance (2026-11-13)
+
+[FACT] Stage 3B-2C-3 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `d30a4be`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
+No PU mathematics or ENG-mode display paths modified.
+
+**What Stage 3B-2C-3 introduced:**
+
+- `calculated_channels.py` — `_collect_leaf_authorities()` DFS traversal returning
+  `_LeafAuthorityResult(authorities, blocked_reason)`; `_compute_provenance()` router returning
+  `(status, reason)` for all 6 status values. Fail-closed for BEN5K and structural errors.
+  POST and GET-list responses include `calibration_provenance_status` and
+  `calibration_provenance_reason` fields.
+
+- `schemas/calculated_channel.py` — `calibration_provenance_status: str | None = None` and
+  `calibration_provenance_reason: str | None = None` on `CalculatedChannelOut`.
+
+- `frontend/index.html` — Badge CSS (`.ww-calc-provenance-badge--exploratory`); 
+  `wwCalcChannelProvenanceBadgeHtml()` inserted in channel manager and waveform sidebar rows;
+  `wwPeakValueLineText()` appends ` ⚠` (U+26A0) for `exploratory_unverified` channels.
+
+- `test_power_provenance.py` (NEW — 25 tests): TestA–TestN covering leaf-authority DFS,
+  provenance routing, all 6 status values, mixed BEN5K+COMTRADE, API serialization round-trip.
+
+- `power-provenance.spec.js` (NEW — 8 browser tests): Scenarios A-H covering API provenance
+  status, two-hop DFS, channel manager badge, waveform sidebar badge, peak annotation ⚠,
+  ENG→PU→ENG transition (no stale labels), source-removal cascade, no JS errors throughout.
+
+**Six provenance status values:**
+- `all_verified` — all leaf sources have verified calibration authority.
+- `not_fully_verified` — mixed: at least one verified, at least one not fully verified.
+- `exploratory_unverified` — all leaves are BEN5K / unverified (no verified leaf at all).
+- `not_assessed` — all leaves are COMTRADE / None-authority (not assessed, backward compat).
+- `blocked_invalid` — at least one leaf has invalid calibration authority.
+- `blocked_structural` — structural error (cycle, missing source, empty leaf set).
+
+**Key owner decisions honored (OD-12):**
+- OD-12: Calculated POWER channels from BEN5K sources must carry `exploratory_unverified` label.
+- `blocked_structural` and `blocked_invalid` gate waveform/cursor/peak paths via
+  `InvalidCalibrationAuthorityError` (same path as Stage 3B-2B-2).
+- Manual Calculator uses `SinglePhasePowerOut` — no provenance field; correct by design.
+- No active export pathway for calc channels; deferred to Stage 3B-3.
+
+**What remains inactive:**
+- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- BEN5K numerical correction (requires calibration evidence + approval).
+- Calc channel export provenance labeling (Stage 3B-3 — deferred; no active export pathway).
+
+**Test results (2026-11-13):**
+- 25/25 power provenance tests pass.
+- 8/8 browser tests pass (Scenarios A-H), exit code 0.
+- Full backend suite (12,640 collected, 12,271 passed, 391 skipped, exit 0, 0 failures).
+
+---
+
 ## Stage 3B-2C-2 — Compliance calibration gate (2026-11-13)
 
 [FACT] Stage 3B-2C-2 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `c7b8388`.
@@ -56,7 +111,7 @@ No PU mathematics or ENG-mode display paths modified.
 - Reason code is always a machine-readable string on `ComplianceMemberReadinessOut.reason_code`.
 
 **What remains inactive:**
-- Stage 3B-2C-3 (POWER labeling, OD-12 — requires separate authorization).
+- Stage 3B-2C-3: committed as `d30a4be` — see section above.
 - Frontend calibration limitation display (Stage 3B-3 — requires authorization).
 - BEN5K numerical correction (requires calibration evidence + approval).
 
@@ -104,7 +159,7 @@ No PU mathematics or ENG-mode display paths modified.
 
 **What remains inactive:**
 - Stage 3B-2C-2: committed as `c7b8388` — see section above.
-- Stage 3B-2C-3 (POWER labeling, OD-12 — requires separate authorization).
+- Stage 3B-2C-3: committed as `d30a4be` — see section above.
 - Frontend calibration limitation display (Stage 3B-3 — requires authorization).
 - BEN5K numerical correction (requires calibration evidence + approval).
 
