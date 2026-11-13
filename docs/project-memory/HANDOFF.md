@@ -4,15 +4,16 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-13** (Stage 3B-2C-1 phasor/impedance/sequence/distance calibration gate committed as `d744b97`; 47/47 backend tests + 3/6 browser tests (3 BEN5K-gated skips) pass; awaiting owner review before Stage 3B-2C-2/3B-2C-3).
+Last updated: **2026-11-13** (Stage 3B-2C-1 browser hardening committed as `35af9e1`; 6/6 browser
+scenarios pass, 0 skipped; schema gap in `d744b97` fixed; awaiting owner review before Stage 3B-2C-2/3B-2C-3).
 
 ## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
 
-**Status:** Committed locally as `d744b97` on `feature/vlt-ref-001-voltage-reference-safety`.
+**Status:** Committed locally as `d744b97` + `e417945` + `35af9e1` on `feature/vlt-ref-001-voltage-reference-safety`.
 NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
 or ENG-mode display paths modified.
 
-**Files changed (7):**
+**Files changed (`d744b97` + `e417945`, original implementation, 7 files):**
 - `backend/app/domain/phasor.py` — `ROLE_STATUS_CALIBRATION_UNAVAILABLE` constant; `KNOWN_ROLE_STATUSES` updated
 - `backend/app/services/phasor_analysis_service.py` — `_CalibrationBlockedResult(reason: str)` sentinel;
   5 calibration-block return sites; 3 callers updated to set `calibration_unavailable` status + reason_code
@@ -22,9 +23,16 @@ or ENG-mode display paths modified.
 - `docs/project-memory/STAGE_3B_2C_1_IMPLEMENTATION_REPORT.md` (NEW)
 - `docs/project-memory/STAGE_3B_2C_PHASOR_POWER_COMPLIANCE_ASSESSMENT.md` (NEW)
 
+**Files changed (`35af9e1`, browser hardening, 3 files):**
+- `backend/tests/fixtures/ben/synthetic_ben5k_phasor.ben` (NEW — 3518-byte BEN5K with Va+Ia UNVERIFIED)
+- `backend/app/schemas/phasor_analysis.py` — `PhasorDiagramRoleStatus` extended with `"calibration_unavailable"`
+  (gap in `d744b97`: domain/service emitted the status but Pydantic output schema rejected it → HTTP 500)
+- `browser-tests/ben5k-phasor-calibration-gate.spec.js` — env-var gate removed from scenarios A/B/C/D/E;
+  all now mandatory with synthetic fixture; 2 pre-existing bugs fixed (endpoint, null_policy)
+
 **Test results:** 47/47 calibration+epoch backend tests pass. 99/99 Stage 3B-2A/3B-2B regressions pass.
-Full backend suite: exit 0. 3/6 browser tests pass (3 BEN5K-gated skips — no owner .ben file; covered
-by unit tests). 7/7 existing browser regressions pass.
+Full backend suite: exit 0. 171 phasor regressions re-run after schema fix: 171 pass. 6/6 browser
+scenarios pass, 0 skipped.
 
 **Key owner decisions (OD-8/OD-9/OD-13/OD-14, binding):**
 - OD-8: Unverified blocks phasor/impedance/sequence analysis (PURPOSE_ENGINEERING_CALCULATION).

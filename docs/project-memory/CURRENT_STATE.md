@@ -11,7 +11,8 @@
 
 ## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
 
-[FACT] Stage 3B-2C-1 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `d744b97`.
+[FACT] Stage 3B-2C-1 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `d744b97`
+(implementation) + `e417945` (docs) + `35af9e1` (browser hardening — see below).
 NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
 No PU mathematics or ENG-mode display paths modified.
 
@@ -47,10 +48,19 @@ No PU mathematics or ENG-mode display paths modified.
 - Frontend calibration limitation display (Stage 3B-3 — requires authorization).
 - BEN5K numerical correction (requires calibration evidence + approval).
 
+**Browser hardening additions (commit `35af9e1`):**
+- `synthetic_ben5k_phasor.ben` fixture (3518 bytes) with Va+Ia channels, both CALIBRATION_UNVERIFIED.
+  Verified against real `parse_ben5k()` → `to_disturbance_record()` pipeline.
+- `schemas/phasor_analysis.py` — `PhasorDiagramRoleStatus` Literal extended to include
+  `"calibration_unavailable"` (gap from original `d744b97`; domain/service emitted the status but
+  the Pydantic output schema rejected it, causing HTTP 500 on BEN5K phasor-diagram requests).
+- `ben5k-phasor-calibration-gate.spec.js` — env-var gate removed from scenarios A/B/C/D/E; all
+  now mandatory using the synthetic fixture. Two pre-existing bugs fixed (wrong API endpoint for
+  channel discovery; wrong null_policy value for calc-channel creation).
+
 **Test results:** 47/47 calibration+epoch tests pass. 99/99 Stage 3B-2A/3B-2B regressions pass.
-Full backend suite: exit 0 (confirmed in prior session; no production code changes since).
-3/3 required browser tests pass + 7/7 existing regressions; 3 BEN5K-gated scenarios skipped
-(no owner .ben file — covered by backend unit tests).
+Full backend suite: exit 0 (confirmed before browser hardening; schema-only change since, 171 phasor
+regressions re-run: all pass). 6/6 browser scenarios pass, 0 skipped — all mandatory.
 
 [FACT] Owner has authorized Stage 3B-2C-1. Stage 3B-2C-2, 3B-2C-3, 3B-3, BEN numerical corrections,
 Slice 6D and all push/merge/deploy actions require separate owner authorization.
