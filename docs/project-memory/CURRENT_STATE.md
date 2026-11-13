@@ -9,6 +9,66 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Stage 3B-2C-2 — Compliance calibration gate (2026-11-13)
+
+[FACT] Stage 3B-2C-2 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `c7b8388`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied.
+No PU mathematics or ENG-mode display paths modified.
+
+**What Stage 3B-2C-2 introduced:**
+
+- `compliance_series.py` — C-1 bypass closed: `_raw()` now gates both source-kind and calc-kind refs
+  via `_check_compliance_calibration()` before the existing path. BEN5K channels: not-found →
+  `channel_not_found_ben5k`; absent authority → `ben5k_authority_absent`; Unverified → `physical_
+  calibration_unverified`; Invalid → `physical_calibration_invalid`. All raise `InvalidCalibrationAuthorityError`.
+
+- `compliance_readiness_service.py` — C-2 bypass closed: `_plan_direct_channel()` calls
+  `_check_compliance_calibration()` before structural planning; blocked refs return
+  `MemberReadiness(state="calibration_unavailable", reason_code=...)`. Precedence corrected:
+  `calibration_unavailable` beats `incompatible` in `_evaluate_reference()` and `evaluate_readiness()`.
+  `MemberReadiness.reason_code: str | None` added.
+
+- `compliance.py` — `_STATUS_BY_ERROR_CODE["invalid_calibration_authority"] = HTTP_422` added;
+  `reason_code` passed to `ComplianceMemberReadinessOut`.
+
+- `schemas/compliance.py` — `reason_code: str | None = None` on `ComplianceMemberReadinessOut`.
+
+- `frontend/index.html` — CSS token `--compliance-calibration-unavailable`; label map entries for
+  `calibration_unavailable` state; `wwComplianceRepresentationRow()` guard prevents "✓ Fundamental
+  RMS available" when any member is `calibration_unavailable`.
+
+- `test_compliance_calibration_gate.py` (NEW — 39 tests): C-1/C-2 bypass closures, precedence,
+  distinct reason codes, serialization round-trip, HTTP 422, OD-10 no-false-verdict.
+
+- `synthetic_ben5k_compliance.ben` (NEW — 3776 bytes): 3-phase BEN5K fixture (VR/VY/VB,
+  all CALIBRATION_UNVERIFIED). Always produces a voltage Measurement Group on upload.
+
+- `compliance-calibration-gate.spec.js` (NEW — 4 browser tests): Scenario A (COMTRADE backward
+  compat), B (BEN5K 3-phase → `calibration_unavailable`, 0 skips), C×2 (UI smoke).
+
+**Key owner decisions honored (OD-10a/OD-11):**
+- OD-10a: Compliance + Unverified inputs → `calibration_unavailable` (not `incompatible`).
+- OD-11: Invalid inputs block compliance assessment; `InvalidCalibrationAuthorityError` raised.
+
+**Distinctions from previous stage:**
+- `calibration_unavailable` ≠ `incompatible`: different engineer actions; never conflated.
+- COMTRADE (not-assessed, None authority) passes gate unchanged — backward compat preserved.
+- Reason code is always a machine-readable string on `ComplianceMemberReadinessOut.reason_code`.
+
+**What remains inactive:**
+- Stage 3B-2C-3 (POWER labeling, OD-12 — requires separate authorization).
+- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- BEN5K numerical correction (requires calibration evidence + approval).
+
+**Test results (2026-11-13):**
+- 39/39 compliance calibration gate tests pass.
+- 46/46 compliance readiness + measurement API tests pass.
+- 120/120 phasor + PU + calculated channel + invalid calibration gate tests pass.
+- Full backend suite (12,615 collected, exit 0, 0 failures — see HANDOFF.md).
+- Browser (BEN5K_EXPERIMENTAL_ENABLED=1): 4/4 compliance-calibration-gate + 6/6 ben5k-phasor-calibration-gate pass, 0 skipped.
+
+---
+
 ## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
 
 [FACT] Stage 3B-2C-1 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `d744b97`
@@ -43,7 +103,7 @@ No PU mathematics or ENG-mode display paths modified.
 - OD-14: Distance Protection zone verdicts require engineering-calculation eligibility.
 
 **What remains inactive:**
-- Stage 3B-2C-2 (compliance gate, OD-10/OD-11 — requires separate authorization).
+- Stage 3B-2C-2: committed as `c7b8388` — see section above.
 - Stage 3B-2C-3 (POWER labeling, OD-12 — requires separate authorization).
 - Frontend calibration limitation display (Stage 3B-3 — requires authorization).
 - BEN5K numerical correction (requires calibration evidence + approval).

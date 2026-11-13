@@ -4,8 +4,39 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-13** (Stage 3B-2C-1 browser hardening committed as `35af9e1`; 6/6 browser
-scenarios pass, 0 skipped; schema gap in `d744b97` fixed; awaiting owner review before Stage 3B-2C-2/3B-2C-3).
+Last updated: **2026-11-13** (Stage 3B-2C-2 committed as `c7b8388`; full suite 12,615 collected, exit 0, 0 failures;
+4/4 browser scenarios pass, 0 skipped; awaiting owner review before Stage 3B-2C-3).
+
+## Stage 3B-2C-2 — Compliance calibration gate (2026-11-13)
+
+**Status:** Committed locally as `c7b8388` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
+or ENG-mode display paths modified.
+
+**Files changed (9 files):**
+- `backend/app/services/compliance_series.py` — C-1 bypass closed via `_check_compliance_calibration()`
+- `backend/app/services/compliance_readiness_service.py` — C-2 bypass closed; precedence corrected; `reason_code` field
+- `backend/app/api/v1/compliance.py` — HTTP 422 for `invalid_calibration_authority`; `reason_code` output
+- `backend/app/schemas/compliance.py` — `reason_code: str | None = None` on `ComplianceMemberReadinessOut`
+- `frontend/index.html` — CSS token; label map; `wwComplianceRepresentationRow()` guard
+- `backend/tests/test_compliance_calibration_gate.py` (NEW — 39 tests)
+- `backend/tests/fixtures/ben/synthetic_ben5k_compliance.ben` (NEW — 3776-byte 3-phase BEN5K fixture)
+- `browser-tests/compliance-calibration-gate.spec.js` (NEW — 4 browser tests)
+- `docs/project-memory/STAGE_3B_2C_2_COMPLIANCE_CALIBRATION_ASSESSMENT.md` (updated — §18 added)
+
+**Test results:**
+- 39/39 calibration gate tests pass. 46/46 compliance API tests pass. 120/120 phasor+PU gate tests pass.
+- Full backend suite: 12,615 collected, exit 0, 0 failures (confirmed ×3 runs). Browser: 4/4 compliance + 6/6 phasor.
+- Browser: 4/4 compliance-calibration-gate pass (0 skipped, BEN5K_EXPERIMENTAL_ENABLED=1). 6/6 ben5k-phasor pass.
+
+**Key owner decisions (OD-10a/OD-11, binding):**
+- OD-10a: Compliance + Unverified inputs → `calibration_unavailable` (not `incompatible`).
+- OD-11: Invalid inputs → `InvalidCalibrationAuthorityError`; HTTP 422; not HTTP 500.
+
+**Next steps (approved scope):**
+- Stage 3B-2C-3: POWER provenance labeling (OD-12) — requires separate owner authorization.
+- Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
 
 ## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
 
