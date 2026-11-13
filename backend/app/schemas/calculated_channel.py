@@ -212,6 +212,12 @@ class CalculatedChannelOut(BaseModel):
     timing_error: str | None = None
     timing_source_ids: list[str] = []
     timing_fingerprint: str = ""
+    # Stage 3B-2C-3 (DEC-213, OD-12): calibration provenance of leaf source
+    # inputs, computed at API boundary from current source-registry state.
+    # None when source_registry is unavailable (backward compat for tests).
+    # Empty leaf set → blocked_structural (not all_verified per owner Refinement 1).
+    calibration_provenance_status: str | None = None
+    calibration_provenance_reason: str | None = None
 
     def _display_axis(self) -> DisplayAxis:
         # A calculated channel carries a broad engineering_type and a
@@ -263,7 +269,13 @@ class CalculatedChannelOut(BaseModel):
         return self._per_unit_display_axis().unit
 
     @classmethod
-    def from_domain(cls, channel: CalculatedChannel, timing: dict | None = None) -> "CalculatedChannelOut":
+    def from_domain(
+        cls,
+        channel: CalculatedChannel,
+        timing: dict | None = None,
+        calibration_provenance_status: str | None = None,
+        calibration_provenance_reason: str | None = None,
+    ) -> "CalculatedChannelOut":
         return cls(
             **(timing or {}),
             id=channel.id,
@@ -287,6 +299,8 @@ class CalculatedChannelOut(BaseModel):
             voltage_representation=channel.voltage_representation,
             phase_member=channel.phase_member,
             creation_batch_id=channel.creation_batch_id,
+            calibration_provenance_status=calibration_provenance_status,
+            calibration_provenance_reason=calibration_provenance_reason,
         )
 
 

@@ -7212,6 +7212,10 @@
         .ww-compliance-readiness-status--action_required { color: #a86a00; }
         .ww-compliance-readiness-status--calibration_unavailable { color: #a86a00; }
         .ww-compliance-readiness-status--incompatible { color: #a33; }
+        /* Stage 3B-2C-3 (DEC-213, OD-12): calibration provenance badge on calculated-channel rows. */
+        .ww-calc-provenance-badge { font-size: 0.75em; margin-left: 0.3em; white-space: nowrap; }
+        .ww-calc-provenance-badge--exploratory { color: #a86a00; }
+        .ww-calc-provenance-badge--not-fully-verified { color: #888; }
         .ww-compliance-reference-readiness {
             display: flex;
             flex-direction: column;
@@ -33493,6 +33497,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Returns a plain-text compact label for single- or three-phase power
         // calculated channels (e.g. "P₃ₚₕ · PMJY1 · IBT1 HV VA"), or null when no
         // compact label is appropriate. Null causes callers to fall through to
+        // Stage 3B-2C-3 (DEC-213, OD-12): calibration provenance badge for
+        // calculated channels. Returns an HTML span or "" (no badge needed).
+        function wwCalcChannelProvenanceBadgeHtml(calc) {
+            if (!calc) return "";
+            const s = calc.calibration_provenance_status;
+            if (s === "exploratory_unverified") {
+                return '<span class="ww-calc-provenance-badge ww-calc-provenance-badge--exploratory" ' +
+                    'title="One or more input sources are Unverified. This channel is exploratory only.">&#9888; exploratory</span>';
+            }
+            if (s === "not_fully_verified") {
+                return '<span class="ww-calc-provenance-badge ww-calc-provenance-badge--not-fully-verified" ' +
+                    'title="Input sources include Not Assessed channels. Cannot claim fully Verified.">not fully verified</span>';
+            }
+            return "";
+        }
+
         // the full calc.name. Rules applied in order:
         //   (1) power operation only;
         //   (2) user alias suppressed by caller (wwCalculatedChannelUserName);
@@ -36962,7 +36982,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!data.available) return prefix + ": Unavailable for current view";
             const valueText = wwFormatEngineeringValue(data.peakValue);
             const unitText = data.unit ? " " + data.unit : "";
-            return prefix + ": " + valueText + unitText + wwPuReferenceSuffix(
+            // Stage 3B-2C-3 (DEC-213, OD-12): append warning glyph when the peak
+            // is from a calculated channel whose leaf sources are Unverified.
+            const calcObj = (data.sourceId && ww && ww.calculatedChannels)
+                ? ww.calculatedChannels.get(data.sourceId) : null;
+            const exploratoryNote = (calcObj && calcObj.calibration_provenance_status === "exploratory_unverified")
+                ? " ⚠" : "";
+            return prefix + ": " + valueText + unitText + exploratoryNote + wwPuReferenceSuffix(
                 wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility));
         }
 
@@ -42102,7 +42128,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '<div class="ww-cc-list-row' + (selected ? " ww-cc-list-row--selected" : "") + '" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
-                        '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span></div>' +
+                        '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span>' + wwCalcChannelProvenanceBadgeHtml(calc) + '</div>' +
                         '<div class="ww-cc-list-row-expr">' + wwCcExpressionHtmlFor(calc) + '</div>' +
                         '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
@@ -42419,7 +42445,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '</summary>';
                 subgroupsHtml += '<div class="group-body">' + renderChannelTable(group, [
                     ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id },
-                        { ...c, unit: ww.displayed.get(wwChannelKey(c.id, c.name))?.channel.unit ?? c.unit }), { raw: true }],
+                        { ...c, unit: ww.displayed.get(wwChannelKey(c.id, c.name))?.channel.unit ?? c.unit }) + wwCalcChannelProvenanceBadgeHtml(c), { raw: true }],
                     ["Cur A", (c) => wwCurValueCellHtml(c.id, c.name, "a"), { raw: true, className: "cur-value-col" }],
                     ["Cur B", (c) => wwCurValueCellHtml(c.id, c.name, "b"), { raw: true, className: "cur-value-col" }],
                 ], null, (c) => calculatedChannelRowAttrs(c)) + '</div>';

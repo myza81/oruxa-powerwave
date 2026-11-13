@@ -45,6 +45,7 @@ from app.schemas.source import ErrorOut
 from app.services.calculated_timing_service import get_calculated_result, calculated_timing_metadata
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
+    _collect_leaf_authorities,
     check_rms_eligibility,
     create_calculated_channel,
     delete_calculated_channel,
@@ -52,6 +53,10 @@ from app.services.calculated_channel_service import (
     extract_calculated_waveform_range,
     resolve_calculated_annotation_anchor,
     resolve_calculated_peak_value,
+)
+from app.domain.physical_calibration import (
+    evaluate_calibration_eligibility,
+    PURPOSE_ENGINEERING_CALCULATION,
 )
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -196,9 +201,48 @@ def _validated_result(registry, sources, workspace_id, cid):
         raise _http_error(exc) from exc
 
 
-def _channel_out(channel, sources, registry):
-    return CalculatedChannelOut.from_domain(channel, calculated_timing_metadata(
-        channel, source_registry=sources, calc_registry=registry))
+def _compute_provenance(channel, workspace_id, source_registry, calc_registry):
+    """Stage 3B-2C-3 (DEC-213, OD-12): compute calibration_provenance_status/reason.
+
+    Returns (None, None) when registries are unavailable (backward compat).
+    Empty leaf set → blocked_structural (not all_verified, per owner Refinement 1).
+    """
+    if source_registry is None or workspace_id is None or calc_registry is None:
+        return None, None
+    leaf = _collect_leaf_authorities(
+        channel,
+        workspace_id=workspace_id,
+        source_registry=source_registry,
+        calc_registry=calc_registry,
+    )
+    if leaf.blocked_reason is not None:
+        return "blocked_structural", leaf.blocked_reason
+    # Empty leaf set: no resolvable source inputs — do not manufacture Verified.
+    if not leaf.authorities:
+        return "blocked_structural", "no_leaf_authorities_found"
+    elig = evaluate_calibration_eligibility(leaf.authorities, PURPOSE_ENGINEERING_CALCULATION)
+    if elig.has_invalid_leaves:
+        return "blocked_invalid", "physical_calibration_invalid"
+    if elig.has_unverified_leaves:
+        return "exploratory_unverified", "physical_calibration_unverified"
+    if elig.all_verified:
+        return "all_verified", None
+    if elig.has_not_assessed_leaves and not elig.has_unverified_leaves:
+        # has_verified distinguishes not_fully_verified from not_assessed
+        has_verified = any(a is not None for a in leaf.authorities)
+        if has_verified:
+            return "not_fully_verified", "mixed_verified_not_assessed"
+    return "not_assessed", None
+
+
+def _channel_out(channel, sources, registry, workspace_id=None):
+    prov_status, prov_reason = _compute_provenance(channel, workspace_id, sources, registry)
+    return CalculatedChannelOut.from_domain(
+        channel,
+        calculated_timing_metadata(channel, source_registry=sources, calc_registry=registry),
+        calibration_provenance_status=prov_status,
+        calibration_provenance_reason=prov_reason,
+    )
 
 
 def _get_channel_or_404(
@@ -250,7 +294,7 @@ def create_channel(
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
         raise _http_error(exc) from exc
-    return _channel_out(channel, source_registry, calc_registry)
+    return _channel_out(channel, source_registry, calc_registry, workspace_id=workspace_id)
 
 
 @router.get("/line-to-line-voltage/readiness", response_model=list[LineToLineContextReadinessOut])
@@ -307,7 +351,7 @@ def create_line_to_line_channels(
         raise _http_error(exc) from exc
     return LineToLineCreateResponse(
         creation_batch_id=channels[0].creation_batch_id if channels else None,
-        channels=[_channel_out(c, source_registry, calc_registry) for c in channels],
+        channels=[_channel_out(c, source_registry, calc_registry, workspace_id=workspace_id) for c in channels],
     )
 
 
@@ -319,7 +363,7 @@ def list_channels(
 ) -> list[CalculatedChannelOut]:
     workspace_id = _validate_workspace_id(workspace_id)
     channels = calc_registry.list_for_workspace(workspace_id)
-    return [_channel_out(c, source_registry, calc_registry) for c in channels]
+    return [_channel_out(c, source_registry, calc_registry, workspace_id=workspace_id) for c in channels]
 
 
 @router.delete("/{calculated_channel_id}", status_code=status.HTTP_204_NO_CONTENT)
