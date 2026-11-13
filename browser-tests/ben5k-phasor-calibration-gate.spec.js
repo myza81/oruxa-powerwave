@@ -15,9 +15,11 @@
 //   J  Verified BEN5K source → roles "available" (existing analysis preserved)
 //   K  COMTRADE not-assessed source → roles "available" (backward compat)
 //
-// BEN5K-specific scenarios (A, B, E-I where BEN5K is the blocked source)
-// are skipped when neither GPTH_BEN_PATH nor PERMAS_BEN_PATH is set.
-// COMTRADE-only scenarios (C, D, K) always run.
+// Scenarios A/B/C/D/E always run using the committed synthetic BEN5K fixture
+// (backend/tests/fixtures/ben/synthetic_ben5k_phasor.ben) which carries Va
+// (Voltage) and Ia (Current) channels, both CALIBRATION_UNVERIFIED.
+// Real-recording scenarios (optional) remain gated on GPTH_BEN_PATH /
+// PERMAS_BEN_PATH but do not block the mandatory scenarios from executing.
 //
 // All checks are at the API level (phasor-diagram endpoint + readiness
 // endpoint) so the assertions are stable regardless of render timing.
@@ -31,6 +33,12 @@ const { BACKEND_URL, clearContexts } = require("./support/engineering_context_he
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const COMTRADE_STEM = "phasor_smoke_three_phase";
+
+// Synthetic BEN5K fixture with Va (Voltage) + Ia (Current), both CALIBRATION_UNVERIFIED.
+// Always present — no env-var gate needed for scenarios that use this path.
+const SYNTHETIC_BEN5K_PHASOR = path.join(
+  __dirname, "..", "backend", "tests", "fixtures", "ben", "synthetic_ben5k_phasor.ben"
+);
 
 // ---------------------------------------------------------------------------
 // Upload helpers
@@ -140,17 +148,17 @@ const benPath = process.env.GPTH_BEN_PATH || process.env.PERMAS_BEN_PATH;
 const BEN5K_AVAILABLE = !!benPath && fs.existsSync(benPath);
 
 test.describe("Scenario A/B — BEN5K Unverified Voltage+Current → calibration_unavailable", () => {
-  test.skip(!BEN5K_AVAILABLE, "Owner BEN5K recording unavailable; set GPTH_BEN_PATH or PERMAS_BEN_PATH");
+  // Mandatory: uses synthetic_ben5k_phasor.ben (always present, no env-var gate).
 
   test("BEN5K Voltage/Current roles return calibration_unavailable", async ({ page }) => {
     const { workspaceId } = await uploadComtrade(page); // establish workspace
-    const benSourceId = await uploadBen5k(page, benPath);
+    const benSourceId = await uploadBen5k(page, SYNTHETIC_BEN5K_PHASOR);
 
-    // Discover what channels the BEN5K source has.
+    // Discover what channels the BEN5K source has (use /channels endpoint).
     const metaR = await page.request.get(
-      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(benSourceId)}`
+      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(benSourceId)}/channels`
     );
-    expect(metaR.ok()).toBe(true);
+    expect(metaR.ok(), `GET channels failed (${metaR.status()}): ${await metaR.text()}`).toBe(true);
     const meta = await metaR.json();
     const analogChs = meta.analog_channels || [];
     const voltCh = analogChs.find(c => c.engineering_type === "Voltage");
@@ -192,8 +200,7 @@ test.describe("Scenario A/B — BEN5K Unverified Voltage+Current → calibration
     // not needs_configuration (which would indicate a missing role, not a blocked one).
     for (const roleKey of ["Va", "Ia"]) {
       const role = result.roles[roleKey];
-      if (!role) continue; // role may not be in context if mapping differs
-      if (role.status !== "calibration_unavailable") continue; // skip if already verified by unit tests
+      expect(role, `role ${roleKey} missing from phasor-diagram result`).toBeTruthy();
       expect(role.status, `BEN5K ${roleKey} should be calibration_unavailable`).toBe("calibration_unavailable");
       expect(role.reason_code, `BEN5K ${roleKey} must carry a reason_code`).toBeTruthy();
     }
@@ -201,11 +208,11 @@ test.describe("Scenario A/B — BEN5K Unverified Voltage+Current → calibration
 });
 
 test.describe("Scenario E — Mixed BEN5K + COMTRADE: BEN5K blocked, COMTRADE available", () => {
-  test.skip(!BEN5K_AVAILABLE, "Owner BEN5K recording unavailable; set GPTH_BEN_PATH or PERMAS_BEN_PATH");
+  // Mandatory: uses synthetic_ben5k_phasor.ben (always present, no env-var gate).
 
   test("BEN5K Va blocked, COMTRADE Va available in separate contexts", async ({ page }) => {
     const { workspaceId } = await uploadComtrade(page);
-    const benSourceId = await uploadBen5k(page, benPath);
+    const benSourceId = await uploadBen5k(page, SYNTHETIC_BEN5K_PHASOR);
 
     // COMTRADE context — should produce available roles.
     const metaCt = await page.request.get(
@@ -312,14 +319,14 @@ test.describe("Scenarios G/H/I — Impedance/Distance/Sequence inherit gate (COM
 // ---------------------------------------------------------------------------
 
 test.describe("Scenarios C/D — Calculated channel with Unverified BEN5K leaf", () => {
-  test.skip(!BEN5K_AVAILABLE, "Owner BEN5K recording unavailable; set GPTH_BEN_PATH or PERMAS_BEN_PATH");
+  // Mandatory: uses synthetic_ben5k_phasor.ben (always present, no env-var gate).
 
   test("calc channel over BEN5K Unverified source → phasor role calibration_unavailable", async ({ page }) => {
     const { workspaceId } = await uploadComtrade(page);
-    const benSourceId = await uploadBen5k(page, benPath);
+    const benSourceId = await uploadBen5k(page, SYNTHETIC_BEN5K_PHASOR);
 
     const metaR = await page.request.get(
-      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(benSourceId)}`
+      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(benSourceId)}/channels`
     );
     const meta = await metaR.json();
     const voltCh = (meta.analog_channels || []).find(c => c.engineering_type === "Voltage");
@@ -339,7 +346,7 @@ test.describe("Scenarios C/D — Calculated channel with Unverified BEN5K leaf",
           parameters: {},
           unit: voltCh.unit || "kV",
           engineering_type: "Voltage",
-          null_policy: "propagate",
+          null_policy: "propagate_null",
           reference_source_id: benSourceId,
         },
       }
