@@ -2,12 +2,27 @@
 from dataclasses import replace
 from datetime import datetime, timezone
 import io
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.domain.source_timezone import TimeBasis
 from app.domain.time_reference import interpret_clock, source_timestamp_utc
 from test_ben5k_api import _make_ben5k_bytes, settings_flag_on
+
+_FIXTURES_DIR = Path(__file__).parent / "fixtures" / "comtrade"
+
+
+def _upload_comtrade(client, stem="synth_ascii"):
+    cfg = (_FIXTURES_DIR / f"{stem}.cfg").read_bytes()
+    dat = (_FIXTURES_DIR / f"{stem}.dat").read_bytes()
+    files = {
+        "cfg_file": (f"{stem}.cfg", io.BytesIO(cfg), "text/plain"),
+        "dat_file": (f"{stem}.dat", io.BytesIO(dat), "application/octet-stream"),
+    }
+    response = client.post("/api/v1/workspaces/clock/sources", files=files)
+    assert response.status_code == 201, response.text
+    return response.json()
 
 @pytest.fixture
 def client(settings_flag_on):
@@ -172,6 +187,7 @@ def test_page_session_isolation_reload_and_cleanup(client):
 
 def test_every_epoch_consumer_uses_effective_time(client):
     from app.services import analysis_input_resolution_service, overcurrent_analysis_service, phasor_analysis_service, calculated_channel_service
+    from app.services.phasor_analysis_service import _CalibrationBlockedResult
     source = upload(client)
     sid = source["source_id"]
     registry = client.app.state.workspace_registry
@@ -191,10 +207,58 @@ def test_every_epoch_consumer_uses_effective_time(client):
         common = {"workspace_id": "clock", "source_registry": registry, "calculated_channel_registry": calc_registry}
         assert analysis_input_resolution_service._timebase_identity(ref, **common)[2] == epoch
         assert overcurrent_analysis_service._fetch_current_candidate(ref, **common).start_epoch == epoch
-        assert phasor_analysis_service._fetch_role_candidate("Va", ref, **common).start_epoch == epoch
+        # BEN5K Unverified source: Stage 3B-2C-1 gate blocks phasor analysis (DEC-213, OD-8/OD-9).
+        # Assert the gate returns _CalibrationBlockedResult with a machine-readable reason code,
+        # never a _RoleCandidate with numeric data.
+        _phasor_cand = phasor_analysis_service._fetch_role_candidate("Va", ref, **common)
+        assert isinstance(_phasor_cand, _CalibrationBlockedResult), (
+            f"BEN5K Unverified must return _CalibrationBlockedResult; got {type(_phasor_cand).__name__}"
+        )
+        assert _phasor_cand.reason, "blocked reason must be a non-empty machine-readable string"
         assert calculated_channel_service._resolve_input(ref, workspace_id="clock", source_registry=registry, calc_registry=calc_registry).start_epoch == epoch
         table = client.get(f"/api/v1/workspaces/clock/sources/{sid}/table").json()
         assert table["columns"][0]["label"] == ("Time (s)" if offset is None else "Time")
+
+
+def test_phasor_epoch_consumer_not_assessed_source(client):
+    """Stage 3B-2C-1: epoch consistency assertion executes for a not-assessed
+    (COMTRADE/non-BEN5K) source that passes the calibration gate.
+
+    This test preserves the original coverage that was conditionally skipped for
+    BEN5K Unverified sources in test_every_epoch_consumer_uses_effective_time.
+
+    synth_ascii.cfg has a verified-UTC time basis (GPS/UTC sync), so the
+    time-reference offset endpoint returns 409 for user-assigned overrides —
+    the source epoch is fixed. No offset loop is needed: we verify that
+    _fetch_role_candidate() passes the calibration gate and returns a consistent
+    start_epoch for the natural (verified) state.
+    """
+    from app.services import phasor_analysis_service
+    from app.services.phasor_analysis_service import _CalibrationBlockedResult
+    from app.domain.calculated_channel import ChannelRef
+    from app.domain.time_reference import source_timestamp_utc
+
+    comtrade_source = _upload_comtrade(client, "synth_ascii")
+    cid = comtrade_source["source_id"]
+    registry = client.app.state.workspace_registry
+    calc_registry = client.app.state.calculated_channel_registry
+
+    # Read the natural (verified UTC) epoch — no user-assigned offset for this source.
+    active = registry.get("clock", cid)
+    expected = source_timestamp_utc(active.metadata, "start_time")
+    epoch = None if expected is None else expected.timestamp()
+
+    ref = ChannelRef(kind="source", source_id=cid, channel_name=active.metadata.analog_channels[0].name)
+    common = {"workspace_id": "clock", "source_registry": registry, "calculated_channel_registry": calc_registry}
+
+    # Not-assessed COMTRADE source passes the calibration gate — epoch must be consistent.
+    phasor_cand = phasor_analysis_service._fetch_role_candidate("Va", ref, **common)
+    assert phasor_cand is not None, "COMTRADE not-assessed source must pass the calibration gate"
+    assert not isinstance(phasor_cand, _CalibrationBlockedResult), (
+        "gate must return _RoleCandidate for not-assessed source, not _CalibrationBlockedResult"
+    )
+    # This assertion is the core regression: it ACTUALLY executes (not conditionally skipped).
+    assert phasor_cand.start_epoch == epoch
 
 
 def inject_pair(client):

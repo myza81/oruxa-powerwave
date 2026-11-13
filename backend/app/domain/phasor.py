@@ -344,9 +344,12 @@ ROLE_STATUS_MISSING = "missing"
 ROLE_STATUS_NEEDS_CONFIGURATION = "needs_configuration"
 ROLE_STATUS_AMBIGUOUS = "ambiguous"
 ROLE_STATUS_NOT_ELIGIBLE = "not_eligible"
+#: Stage 3B-2C-1 (DEC-213): distinct from needs_configuration — explicitly
+#: blocked by Unverified or Invalid physical calibration authority.
+ROLE_STATUS_CALIBRATION_UNAVAILABLE = "calibration_unavailable"
 KNOWN_ROLE_STATUSES = (
     ROLE_STATUS_AVAILABLE, ROLE_STATUS_MISSING, ROLE_STATUS_NEEDS_CONFIGURATION,
-    ROLE_STATUS_AMBIGUOUS, ROLE_STATUS_NOT_ELIGIBLE,
+    ROLE_STATUS_AMBIGUOUS, ROLE_STATUS_NOT_ELIGIBLE, ROLE_STATUS_CALIBRATION_UNAVAILABLE,
 )
 
 #: The fixed Va/Vb/Vc/Ia/Ib/Ic role-key order every diagram result and its

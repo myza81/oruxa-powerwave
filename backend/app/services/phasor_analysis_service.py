@@ -93,6 +93,7 @@ from app.domain.phasor import (
     REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
     ROLE_STATUS_AMBIGUOUS,
     ROLE_STATUS_AVAILABLE,
+    ROLE_STATUS_CALIBRATION_UNAVAILABLE,
     ROLE_STATUS_MISSING,
     ROLE_STATUS_NEEDS_CONFIGURATION,
     ROLE_STATUS_NOT_ELIGIBLE,
@@ -108,9 +109,15 @@ from app.domain.phasor import (
     relative_angle_deg,
 )
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.physical_calibration import (
+    PURPOSE_ENGINEERING_CALCULATION,
+    evaluate_calibration_eligibility,
+)
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
-from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.calculated_channel_service import _collect_leaf_authorities
+from app.services.calculated_timing_service import get_calculated_result
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -118,6 +125,18 @@ from app.services.workspace_registry import WorkspaceRegistry
 def _source_start_epoch(active) -> float | None:
     """The shared recording-level effective UTC epoch, or None for unknown time."""
     return source_start_epoch(active.metadata)
+
+
+from dataclasses import dataclass as _dataclass
+
+@_dataclass(frozen=True, slots=True)
+class _CalibrationBlockedResult:
+    """Stage 3B-2C-1 (DEC-213): sentinel returned by _fetch_role_candidate()
+    when a role is blocked by physical calibration authority — distinct from
+    None (channel vanished / not configured) so callers can set
+    ROLE_STATUS_CALIBRATION_UNAVAILABLE instead of ROLE_STATUS_NEEDS_CONFIGURATION."""
+    reason: str  # machine-readable: calibration_unverified, calibration_invalid,
+                 # channel_not_found_ben5k, ben5k_authority_absent, or a DFS blocked_reason
 
 
 class _RoleCandidate:
@@ -150,7 +169,7 @@ class _RoleCandidate:
 def _fetch_role_candidate(
     role_key: str, channel_ref: ChannelRef, *, workspace_id: str,
     source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry,
-) -> _RoleCandidate | None:
+) -> "_RoleCandidate | _CalibrationBlockedResult | None":
     """Fetches ONE resolved role's own full-resolution sample arrays and
     engineering metadata. Mirrors `calculated_channel_service._resolve_
     input()`'s own source/calculated-channel branching exactly (a
@@ -166,6 +185,28 @@ def _fetch_role_candidate(
         matching = next((ch for ch in active.metadata.analog_channels if ch.name == channel_ref.channel_name), None)
         if matching is None:
             return None
+        # Stage 3B-2C-1 calibration gate (DEC-213, OD-8/OD-9).
+        # Reads full AnalogChannel from DisturbanceRecord (calibration_authority lives
+        # on record, not on SourceMetadata's AnalogChannelSummary).
+        _full_ch = next(
+            (ch for ch in active.record.analog_channels if ch.name == channel_ref.channel_name),
+            None,
+        )
+        _is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+        if _full_ch is None:
+            if _is_ben5k:
+                return _CalibrationBlockedResult(reason="channel_not_found_ben5k")
+        else:
+            if _full_ch.calibration_authority is None:
+                if _is_ben5k:
+                    return _CalibrationBlockedResult(reason="ben5k_authority_absent")
+            else:
+                _elig = evaluate_calibration_eligibility(
+                    [_full_ch.calibration_authority], PURPOSE_ENGINEERING_CALCULATION
+                )
+                if not _elig.eligible:
+                    return _CalibrationBlockedResult(reason=_elig.reason or "calibration_unavailable")
+        # Non-BEN5K not-assessed (None authority, non-BEN5K format): pass through (backward compat)
         waveform_data = active.record.waveform_data
         return _RoleCandidate(
             role_key=role_key, channel_ref=channel_ref,
@@ -177,6 +218,23 @@ def _fetch_role_candidate(
     calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id, source_registry=source_registry, calc_registry=calculated_channel_registry)
     if calculated is None:
         return None
+    # Stage 3B-2C-1 calibration gate for calculated-channel role refs (DEC-213, OD-8/OD-9).
+    _calc_ch = calculated_channel_registry.get(workspace_id, channel_ref.calculated_channel_id)
+    if _calc_ch is not None:
+        _leaf = _collect_leaf_authorities(
+            _calc_ch,
+            workspace_id=workspace_id,
+            source_registry=source_registry,
+            calc_registry=calculated_channel_registry,
+        )
+        if _leaf.blocked_reason is not None:
+            return _CalibrationBlockedResult(reason=_leaf.blocked_reason)
+        _elig2 = evaluate_calibration_eligibility(
+            [a for a in _leaf.authorities if a is not None],
+            PURPOSE_ENGINEERING_CALCULATION,
+        )
+        if not _elig2.eligible:
+            return _CalibrationBlockedResult(reason=_elig2.reason or "calibration_unavailable")
     reference_source = source_registry.get(workspace_id, calculated.reference_source_id)
     if reference_source is None:
         return None
@@ -286,6 +344,14 @@ def compute_phasor_analysis(
             role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
             calculated_channel_registry=calculated_channel_registry,
         )
+        if isinstance(candidate, _CalibrationBlockedResult):
+            return _short_circuit(
+                STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
+                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
+                reason_code="calibration_unavailable",
+                message=f"Role '{role_key}' is blocked by physical calibration authority ({candidate.reason}).",
+                role_reasons={role_key: "calibration_unavailable"},
+            )
         if candidate is None:
             return _short_circuit(
                 STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
@@ -536,6 +602,10 @@ def prepare_phasor_diagram(
             role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
             calculated_channel_registry=calculated_channel_registry,
         )
+        if isinstance(candidate, _CalibrationBlockedResult):
+            role_statuses[role_key] = ROLE_STATUS_CALIBRATION_UNAVAILABLE
+            role_reason_codes[role_key] = candidate.reason
+            continue
         if candidate is None:
             role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
             role_reason_codes[role_key] = _REASON_CHANNEL_UNAVAILABLE
@@ -934,6 +1004,12 @@ def check_phasor_diagram_readiness(
             role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
             calculated_channel_registry=calculated_channel_registry,
         )
+        if isinstance(candidate, _CalibrationBlockedResult):
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code="calibration_unavailable",
+                message=f"Role {role_key!r} is blocked by physical calibration authority ({candidate.reason}).",
+            )
+            continue
         if candidate is None:
             role_readiness[role_key] = RoleReadiness(
                 status=STATUS_NEEDS_CONFIGURATION, reason_code=_REASON_CHANNEL_UNAVAILABLE,
