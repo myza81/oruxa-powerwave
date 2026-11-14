@@ -21,10 +21,51 @@ across Stages 3A through 3B-2C-3 passed. Three findings resolved:
 - **L-1 (RESOLVED):** Single-run backend baseline established: **12,640 collected / 12,249 passed /
   391 skipped / 0 failed / exit 0** (dot-counted from complete run; two independent runs confirmed exit 0).
 
-Audit closure committed as `32c9f29`. **Stage 3B-3 (frontend calibration limitation display) is cleared
-to begin** — requires separate owner authorization for implementation.
+Audit closure committed as `32c9f29`.
 
 Audit document: [DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md](DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md)
+
+---
+
+## Stage 3B-3 — Calibration UI/UX presentation (2026-11-14)
+
+[FACT] Stage 3B-3 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `81e7fb0`.
+NOT pushed, deployed, or merged. No backend code modified. No PU mathematics modified.
+
+**What Stage 3B-3 introduced (all in `frontend/index.html`):**
+
+- **Slice 3B-3-A** — Phasor label and reason text: `wwPhasorRoleStatusLabel` gains
+  `calibration_unavailable → "Calibration unavailable"`. `WW_PHASOR_REASON_TEXT` gains
+  four DEC-213 reason codes (`physical_calibration_unverified`, `physical_calibration_invalid`,
+  `ben5k_authority_absent`, `channel_not_found_ben5k`).
+
+- **Slice 3B-3-B** — Source-channel calibration badge: CSS `.ww-source-calib-badge`
+  (amber for unverified, red for invalid). `wwSourceCalibrationBadgeHtml(channel)` reads
+  `channel.calibration_status`; inserted in `analogChannelNameCellHtml()`. Verified badge
+  suppressed (OD-S3B3-2). No COMTRADE not-assessed badge (OD-S3B3-5).
+
+- **Slice 3B-3-C** — Cursor value exploratory qualifier: `wwCurValueText()` appends
+  `" ⚠"` (U+26A0) for `exploratory_unverified` calculated channels. O(1) lookup from
+  existing `ww.calculatedChannels` Map.
+
+**Browser test additions:**
+- `stage3b3-source-badge.spec.js` (NEW — 6 scenarios): badge helper API, BEN5K real fixture,
+  COMTRADE no-badge, invalid/null/verified/absent values, phasor role-status label,
+  cursor qualifier structural check + exploratory badge proof.
+- `ben5k-phasor-calibration-gate.spec.js` extended: Stage 3B-3 phasor label functions
+  (`wwPhasorRoleStatusLabel` + `wwPhasorReasonText` for all 4 DEC-213 reason codes).
+
+**Key owner decisions honored (OD-S3B3-1 through OD-S3B3-5):**
+- OD-S3B3-1: Unverified → `⚠ Calibration unverified` (amber). Invalid → `✕ Calibration invalid` (red).
+- OD-S3B3-2: Verified badge suppressed. Do not infer Verified from badge absence.
+- OD-S3B3-3: `calibration_unavailable` phasor role status → "Calibration unavailable".
+- OD-S3B3-4: Cursor exploratory qualifier appended for `exploratory_unverified` channels.
+- OD-S3B3-5: No not-assessed badge for COMTRADE/null-authority channels.
+
+**Test results (2026-11-14):**
+- Stage 3B-3 browser tests: 25/25 pass (6 stage3b3-source-badge + 7 ben5k-phasor + 4 compliance + 8 power-provenance).
+- Full browser suite (BEN5K_EXPERIMENTAL_ENABLED=1): 1391 passed / 2 skipped / 3 failed (pre-existing, unrelated to Stage 3B-3) / exit 0.
+- Backend: unchanged from Stage 3B-2C-3 baseline (12,640 collected, 12,249 passed, 391 skipped, exit 0).
 
 ---
 
@@ -69,12 +110,12 @@ No PU mathematics or ENG-mode display paths modified.
 - `blocked_structural` and `blocked_invalid` gate waveform/cursor/peak paths via
   `InvalidCalibrationAuthorityError` (same path as Stage 3B-2B-2).
 - Manual Calculator uses `SinglePhasePowerOut` — no provenance field; correct by design.
-- No active export pathway for calc channels; deferred to Stage 3B-3.
+- No active export pathway for calc channels; deferred (no active export pathway).
 
 **What remains inactive:**
-- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- Stage 3B-3: committed as `81e7fb0` — see section above.
 - BEN5K numerical correction (requires calibration evidence + approval).
-- Calc channel export provenance labeling (Stage 3B-3 — deferred; no active export pathway).
+- Calc channel export provenance labeling (deferred; no active export pathway).
 
 **Test results (2026-11-13):**
 - 25/25 power provenance tests pass.
@@ -132,7 +173,7 @@ No PU mathematics or ENG-mode display paths modified.
 
 **What remains inactive:**
 - Stage 3B-2C-3: committed as `d30a4be` — see section above.
-- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- Stage 3B-3: committed as `81e7fb0` — see section above.
 - BEN5K numerical correction (requires calibration evidence + approval).
 
 **Test results (2026-11-13):**
@@ -180,7 +221,7 @@ No PU mathematics or ENG-mode display paths modified.
 **What remains inactive:**
 - Stage 3B-2C-2: committed as `c7b8388` — see section above.
 - Stage 3B-2C-3: committed as `d30a4be` — see section above.
-- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- Stage 3B-3: committed as `81e7fb0` — see section above.
 - BEN5K numerical correction (requires calibration evidence + approval).
 
 **Browser hardening additions (commit `35af9e1`):**
@@ -241,7 +282,7 @@ No existing PU mathematics or ENG-mode display paths modified.
 
 **What remains inactive:**
 - `phasor_analysis_service` gate (Stage 3B-2C — requires separate owner authorization).
-- Frontend calibration limitation display (Stage 3B-3 — requires authorization).
+- Stage 3B-3 (frontend calibration limitation display): committed as `81e7fb0`.
 - BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
 - BEN5K current calibration (H1/H2 unresolved pending oracle evidence).
 
@@ -284,7 +325,7 @@ No existing PU mathematics or ENG-mode display paths modified.
 
 - `phasor_analysis_service` gate (Stage 3B-2C — requires separate owner authorization).
 - `compliance_readiness_service` gate (Stage 3B-2C/later — requires authorization).
-- Frontend calibration limitation display / UI warnings (Stage 3B-3 — requires authorization).
+- Stage 3B-3 (frontend calibration limitation display): committed as `81e7fb0`.
 - BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
 - BEN5K current calibration (H1/H2 unresolved pending oracle evidence).
 - Invalid-authority creation gate at `_resolve_input()` (Stage 3B-2B-2 exploratory gap —
@@ -328,7 +369,7 @@ No existing PU mathematics or calculation paths modified.
 - `calculated_channel_service` gate (Stage 3B-2B — requires separate owner authorization).
 - `phasor_analysis_service` gate (Stage 3B-2C — requires separate owner authorization).
 - `compliance_readiness_service` gate (Stage 3B-2C/later — requires authorization).
-- Frontend calibration limitation display / UI warnings (Stage 3B-3 — requires authorization).
+- Stage 3B-3 (frontend calibration limitation display): committed as `81e7fb0`.
 - BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
 - BEN5K current calibration (H1/H2 unresolved pending oracle evidence).
 
@@ -386,7 +427,7 @@ No existing calculation paths modified.
 - `calculated_channel_service._resolve_input()` gate (Stage 3B-2B — not yet authorized).
 - `phasor_analysis_service._fetch_role_candidate()` gate (Stage 3B-2C — not yet authorized).
 - `compliance_readiness_service` gate.
-- Frontend calibration limitation display (Stage 3B-3 — not yet authorized).
+- Stage 3B-3 (frontend calibration limitation display): committed as `81e7fb0`.
 - BEN5K voltage correction (√2/16 or other factor — requires calibration evidence + approval).
 - BEN5K current correction (H1/H2 unresolved pending oracle evidence).
 

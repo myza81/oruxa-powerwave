@@ -4,9 +4,37 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-14** (DEC-213 audit PASS committed as `32c9f29`; audit closure committed; full suite
-single-run baseline 12,640 collected / 12,249 passed / 391 skipped / 0 failed / exit 0; browser POWER 8/0/0,
-Compliance+Phasor 10/0/0; Stage 3B-3 cleared — awaiting owner authorization to begin implementation).
+Last updated: **2026-11-14** (Stage 3B-3 committed as `81e7fb0`; 25/25 Stage 3B-3 browser tests pass;
+full browser suite 1391 passed / 2 skipped / 3 failed (pre-existing) / exit 0. NOT pushed or merged.
+Awaiting owner engineering review before next authorized action.)
+
+## Stage 3B-3 — Calibration UI/UX presentation (2026-11-14)
+
+**Status:** Committed locally as `81e7fb0` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No backend code modified. No PU mathematics modified.
+
+**What Stage 3B-3 introduced (all in `frontend/index.html`):**
+- Slice 3B-3-A: `wwPhasorRoleStatusLabel("calibration_unavailable")` → "Calibration unavailable";
+  four DEC-213 reason codes added to `WW_PHASOR_REASON_TEXT`.
+- Slice 3B-3-B: `wwSourceCalibrationBadgeHtml(channel)`: source-channel calibration badge
+  for `unverified` (amber ⚠) and `invalid` (red ✕); inserted in `analogChannelNameCellHtml()`.
+  Verified badge suppressed. No COMTRADE not-assessed badge.
+- Slice 3B-3-C: `wwCurValueText()` appends `" ⚠"` for `exploratory_unverified` calc channels.
+
+**Browser test additions:**
+- `stage3b3-source-badge.spec.js` (NEW — 6 scenarios, all pass).
+- `ben5k-phasor-calibration-gate.spec.js` extended (+1 phasor label text test, 7 total).
+
+**Test results:**
+- Stage 3B-3: 25/25 browser tests pass. Full suite: 1391 passed / 2 skipped / 3 failed (pre-existing) / exit 0.
+- Backend: unchanged (12,640 collected, 12,249 passed, 391 skipped, exit 0).
+
+**Next steps (approved scope):**
+- BEN numerical corrections: requires separate owner authorization.
+- Slice 6D: not authorized.
+- Push / merge / deploy: not authorized.
+
+---
 
 ## DEC-213 Consolidated Integration Audit — PASS (2026-11-14)
 
@@ -21,9 +49,6 @@ NOT pushed, deployed, or merged.
 - L-1: Single-run baseline — **12,640 collected / 12,249 passed / 391 skipped / 0 failed / exit 0**.
 
 **Audit document:** `docs/project-memory/DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md` (committed).
-
-**Stage 3B-3 cleared to begin** — frontend calibration limitation display. Requires separate owner
-authorization for implementation.
 
 **Files changed (2 implementation + 3 docs):**
 - `backend/app/domain/physical_calibration.py` — docstring note (M-1)
