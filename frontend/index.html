@@ -7216,6 +7216,10 @@
         .ww-calc-provenance-badge { font-size: 0.75em; margin-left: 0.3em; white-space: nowrap; }
         .ww-calc-provenance-badge--exploratory { color: #a86a00; }
         .ww-calc-provenance-badge--not-fully-verified { color: #888; }
+        /* Stage 3B-3 (DEC-213): physical calibration status badge on source channel rows. */
+        .ww-source-calib-badge { font-size: 0.75em; margin-left: 0.3em; white-space: nowrap; }
+        .ww-source-calib-badge--unverified { color: #a86a00; }
+        .ww-source-calib-badge--invalid { color: #c0392b; }
         .ww-compliance-reference-readiness {
             display: flex;
             flex-direction: column;
@@ -29255,6 +29259,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // color->identity mapping aid, not new information; the channel
         // name/unit text remains the real accessible label, exactly as
         // before.
+        // Stage 3B-3 (DEC-213): compact calibration status badge for source channels.
+        // Reads channel.calibration_status (lowercase "unverified"/"invalid"/null).
+        // No badge for "verified" (normal state) or null (not assessed — backward compat).
+        function wwSourceCalibrationBadgeHtml(channel) {
+            const s = channel && channel.calibration_status;
+            if (s === "unverified") {
+                return '<span class="ww-source-calib-badge ww-source-calib-badge--unverified" title="Physical calibration has not been verified">⚠ Calibration unverified</span>';
+            }
+            if (s === "invalid") {
+                return '<span class="ww-source-calib-badge ww-source-calib-badge--invalid" title="Physical calibration is marked invalid">✕ Calibration invalid</span>';
+            }
+            return "";
+        }
+
         function analogChannelNameCellHtml(source, channel, reference = wwDisplayedReference(source.source_id, channel.name)) {
             const color = wwColorForChannel(source.source_id, channel.name);
             const displayName = wwChannelDisplayName(source.source_id, channel.name);
@@ -29278,6 +29296,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 '<span class="channel-name-text">' + wwRichLabelHtml(wwChannelDisplayNameHtml(source.source_id, channel.name) +
                     escapeHtml(label.slice(displayName.length))) + '</span>' +
                 wwPuReferenceBadgeHtml(reference) +
+                wwSourceCalibrationBadgeHtml(channel) +
                 '</span>';
         }
 
@@ -46454,7 +46473,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!wwIsAnalogChannelVisible(sourceId, channelName)) return "—";
             const entry = ww.cursorValues.get(wwChannelKey(sourceId, channelName));
             if (!entry) return "—";
-            return wwFormatEngineeringValue(kind === "a" ? entry.aValue : entry.bValue);
+            const formatted = wwFormatEngineeringValue(kind === "a" ? entry.aValue : entry.bValue);
+            // Stage 3B-3 (DEC-213, OD-S3B3-4): append ⚠ for exploratory POWER cursor values.
+            const calcObj = wwIsCalculatedSourceId(sourceId) ? ww.calculatedChannels && ww.calculatedChannels.get(sourceId) : null;
+            const exploratoryMarker = (calcObj && calcObj.calibration_provenance_status === "exploratory_unverified") ? " ⚠" : "";
+            return formatted + exploratoryMarker;
         }
 
         // Section 17/19: compact "Cur A"/"Cur B" sidebar columns -- no
@@ -52984,6 +53007,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             absolute_time_unavailable: "One or more sources has no known absolute start time.",
             multiple_issues: "Multiple roles could not be resolved -- see details below.",
             empty_requirement: "This analysis mode has no defined roles.",
+            // Stage 3B-3 (DEC-213): physical calibration gate reason codes.
+            physical_calibration_unverified: "Physical calibration has not been verified.",
+            physical_calibration_invalid: "Physical calibration is invalid.",
+            ben5k_authority_absent: "BEN5K calibration authority information is missing.",
+            channel_not_found_ben5k: "Referenced BEN5K channel cannot be found.",
         };
         function wwPhasorReasonText(code) {
             return WW_PHASOR_REASON_TEXT[code] || code || "Unknown reason.";
@@ -55307,6 +55335,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const labels = {
                 missing: "Missing", needs_configuration: "Needs configuration",
                 ambiguous: "Ambiguous", not_eligible: "Not eligible",
+                // Stage 3B-3 (DEC-213): physical calibration gate produces this status.
+                calibration_unavailable: "Calibration unavailable",
             };
             return labels[status] || status;
         }

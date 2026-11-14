@@ -278,6 +278,54 @@ test.describe("UI smoke — phasor panel renders without crash", () => {
     }, { timeout: 8000 }).toBeGreaterThan(1);
     expect(errors).toEqual([]);
   });
+
+  // Stage 3B-3 (DEC-213): wwPhasorRoleStatusLabel and wwPhasorReasonText label
+  // text assertions — verifies the new calibration_unavailable label and the four
+  // Stage 3B-3 reason code entries are present and return the correct strings.
+  test("Stage 3B-3 phasor label functions return calibration_unavailable strings", async ({ page }) => {
+    // A simple page load is enough — these are top-level function declarations
+    // accessible on window without uploading a recording.
+    const errors = [];
+    page.on("pageerror", err => errors.push(err.message));
+    await page.goto("/index.html");
+
+    const labels = await page.evaluate(() => ({
+      statusLabel: window.wwPhasorRoleStatusLabel("calibration_unavailable"),
+      reasonUnverified: window.wwPhasorReasonText("physical_calibration_unverified"),
+      reasonInvalid:    window.wwPhasorReasonText("physical_calibration_invalid"),
+      reasonAbsent:     window.wwPhasorReasonText("ben5k_authority_absent"),
+      reasonNotFound:   window.wwPhasorReasonText("channel_not_found_ben5k"),
+      // Existing labels must still be present (non-regression).
+      missingLabel:     window.wwPhasorRoleStatusLabel("missing"),
+      roleMissingReason: window.wwPhasorReasonText("role_missing"),
+    }));
+
+    expect(labels.statusLabel,
+      "calibration_unavailable status must map to 'Calibration unavailable'"
+    ).toBe("Calibration unavailable");
+
+    expect(labels.reasonUnverified,
+      "physical_calibration_unverified reason must include 'not been verified'"
+    ).toContain("not been verified");
+
+    expect(labels.reasonInvalid,
+      "physical_calibration_invalid reason must include 'invalid'"
+    ).toContain("invalid");
+
+    expect(labels.reasonAbsent,
+      "ben5k_authority_absent reason must include 'missing'"
+    ).toContain("missing");
+
+    expect(labels.reasonNotFound,
+      "channel_not_found_ben5k reason must include 'cannot be found'"
+    ).toContain("cannot be found");
+
+    // Non-regression: existing labels/reasons must be unchanged.
+    expect(labels.missingLabel).toBe("Missing");
+    expect(labels.roleMissingReason).toContain("No matching channel");
+
+    expect(errors, "No JS errors").toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
