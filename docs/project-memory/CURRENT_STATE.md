@@ -9,6 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## DEC-213 Consolidated Integration Audit — PASS (2026-11-14)
+
+[FACT] DEC-213 audit formally closed on 2026-11-14. All Physical Calibration Authority safeguards
+across Stages 3A through 3B-2C-3 passed. Three findings resolved:
+
+- **M-1 (RESOLVED):** Vacuous-truth warning docstring added to `evaluate_calibration_eligibility()`
+  in `physical_calibration.py`. 11 call sites audited — no bypass confirmed.
+- **M-2 (RESOLVED):** All 11 `test.skip()` soft-skip guards removed from `power-provenance.spec.js`
+  and replaced with hard `expect()` assertions. Browser suite: POWER 8/0/0, Compliance+Phasor 10/0/0.
+- **L-1 (RESOLVED):** Single-run backend baseline established: **12,640 collected / 12,249 passed /
+  391 skipped / 0 failed / exit 0** (dot-counted from complete run; two independent runs confirmed exit 0).
+
+Audit closure committed as `32c9f29`. **Stage 3B-3 (frontend calibration limitation display) is cleared
+to begin** — requires separate owner authorization for implementation.
+
+Audit document: [DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md](DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md)
+
+---
+
 ## Stage 3B-2C-3 — Calculated POWER calibration provenance (2026-11-13)
 
 [FACT] Stage 3B-2C-3 committed locally on `feature/vlt-ref-001-voltage-reference-safety` as `d30a4be`.
@@ -60,7 +79,8 @@ No PU mathematics or ENG-mode display paths modified.
 **Test results (2026-11-13):**
 - 25/25 power provenance tests pass.
 - 8/8 browser tests pass (Scenarios A-H), exit code 0.
-- Full backend suite (12,640 collected, 12,271 passed, 391 skipped, exit 0, 0 failures).
+- Full backend suite (12,640 collected, 12,249 passed, 391 skipped, exit 0, 0 failures).
+  (12,271 figure in earlier notes was a multi-run assembly artifact; 12,249 is the confirmed single-run count.)
 
 ---
 

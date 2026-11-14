@@ -4,8 +4,35 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-13** (Stage 3B-2C-3 committed as `d30a4be`; full suite 12,640 collected, 12,271 passed, 391 skipped, exit 0, 0 failures;
-8/8 browser tests pass, 0 skipped; awaiting owner review before Stage 3B-3).
+Last updated: **2026-11-14** (DEC-213 audit PASS committed as `32c9f29`; audit closure committed; full suite
+single-run baseline 12,640 collected / 12,249 passed / 391 skipped / 0 failed / exit 0; browser POWER 8/0/0,
+Compliance+Phasor 10/0/0; Stage 3B-3 cleared — awaiting owner authorization to begin implementation).
+
+## DEC-213 Consolidated Integration Audit — PASS (2026-11-14)
+
+**Status:** Audit formally closed. Committed as `32c9f29` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged.
+
+**Findings resolved:**
+- M-1: Docstring added to `evaluate_calibration_eligibility()` clarifying empty-list vacuous-truth semantics.
+  11 call sites audited — no bypass.
+- M-2: All 11 `test.skip()` soft-skip guards removed from `power-provenance.spec.js`; replaced with hard
+  `expect()` assertions. Browser: POWER 8/0/0, Compliance+Phasor 10/0/0.
+- L-1: Single-run baseline — **12,640 collected / 12,249 passed / 391 skipped / 0 failed / exit 0**.
+
+**Audit document:** `docs/project-memory/DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md` (committed).
+
+**Stage 3B-3 cleared to begin** — frontend calibration limitation display. Requires separate owner
+authorization for implementation.
+
+**Files changed (2 implementation + 3 docs):**
+- `backend/app/domain/physical_calibration.py` — docstring note (M-1)
+- `browser-tests/power-provenance.spec.js` — 11 soft-skip guards hardened (M-2)
+- `docs/project-memory/DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md` (NEW — full audit record)
+- `docs/project-memory/CURRENT_STATE.md` — audit entry + corrected single-run count
+- `docs/project-memory/HANDOFF.md` — this update
+
+---
 
 ## Stage 3B-2C-3 — Calculated POWER calibration provenance (2026-11-13)
 
@@ -31,7 +58,8 @@ or ENG-mode display paths modified.
 - No active export pathway for calc channels; calc-channel export provenance labeling deferred to Stage 3B-3.
 
 **Next steps (approved scope):**
-- Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Stage 3B-3: **CLEARED** — DEC-213 audit passed; awaiting owner authorization to begin implementation.
+- BEN numerical corrections, Slice 6D: requires separate owner authorization.
 - Push / merge / deploy: not authorized.
 
 ## Stage 3B-2C-2 — Compliance calibration gate (2026-11-13)
