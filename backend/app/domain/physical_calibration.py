@@ -248,7 +248,12 @@ def evaluate_calibration_eligibility(
     Unverified leaf dominates not-assessed.
     A mix of Verified + not-assessed cannot claim full Verified status.
     An empty leaf list (no inputs) is treated as all-Verified — no known
-    calibration limitation.
+    calibration limitation. **This is a vacuous truth, not physical certification
+    evidence.** Callers responsible for calculated-channel provenance must
+    independently verify that at least one required physical-leaf authority is
+    present (e.g. via ``_collect_leaf_authorities()``) before calling this
+    function; passing the result of ``all_verified=True`` from an empty list
+    as evidence of physical calibration is incorrect.
 
     ``eligible=True`` with ``reason=not_assessed`` preserves existing
     compatibility behaviour; it does NOT grant Verified status and must

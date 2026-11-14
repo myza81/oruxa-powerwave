@@ -162,10 +162,7 @@ test.describe("Scenario A — BEN5K Unverified source → exploratory_unverified
     // Discover Va channel (reverse_polarity only needs voltage; operation-agnostic provenance).
     const meta = await getSourceChannels(page, workspaceId, benSourceId);
     const voltCh = (meta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!voltCh) {
-      test.skip(true, "BEN5K phasor fixture does not expose a Voltage channel");
-      return;
-    }
+    expect(voltCh, "BEN5K phasor fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     // Create reverse_polarity channel — provenance comes from leaf source authorities, not operation.
     const createResp = await createReversePolarity(page, workspaceId, {
@@ -233,10 +230,7 @@ test.describe("Scenario B — Nested calc chain inherits exploratory_unverified"
 
     const meta = await getSourceChannels(page, workspaceId, benSourceId);
     const voltCh = (meta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!voltCh) {
-      test.skip(true, "BEN5K phasor fixture does not expose a Voltage channel");
-      return;
-    }
+    expect(voltCh, "BEN5K phasor fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     // Level 1: reverse_polarity of BEN5K Va (Unverified leaf).
     const rpResp = await createReversePolarity(page, workspaceId, {
@@ -294,18 +288,12 @@ test.describe("Scenario C — Mixed provenance: no cross-contamination", () => {
     // BEN5K channels.
     const benMeta = await getSourceChannels(page, workspaceId, benSourceId);
     const benVolt = (benMeta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!benVolt) {
-      test.skip(true, "BEN5K fixture missing Voltage channel");
-      return;
-    }
+    expect(benVolt, "BEN5K fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     // COMTRADE channels.
     const comMeta = await getSourceChannels(page, workspaceId, comSourceId);
     const comVolt = (comMeta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!comVolt) {
-      test.skip(true, "COMTRADE fixture missing Voltage channel");
-      return;
-    }
+    expect(comVolt, "COMTRADE fixture must expose a Voltage channel — check synth_ascii.cfg").toBeTruthy();
 
     // Create BEN5K calc channel (reverse_polarity — provenance comes from source, not operation).
     const benPowerResp = await createReversePolarity(page, workspaceId, {
@@ -377,10 +365,7 @@ test.describe("Scenario D — COMTRADE Not-Assessed → not_assessed, no badge",
 
     const meta = await getSourceChannels(page, workspaceId, comSourceId);
     const voltCh = (meta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!voltCh) {
-      test.skip(true, "COMTRADE fixture missing Voltage channel");
-      return;
-    }
+    expect(voltCh, "COMTRADE fixture must expose a Voltage channel — check synth_ascii.cfg").toBeTruthy();
 
     const r = await createReversePolarity(page, workspaceId, {
       name: "VA_comtrade_backward_compat",
@@ -428,11 +413,11 @@ test.describe("Scenario E — Waveform sidebar: exploratory badge in trace list"
 
     const benMeta = await getSourceChannels(page, workspaceId, benSourceId);
     const benVolt = (benMeta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!benVolt) { test.skip(true, "BEN5K fixture missing Voltage channel"); return; }
+    expect(benVolt, "BEN5K fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     const comMeta = await getSourceChannels(page, workspaceId, comSourceId);
     const comVolt = (comMeta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!comVolt) { test.skip(true, "COMTRADE fixture missing Voltage channel"); return; }
+    expect(comVolt, "COMTRADE fixture must expose a Voltage channel — check synth_ascii.cfg").toBeTruthy();
 
     const benResp = await createReversePolarity(page, workspaceId, {
       name: "Va_ben5k_wf_e",
@@ -492,11 +477,11 @@ test.describe("Scenario F — Peak annotation: exploratory channels append ⚠ g
 
     const benMeta = await getSourceChannels(page, workspaceId, benSourceId);
     const benVolt = (benMeta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!benVolt) { test.skip(true, "BEN5K fixture missing Voltage channel"); return; }
+    expect(benVolt, "BEN5K fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     const comMeta = await getSourceChannels(page, workspaceId, comSourceId);
     const comVolt = (comMeta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!comVolt) { test.skip(true, "COMTRADE fixture missing Voltage channel"); return; }
+    expect(comVolt, "COMTRADE fixture must expose a Voltage channel — check synth_ascii.cfg").toBeTruthy();
 
     const benResp = await createReversePolarity(page, workspaceId, {
       name: "Va_ben5k_peak_f",
@@ -586,7 +571,7 @@ test.describe("Scenario G — ENG→PU→ENG: no stale labels or JS errors", () 
 
     const meta = await getSourceChannels(page, workspaceId, benSourceId);
     const voltCh = (meta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!voltCh) { test.skip(true, "BEN5K fixture missing Voltage channel"); return; }
+    expect(voltCh, "BEN5K fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     const resp = await createReversePolarity(page, workspaceId, {
       name: "Va_ben5k_pu_g",
@@ -645,7 +630,7 @@ test.describe("Scenario H — Source removal: exploratory calc channel cascade-d
 
     const meta = await getSourceChannels(page, workspaceId, benSourceId);
     const voltCh = (meta.analog_channels || []).find(c => c.engineering_type === "Voltage");
-    if (!voltCh) { test.skip(true, "BEN5K fixture missing Voltage channel"); return; }
+    expect(voltCh, "BEN5K fixture must expose a Voltage channel — check synthetic_ben5k_phasor.ben").toBeTruthy();
 
     const resp = await createReversePolarity(page, workspaceId, {
       name: "Va_ben5k_cascade_h",
