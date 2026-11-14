@@ -276,21 +276,24 @@ test.describe("DEC-169 -- measurement traces on the Comparison Chart", () => {
     await openComplianceAndSelect(page, "KPDN1");
     await page.locator("#wwCompliancePrepareBtn").click();
     await expect(page.locator('.ww-compliance-reference-readiness[data-status="action_required"]')).toContainText("pu ref");
-    await expect(page.locator('.ww-compliance-readiness-row[data-row="unit"]')).toHaveClass(/ww-compliance-critical/);
+    await expect(page.locator('.ww-compliance-readiness-row[data-row="unit"]')).toHaveAttribute("data-state", "ready");
     await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
     // The Reference is drawn, but no (pu or otherwise) measured trace exists yet.
     expect((await chartTraces(page)).measurement).toHaveLength(0);
     expect((await chartTraces(page)).reference).toHaveLength(1);
 
-    await page.locator("#wwComplianceConfigureBaseBtn").click();
-    await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
-    await page.locator("#wwMgVoltageKvInput").fill("132");
-    await page.locator("#wwMgDrawerSaveBtn").click();
-    await page.locator("#measurementGroupsCloseBtn").click();
+    // KPDN1 has an auto-configured base — Configure Base is not needed and must be hidden.
+    await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeHidden();
+    // Unit row confirms the auto-configured base value (132 kV L-G from the KPDN1 group).
+    await expect(page.locator('.ww-compliance-readiness-row[data-row="unit"]')).toContainText("132.00 kV");
+    // The first Prepare (line 277) already started RMS processing; with base configured it completes.
     await expect(status(page)).toHaveText("✓ Ready for assessment");
     await waitForMeasurement(page, 3);
     const traces = (await chartTraces(page)).measurement;
     expect(traces.every((t) => t.meta.unit === "pu")).toBe(true);
+    // Engineering context: KPDN1 is an R/Y/B bay — line-line members AB/BC/CA map to VRY/VYB/VBR.
+    expect(traces.map((t) => t.meta.members)).toEqual([["AB"], ["BC"], ["CA"]]);
+    expect(traces.map((t) => t.name)).toEqual(["V<sub>RY</sub>", "V<sub>YB</sub>", "V<sub>BR</sub>"]);
     const ab = traces.find((t) => t.meta.members[0] === "AB");
     const puPeak = Math.max(...finite(ab.y));
     expect(puPeak).toBeLessThan(10);
