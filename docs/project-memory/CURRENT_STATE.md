@@ -9,6 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
+
+[FACT] Three pre-existing browser test failures corrected and committed as `0429c27` + `0af9b41`
+on `feature/vlt-ref-001-voltage-reference-safety`. Working tree clean. NOT pushed or merged.
+
+- **F-1:** `compliance_measurement.spec.js:208` — `"275 kV L-G"` → `"275.00 kV L-G"` (Slice 6C
+  `.toFixed(2)` formatting from `d9b3caf`).
+- **F-2:** `compliance_workspace.spec.js:273` — class assertion → `data-state="ready"`; Configure Base
+  flow reworked for KPDN1 auto-configured 132 kV base (`7d4c263`).
+- **F-3:** `per-unit-display-synchronization.spec.js` — 4 assertions corrected: raw Current channel
+  cursor values stay in engineering kA (DEC-212 §2 confirmed applies to cursor readouts).
+  `frontend/index.html` unchanged — DEC-212 §2 two-batch enforcement was always correct.
+  F-3 regression test added (Voltage cursor follows mode; Current stays kA; generation guard).
+
+Targeted tests: 80/0/0. Full suite: 1351 passed, 36 pre-existing failures (22 BEN5K env-var,
+14 resource-exhaustion), 10 skipped.
+
+---
+
 ## DEC-213 Consolidated Integration Audit — PASS (2026-11-14)
 
 [FACT] DEC-213 audit formally closed on 2026-11-14. All Physical Calibration Authority safeguards

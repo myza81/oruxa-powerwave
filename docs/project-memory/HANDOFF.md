@@ -4,8 +4,8 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-14** (Stage 3B-3 committed as `81e7fb0`; 25/25 Stage 3B-3 browser tests pass;
-full browser suite 1391 passed / 2 skipped / 3 failed (pre-existing) / exit 0. NOT pushed or merged.
+Last updated: **2026-11-15** (Post-DEC-213 browser regression maintenance committed: F-1/F-2/F-3 test
+corrections committed as `0429c27` + `0af9b41`. Working tree clean. NOT pushed or merged.
 Awaiting owner engineering review before next authorized action.)
 
 ## Stage 3B-3 — Calibration UI/UX presentation (2026-11-14)
@@ -33,6 +33,37 @@ NOT pushed, deployed, or merged. No backend code modified. No PU mathematics mod
 - BEN numerical corrections: requires separate owner authorization.
 - Slice 6D: not authorized.
 - Push / merge / deploy: not authorized.
+
+---
+
+## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
+
+**Status:** Committed locally as `0429c27` + `0af9b41`. Working tree clean. NOT pushed or merged.
+
+**Three pre-existing browser test failures corrected:**
+
+- **F-1 (`compliance_measurement.spec.js:208`):** Assertion `"275 kV L-G"` → `"275.00 kV L-G"`.
+  Root cause: Slice 6C commit `d9b3caf` added `.toFixed(2)` formatting to `wwComplianceUnitRowHtml()`.
+
+- **F-2 (`compliance_workspace.spec.js:273`):** Line 279 changed from `ww-compliance-critical` class
+  assertion to `data-state="ready"`. Lines 285-310 reworked: Configure Base button asserted hidden,
+  KPDN1 auto-configured 132 kV base asserted, first Prepare awaited, 3 PU traces with R/Y/B member
+  names and engineering context verified.
+  Root cause: commit `7d4c263` added auto-configuration of voltage bases for multibay COMTRADE fixtures.
+
+- **F-3 (`per-unit-display-synchronization.spec.js:317`):** Lines 317/319/323/325 corrected from
+  PU cursor values to engineering kA values for raw Current channels. Added F-3 regression test:
+  Voltage cursor follows unit mode; Current cursor stays in kA; generation guard verified on rapid
+  ENG→PU→ENG transition.
+  Root cause: Assertions were always incorrect — they expected PU cursor values for raw Current
+  channels, contradicting DEC-212 §2 (confirmed owner decision). The two-batch DEC-212 §2 engineering
+  enforcement in `wwFetchCursorValuesForSource` was always correct. `frontend/index.html` unchanged
+  vs HEAD (all production code correct from prior commit).
+
+**Test results:**
+- Targeted (F-1/F-2/F-3 specific): **80 passed, 0 failed, 0 skipped**.
+- Full suite: 1351 passed, 36 failed (22 BEN5K env-var pre-existing, 14 resource-exhaustion long-run),
+  10 skipped. No new failures introduced.
 
 ---
 
