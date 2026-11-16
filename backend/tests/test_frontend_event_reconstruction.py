@@ -1981,23 +1981,20 @@ class TestEventReconstructionPerUnitDisplay:
     display between Engineering and Per Unit."""
 
     def test_unit_selector_uses_waveforms_wording_as_a_labelled_mode_selector(self):
-        """DEC-143: Event Reconstruction's own ENG/PU switch is now two
-        icon buttons (owner-supplied engineering_unit.svg/per_unit.svg),
-        not text -- but the ARIA wording ("Unit Mode", "Engineering
-        Units", "Per Unit") is unchanged, still Waveform's own words, via
-        title/aria-label rather than visible text content."""
+        """DEC-143 / DEC-212: Event Reconstruction's own ENG/PU switch is two
+        icon buttons (owner-supplied engineering_unit.svg/per_unit.svg).
+        DEC-212 renamed the group aria-label from "Unit Mode" to "Voltage Display"
+        to reflect that the toggle now controls only Voltage channel display."""
         source = _source()
         page = _er_page(source)
         toggle = _between(page, '<div class="theme-toggle ww-icon-group" id="wwErUnitModeToggle"', "</div>")
-        assert 'role="group" aria-label="Unit Mode"' in toggle
+        assert 'role="group" aria-label="Voltage Display"' in toggle
         assert 'id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in toggle
         assert 'id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in toggle
         assert ">Units</span>" not in page  # the former text label is gone
-        # Waveform's own words for the same switch (Waveform toolbar
-        # migration: Waveform's own ENG/PU is now the identical
-        # two-icon-button pattern, not a dropdown with text items).
+        # Waveform toolbar carries the same rename (DEC-212).
         wf_toggle = _between(source, '<div class="theme-toggle ww-icon-group" id="wwUnitModeToggle"', "</div>")
-        assert 'role="group" aria-label="Unit Mode"' in wf_toggle
+        assert 'role="group" aria-label="Voltage Display"' in wf_toggle
         assert 'id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in wf_toggle
         assert 'id="wwUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in wf_toggle
         # Default Engineering.

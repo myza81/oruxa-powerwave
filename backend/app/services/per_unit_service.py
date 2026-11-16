@@ -71,6 +71,7 @@ class SourcePerUnitConfigView:
     resolved_current_base_amps: float | None
     created_at: datetime | None
     current_base_reference_side: ReferenceSide = "unknown"
+    voltage_base_reference_side: ReferenceSide = "unknown"
 
 
 def _view_for_source(
@@ -85,6 +86,7 @@ def _view_for_source(
         source_id=source_id,
         configured=profile is not None,
         current_base_reference_side=configured_base_side(profile.current_base_mode, profile.current_base_reference_side) if profile else "unknown",
+        voltage_base_reference_side=profile.voltage_base_reference_side if profile else "unknown",
         voltage_base_value=profile.voltage_base_value if profile else None,
         voltage_reference_mode=profile.voltage_reference_mode if profile else "auto",
         voltage_reference_override=profile.voltage_reference_override if profile else None,
@@ -157,6 +159,7 @@ def upsert_source_per_unit_config(
     voltage_base_value: float | None,
     voltage_reference_mode: str,
     voltage_reference_override: str | None,
+    voltage_base_reference_side: str | None = None,
     current_base_mode: str,
     apparent_power_base_value: float | None,
     direct_current_base_value: float | None,
@@ -189,8 +192,19 @@ def upsert_source_per_unit_config(
                                    existing.current_base_reference_side if existing else "unknown")
     except ValueError as exc:
         raise InvalidPerUnitBaseError(str(exc)) from exc
+    from app.domain.reference_side import REFERENCE_SIDES
+    v_side: str
+    if voltage_base_reference_side is not None:
+        if voltage_base_reference_side not in REFERENCE_SIDES:
+            raise InvalidPerUnitBaseError(
+                f"voltage_base_reference_side must be one of {REFERENCE_SIDES}."
+            )
+        v_side = voltage_base_reference_side
+    else:
+        v_side = existing.voltage_base_reference_side if existing is not None else "unknown"
     profile = PerUnitBaseProfile(
         current_base_reference_side=side,
+        voltage_base_reference_side=v_side,
         source_id=source_id,
         workspace_id=workspace_id,
         voltage_base_value=voltage_base_value,

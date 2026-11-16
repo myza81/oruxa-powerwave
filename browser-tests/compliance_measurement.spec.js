@@ -205,7 +205,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       const unitRow = page.locator('.ww-compliance-readiness-row[data-row="unit"]');
       await selectGroup(page, "Bay A");
       await expect(unitRow).toHaveAttribute("data-state", "ready");
-      await expect(unitRow).toContainText("275 kV L-G");
+      await expect(unitRow).toContainText("275.00 kV L-G");
 
       await selectGroup(page, "Bay B");
       await expect(unitRow).toHaveAttribute("data-state", "action_required");

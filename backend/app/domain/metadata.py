@@ -14,6 +14,12 @@ from dataclasses import dataclass
 #: is 50 Hz.
 DEFAULT_NOMINAL_FREQUENCY_HZ = 50.0
 
+#: Explicit format-variant identifier for the BEN32 BEN5K Legacy record class.
+#: Stored in RecordingMetadata.format_variant when a BEN5K record is normalised.
+#: Used by services that need to identify BEN5K legacy records independently of
+#: timestamp-authority properties (time_basis is a separate, independent concept).
+FORMAT_VARIANT_BEN5K_LEGACY = "BEN5K_LEGACY"
+
 
 @dataclass(slots=True)
 class RecordingMetadata:
@@ -30,3 +36,9 @@ class RecordingMetadata:
     timezone: str | None = None
     comments: str | None = None
     timestamp_ambiguity_sample: str | None = None
+    # Stage 3B-2A (DEC-213): explicit format variant, set by providers that emit
+    # a known sub-format. None for COMTRADE, CSV/Excel and legacy BEN32 SubBen.
+    # Must NOT be derived from timestamp-authority properties (time_basis is
+    # independent) or from channel names. Currently: FORMAT_VARIANT_BEN5K_LEGACY
+    # for BEN32 BEN5K Legacy records; None for every other provider.
+    format_variant: str | None = None

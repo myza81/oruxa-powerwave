@@ -61,6 +61,8 @@ class VoltageGroupConfigOut(BaseModel):
     effective_reference: VoltageReferenceValue | None
     evidence_names: list[str]
     detection_reason: str
+    base_reference_side: ReferenceSide = "unknown"
+    secondary_voltage_ll_v: float | None = None
 
 
 class CurrentGroupConfigOut(BaseModel):
@@ -120,11 +122,16 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     operation, matching `set_voltage_base()`'s own always-required-value
     contract). `reference_mode="manual"` requires `reference_override`;
     `reference_mode="auto"` (default) always returns the group to
-    live auto-detection, clearing any previous override."""
+    live auto-detection, clearing any previous override.
+    `base_reference_side` declares whether the configured nominal voltage
+    is a primary or secondary equipment rating (default "unknown" for
+    backward compatibility with existing configurations)."""
 
     nominal_voltage_ll_kv: PerUnitBaseNumber | None = None
     reference_mode: VoltageReferenceMode = "auto"
     reference_override: VoltageReferenceValue | None = None
+    base_reference_side: ReferenceSide = "unknown"
+    secondary_voltage_ll_v: float | None = None
 
 
 class CurrentGroupConfigUpdateRequest(BaseModel):

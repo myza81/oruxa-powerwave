@@ -49,7 +49,7 @@ class PhasorAnalysisResultOut(BaseModel):
 #: above (never reused/overloaded), since the two endpoints answer
 #: different questions: one role for one requirement vs. all six roles
 #: for one Engineering Context at once.
-PhasorDiagramRoleStatus = Literal["available", "missing", "needs_configuration", "ambiguous", "not_eligible"]
+PhasorDiagramRoleStatus = Literal["available", "missing", "needs_configuration", "ambiguous", "not_eligible", "calibration_unavailable"]
 PhasorDiagramStatus = Literal["computed", "needs_configuration"]
 
 

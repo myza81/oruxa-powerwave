@@ -4,51 +4,848 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-07** (DEV verified; hand over for final owner acceptance).
+Last updated: **2026-11-15** (Post-DEC-213 browser regression maintenance committed: F-1/F-2/F-3 test
+corrections committed as `0429c27` + `0af9b41`. Working tree clean. NOT pushed or merged.
+Awaiting owner engineering review before next authorized action.)
 
-## Final PU release - stop for owner acceptance
+## Stage 3B-3 — Calibration UI/UX presentation (2026-11-14)
 
-Deployed release: `82c8ebbe320b58113a71caeb1c2e4335ad7887a8` on
-feature/calculator-vi-phasors, including FA-001 384a55f and LIM-001 b6202fc.
-Normal push, both required CI jobs, and existing manual deploy.yml target=dev
-passed. CI run 42327370768; DEV run 42327935955. Both full Linux backend runs:
-11,391 passed / 303 skipped / 21 warnings / zero failures. No main merge or PROD.
+**Status:** Committed locally as `81e7fb0` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No backend code modified. No PU mathematics modified.
 
-Both running full versions match the release, development environment and
-healthy backend. Strict chain/hostname/system-CA TLS verification passed before
-and after deployed smoke, without any TLS bypass or trust-store change.
+**What Stage 3B-3 introduced (all in `frontend/index.html`):**
+- Slice 3B-3-A: `wwPhasorRoleStatusLabel("calibration_unavailable")` → "Calibration unavailable";
+  four DEC-213 reason codes added to `WW_PHASOR_REASON_TEXT`.
+- Slice 3B-3-B: `wwSourceCalibrationBadgeHtml(channel)`: source-channel calibration badge
+  for `unverified` (amber ⚠) and `invalid` (red ✕); inserted in `analogChannelNameCellHtml()`.
+  Verified badge suppressed. No COMTRADE not-assessed badge.
+- Slice 3B-3-C: `wwCurValueText()` appends `" ⚠"` for `exploratory_unverified` calc channels.
 
-140 unique deployed smoke cases have passing evidence in nine files. Initial
-101 passes / one wrong raw-row expectation / 38 not run; follow-up one harness
-legend/layout error / 38 not run; final remaining 39/39 pass. Both harness errors
-are preserved and explained, not product corrections. Zero automatic retries.
-Raw source rows intentionally keep ENG metadata; plots and calculated display
-rows use live units. Exact arrays, identities and label assertions were retained.
+**Browser test additions:**
+- `stage3b3-source-badge.spec.js` (NEW — 6 scenarios, all pass).
+- `ben5k-phasor-calibration-gate.spec.js` extended (+1 phasor label text test, 7 total).
 
-FA-001 extreme preview/saved base/actual PU samples match independent arithmetic.
-LIM-001 side matrix and disclosure, strict cross-authority Unknown/Manual,
-shared consumers, mode/base edits, async fencing, Voltage/group/default/linked
-bases, independent/nested Manual, Power Calculator and calculated Power pass.
-All 142 synthetic test-owned workspaces cleaned, every DELETE 204. All 871 tested
-source hashes and all 2250 protected evidence files remain unchanged. Prior full
-local acceptance remains applicable; no new complete local suite claimed.
+**Test results:**
+- Stage 3B-3: 25/25 browser tests pass. Full suite: 1391 passed / 2 skipped / 3 failed (pre-existing) / exit 0.
+- Backend: unchanged (12,640 collected, 12,249 passed, 391 skipped, exit 0).
 
-This result record is a separate documentation-only closure commit after the
-actual deployed SHA. Do not confuse documentation HEAD with runtime version;
-no application/test change or redeploy is needed for the record. Current remote
-main remains d8ade8f. Preserve the five protected untracked paths unchanged:
-.audit/, .slice1-evidence/, test-results/ and both screenshot specs.
+**Next steps (approved scope):**
+- BEN numerical corrections: requires separate owner authorization.
+- Slice 6D: not authorized.
+- Push / merge / deploy: not authorized.
 
-Read the [release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md) for
-exact commits, workflow links, tests, numerical evidence, retained harness errors,
-secure versions, cleanup and rollback boundary. New outputs only:
-C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-final-dev-20261107-bf637a9452a64a33a85dc314d130b120
+---
 
-GO for final owner UAT; overall PU acceptance remains the owner's decision.
-Known limits: accepted ephemeral workspaces, Unverified historical Unknown,
-shared Secondary identity, CSV/BEN side declaration and separate discovery-ID,
-CT/VT scaling and broader load/heap certification. No permanent storage expansion,
-main merge, PROD deploy, unrelated fixes or further work. Stop here.
+## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
+
+**Status:** Committed locally as `0429c27` + `0af9b41`. Working tree clean. NOT pushed or merged.
+
+**Three pre-existing browser test failures corrected:**
+
+- **F-1 (`compliance_measurement.spec.js:208`):** Assertion `"275 kV L-G"` → `"275.00 kV L-G"`.
+  Root cause: Slice 6C commit `d9b3caf` added `.toFixed(2)` formatting to `wwComplianceUnitRowHtml()`.
+
+- **F-2 (`compliance_workspace.spec.js:273`):** Line 279 changed from `ww-compliance-critical` class
+  assertion to `data-state="ready"`. Lines 285-310 reworked: Configure Base button asserted hidden,
+  KPDN1 auto-configured 132 kV base asserted, first Prepare awaited, 3 PU traces with R/Y/B member
+  names and engineering context verified.
+  Root cause: commit `7d4c263` added auto-configuration of voltage bases for multibay COMTRADE fixtures.
+
+- **F-3 (`per-unit-display-synchronization.spec.js:317`):** Lines 317/319/323/325 corrected from
+  PU cursor values to engineering kA values for raw Current channels. Added F-3 regression test:
+  Voltage cursor follows unit mode; Current cursor stays in kA; generation guard verified on rapid
+  ENG→PU→ENG transition.
+  Root cause: Assertions were always incorrect — they expected PU cursor values for raw Current
+  channels, contradicting DEC-212 §2 (confirmed owner decision). The two-batch DEC-212 §2 engineering
+  enforcement in `wwFetchCursorValuesForSource` was always correct. `frontend/index.html` unchanged
+  vs HEAD (all production code correct from prior commit).
+
+**Test results:**
+- Targeted (F-1/F-2/F-3 specific): **80 passed, 0 failed, 0 skipped**.
+- Full suite: 1351 passed, 36 failed (22 BEN5K env-var pre-existing, 14 resource-exhaustion long-run),
+  10 skipped. No new failures introduced.
+
+---
+
+## DEC-213 Consolidated Integration Audit — PASS (2026-11-14)
+
+**Status:** Audit formally closed. Committed as `32c9f29` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged.
+
+**Findings resolved:**
+- M-1: Docstring added to `evaluate_calibration_eligibility()` clarifying empty-list vacuous-truth semantics.
+  11 call sites audited — no bypass.
+- M-2: All 11 `test.skip()` soft-skip guards removed from `power-provenance.spec.js`; replaced with hard
+  `expect()` assertions. Browser: POWER 8/0/0, Compliance+Phasor 10/0/0.
+- L-1: Single-run baseline — **12,640 collected / 12,249 passed / 391 skipped / 0 failed / exit 0**.
+
+**Audit document:** `docs/project-memory/DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md` (committed).
+
+**Files changed (2 implementation + 3 docs):**
+- `backend/app/domain/physical_calibration.py` — docstring note (M-1)
+- `browser-tests/power-provenance.spec.js` — 11 soft-skip guards hardened (M-2)
+- `docs/project-memory/DEC_213_CONSOLIDATED_INTEGRATION_AUDIT.md` (NEW — full audit record)
+- `docs/project-memory/CURRENT_STATE.md` — audit entry + corrected single-run count
+- `docs/project-memory/HANDOFF.md` — this update
+
+---
+
+## Stage 3B-2C-3 — Calculated POWER calibration provenance (2026-11-13)
+
+**Status:** Committed locally as `d30a4be` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
+or ENG-mode display paths modified.
+
+**Files changed (6 files):**
+- `backend/app/api/v1/calculated_channels.py` — `_collect_leaf_authorities()` DFS; `_compute_provenance()` router; provenance fields on POST/GET-list
+- `backend/app/schemas/calculated_channel.py` — `calibration_provenance_status` + `calibration_provenance_reason` on `CalculatedChannelOut`
+- `frontend/index.html` — badge CSS; `wwCalcChannelProvenanceBadgeHtml()`; sidebar + manager insertion; `wwPeakValueLineText()` ⚠ for `exploratory_unverified`
+- `backend/tests/test_power_provenance.py` (NEW — 25 tests, TestA–TestN)
+- `browser-tests/power-provenance.spec.js` (NEW — 8 browser tests, Scenarios A–H)
+- `docs/project-memory/STAGE_3B_2C_3_POWER_PROVENANCE_ASSESSMENT.md` (updated — implementation complete)
+
+**Test results:**
+- 25/25 power provenance tests pass. 8/8 browser tests pass (Scenarios A–H), 0 skipped.
+- Full backend suite: 12,640 collected, 12,271 passed, 391 skipped, exit 0, 0 failures.
+
+**Key owner decisions (OD-12, binding):**
+- OD-12: Calculated POWER channels from BEN5K sources carry `exploratory_unverified` provenance label.
+- Six status values: `all_verified`, `not_fully_verified`, `exploratory_unverified`, `not_assessed`, `blocked_invalid`, `blocked_structural`.
+- No active export pathway for calc channels; calc-channel export provenance labeling deferred to Stage 3B-3.
+
+**Next steps (approved scope):**
+- Stage 3B-3: **CLEARED** — DEC-213 audit passed; awaiting owner authorization to begin implementation.
+- BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
+
+## Stage 3B-2C-2 — Compliance calibration gate (2026-11-13)
+
+**Status:** Committed locally as `c7b8388` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
+or ENG-mode display paths modified.
+
+**Files changed (9 files):**
+- `backend/app/services/compliance_series.py` — C-1 bypass closed via `_check_compliance_calibration()`
+- `backend/app/services/compliance_readiness_service.py` — C-2 bypass closed; precedence corrected; `reason_code` field
+- `backend/app/api/v1/compliance.py` — HTTP 422 for `invalid_calibration_authority`; `reason_code` output
+- `backend/app/schemas/compliance.py` — `reason_code: str | None = None` on `ComplianceMemberReadinessOut`
+- `frontend/index.html` — CSS token; label map; `wwComplianceRepresentationRow()` guard
+- `backend/tests/test_compliance_calibration_gate.py` (NEW — 39 tests)
+- `backend/tests/fixtures/ben/synthetic_ben5k_compliance.ben` (NEW — 3776-byte 3-phase BEN5K fixture)
+- `browser-tests/compliance-calibration-gate.spec.js` (NEW — 4 browser tests)
+- `docs/project-memory/STAGE_3B_2C_2_COMPLIANCE_CALIBRATION_ASSESSMENT.md` (updated — §18 added)
+
+**Test results:**
+- 39/39 calibration gate tests pass. 46/46 compliance API tests pass. 120/120 phasor+PU gate tests pass.
+- Full backend suite: 12,615 collected, exit 0, 0 failures (confirmed ×3 runs). Browser: 4/4 compliance + 6/6 phasor.
+- Browser: 4/4 compliance-calibration-gate pass (0 skipped, BEN5K_EXPERIMENTAL_ENABLED=1). 6/6 ben5k-phasor pass.
+
+**Key owner decisions (OD-10a/OD-11, binding):**
+- OD-10a: Compliance + Unverified inputs → `calibration_unavailable` (not `incompatible`).
+- OD-11: Invalid inputs → `InvalidCalibrationAuthorityError`; HTTP 422; not HTTP 500.
+
+**Next steps (approved scope):**
+- Stage 3B-2C-3: committed as `d30a4be` — see section above.
+- Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
+
+## Stage 3B-2C-1 — Phasor/impedance/sequence/distance calibration gate (2026-11-13)
+
+**Status:** Committed locally as `d744b97` + `e417945` + `35af9e1` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No PU mathematics
+or ENG-mode display paths modified.
+
+**Files changed (`d744b97` + `e417945`, original implementation, 7 files):**
+- `backend/app/domain/phasor.py` — `ROLE_STATUS_CALIBRATION_UNAVAILABLE` constant; `KNOWN_ROLE_STATUSES` updated
+- `backend/app/services/phasor_analysis_service.py` — `_CalibrationBlockedResult(reason: str)` sentinel;
+  5 calibration-block return sites; 3 callers updated to set `calibration_unavailable` status + reason_code
+- `backend/tests/test_phasor_calibration_gate.py` (NEW — 19 tests, scenarios A–Q)
+- `backend/tests/test_time_reference_interpretation.py` — epoch regression hardened; new COMTRADE epoch test
+- `browser-tests/ben5k-phasor-calibration-gate.spec.js` (NEW — scenarios A–K)
+- `docs/project-memory/STAGE_3B_2C_1_IMPLEMENTATION_REPORT.md` (NEW)
+- `docs/project-memory/STAGE_3B_2C_PHASOR_POWER_COMPLIANCE_ASSESSMENT.md` (NEW)
+
+**Files changed (`35af9e1`, browser hardening, 3 files):**
+- `backend/tests/fixtures/ben/synthetic_ben5k_phasor.ben` (NEW — 3518-byte BEN5K with Va+Ia UNVERIFIED)
+- `backend/app/schemas/phasor_analysis.py` — `PhasorDiagramRoleStatus` extended with `"calibration_unavailable"`
+  (gap in `d744b97`: domain/service emitted the status but Pydantic output schema rejected it → HTTP 500)
+- `browser-tests/ben5k-phasor-calibration-gate.spec.js` — env-var gate removed from scenarios A/B/C/D/E;
+  all now mandatory with synthetic fixture; 2 pre-existing bugs fixed (endpoint, null_policy)
+
+**Test results:** 47/47 calibration+epoch backend tests pass. 99/99 Stage 3B-2A/3B-2B regressions pass.
+Full backend suite: exit 0. 171 phasor regressions re-run after schema fix: 171 pass. 6/6 browser
+scenarios pass, 0 skipped.
+
+**Key owner decisions (OD-8/OD-9/OD-13/OD-14, binding):**
+- OD-8: Unverified blocks phasor/impedance/sequence analysis (PURPOSE_ENGINEERING_CALCULATION).
+- OD-9: Invalid blocks all derived analysis.
+- OD-13: Per-role blocking — eligible roles computed independently.
+- OD-14: Distance Protection zone verdicts require engineering-calculation eligibility.
+
+**Next steps (approved scope):**
+- Stage 3B-2C-2: committed as `c7b8388` — see section above.
+- Stage 3B-2C-3: committed as `d30a4be` — see section above.
+- Stage 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
+
+## Stage 3B-2B-2 — Invalid calibration authority gate for calculated channels (2026-11-12)
+
+**Status:** Committed locally on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No existing
+ENG-mode display paths or PU mathematics modified.
+
+**Files changed (5):**
+- `backend/app/services/errors.py` — `InvalidCalibrationAuthorityError` (code=`invalid_calibration_authority`;
+  carries `reason` + optional `input_ref`; HTTP 422)
+- `backend/app/services/calculated_channel_service.py` — `_check_creation_authority()` function
+  (fires for ALL engineering types, OD-5); evaluation-time guard on all 4 entry-points (OD-6;
+  None-guard preserves backward compat for service-layer tests)
+- `backend/app/api/v1/calculated_channels.py` — HTTP 422 mapping + `try/except` on all 4
+  evaluation routes
+- `backend/tests/test_invalid_calibration_calculated_channel_gate.py` (NEW — 23 tests)
+- `browser-tests/ben5k-invalid-calibration-gate.spec.js` (NEW — 2 browser tests)
+
+**Test results:** 23/23 new backend tests pass. 216/216 targeted regression tests pass.
+Full backend suite: exit 0 (confirmed 3× in implementation session; targeted regression confirms).
+7 existing + 2 new browser tests pass (BEN5K_EXPERIMENTAL_ENABLED=1 required for new tests).
+
+**Key owner decisions (binding OD-5 to OD-7):**
+- OD-5 (Strict): creation gate fires for ALL engineering types (VOLTAGE, CURRENT, POWER,
+  FREQUENCY, ROCOF, UNDEFINED) — no OD-4 exception.
+- OD-6 (Block): evaluation raises `InvalidCalibrationAuthorityError`; no null values returned.
+- OD-7: `code = "invalid_calibration_authority"`, HTTP 422 for both creation and evaluation.
+
+**Next step (approved scope restrictions):**
+- Stage 3B-2C, 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
+
+## Stage 3B-2B-1 — Calculated-channel PU calibration authority gate (2026-11-12)
+
+**Status:** Committed locally as `9dbc4d4` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No existing
+ENG-mode display paths or PU mathematics modified.
+
+**Files changed (4):**
+- `backend/app/services/calculated_channel_service.py` — `_LeafAuthorityResult` dataclass +
+  `_collect_leaf_authorities()` function (DFS traversal, cycle detection, dedup, 6
+  blocked_reason strings); gate injected at top of
+  `_resolve_effective_per_unit_for_calculated_channel()` (fires only for VOLTAGE/CURRENT)
+- `backend/tests/test_per_unit_eligibility_integration.py` — 1-line regression fix:
+  added `source_registry=r.source` to a direct call that omitted it (OD-1 now blocks
+  VOLTAGE/CURRENT when source_registry is absent)
+- `backend/tests/test_ben5k_calculated_channel_pu_gate.py` (NEW — 30 tests)
+- `browser-tests/ben5k-calculated-channel-pu-gate.spec.js` (NEW — 4 browser tests)
+
+**Test results:** 30/30 new backend tests pass. Full backend suite: exit 0.
+4/4 browser tests pass (BEN5K_EXPERIMENTAL_ENABLED=1). PULU-07/08/09: 3/3 pass.
+
+**Key design decisions (owner-approved OD-1 to OD-4):**
+- OD-1: source_registry=None for VOLTAGE/CURRENT → calibration_unavailable (fail-closed).
+- OD-2: ENG mode unrestricted — gate fires only on PU dispatch, never on ENG path.
+- OD-3: blocked_reason is a machine-readable string; no fabricated authority objects.
+- OD-4: Gate fires only for VOLTAGE/CURRENT; POWER/ROCOF/FREQUENCY/UNDEFINED reach
+  not_applicable unchanged.
+
+**Future gap closed:** Invalid-authority creation gate was implemented in Stage 3B-2B-2 (see above).
+
+**Next step (approved scope restrictions):**
+- Stage 3B-2C, 3B-3, BEN numerical corrections, Slice 6D: requires separate owner authorization.
+- Push / merge / deploy: not authorized.
+
+## Stage 3B-2A — BEN5K PU calibration safety gate (2026-11-12)
+
+**Status:** Committed locally as `06f6d3e` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No BEN5K numerical correction applied. No existing
+calculation logic or PU mathematics modified.
+
+**Files changed (7):**
+- `backend/app/domain/metadata.py` — `FORMAT_VARIANT_BEN5K_LEGACY` constant +
+  `format_variant: str | None = None` trailing field on `RecordingMetadata` (orthogonal
+  to `time_basis`; explicitly set by providers; `None` for COMTRADE/CSV/SubBen)
+- `backend/app/domain/per_unit.py` — `STATUS_CALIBRATION_UNAVAILABLE = "calibration_unavailable"`
+  (distinct from `base_required`; frontend routes to "unavailable" branch, not `:pu` panel)
+- `backend/app/providers/ben/normalize.py` — sets `format_variant=FORMAT_VARIANT_BEN5K_LEGACY`
+  on BEN5K records
+- `backend/app/services/waveform_service.py` — `_calibration_blocked_reason()` helper (sources
+  authority from `DisturbanceRecord.analog_channels`, not summary strings; defensive BEN5K
+  fallback via `format_variant`); gate injected into `_resolve_effective_per_unit()` covering
+  all 4 entry-points (waveform, cursor, peak, annotation)
+- `backend/tests/test_ben5k_pu_calibration_gate.py` (NEW — 46 tests)
+- `backend/tests/fixtures/ben/synthetic_ben5k.ben` (NEW — minimal BEN5K fixture)
+- `browser-tests/ben5k-pu-calibration-gate.spec.js` (NEW — 3 browser regression tests)
+
+**Test results:** 46/46 calibration-gate backend tests pass. Full backend suite: exit code 0
+(12 501 tests). PULU-07/08/09: 3/3 pass. BEN5K gate browser spec: 3/3 pass, 0 skips
+(BEN5K_EXPERIMENTAL_ENABLED=1). No existing tests modified.
+
+**Key design decisions:**
+- `format_variant == FORMAT_VARIANT_BEN5K_LEGACY` is the **explicit** BEN5K identity check —
+  it replaces the former `time_basis == UNKNOWN` proxy (DEC-213 Item 1 correction: timestamp
+  authority and calibration authority are independent concepts).
+- Defensive rule: if a BEN5K channel is missing from `analog_channels` OR its authority is
+  `None`, the gate still blocks (cannot silently authorize PU for unverified source via
+  metadata loss).
+- `STATUS_CALIBRATION_UNAVAILABLE` is distinct from `STATUS_BASE_REQUIRED` so the frontend
+  can distinguish "calibration limitation" (not fixable by configuring a base) from "setup
+  required".
+- `perUnitStatus = "calibration_unavailable"` is returned by the backend in both PU and ENG
+  modes (pre-computed for informational purposes); the frontend uses `unit` (always "kV") to
+  determine display scale, not `perUnitStatus` alone.
+
+**Next step (approved scope restrictions):**
+- Stage 3B-2B-1 (calculated channel gate): **completed** — see entry above.
+- Stage 3B-2B-2/3B-2C (phasor service gate): requires separate owner authorization.
+- Stage 3B-3 (UI calibration limitation display): requires separate owner authorization.
+- BEN5K voltage correction (√2/16 or other factor): requires calibration evidence + approval.
+- BEN5K current calibration (H1/H2): unresolved pending oracle evidence.
+- Push / merge / deploy: not authorized.
+
+## Stage 3B-1 — BEN5K calibration authority propagation (2026-11-11)
+
+**Status:** Committed locally as `4718f0d` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No calculation gate activated.
+Metadata propagation only — no correction factor applied, waveform arrays unchanged.
+
+**Files changed (5):**
+- `backend/app/providers/ben/normalize.py` — inject `_BEN5K_CHANNEL_AUTHORITY` on each BEN5K
+  `AnalogChannel` via explicit `is_legacy_ben5k` condition (time-basis decision remains independent)
+- `backend/app/domain/source.py` — additive `calibration_status`/`calibration_reason` on `AnalogChannelSummary`
+- `backend/app/services/import_service.py` — copy fields from `ch.calibration_authority` in `_build_source_metadata()`
+- `backend/app/schemas/source.py` — additive `calibration_status`/`calibration_reason` on `AnalogChannelOut`
+- `backend/tests/test_ben5k_calibration_authority.py` (NEW — 46 tests, A–H + refinement 2 assertions)
+
+**Test results:** 46/46 new tests pass. 463/463 targeted regression tests pass (sources API,
+preparation import service, preparation sources API, physical calibration, BEN5K normalize,
+BEN5K physical mapping, Stage 3B-1). Full backend suite: exit code 0 (pass, no failures).
+
+**Key design decisions:**
+- `is_legacy_ben5k` is an explicit, independently named condition. `unknown_time_basis`
+  reuses it today but remains conceptually separate — a future BEN5K with verified UTC
+  would change the time-basis decision without changing the calibration authority.
+- `AnalogChannel.calibration_authority` holds the **full** `PhysicalCalibrationAuthority`
+  object including `transform_id` and `evidence_refs`. The `AnalogChannelSummary` and
+  `AnalogChannelOut` expose only `calibration_status`/`calibration_reason` as a limited
+  API projection. Stage 3B-2 evaluators must source the authority from
+  `ActiveSource.record.analog_channels[i].calibration_authority`, not from the summary strings.
+- `transform_id="ben5k_v1_raw_s16_linear_scale_offset"` describes the current actual
+  decoder formula (`raw_s16 * scale + offset`) — prevents double-application if Stage
+  3B-2 applies a correction under a new `transform_id`.
+
+**Next step:** Owner authorization required before Stage 3B-2 (calculation gates),
+Stage 3B-3 (UI warnings), BEN5K voltage correction, or BEN5K current calibration.
+
+## Stage 3A — Physical Calibration Authority foundation (2026-11-11)
+
+**Status:** Committed as `34c396f` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged. No production enforcement activated.
+No BEN5K numerical correction applied.
+
+**Files changed:**
+- `backend/app/domain/physical_calibration.py` (NEW — pure domain contract + evaluator)
+- `backend/app/domain/channels.py` (additive: optional `calibration_authority` field on `AnalogChannel`)
+- `backend/tests/test_physical_calibration.py` (NEW — 73 tests)
+- `docs/project-memory/CURRENT_STATE.md` (updated)
+- `docs/project-memory/HANDOFF.md` (this file)
+
+**Test results:** 73/73 `test_physical_calibration.py` pass. Full backend suite running
+(result pending — will update when complete). No existing tests modified.
+
+**Key design decisions:**
+- `PhysicalCalibrationAuthority` is frozen — immutable once created.
+- `calibration_authority=None` on `AnalogChannel` means "not assessed" — existing
+  behaviour preserved for all existing providers (COMTRADE, CSV, SubBen/BEN32).
+- Evaluator returns `eligible=True` with `reason=not_assessed` for not-assessed
+  channels — does NOT block existing consumers, does NOT grant Verified status.
+- `all_verified=True` only when every contributing leaf is explicitly Verified with
+  no not-assessed leaves — the only condition under which a Verified claim is valid.
+- Dependency propagation: invalid > unverified > not_assessed > verified.
+- Operation purposes: `raw_inspection`, `exploratory_analysis`,
+  `engineering_calculation`, `compliance_assessment`.
+
+**Stage 3B integration sequence (not yet authorized):**
+1. `ben/legacy_ben5k/normalize.py` — publish `calibration_authority` with
+   `status=unverified, reason=ben5k_absolute_calibration_unverified` on all channels.
+2. `waveform_service._resolve_effective_per_unit()` — gate PU conversions.
+3. `calculated_channel_service._resolve_input()` — propagate leaf authorities.
+4. `phasor_analysis_service._fetch_role_candidate()` — block unverified amplitudes.
+5. `compliance_readiness_service` — fail readiness before auto-preparation.
+6. Frontend — display "Physical calibration unverified" state where applicable.
+7. BEN5K voltage correction (√2 / >>4) — after Verified status achievable.
+8. BEN5K current calibration — after oracle evidence for H1/H2 obtained.
+
+**Next step:** Owner reviews Stage 3A. Then: commit, push to origin, DEV deployment,
+owner UAT. Do NOT proceed to Stage 3B, Slice 6D, or any calibration activation
+without separate owner authorization.
+
+## BEN5K mapping-only correction — latest continuation (2026-11-10)
+
+Owner accepted the calibration investigation and authorized **physical mapping
+only**. One legacy-adapter field now retains `physical_word_index` in the
+shared sample slot. Raw packed-word gain/offset, units, nominal detection,
+reference authority and PU rules are unchanged; √2/16 is not implemented.
+
+New backend tests: 41 failed/28 passed before correction; 69/69 passed after.
+They pin all 62 active channels to original binary columns, including every
+14/21 affected channel in Permas/GPTH, and exercise normalized/provider/API and
+downstream paths. Two new browser tests compare every plotted sample with the
+original physical columns. Expanded browser/full backend verification is in
+progress; final counts belong in
+[BEN5K_PHYSICAL_MAPPING_CORRECTION.md](BEN5K_PHYSICAL_MAPPING_CORRECTION.md).
+
+The private event SOE independently lists all four recorded Voltage bay names
+as 275 kV; the historical blanket 132 kV description is inappropriate for those
+bays. This does not establish actual BEN terminal wiring/calibration or sample
+side. See the report's bounded assessment and
+[exact-event parity specification](BEN5K_EXACT_EVENT_COMTRADE_PARITY_SPEC.md).
+Exact October BEN32 exports are still required before calibration work.
+
+All changes remain local and uncommitted on
+`feature/vlt-ref-001-voltage-reference-safety`, parent `bb370678`. Preserve the
+pre-existing PULU test edit and protected evidence. Do not commit, push, merge,
+deploy, implement calibration or begin Slice 6D without owner authorization.
+
+## PU-001B + PU-002A — PULU Auto-Reference Root-Cause Correction; bounded verification complete (2026-11-10)
+
+**Status:** Five backend bugs fixed and browser-verified locally. All work is local — NOT committed, pushed, deployed, or merged. No Slice 6D work undertaken.
+
+**Five bugs corrected (all in backend only — no frontend changes):**
+
+1. **WRP false "support"** (`voltage_hypothesis.py`): `wrp_result` changed from `"support"` → `"neutral"` for plausible VT ratios. After fix: Convention A selected unambiguously for all PULU 275 kV groups (SNM evidence alone discriminates).
+2. **Geometry parse fails for `_HV`/`_LV` qualifier names** (`voltage_reference.py`): `_WINDING_QUALIFIER_RE` strips winding qualifier before phase-token check. `"SGT1 VR_HV"` → `LINE_TO_GROUND`.
+3. **Channel identity grouping fails for `_HV`/`_LV` qualifier names** (`channel_engineering_identity.py`): `_WINDING_QUALIFIER_RE` fallback in `_match_name_role` using separated-match-only paths. `"SGT1 VR_HV"` → `context="SGT1_HV"`, `"SGT1 VR_LV"` → `context="SGT1_LV"` (separate MGs). `"FAVR_HV"` → NO ROLE TOKEN (safeguard preserved).
+4. **Provenance reads `base_reference_side` from wrong config** (`per_unit_provenance_service.py`): `_provenance_from_group()` now reads from `view.voltage_config.base_reference_side` for Voltage channels (was incorrectly reading `view.current_config.base_reference_side` which is always None for Voltage).
+5. **`needs_review` path never writes `base_reference_side`** (`auto_base_service.py`): When `measurement_side=="primary"` and `sufficient_for_auto_side`, the needs_review fallback now also writes `base_reference_side="primary"`. C4 guard prevents overwrite of manual/legacy configs.
+
+**16 new backend regression tests** (12 in existing test classes, 4 new class `TestPULURealFileAutoBaseEvidence`, 4 new class `TestDM11b_PULUWithRealSecondaryRatio`, 6 new class `TestWindingQualifierDetection` × 2).
+
+**New browser spec**: `browser-tests/pulu-auto-reference.spec.js` (4 tests: PULU-01 through PULU-04).
+
+**Test results (all local):**
+- Backend full suite: **exit 0** (confirmed × 2 runs)
+- Backend PU subset (220 tests): **220/220 pass**
+- Backend provenance (34 tests): **34/34 pass**
+- PULU browser spec: **4/4 pass** (exit 0)
+- 5-spec regression suite: **63/63 pass** (exit 0) — compliance_readiness, event-reconstruction-per-unit, per-unit-reference-safety, per-unit-voltage-reference-safety, voltage-only-pu-display
+
+**9 modified files** (Fixes 1–5: 5 source files; 3 test files; CURRENT_STATE.md). 1 new untracked file (`browser-tests/pulu-auto-reference.spec.js`). 5 pre-existing untracked test-run TXT files untouched.
+
+**Next step:** Owner reviews and approves. Then: single local corrective commit, push to `feature/vlt-ref-001-voltage-reference-safety`, DEV deployment, owner UAT. Do NOT begin Slice 6D without separate authorization.
+
+---
+
+## PU-001B + PU-002A — Slice 6C + 6C.1 complete; awaiting owner review (2026-11-09)
+
+**Status:** Slice 6C implemented and locally verified. All work is local — NOT committed, pushed,
+deployed, or merged. The running DEV release is unmodified.
+
+**What Slice 6C changed (DEC-212 Voltage-only UI):**
+
+1. **ENG/PU toggle label** — both Waveform toolbar (`#wwUnitModeToggle`) and ER toolbar
+   (`#wwErUnitModeToggle`) aria-labels changed from `"Unit Mode"` → `"Voltage Display"`.
+
+2. **`wwErChannelUnitDisplay()` DEC-212 guard** — `kind === "analog"` Current channels
+   (looked up via `wwErState.channelsBySource[sid].analog_channels[].engineering_type`) always
+   return `{ state: "engineering", unitMode: "engineering" }` regardless of toggle. Guard does
+   NOT apply to `kind === "calculated"` (reserved for Slice 6D).
+
+3. **`wwFetchChannelRange()` guard** — `unitMode: channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode`.
+   Raw Current channels never send a per-unit fetch request to the backend.
+
+4. **MG modal Current Groups section** — added DEC-212 note below the heading:
+   "Current channels always display in A/kA (DEC-212). Per-unit normalisation for current is
+   configured through Calculated Channels."
+
+5. **Voltage drawer label** — "Nominal voltage (line-to-line)" → "Nominal Voltage (kV, Line-to-Line)".
+
+**Test changes:**
+
+- `backend/tests/test_frontend_event_reconstruction.py`: 1 assertion updated
+  - `test_unit_selector_uses_waveforms_wording_as_a_labelled_mode_selector`: both toggle
+    aria-label assertions changed from `"Unit Mode"` → `"Voltage Display"` (DEC-212)
+- `backend/tests/test_frontend_per_unit_mode.py`: 1 assertion updated
+  - `test_every_channel_waveform_fetch_requests_unit_mode`: `"unitMode: ww.unitMode,"` →
+    DEC-212 conditional `'channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode'`
+- `backend/tests/test_frontend_shared_renderer_helpers.py`: 1 assertion updated
+  - `test_waveform_fetch_wrapper_keeps_waveform_inputs`: same DEC-212 conditional string
+- `browser-tests/event-reconstruction-per-unit.spec.js`: 5 assertion updates
+  - Toggle aria-label check updated
+  - Panel titles: `"Current (pu)"` → `"Current (A)"`
+  - IA values: previously expected PU-scaled → now expects engineering (unchanged) values
+  - Combined axes: same `"Current (pu)"` → `"Current (A)"` fix
+  - "no per-unit basis" test: STN_B.IA now plots engineering (not "PU unavailable")
+
+- `browser-tests/voltage-only-pu-display.spec.js`: **15 new Slice 6C regression tests** (VD-01 … VD-15)
+  covering: toggle aria-labels, Current channel unit stays A/kA in PU mode, Current never shows
+  "PU unavailable" badge, MG DEC-212 note, voltage drawer label, auto-switch behavior,
+  PU cycle preserves values, calculated Current not guarded, base summary format.
+  VD-09 fix: navigates Per-Unit Settings → `#wwOpenMeasurementGroupsFromSettingsBtn` →
+  `#measurementGroupsOverlay` unhides → asserts DEC-212 note in `#measurementGroupsBody`.
+
+- Backend test suite: **no backend changes in Slice 6C** — DEC-212 is a pure frontend change.
+  Backend still returns `base_required` for Current groups with no Ibase; frontend now ignores
+  that (renders engineering mode directly). Backend full suite exit 0 (all prior tests unchanged).
+
+**What Slice 6C.1 changed (DEC-212 corrective pass):**
+
+7. **`wwMgGroupToEditState` — `hasLegacyConfig`**: `true` when `cfg.method === "equipment_rating" ||
+   cfg.method === "manual"`. Standard Current groups (no config) get the DEC-212 informational note;
+   legacy groups (existing Ibase config) keep the "Historical" controls.
+
+8. **`wwRenderMgCurrentDrawerHtml` rewrite**: Standard path renders a DEC-212 note only (no base/method
+   controls); legacy path renders `id="wwMgLegacyCurrentSection"` with `id="wwMgLegacyBadge"` text
+   "Historical" and the existing controls. `wwSaveMgDrawer` has early return for standard groups.
+
+9. **`engineeringType` annotation storage** (`wwCreateCalloutFromClick`, `wwCreatePeakFromClick`):
+   `engineeringType: channel.engineeringType` stored in `annotation.data` at creation time. Used by
+   the refresh path so hidden-channel annotations are still routed to engineering even when `ww.displayed`
+   no longer holds the entry.
+
+10. **`wwCreatePeakFromClick` `!isCalculated &&` guard**: peak requests use engineering only for
+    `!isCalculated && channel.engineeringType === "Current"`. Calculated Current channels follow
+    `ww.unitMode` (Slice 6D scope).
+
+11. **`wwResolveCalloutAnchorMove` stored-type primary lookup**: `annotation.data?.engineeringType`
+    is checked first; falls back to `ww.displayed` lookup for pre-6C.1 annotations without stored
+    `engineeringType`. Removes the race condition where `ww.displayed` lookup fails for hidden channels.
+
+12. **`wwRecalculatePeakAnnotationsForSource` DEC-212 partitioning**: annotations split into
+    `dec212CurrentItems` (raw Current, `!isCalculated`, stored/lookup `engineeringType === "Current"`)
+    and `dec212OtherItems` and routed to separate `processPeakBatch` calls.
+
+13. **Smart quote fix**: 98 U+2018/U+2019 characters introduced by Edit tool during the
+    `wwRenderMgCurrentDrawerHtml` rewrite replaced with ASCII `'`; one `group\'s` apostrophe
+    fixed. V8 rejects smart quotes as "Invalid or unexpected token" — silently prevents ALL
+    event listeners from registering. Validation: `node --check` on extracted JS before tests.
+
+**Test changes in Slice 6C.1:**
+
+- `per-unit-reference-safety.spec.js`: migrated `editGroup()` calls to direct `/current-config` API.
+  Added 5 new tests (40–44):
+  - test 40: standard Current drawer shows no PU controls (DEC-212)
+  - test 41: legacy Current drawer shows "Historical" badge and controls
+  - test 42: hidden-channel callout and peak use engineering (stored `engineeringType`)
+  - test 43: legacy annotation without stored `engineeringType` falls back to `ww.displayed`
+  - test 44: calculated Current peak follows `ww.unitMode` (not engineering guard) pending Slice 6D
+  - Tests 42+43 use `expect.poll({ timeout: 10000 })` — `wwRefreshWaveformDisplayBasis` clears
+    `data.unit = ""` synchronously before the async `wwResolveCalloutAnchorMove` completes.
+
+- `voltage-only-pu-display.spec.js`: added VD-16 (Current group edit drawer has no Nominal Voltage
+  PU config field) and VD-17 (mixed Voltage PU + Current ENG cursors from same source batch correctly).
+
+**Integration audit results (2026-11-09):**
+- **5-spec 61-test browser suite: 61/61 pass, EXIT=0**
+  (calculated-channel-preview, compliance_readiness, event-reconstruction-per-unit,
+   per-unit-reference-safety, voltage-only-pu-display)
+- Backend targeted (Slice 6A/6B/6C files): **217 + 251 + 277 = 745 tests pass, exit 0**
+- Full backend suite: exit 0 (confirmed)
+- No recordings, no temp artifacts staged
+
+**Key design decisions:**
+
+- DEC-212 guard uses `engineeringType` lookup, NOT `kind` parameter: `kind` in
+  `wwErChannelUnitDisplay` is "analog"/"calculated" (ER protocol), not "voltage"/"current".
+  The guard checks `wwErState.channelsBySource[sourceId].analog_channels[].engineering_type`.
+- `kind === "calculated"` channels skip the guard entirely — Slice 6D will configure
+  Current normalization via Calculated Channels.
+- No backend schema changes required for Slice 6C or 6C.1.
+- After large `index.html` edits: always run `node --check` on extracted JS to catch smart quotes
+  or other syntax errors before running Playwright.
+
+**Next step:** Create local commits for Slices 6A/6B/6C/6C.1, then owner reviews. Slice 6D
+(Calculated Channel current normalization) is the next authorized step — do NOT begin Slice 6D
+without separate owner authorization.
+
+---
+
+---
+
+## UAT Finding PU-001 — Incorrect Nominal Voltage + Frontend Label (fix applied, not pushed)
+
+**Status:** Code fixed locally on `feature/vlt-ref-001-voltage-reference-safety`. Do NOT push or redeploy DEV until owner approves.
+
+**Root cause:** `auto_base_evidence.py` Step 3b blindly multiplied all L-G `primary_ratio` values by √3, treating every L-G channel as a phase-winding VT (Convention B). Real IEC/protection relay COMTRADE files (e.g. KPDN1 PULU) write the nominal system L-L voltage directly in `primary_ratio` (Convention A: `primary_ratio=275.0 kV` on a 275 kV system). This produced `276.0 × √3 = 476.31 kV` instead of `275.0 kV`.
+
+**Fix: `backend/app/domain/auto_base_evidence.py` (Step 3b + Step 4 secondary path):**
+- Added `_STANDARD_NOMINAL_KV` table (IEC + ANSI + regional) and `_is_near_standard_nominal_kv()` helper (2 % relative tolerance).
+- For each L-G channel: if `primary_ratio` matches a standard level directly → Convention A (use as-is); if `primary_ratio × √3` matches → Convention B (multiply by √3); if neither → ambiguous (skipped → `needs_review`).
+- Convention B backward-compatibility preserved: `primary_ratio=76.2 kV` (phase-winding) → `76.2 × √3 ≈ 131.98 kV` still works.
+- Same disambiguation added to the Step 4 secondary `primary_ll_kv_from_ratio` path.
+
+**Fix: `frontend/index.html` (3 locations):**
+- `wwMgBaseSummaryHtml()`: "Base:" → "Nominal Voltage:" + `.toFixed(2)` formatting.
+- Dropdown option label: `.toFixed(2)` formatting.
+- Compliance readiness text: `.toFixed(2)` formatting.
+
+**Regression tests added:** 9 new tests in `TestConventionALGChannels` class in `backend/tests/test_auto_base_evidence.py` covering: PULU 275 kV scenario, 132 kV Convention A, correct L-G denominator (275/√3 ≈ 158.77 kV), PU sanity (162.42 kV / 158.77 kV ≈ 1.023 pu), ambiguous ratio → no auto authority, Convention B backward-compat, multi-bay independence, L-L channels unaffected, secondary path check.
+
+**Test results (local):** 68/68 `test_auto_base_evidence.py` pass. 135/135 targeted suite (evidence + auto-base service + display + VLT-REF-001) pass. Full backend suite: exit 0 (no test count in output — buffered by pytest on Windows, but exit code confirmed clean).
+
+**Preserved:** Commits `7d4c263` (feature) and `f6f9470` (docs) remain intact. No COMTRADE recording files committed.
+
+## DEV Deployment — 2026-11-09
+
+[FACT] Commit `7d4c26371d96661f51b250dabce44501f8cbe5ed` (`feat(pu): automatic primary-secondary per-unit
+configuration and display`) pushed to `origin/feature/vlt-ref-001-voltage-reference-safety` and
+deployed to DEV via GitHub Actions run #42539322148.
+
+CI (run #42528569648): `Validate Compose overlays` ✓, `Backend tests` ✓.
+Deploy (run #42539322148): backend tests 11,780 passed 303 skipped ✓; Docker images built with expected SHA ✓; DEV containers started ✓; internal health check passed ✓.
+
+Post-deployment verification (2026-11-09, automated):
+- Frontend `https://dev.powerwave.oruxa.uk`: HTTP 200, TLS valid ✓
+- Backend `https://api.dev.powerwave.oruxa.uk/health`: `{"status":"ok","environment":"development","version":"7d4c263","git_sha":"7d4c26371d96661f51b250dabce44501f8cbe5ed"}` ✓
+- SHA and environment confirmed ✓; `main` and PROD unchanged ✓
+- Browser tests (local, same commit): `auto-pu-import.spec.js` 7/7 ✓; `per-unit-voltage-reference-safety.spec.js` 7/7 ✓
+- DEV API smoke (live): Primary COMTRADE → 2/2 voltage groups `pu_status=configured`, `base_reference_side=primary` ✓; No-PS COMTRADE → `pu_status=base_required` ✓; test workspaces deleted ✓
+- OpenAPI schema: 122 endpoints registered, no startup errors ✓
+
+Rollback: previous DEV SHA `e6d77345cb5f244d2205741dcbe4de1aaf297576` (PR #7 merge).
+Next: owner UAT — see SLICE_5D3_FINAL_REPORT.md §9 for UAT procedure.
+
+## Automatic PU Slices 5A–5D-3 — deployed to DEV; awaiting owner UAT
+
+Branch: `feature/vlt-ref-001-voltage-reference-safety` (committed and pushed 2026-11-09).
+
+**What changed (Slice 5C-1):**
+
+**Authority gate wired into live resolvers:**
+- `resolve_voltage_base_for_group()` now checks `base_authority` before the group-status gate
+- `resolve_current_base_for_group()` mirrors identically
+- `needs_review` / `unavailable` → `base_required("base_invalidated")` regardless of group lifecycle
+- `auto_resolved` BYPASSES the group-status gate (suggested group + valid auto config → CONFIGURED)
+- `legacy_manual` / `manual` preserve existing group-status gate behavior (confirmed/manual required)
+
+**Service layer transitions:**
+- `set_voltage_base()` → sets `base_authority = "manual"` via `update_voltage_configuration()`
+- `set_current_base_equipment_rating()`, `set_current_base_manual()`, `set_current_base_none()` → all set `base_authority = "manual"`
+- Reference-only operations (`set_manual_voltage_reference`, `return_voltage_reference_to_auto`) do NOT touch `base_authority`
+- `VoltageGroupConfigRegistry.update_fields()` now accepts `base_authority` parameter
+
+**Other changes:**
+- `calculated_current_per_unit.py:108` inline tuple `("confirmed", "manual")` → `AUTHORITATIVE_GROUP_STATUSES` from domain
+- `compliance_series.py` and `per_unit_provenance_service.py` both handle `"base_invalidated"` reason
+- `test_base_authority_domain.py`: 87 → 92 tests (5 added for Slice 5C-1; 3 inert-state tests updated to assert gate behavior)
+- New `backend/tests/test_slice5c1_authority_gate.py`: 39 tests → 54 after hardening (+15)
+
+**What changed (Slices 5A + 5B, recap):**
+- 5A: `backend/app/domain/auto_base_evidence.py` — pure-domain evidence resolver (59 tests)
+- 5B: `backend/app/domain/base_authority.py` — authority vocabulary + field on config dataclasses (original 87 tests)
+- Numerical correction: 76.2 × √3 = 131.9822715..., not 131.952
+
+**Slice 5C-1 closure correction (Slice 5C-2 session):** `auto_resolved` bypass incorrectly applied to
+ALL group statuses including `needs_review`. Fixed: bypass only when `group.status == STATUS_SUGGESTED`.
+Both `voltage_group_config.py` and `current_group_config.py` updated. 2 new tests in
+`test_base_authority_domain.py` (now 94). Full 6-row authority matrix verified in `test_slice5c2_primary_secondary.py`.
+
+**What changed (Slice 5C-2):**
+- New `backend/app/domain/voltage_primary_secondary.py` — pure-domain Primary/Secondary model:
+  - `VtRatio(primary_winding_v, secondary_winding_v, winding_ref: "phase"|"ll")` dataclass
+  - `vt_primary_ll_v()`, `vt_secondary_ll_v()` — L-L equivalent from VT winding (phase × √3)
+  - `VoltageReferenceSideResolution` — (status, denominator_v, denominator_kv, side, repr, provenance)
+  - `resolve_ps_voltage_denominator()` — primary/secondary/unknown denominator, pure function
+  - `resolve_ps_voltage_denominator_from_vt_ratio()` — VT-ratio-derived path
+  - 59 tests in `backend/tests/test_slice5c2_primary_secondary.py`
+- `VoltageBaseConfiguration.secondary_voltage_ll_v: float | None = None` added (additive, backward-compatible)
+- Live resolver (`resolve_voltage_base_for_group`) UNCHANGED — still uses `nominal_voltage_ll_kv`.
+  Connecting the PS model to the live resolver is a controlled step for Slice 5D.
+- Numerical contracts verified: Cases A–F from spec §4; VT phase-winding 76200/63.5 produces
+  131,982.277... V (not 132,000) and 109.985... V (not 110) — no silent rounding.
+- Current compatibility verified: 100 MVA / 132 kV → Ibase_primary = 0.4373865676 kA.
+  Secondary CT 1200/1 path → 437.3865676/1200 = 0.36448... A (manual Ibase entry path).
+
+**What changed (Slice 5D-1 + Final Safety Verification):**
+`resolve_voltage_base_for_group()` now implements the secondary path with strict gating:
+- **Strict secondary gate (confirmed safe):** `base_reference_side=="secondary"` requires a valid
+  `secondary_voltage_ll_v`. Without it, returns `base_required("secondary_equivalent_not_configured")`.
+  SAFETY FINDING: the alternative (additive fallback to primary nominal) was confirmed unsafe by the
+  Final Safety Verification — `apply_voltage_reference()` classifies secondary/secondary as "compatible"
+  and does not catch the wrong denominator case. E.g., 63.5 V / 132 kV = 0.00048 pu (wrong; should be ~1 pu).
+  The strict gate enforces the spec §2 invariant: "a missing secondary denominator must not silently fall
+  back to the primary nominal-system denominator."
+- When gate is met (both `base_reference_side=="secondary"` AND valid `secondary_voltage_ll_v`):
+  denominator = `secondary_voltage_ll_v` for LL; `÷√3` for LG.
+  Secondary path comes before the nominal kV check — no primary nominal required.
+- `"primary"` or `"unknown"` → existing primary path using `nominal_voltage_ll_kv`. Unchanged.
+- Authority gates and group-status gate both remain active before the secondary path.
+- Stale-secondary clearing: `update_voltage_configuration()` clears `secondary_voltage_ll_v` when
+  `nominal_voltage_ll_kv` changes without an explicit secondary value. `set_voltage_base()` triggers this.
+  Reference-only operations do NOT clear secondary.
+**COMTRADE PS Semantics Correction (2026-11-08):**
+IEEE C37.111 / IEC 60255-24: `PS` (pors field) is the engineering-value scale for `a × raw + b`.
+  PS=P → Primary-referred values. PS=S → Secondary-referred values.
+PS has nothing to do with physical VT/CT wiring. `measurement_side` is the scaled-value scale,
+not the physical acquisition terminal.
+Prior `recording()` only changed the pors field (PS marker) without rescaling `a`, producing
+malformed COMTRADE (kV values labeled PS=S). Fixed: `recording(marker="S")` now ALSO rescales
+`a` by `secondary/primary`:
+  N275_VR: a_secondary = 158.77 × (1.0/275.0) = 0.577345 kV — genuinely Secondary-referred.
+  E275_VRY: a_secondary = 275.0 × (1.0/275.0) = 1.0 kV — genuinely Secondary-referred.
+  VT secondary circuit: secondary=1.0 kV in CFG → `secondary_voltage_ll_v=1000.0 V`.
+`setup_voltage_base(base_side="secondary")` now provides `secondary_voltage_ll_v=1000.0`.
+Parametrize case `("S","secondary","compatible",True)` restored and now valid.
+`test_voltage_reference_side_change_takes_effect_immediately` → "secondary" base, 1000 V, "compatible".
+`test_voltage_group_path_takes_precedence_over_source_default` → "secondary" base, 1000 V, "compatible".
+`test_vlt_ref_001_compat_secondary_with_equivalent_configured` → `test_vlt_ref_001_compat_secondary_realistic_vt_equivalent`
+  (132 kV/110 V LL-referred VT; denominator=110 V; not 132,000 V).
+109/109 targeted tests pass. Full backend suite running (b32f0p3nt2).
+Files changed:
+- `backend/app/domain/voltage_group_config.py` (resolver: strict gate replacing additive gate)
+- `backend/app/services/voltage_group_config_registry.py` (update_fields: update_secondary flag + secondary_voltage_ll_v param)
+- `backend/app/services/voltage_group_config_service.py` (sentinel + stale-clear logic + secondary_voltage_ll_v_valid import)
+- `backend/app/schemas/measurement_group.py` (VoltageGroupConfigOut + VoltageGroupConfigUpdateRequest: secondary_voltage_ll_v field)
+- `backend/app/api/v1/measurement_groups.py` (view builder + PUT endpoint: secondary_voltage_ll_v passthrough)
+- `backend/app/services/measurement_group_view_service.py` (VoltageGroupConfigView + _build_voltage_view: secondary_voltage_ll_v field)
+- `backend/tests/test_slice5d1_ps_integration.py` (new, untracked — 57 tests: 49 integration + 8 safety regression)
+- `backend/tests/test_per_unit_voltage_reference_safety.py` (modified: setup_voltage_base now provides secondary_voltage_ll_v for secondary scope; test inline PUT updated)
+
+**Validation (pre-5D-2):** 342/342 combined targeted + VLT-REF-001 90/90 + PS-correction 109/109.
+Full backend suite (post-PS-correction): exit 0 (bh3yfqgw3).
+**Validation (Slice 5D-2 session):** 219/219 targeted (5D-2 10 + 5D-1 57 + 5C-1 53 + prep-service 21 + VLT-REF-001 33 + evidence 51).
+**Regression fix:** 8 tests fixed in test_base_authority_domain.py / test_compliance_readiness_api.py /
+test_compliance_trace_api.py / test_measurement_group_lifecycle_api.py — caused by auto_base_service
+running on every COMTRADE upload; tests updated to reflect new auto-resolved behavior.
+Combined targeted + regression: 227/227. Full backend suite post-all-fixes: exit 0 (b96i4qidf).
+**Slice 5D-3 §1 guard tests:** 2 additional focused tests added (lifecycle + phantom-config check).
+**Slice 5D-3 §10 AT-1–AT-10:** 18 new tests in `test_slice5d3_auto_pu_display.py` — all 18 pass.
+**Slice 5D-3 AT-12 + AT-15:** 5 additional backend tests appended to `test_slice5d3_auto_pu_display.py` — all 23 pass.
+**Slice 5D-3 AT-11/AT-13/AT-14:** 7 Playwright tests in `browser-tests/auto-pu-import.spec.js` — all 7 pass.
+**Slice 5D-3 combined targeted:** 458/458 backend + 7/7 browser. No push, no merge.
+
+**Modified/untracked files (Slices 5A/5B/5C-1/5C-2/5D-1/5D-2/5D-3 combined):**
+- `backend/app/domain/auto_base_evidence.py` (new, untracked — Slice 5A)
+- `backend/app/domain/base_authority.py` (new, untracked — Slice 5B)
+- `backend/app/domain/voltage_primary_secondary.py` (new, untracked — Slice 5C-2)
+- `backend/app/domain/voltage_group_config.py` (modified: authority gate + STATUS_SUGGESTED + secondary_voltage_ll_v field + 5D-1 strict resolver)
+- `backend/app/domain/current_group_config.py` (modified: authority gate + STATUS_SUGGESTED import)
+- `backend/app/services/voltage_group_config_registry.py` (modified: `update_fields` base_authority + update_secondary params)
+- `backend/app/services/voltage_group_config_service.py` (modified: authority transitions + 5D-1 stale-clear)
+- `backend/app/services/current_group_config_service.py` (modified: authority transitions)
+- `backend/app/services/calculated_current_per_unit.py` (modified: inline tuple → domain constant)
+- `backend/app/services/compliance_series.py` (modified: base_invalidated reason)
+- `backend/app/services/per_unit_provenance_service.py` (modified: base_invalidated copy entry)
+- `backend/app/services/measurement_group_view_service.py` (modified: VoltageGroupConfigView + builder — secondary_voltage_ll_v)
+- `backend/app/schemas/measurement_group.py` (modified: Out + Request schemas — secondary_voltage_ll_v field)
+- `backend/app/api/v1/measurement_groups.py` (modified: view builder + endpoint — secondary_voltage_ll_v passthrough)
+- `backend/tests/test_auto_base_evidence.py` (new, untracked — 59 tests)
+- `backend/tests/test_base_authority_domain.py` (new, untracked — 94 tests)
+- `backend/tests/test_slice5c1_authority_gate.py` (new, untracked — 54 tests)
+- `backend/tests/test_slice5c2_primary_secondary.py` (new, untracked — 59 tests)
+- `backend/tests/test_slice5d1_ps_integration.py` (new, untracked — 57 tests)
+- `backend/tests/test_per_unit_voltage_reference_safety.py` (modified: recording() now rescales a AND b for PS=S; setup_voltage_base provides secondary_voltage_ll_v=1000.0; parametrize restored to "secondary"/"compatible")
+- `docs/project-memory/CURRENT_STATE.md` (modified)
+- `docs/project-memory/HANDOFF.md` (modified)
+
+**Additional files from Slice 5D-2:**
+- `backend/app/services/auto_base_service.py` (new, untracked — auto-base service: primary/secondary/needs_review paths, never-raises, idempotent)
+- `backend/app/services/workspace_preparation_service.py` (modified: `voltage_config_registry` optional param; calls `configure_auto_bases_for_source`; `WorkspaceSourcePreparationResult.auto_bases_configured/auto_bases_error` fields added)
+- `backend/app/api/v1/sources.py` (modified: `upload_comtrade_source` wires `voltage_config_registry` → `prepare_workspace_source`)
+- `backend/app/api/v1/preparation_sources.py` (modified: `post_convert_preparation_source` wires `voltage_config_registry` → `prepare_workspace_source`)
+- `backend/tests/test_slice5d2_auto_base_service.py` (new, untracked — 10 tests: primary auto, E275 L-L 275 kV, current groups skipped, manual/legacy preservation, needs_review for unknown PS, idempotency, never-raises, prepare wiring)
+- `backend/tests/test_slice5c1_authority_gate.py` (modified: removed `test_no_auto_base_service_exists` — module now exists)
+- `backend/tests/test_base_authority_domain.py` (modified: duplicate scope guard also removed)
+- `backend/tests/test_compliance_readiness_api.py` (modified: 5 tests updated — auto-base now resolves base on upload, needs_base=False after import)
+- `backend/tests/test_compliance_trace_api.py` (modified: renamed test → `test_pu_with_auto_resolved_base_plots_traces` — auto-resolved base means traces ARE produced)
+- `backend/tests/test_measurement_group_lifecycle_api.py` (modified: count assertion → existence assertion — auto-base adds extra configs)
+
+**Additional files from Slice 5D-3 (full):**
+- `frontend/index.html` (modified: §2 auto-switch + §5 status banner — `wwCheckAndApplyAutoImportPuMode`, `wwShowImportPuStatus`, `wwClearImportPuStatus`, `isFirstRecording` capture in `submitSourceUpload`, banner clear in `resetToNewWorkspace` + source-delete handler)
+- `backend/tests/test_slice5d3_auto_pu_display.py` (new, untracked — 23 tests: AT-1 through AT-15 backend)
+- `backend/tests/test_measurement_group_lifecycle_api.py` (modified: §1 guard — `test_deleting_workspace_removes_all_voltage_configs_including_auto_resolved`)
+- `backend/tests/test_slice5d2_auto_base_service.py` (modified: §1 guard — `test_no_phantom_configs_after_upload`)
+- `browser-tests/auto-pu-import.spec.js` (new, untracked — 7 Playwright tests: AT-11, AT-13 ×2, AT-14 ×4)
+
+**Slice 5D-3 coverage notes:**
+- §6–§9: verified as covered by existing infrastructure (banner links to PU Settings modal; existing
+  PU browser specs cover numerical correctness; fire-and-forget design ensures no repeated requests).
+- AT-12 (browser): covered by backend AT-12 tests in `test_slice5d3_auto_pu_display.py`.
+- AT-15 (browser): covered by backend AT-15 numerical equivalence tests in `test_slice5d3_auto_pu_display.py`.
+
+**Next step:** Owner authorizes Slices 5A–5D-3 for PR/push. Remaining automatic-secondary items for a future slice:
+- CT ratio storage in `CurrentBaseConfiguration` for automatic secondary Ibase
+- `base_reference_side="secondary"` COMTRADE activation (now supported by resolver; held pending owner UAT)
+Prerequisites met: (a) full backend suite green (b96i4qidf), (b) 458/458 backend + 7/7 browser tests pass.
+
+## VLT-REF-001 — final local verification complete; stop for owner review
+
+Branch: `feature/vlt-ref-001-voltage-reference-safety` at HEAD (see `git log`). Created from
+`docs/pu-post-merge-dev-verification`, not pushed to origin.
+
+**What changed:** New `apply_voltage_reference()` classifier + extended `apply_source_reference()`
+gate. New `base_reference_side` field (Voltage group) and `voltage_base_reference_side` (Source
+Default). Full API wire path. 33 new backend tests. 1 new 7-test browser spec
+(`per-unit-voltage-reference-safety.spec.js`). 2 test maintenance changes (1-line each):
+- `per-unit-display-synchronization.spec.js`: `base_reference_side: "primary"` in voltage-config
+- `event-reconstruction-per-unit.spec.js`: `base_reference_side: "primary"` in voltage-config
+Policy recorded in DEC-211. Audit document:
+`docs/project-memory/PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md`.
+
+**Final verification summary (2026-11-08):**
+- Backend: 11,424 passed / 303 skipped / 0 failed / exit 0 (derived; 11,727 collected)
+- VLT-REF-001 browser spec: 7/7
+- LIM-001 Current browser: 7/7 (no regression)
+- Full 92-spec browser suite: **1,298 passed / 22 failed / 0 flaky / exit 1 (BEN5K)**
+  — All 22 failures are pre-existing BEN5K/timing infrastructure gaps (owner .ben files absent);
+  zero VLT-REF-001 regressions. Run completed 2026-11-08T00:20.
+- No push, no merge, no deployment performed.
+
+**Deferred:** Frontend UI selectors for `base_reference_side` (Voltage group) and
+`voltage_base_reference_side` (Source Default) are Phase 2. All existing configurations default
+to `"unknown"` → `unverified` (not blocked) until the owner explicitly sets a side.
+
+**Next step:** Owner reviews this branch and decides: approve + push, request changes, or defer
+the whole feature. No PROD or further automated development.
+
+## PR #7 - post-merge DEV verification complete; stop
+
+The owner merged [PR #7](https://github.com/myza81/oruxa-powerwave/pull/7) into
+main at `e6d77345cb5f244d2205741dcbe4de1aaf297576`. Fetched origin/main contains the
+merge. Its complete tree matches reviewed feature HEAD 8f30dc7; FA-001 and
+LIM-001 commits and existing Power functionality remain intact.
+
+[CI](https://github.com/myza81/oruxa-powerwave/actions/runs/42355588058) on that exact main SHA passed Backend
+tests and Compose validation: 11,391 passed / 303 skipped / 21 warnings / zero
+failures, 400.96 seconds. [Automatic DEV](https://github.com/myza81/oruxa-powerwave/actions/runs/42356103360)
+succeeded after that main CI, with log-proven APP_VERSION equal to the merge.
+The established workflow uses literal dev; no manual dispatch, rerun or bypass.
+
+At 2026-11-07T08:50:11.659Z, frontend buildVersion and backend git_sha both match the full
+merge; backend healthy and environments development. Strict certificate chain
+and hostname checks passed, including negative hostname checks. Node system-CA
+trust only; no ignoreHTTPSErrors, disabled TLS, CA/key export or trust change.
+
+Fresh post-merge real-DEV smoke: **35/35 passed in eight explicitly selected
+files**, zero failures/skips/flaky/global errors/automatic retries. This is a
+clean focused run, distinct from earlier feature verification's retained harness
+failures. Checks preserve exact numerical values, units, channel identity and
+configuration snapshots; original raw source rows retain ENG metadata.
+
+Coverage: Voltage Group/Source Default saves and clear; linked Current and
+physical-array round trips; compatible P/P and established S/S; both known
+mismatch directions unavailable with ENG preserved/no CT scaling; historical
+Unknown Unverified; strict cross-authority Unknown and incompatible Manual
+rejection; Manual/Unassigned/Automatic and Return to Automatic; nested Manual
+and ER; array/plot/cursor/annotation/provenance behavior; ordinary/extreme Current
+preview, saved bases and all 101 samples; Power Calculator Current/P-Q-S/PF,
+backend V-I phasors and single-/three-phase calculated Power.
+
+All 35 synthetic test-owned workspace UUIDs were deleted after closing their
+contexts, each HTTP 204. All 871 tested source hashes remain unchanged. Prior
+full local acceptance still applies; no fresh full local run claimed. All 2250
+protected files are unchanged. Preserve .audit/, .slice1-evidence/, test-results/
+and both untracked screenshot specs. Historical audit/release evidence is not
+rewritten. New outputs only: `C:\Users\fairizat\AppData\Local\Temp\oruxa-pu-postmerge-20261107-233ce5c17c8a48c6b3ce4980ecbbff6d`.
+
+This two-file result update is on docs/pu-post-merge-dev-verification, based on
+the verified merge, and changes no application/test code. Do not merge or push
+this record to main automatically: that would schedule another DEV deployment.
+The actual deployed SHA remains the merge above, not a later documentation HEAD.
+
+Post-merge DEV verification is complete. Stop for owner direction; no PROD,
+CT/VT enhancement or unrelated development. Accepted ephemeral workspace life,
+historical Unknown as Unverified, shared Secondary identity, CSV/BEN side UI,
+separate CSV discovery-ID and load/heap certification limits remain unchanged.
+The [earlier feature release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md)
+is historical; current main/running version is the merge stated here.
 
 ## Per-Unit audit Stage 5B - result-owned manual Current PU
 

@@ -45,6 +45,12 @@ _TRAILING_UNIT_DECORATION = re.compile(r"^(?P<label>.*)\s+\((?P<unit>[^()]+)\)$"
 _SEPARATED_ROLE_PREFIX = re.compile(r"^(?P<role>[A-Za-z][A-Za-z0-9]{0,2})(?P<sep>[\s_-]+)(?P<context>.+)$")
 _SEPARATED_ROLE_SUFFIX = re.compile(r"^(?P<context>.+?)(?P<sep>[\s_-]+)(?P<role>[A-Za-z][A-Za-z0-9]{0,2})$")
 
+# Well-delimited winding-side qualifier (e.g. "_HV", " LV", "_HV1") that
+# may trail a phase+role token in transformer channel names like "SGT1 VR_HV".
+# When present the qualifier is stripped before role matching, then appended
+# back onto the context_hint so HV and LV channels form SEPARATE groups.
+_WINDING_QUALIFIER_RE = re.compile(r"(?P<sep>[_ ])(?P<qual>(?:HV|LV)\d*)$", re.IGNORECASE)
+
 
 @dataclass(frozen=True, slots=True)
 class ChannelEngineeringIdentityInput:
@@ -180,6 +186,35 @@ def _match_name_role(undecorated_name: str) -> tuple[str | None, EngineeringRole
     token = _parse_role_text(stripped, ROLE_POSITION_SUFFIX)
     if token is not None:
         return None, token
+
+    # Retry with a well-delimited winding-side qualifier stripped from the
+    # end (e.g. "SGT1 VR_HV" → try "SGT1 VR"). The qualifier is appended
+    # back onto the returned context_hint (e.g. "SGT1_HV") so that HV and
+    # LV channels always form *separate* Measurement Groups and are never
+    # merged into one "SGT1 VOLTAGE" group.
+    # Only SEPARATED role matches (prefix/suffix regex, not fused-suffix) are
+    # accepted here — this preserves the word-boundary safeguard so that a
+    # name like "FAVR_HV" (where "VR" is fused into an unrelated word) does
+    # not accidentally match via the fused-suffix path after qualifier removal.
+    wq = _WINDING_QUALIFIER_RE.search(stripped)
+    if wq:
+        base = stripped[:wq.start()]
+        qual_upper = wq.group("qual").upper()
+        prefix = _SEPARATED_ROLE_PREFIX.match(base)
+        if prefix:
+            token = _parse_role_text(prefix.group("role"), ROLE_POSITION_PREFIX)
+            if token is not None:
+                base_ctx = _clean_context_hint(prefix.group("context"))
+                ctx = _clean_context_hint((base_ctx + "_" + qual_upper) if base_ctx else qual_upper)
+                return ctx, token
+        suffix = _SEPARATED_ROLE_SUFFIX.match(base)
+        if suffix:
+            token = _parse_role_text(suffix.group("role"), ROLE_POSITION_SUFFIX)
+            if token is not None:
+                base_ctx = _clean_context_hint(suffix.group("context"))
+                ctx = _clean_context_hint((base_ctx + "_" + qual_upper) if base_ctx else qual_upper)
+                return ctx, token
+
     return None, None
 
 

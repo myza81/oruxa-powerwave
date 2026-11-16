@@ -34,12 +34,15 @@ def test_ww_state_has_unit_mode_and_per_unit_source_configs():
 
 def test_every_channel_waveform_fetch_requests_unit_mode():
     """Slice 3A (DEC-127): the request itself is built by the shared
-    fetch core; Waveform's wrapper passes its own ww.unitMode."""
+    fetch core; Waveform's wrapper passes its own ww.unitMode.
+    DEC-212: raw Current channels always pass "engineering" regardless of
+    the toggle -- the wrapper applies the guard before calling the core."""
     source = _source()
     wrapper = _function_body(
         source, "async function wwFetchChannelRange(channelEntry", "async function wwFetchWaveformRange(request)"
     )
-    assert "unitMode: ww.unitMode," in wrapper
+    # DEC-212: Current channels always use engineering; other channels use ww.unitMode.
+    assert 'channelEntry.engineeringType === "Current" ? "engineering" : ww.unitMode' in wrapper
     core = _function_body(source, "async function wwFetchWaveformRange(request)", "function wwFriendlyError(code, message)")
     assert 'url.searchParams.set("unit_mode", unitMode);' in core
 
@@ -295,12 +298,19 @@ def test_cursor_peak_and_annotation_anchor_requests_all_carry_unit_mode():
     body = _function_body(
         source, "async function wwFetchCursorValuesForSource(sourceId)", "function wwFetchAllCursorValuesForGroup(groupId)"
     )
-    assert body.count("unit_mode: ww.unitMode") >= 2  # both the calculated and source-channel request shapes
+    # DEC-212 (Slice 6C): cursor routes per engineering-type.
+    # Calculated path sends unit_mode: ww.unitMode directly.
+    # Non-calculated path uses batchUnitMode (= ww.unitMode snapshot for non-Current,
+    # "engineering" for Current) — both shapes carry unit_mode.
+    assert body.count("unit_mode: ww.unitMode") >= 1  # calculated path
+    assert "unit_mode: batchUnitMode" in body  # non-calculated path routing
 
     full_source = source
-    # Peak-values: both the interactive-creation and the recalculation-
-    # on-viewport-change call sites.
-    assert full_source.count("unit_mode: ww.unitMode") >= 6
+    # DEC-212 (Slice 6C.1): non-calculated raw Current paths in callout/peak/anchor now use
+    # "engineering" conditional instead of ww.unitMode directly.  Calculated-channel paths
+    # (and ER cursor) still use ww.unitMode — check both forms are present.
+    assert full_source.count("unit_mode: ww.unitMode") >= 3  # calculated-channel paths
+    assert full_source.count('"engineering" : ww.unitMode') >= 3  # DEC-212 raw Current conditional
 
 
 def test_calculated_channel_preview_uses_the_same_global_unit_mode():

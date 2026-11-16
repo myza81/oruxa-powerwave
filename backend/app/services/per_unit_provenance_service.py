@@ -94,6 +94,7 @@ SOURCE_KIND_SOURCE_DEFAULT = "source_default"
 #: group." vs "...source-wide...").
 _MEASUREMENT_GROUP_REASON_COPY: dict[str, str] = {
     "group_not_confirmed": "This Measurement Group has not been confirmed yet.",
+    "base_invalidated": "The base authority for this Measurement Group's configuration has been invalidated.",
     "voltage_base_not_configured": "Voltage base is not configured for this group.",
     "voltage_reference_undetermined": "This group's voltage reference (L-G/L-L) could not be determined.",
     "current_base_not_configured": "No current base method is configured for this group.",
@@ -243,13 +244,25 @@ def _provenance_from_group(
 
     effective_base_amount, effective_base_unit = _effective_base(resolution)
 
+    # Voltage groups carry base_reference_side on voltage_config; current
+    # groups carry it on current_config. Reading from the wrong config
+    # would always return "unknown" for voltage channels (current_config
+    # is None for a voltage group), triggering a false "Unverified reference"
+    # warning even when auto-base correctly resolved primary/secondary.
+    if view is not None and view.voltage_config is not None:
+        _base_ref_side = view.voltage_config.base_reference_side
+    elif view is not None and view.current_config is not None:
+        _base_ref_side = view.current_config.base_reference_side
+    else:
+        _base_ref_side = "unknown"
+
     return PerUnitChannelProvenance(
         status=resolution.status,
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_MEASUREMENT_GROUP,
         reference_compatibility=resolution.reference_compatibility,
         reason=_reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason),
-        base_reference_side=view.current_config.base_reference_side if view and view.current_config else "unknown",
+        base_reference_side=_base_ref_side,
         measurement_group_id=measurement_group_id,
         measurement_group_name=group.display_name if group is not None else None,
         nominal_base_kv=nominal_base_kv,
@@ -344,8 +357,13 @@ def _build_source_channel_provenance(
         current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
+        voltage_group_config = (
+            voltage_config_registry.get(workspace_id, group_resolution.profile_id)
+            if engineering_type == "Voltage" else None
+        )
         group_resolution = apply_source_reference(group_resolution, engineering_type, measurement_side,
-            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id))
+            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id),
+            voltage_group_config=voltage_group_config)
         group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type, values)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id, engineering_type=engineering_type,

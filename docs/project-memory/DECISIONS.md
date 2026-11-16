@@ -29247,3 +29247,202 @@ CI, exact-commit manual DEV deployment and post-deployment verification.
 This supersedes the prior deployment pause for that scope only. No main merge,
 PROD deployment or automatic overall PU acceptance. See the
 [final release record](PU_FINAL_RELEASE_DEV_VERIFICATION_2026-11-07.md).
+
+---
+
+## DEC-211 — Voltage PU reference-side safety extends LIM-001/DEC-210 to Voltage channels
+
+Date: 2026-11-07. Status: **Owner-approved implementation. Awaiting owner review before acceptance, push, merge or deployment.**
+Authority: owner task "VLT-REF-001: Voltage Reference-Side Safety", following the
+bounded VLT-REF-001 assessment and live defect reproduction (scratchpad confirmed
+0.0008333 pu for a Secondary recording normalized against a Primary base, both
+Measurement Group and Source Default paths).
+
+- **Policy mirrors DEC-210 for Voltage.** Known Primary/Secondary mismatch blocks
+  Voltage PU (`status=base_required`, `reference_compatibility=incompatible`,
+  `reason=voltage_reference_side_incompatible`). Unknown sides produce
+  `unverified` without blocking conversion. Known matching sides produce
+  `compatible`. No VT ratio scaling, side inference or sample reinterpretation.
+- **Domain gate:** `apply_voltage_reference()` in `per_unit_reference.py` —
+  exact structural match to `apply_current_reference()`. Called from the shared
+  `apply_source_reference()` gate (the single VLT-REF-001 root-cause call site
+  that previously had an unconditional early-return for non-Current types).
+- **Configuration:** `base_reference_side: ReferenceSide = "unknown"` added to
+  `VoltageBaseConfiguration` (group path) and `PerUnitBaseProfile`
+  (`voltage_base_reference_side`, source-default path). Both default to `"unknown"`
+  for backward compatibility — existing configurations remain `unverified`, not
+  `incompatible`.
+- **Wire path:** `waveform_service._resolve_effective_per_unit()` looks up the
+  Voltage group config from `voltage_config_registry` when `profile_id ≠ source_id`
+  (Measurement Group path) and passes it as `voltage_group_config`. The Source
+  Default path passes `profile=per_unit_profile`, which carries
+  `voltage_base_reference_side`. `per_unit_provenance_service` updated with the
+  same group-config lookup for the provenance endpoint.
+- **APIs extended additively.** `VoltageGroupConfigUpdateRequest` and
+  `VoltageGroupConfigOut` gain `base_reference_side`. `SourcePerUnitConfigUpdateRequest`
+  and `SourcePerUnitConfigOut` gain `voltage_base_reference_side`.
+- **Frontend deferred.** The `base_reference_side` selector for Voltage groups and
+  the `voltage_base_reference_side` selector for Source Default are Phase 2
+  work. Existing configurations default to `"unknown"` (unverified, not blocked).
+- **Scope boundary.** No CT/VT ratio conversion, automatic VT scaling, or new
+  calculated-Voltage paths. Calculated Voltage channels already restricted by
+  DEC-052. Power/phasor mathematics unchanged.
+- **Validation.** 33 new backend tests (unit + integration) all pass.
+  Full existing backend suite (pre-new-tests) passes without regression.
+  Implementation: `feature/vlt-ref-001-voltage-reference-safety` branch.
+  Audit: [PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md](PER_UNIT_AUDIT_VLT_REF_001_IMPLEMENTATION.md).
+
+---
+
+## DEC-212 — Voltage-only automatic Per-Unit workflow; Current remains in engineering units
+
+Date: 2026-11-09. Status: **Owner-approved policy.**
+Authority: owner engineering decision, PU-001B + PU-002A task statement (2026-11-09).
+
+Decision:
+
+1. **Automatic PU is applicable to Voltage only.** The standard waveform ENG/PU display
+   selector controls Voltage channel display. When PU mode is selected, Voltage channels
+   with a configured nominal reference are shown in per-unit; Voltage channels without a
+   configured reference fall back to engineering units.
+
+2. **Raw Current waveforms always retain physical engineering units (A / kA).**
+   The ENG/PU selector has no effect on raw Current traces. Current traces cannot silently
+   share a Voltage PU axis or be incorrectly normalized by the Voltage display mode.
+
+3. **Current normalization is performed explicitly through Calculated Channels.**
+   An engineer who needs a Current quantity divided by a reference creates it as a Calculated
+   Channel with an explicitly chosen reference. The result type, reference value, and numerical
+   interpretation (instantaneous waveform vs. RMS waveform) are all engineer-specified.
+
+4. **CT primary winding ratings are never automatically used as equipment nominal-current
+   references.** CT primary rating is transformation metadata, not a machine-current reference.
+
+5. **Existing Current PU domain services remain available pending dependency review.**
+   `current_group_config.py`, `auto_base_evidence.py` (Current resolver), `group_aware_per_unit.py`
+   (Current path), `calculated_current_per_unit.py`, and related compliance/power services
+   remain in place until a full dependency audit (DEC-212 §6) has been completed and the owner
+   has approved a migration plan. These services must not be deleted prematurely.
+
+6. **A dependency audit of all Current PU consumers is required before any changes to Current
+   PU behaviour.** Consumers include: raw waveform rendering, measurement group configuration,
+   source default, calculated channels, result-specific manual Current PU, Power Calculator,
+   V-I Phasors, compliance analysis, event reconstruction, cursor/annotation readouts, ENG/PU
+   display-mode handling, and all browser tests that assert Current PU behaviour.
+
+7. **This change must not silently break existing calculated results, saved configurations, or
+   other engineering functions.** Any Calculated Channel that uses a Current PU reference
+   continues to function; any manual Current base established by an engineer continues to
+   produce the same numerical output; any compliance result derived from a Current PU
+   measurement continues to be valid.
+
+Reason:
+The owner determined that the automatic Voltage PU workflow (Slices 5A–5D-3) delivers clear
+engineering value, while automatic Current PU from COMTRADE metadata does not have a reliable
+enough evidence chain (CT primary ≠ equipment nominal current; DEC-050 §11 / C5). Explicit
+Current normalization through Calculated Channels is the appropriate path, preserving engineer
+control and clear provenance. This supersedes the earlier goal of providing automatic Current PU
+through the normal Measurement Group workflow.
+
+Impact on PU-001 work:
+- PU-001 Convention A/B fix (`auto_base_evidence.py`) remains in place as a provisional
+  improvement; it is subject to PU-001B multi-hypothesis design review before promotion to
+  permanent policy.
+- The `frontend/index.html` "Nominal Voltage:" relabelling and `.toFixed(2)` formatting
+  (PU-001 fix) are consistent with this decision and are retained.
+- The critical regression risk (§9 of the PU-001B task): an incorrect Voltage nominal can
+  contaminate Current PU calculations through the equipment-rating path
+  (`CurrentBaseConfiguration.method == METHOD_EQUIPMENT_RATING` with a linked Voltage group).
+  This risk must be addressed before any Voltage nominal evidence is promoted to
+  `base_authority="auto_resolved"` for a group that has a Current group linked to it.
+
+---
+
+## DEC-213 — Physical Calibration Authority Stage 3A: foundation contract and evaluator
+
+Date: 2026-11-11. Status: **Conditionally approved — Stage 3A implemented; Stage 3B requires
+separate owner authorization.**
+Authority: owner brief (Stage 3A: Physical Calibration Authority Foundation, 2026-11-11).
+
+Decision:
+
+1. **A `PhysicalCalibrationAuthority` per-channel domain contract is introduced.**
+   It is an immutable frozen dataclass attached optionally to `AnalogChannel`
+   (`calibration_authority: PhysicalCalibrationAuthority | None = None`).
+   Fields: `status` (verified/unverified/invalid), `reason` (machine-readable string),
+   `transform_id` (versioned raw-word-to-engineering-value identifier),
+   `evidence_refs` (tuple of immutable `EvidenceRef` objects).
+
+2. **Absent authority (`None`) means NOT ASSESSED.**
+   It never counts as Verified. All existing providers (COMTRADE, CSV, SubBen/BEN32)
+   remain unaffected: their channels carry `calibration_authority=None` and preserve
+   existing compatibility behaviour throughout Stage 3A.
+
+3. **A pure domain eligibility evaluator is provided.**
+   `evaluate_calibration_eligibility(leaf_authorities, purpose) → CalibrationEligibility`.
+   Operation purposes: `raw_inspection`, `exploratory_analysis`,
+   `engineering_calculation`, `compliance_assessment`.
+   Availability reasons: `available`, `physical_calibration_unverified`,
+   `physical_calibration_invalid`, `not_assessed`, `not_fully_verified`.
+
+4. **Dependency-propagation rules (immutable):**
+   - Any Invalid leaf makes an authoritative result unavailable.
+   - Otherwise any explicitly Unverified leaf makes an authoritative result unavailable.
+   - A mix of Verified + not-assessed leaves cannot claim full Verified.
+   - All-Verified leaves are necessary (not sufficient) for eligibility.
+   - Not-assessed leaves alone preserve existing compatibility behaviour.
+
+5. **Policy per purpose:**
+   - `raw_inspection`: always eligible (reason reflects limitation).
+   - `exploratory_analysis`: eligible for Unverified (limitation inherited); blocked for Invalid.
+   - `engineering_calculation`: blocked for Unverified and Invalid; eligible for Verified;
+     compat for not-assessed.
+   - `compliance_assessment`: same as engineering_calculation.
+
+6. **Stage 3A does NOT activate enforcement in existing production paths.**
+   The evaluator and contract exist in the domain layer; no service, API endpoint or
+   frontend behaviour is changed. No BEN5K voltage or current correction is applied.
+   No BEN5K channels publish a `PhysicalCalibrationAuthority` object yet.
+
+7. **Stage 3B integration sequence (requires separate owner authorization):**
+   - `ben/legacy_ben5k/normalize.py`: publish Unverified authority on BEN5K channels.
+   - `waveform_service._resolve_effective_per_unit()`: gate PU conversions.
+   - `calculated_channel_service._resolve_input()`: propagate leaf authorities.
+   - `phasor_analysis_service._fetch_role_candidate()`: block unverified amplitudes.
+   - `compliance_readiness_service`: fail readiness before auto-preparation.
+   - Frontend: display "Physical calibration unverified" state.
+   - BEN5K voltage correction (√2 / >>4): after Verified achievable.
+   - BEN5K current calibration: after oracle evidence for H1/H2 obtained.
+
+8. **`transform_id` is a description, not a trigger.**
+   Its presence on a `PhysicalCalibrationAuthority` object does NOT trigger numerical
+   scaling. It identifies what transform was applied so consumers can detect
+   double-scaling. No production decoder is changed.
+
+9. **Calibration authority is independent of base authority (DEC-050), measurement
+   reference side (DEC-210/211), channel classification, group status, editable names,
+   and manual PU bases.** Renaming, regrouping, or manually saving a PU base does not
+   alter calibration authority.
+
+Reason:
+The BEN5K calibration investigation (Stages 1 and 2, November 2026) confirmed that
+structural decoding, channel mapping and missing-data corrections do not establish
+physical calibration. The voltage scale convention (√2 × gain × m12) is confirmed
+but pending production implementation; current calibration (H1 vs H2) remains
+unresolved pending independent oracle evidence. This contract provides the foundation
+so that Stage 3B can activate enforcement without redesigning the domain model.
+
+Risks:
+- Stage 3B activation must gate all engineering consumers consistently to prevent
+  Unverified BEN5K values from bypassing the contract via calculated channels, manual
+  override, or format conversion.
+- BEN5K current calibration remains unresolved; Verified status for current channels
+  cannot be published until oracle evidence is obtained (DEC-213 owner decision J-3/J-4).
+
+Open owner decisions:
+- J-1: Stage 3B integration sequence authorization (which services, which order).
+- J-2: Minimum evidence requirement for publishing Verified status.
+- J-3: CT primary rated current for TBIN1 feeder at GPTH (oracle evidence for current).
+- J-4: Approve/reject H2 for current after J-3 confirmed.
+- J-5: Assessment of Permas Jaya re-classification impact.
+- J-6: Whether exploratory analysis of Unverified channels requires a separate UI state.

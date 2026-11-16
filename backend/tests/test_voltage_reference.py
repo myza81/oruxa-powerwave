@@ -159,3 +159,46 @@ class TestExplicitPhaseEvidenceOutranksGenericVocabulary:
         result = detect_voltage_reference(["NORTH BUS VA", "SOME BUS COUPLER"])
         assert result.reference is None
         assert result.reason == REASON_CONFLICTING
+
+
+class TestWindingQualifierDetection:
+    """Phase tokens that precede a well-delimited winding-side qualifier
+    (e.g. "SGT1 VR_HV") are now recognized as Line-to-Ground evidence.
+    Regression for the PULU auto-reference root-cause correction.
+    """
+
+    def test_sgt1_hv_lg_reference(self):
+        result = detect_voltage_reference(["SGT1 VR_HV", "SGT1 VY_HV", "SGT1 VB_HV"])
+        assert result.reference == LINE_TO_GROUND
+        assert result.reason == REASON_DETECTED
+        assert "SGT1 VR_HV" in result.evidence_names
+
+    def test_sgt1_lv_lg_reference(self):
+        result = detect_voltage_reference(["SGT1 VR_LV", "SGT1 VY_LV", "SGT1 VB_LV"])
+        assert result.reference == LINE_TO_GROUND
+        assert result.reason == REASON_DETECTED
+
+    def test_fused_vr_before_hv_qualifier_not_matched(self):
+        # "FAVR_HV": "VR" is fused into an unrelated word — the "V" has no
+        # word-boundary separator before it, so the phase token is not genuine.
+        result = detect_voltage_reference(["FAVR_HV", "FAVB_HV", "FAVY_HV"])
+        assert result.reference is None
+
+    def test_avr_hv_not_matched(self):
+        # "AVR" is Automatic Voltage Regulator; stripping "_HV" gives "AVR"
+        # which must still not match.
+        result = detect_voltage_reference(["AVR_HV"])
+        assert result.reference is None
+
+    def test_hv_channels_with_ll_pair_token(self):
+        result = detect_voltage_reference(["FEEDER VRY_HV", "FEEDER VYB_HV", "FEEDER VBR_HV"])
+        assert result.reference == LINE_TO_LINE
+
+    def test_hv_and_lv_separate_groups_each_resolve_correctly(self):
+        # HV and LV channels form separate Measurement Groups — each group
+        # contains only one winding side, so detect_voltage_reference is called
+        # once per group, never with mixed qualifiers.
+        result_hv = detect_voltage_reference(["SGT1 VR_HV", "SGT1 VY_HV", "SGT1 VB_HV"])
+        result_lv = detect_voltage_reference(["SGT1 VR_LV", "SGT1 VY_LV", "SGT1 VB_LV"])
+        assert result_hv.reference == LINE_TO_GROUND
+        assert result_lv.reference == LINE_TO_GROUND

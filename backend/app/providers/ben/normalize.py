@@ -41,8 +41,14 @@ from app.domain import (
     SamplingInformation,
     TimingInformation,
 )
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
 from app.providers.ben.model import BenRecord, BenRecordClass
 from app.domain.source_timezone import TimeBasis
+from app.domain.physical_calibration import (
+    PhysicalCalibrationAuthority,
+    CALIBRATION_UNVERIFIED,
+    REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED,
+)
 
 PROVIDER_TYPE = "BEN"
 TIMEZONE = "UTC"
@@ -57,6 +63,15 @@ _PARAMETER_TYPES = {
     "reactive_power": "reactive power",
 }
 
+# Stage 3B-1 (DEC-213): every BEN5K legacy analog channel carries this
+# authority — the current decoder formula (raw_s16 * scale + offset) has
+# not been independently verified against traceable physical measurements.
+_BEN5K_CHANNEL_AUTHORITY = PhysicalCalibrationAuthority(
+    status=CALIBRATION_UNVERIFIED,
+    reason=REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED,
+    transform_id="ben5k_v1_raw_s16_linear_scale_offset",
+)
+
 
 def to_disturbance_record(
     record: BenRecord,
@@ -69,7 +84,12 @@ def to_disturbance_record(
         raise ValueError(f"nominal_frequency_hz must be a positive number, got {nominal_frequency_hz!r}")
 
     header = record.header
-    unknown_time_basis = header.record_class == BenRecordClass.BEN5K_LEGACY
+    is_legacy_ben5k = header.record_class == BenRecordClass.BEN5K_LEGACY
+    # Time-basis and calibration authority are both derived from is_legacy_ben5k
+    # but remain conceptually independent: a future BEN5K variant with a verified
+    # UTC clock would flip unknown_time_basis without changing the calibration
+    # authority, and vice versa.
+    unknown_time_basis = is_legacy_ben5k
     # Preserve recorder clock components; BEN5K has no verified timezone.
     # Explicit authority prevents these naive values inheriting DEC-121's policy.
     start_time = header.start_time_utc
@@ -82,6 +102,7 @@ def to_disturbance_record(
     value_names, digital_names = normalized_names(record)
     columns: dict[str, object] = {"time": record.time_axis()}
 
+    channel_authority = _BEN5K_CHANNEL_AUTHORITY if is_legacy_ben5k else None
     analog_channels: list[AnalogChannel] = []
     for channel, name in zip(record.value_channels, value_names):
         columns[name] = record.engineering_values(channel)
@@ -96,6 +117,7 @@ def to_disturbance_record(
                 primary_ratio=channel.primary_rating,
                 secondary_ratio=channel.secondary_rating_in_channel_unit,
                 parameter_type=_PARAMETER_TYPES.get(channel.measurement or ""),
+                calibration_authority=channel_authority,
             )
         )
 
@@ -112,6 +134,7 @@ def to_disturbance_record(
             provider_type=PROVIDER_TYPE,
             nominal_frequency=nominal_frequency_hz,
             timezone=source_timezone,
+            format_variant=FORMAT_VARIANT_BEN5K_LEGACY if is_legacy_ben5k else None,
         ),
         waveform_data=pd.DataFrame(columns),
         analog_channels=analog_channels,

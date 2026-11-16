@@ -180,12 +180,33 @@ class TestVoltageGroupConfigLifecycle:
     def test_deleting_a_workspace_removes_all_its_voltage_group_configurations(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
         group = self._create_voltage_group_with_base(client, "ws-1", source_id)
-        assert client.app.state.voltage_group_config_registry.count() == 1
+        # After Slice 5D-2: auto-base adds configs for auto-detected groups during upload,
+        # so total count may be > 1. Verify only that our explicitly-created config exists.
+        assert client.app.state.voltage_group_config_registry.get("ws-1", group.id) is not None
 
         resp = client.delete("/api/v1/workspaces/ws-1")
         assert resp.status_code == 204
 
         assert client.app.state.voltage_group_config_registry.get("ws-1", group.id) is None
+
+    def test_deleting_workspace_removes_all_voltage_configs_including_auto_resolved(self, client, comtrade_fixtures_dir):
+        # §1 guard: upload triggers auto-base (creates auto_resolved configs) AND we create a manual
+        # config on top. After workspace deletion, list_for_workspace must return [] — not just the
+        # explicitly-checked group, but ALL configs including those auto-base wrote during import.
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        self._create_voltage_group_with_base(client, "ws-1", source_id, "MANUAL EXTRA")
+        all_before = client.app.state.voltage_group_config_registry.list_for_workspace("ws-1")
+        assert len(all_before) >= 2, (
+            "Expected at least one auto-resolved config (from upload) plus one manual config"
+        )
+
+        resp = client.delete("/api/v1/workspaces/ws-1")
+        assert resp.status_code == 204
+
+        all_after = client.app.state.voltage_group_config_registry.list_for_workspace("ws-1")
+        assert all_after == [], (
+            "Workspace deletion must remove ALL voltage group configs, not just the explicitly-checked one"
+        )
 
     def test_deleting_a_workspace_never_touches_a_different_workspaces_voltage_configuration(self, client, comtrade_fixtures_dir):
         source_a = _upload(client, "ws-a", comtrade_fixtures_dir)

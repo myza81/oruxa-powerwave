@@ -63,10 +63,17 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from app.domain.base_authority import (
+    BASE_AUTHORITY_LEGACY,
+    BaseAuthorityState,
+    is_auto_resolved,
+    is_base_eligible_for_pu,
+)
 from app.domain.measurement_group import (
     KIND_CURRENT,
     STATUS_CONFIRMED,
     STATUS_MANUAL,
+    STATUS_SUGGESTED,
     MeasurementGroup,
 )
 from app.domain.voltage_group_config import VoltageBaseConfiguration, voltage_base_valid
@@ -152,6 +159,7 @@ class CurrentBaseConfiguration:
     manual_voltage_base_kv: float | None = None
     manual_ibase_ka: float | None = None
     base_reference_side: ReferenceSide = "unknown"
+    base_authority: BaseAuthorityState = BASE_AUTHORITY_LEGACY
 
 
 def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll_kv: float) -> float | None:
@@ -246,7 +254,21 @@ def resolve_current_base_for_group(
     if group.kind != KIND_CURRENT:
         return CurrentBaseResolution(status=STATUS_NOT_APPLICABLE, ibase_ka=None, applicable_voltage_ll_kv=None, reason=None)
 
-    if group.status not in AUTHORITATIVE_GROUP_STATUSES:
+    # Authority gate (Slice 5C-1): mirrors voltage resolver exactly.
+    if config is not None and not is_base_eligible_for_pu(config.base_authority):
+        return CurrentBaseResolution(
+            status=STATUS_BASE_REQUIRED, ibase_ka=None, applicable_voltage_ll_kv=None, reason="base_invalidated"
+        )
+
+    # Group status gate: auto_resolved authority bypasses it ONLY for suggested groups.
+    # needs_review groups have conflicting identity evidence and must not become PU-authoritative
+    # even when base_authority is auto_resolved — identity conflict takes precedence over base.
+    skip_status_gate = (
+        config is not None
+        and is_auto_resolved(config.base_authority)
+        and group.status == STATUS_SUGGESTED
+    )
+    if not skip_status_gate and group.status not in AUTHORITATIVE_GROUP_STATUSES:
         return CurrentBaseResolution(
             status=STATUS_BASE_REQUIRED, ibase_ka=None, applicable_voltage_ll_kv=None, reason="group_not_confirmed"
         )

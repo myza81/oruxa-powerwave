@@ -164,7 +164,7 @@ def test_calculated_units_use_the_same_readiness_contract(client, scope, quantit
     stored = r.calc.get(WORKSPACE, cid)
     resolved = _resolve_effective_per_unit_for_calculated_channel(
         stored, r.per_unit.get(WORKSPACE, SOURCE), ["VA"] if quantity == VOLTAGE else [],
-        workspace_id=WORKSPACE, calc_registry=r.calc, group_registry=r.group,
+        workspace_id=WORKSPACE, source_registry=r.source, calc_registry=r.calc, group_registry=r.group,
         voltage_config_registry=r.voltage_config, current_config_registry=r.current_config,
     )
     scalar, out_unit, status = apply_per_unit_to_value(-actual, unit, quantity, resolved)

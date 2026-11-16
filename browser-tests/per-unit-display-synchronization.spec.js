@@ -40,7 +40,7 @@ async function setup(page, { station = "SYNC_PU", sourceDefault = false, extraCh
     expect(response.ok()).toBe(true);
     voltage = await response.json();
     expect((await page.request.put(`${groupsUrl}/${voltage.id}/voltage-config`, {
-      data: { nominal_voltage_ll_kv: NOMINAL_KV },
+      data: { nominal_voltage_ll_kv: NOMINAL_KV, base_reference_side: "primary" },
     })).ok()).toBe(true);
   }
   await page.locator("#mainNavWaveformBtn").click();
@@ -314,15 +314,17 @@ test("a Voltage base edit refreshes linked Current while other groups keep their
   for (const name of ["IA", "LOW VA", "MANUAL IA"]) await row(page, source, name).click();
   await cursors(page, source);
   await switchMode(page, "per_unit");
-  await expectCursors(page, source, 4.2 / (1000 / (Math.sqrt(3) * 275)), { name: "IA" });
+  // DEC-212 §2: raw Current cursor readouts always stay in engineering (A/kA).
+  await expectCursors(page, source, 4.2, { name: "IA" });
   await expectCursors(page, source, Math.sqrt(2), { name: "LOW VA" });
-  await expectCursors(page, source, 2, { name: "MANUAL IA" });
+  await expectCursors(page, source, 3, { name: "MANUAL IA" });
   expect((await page.request.put(`${context.groupsUrl}/${voltage.id}/voltage-config`, { data: { nominal_voltage_ll_kv: 132 } })).ok()).toBe(true);
   await page.evaluate(source => wwRefreshDisplayedChannelsForPerUnitChange(source), source);
   await expectCursors(page, source, Math.sqrt(2) * 275 / 132);
-  await expectCursors(page, source, 4.2 / (1000 / (Math.sqrt(3) * 132)), { name: "IA" });
+  // IA and MANUAL IA cursors are unaffected by the voltage base change (DEC-212 §2 engineering).
+  await expectCursors(page, source, 4.2, { name: "IA" });
   await expectCursors(page, source, Math.sqrt(2), { name: "LOW VA" });
-  await expectCursors(page, source, 2, { name: "MANUAL IA" });
+  await expectCursors(page, source, 3, { name: "MANUAL IA" });
 });
 
 test("calculated Voltage, Current and Power cursors retain eligibility and units", async ({ page }) => {
@@ -540,4 +542,40 @@ test("zoom remains responsive during a mode refresh and its latest arrays reach 
     return { unit: channel.unit, label: panel.label, count: trace.y.length,
       matches: trace.y.length > 0 && Array.from(trace.y).every((value, i) => value === channel.values[i]) };
   }, source)).toMatchObject({ unit: "pu", label: "Voltage (pu)", matches: true });
+});
+
+// F-3 regression: Voltage cursor updates on mode switch; Current cursor stays in engineering
+// A/kA throughout (DEC-212 §2). Rapid ENG→PU→ENG rejects stale cursor responses.
+test("Voltage cursor follows ENG/PU mode; Current cursor stays in kA; rapid switch rejects stale response", async ({ page }) => {
+  const context = await setup(page);
+  const { source } = context;
+  await addGroup(page, context, "current", ["IA"], { method: "manual", manual_ibase_ka: 2.1 });
+  await row(page, source, "IA").click();
+  await cursors(page, source);
+
+  // ENG baseline.
+  await expectCursors(page, source, PEAK_KV);
+  await expectCursors(page, source, 4.2, { name: "IA", bValue: -4.2 });
+
+  // ENG→PU: VA updates to PU; IA stays in engineering kA (DEC-212 §2).
+  await switchMode(page, "per_unit");
+  await expectCursors(page, source, Math.sqrt(2));
+  await expectCursors(page, source, 4.2, { name: "IA", bValue: -4.2 });
+
+  // PU→ENG: VA returns to kV; IA unchanged.
+  await switchMode(page, "engineering");
+  await expectCursors(page, source, PEAK_KV);
+  await expectCursors(page, source, 4.2, { name: "IA", bValue: -4.2 });
+
+  // Rapid ENG→PU→ENG: stale PU cursor response for VA must be rejected by isCurrent() guard.
+  const held = await holdResponse(page, "**/cursor-values");
+  await page.locator("#wwUnitPerUnitBtn").click();
+  await held.reached;
+  await page.locator("#wwUnitEngineeringBtn").click();
+  held.release();
+  await page.evaluate(() => Promise.all(window.unitJobs));
+
+  // After the rapid round-trip both channels must show ENG values.
+  await expectCursors(page, source, PEAK_KV);
+  await expectCursors(page, source, 4.2, { name: "IA", bValue: -4.2 });
 });

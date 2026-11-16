@@ -123,11 +123,20 @@ from app.domain.voltage_reference import (
 )
 from app.domain.per_unit import (
     PerUnitBaseProfile,
+    PerUnitResolution,
+    STATUS_CALIBRATION_UNAVAILABLE,
     apply_per_unit_to_array,
     apply_per_unit_to_value,
     derive_per_unit_profile_id,
     resolve_per_unit,
     resolve_conversion_eligibility,
+)
+from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.physical_calibration import (
+    CALIBRATION_INVALID,
+    evaluate_calibration_eligibility,
+    PURPOSE_ENGINEERING_CALCULATION,
+    PURPOSE_EXPLORATORY_ANALYSIS,
 )
 from app.domain.rms_detector import (
     LIKELY_INSTANTANEOUS,
@@ -154,6 +163,7 @@ from app.services.errors import (
     EstimationMethodNotImplementedError,
     IncompatibleTimeBaseError,
     IncompatibleUnitError,
+    InvalidCalibrationAuthorityError,
     InvalidCalculatedChannelNameError,
     InvalidCalculatedOperationError,
     InvalidConstantError,
@@ -303,6 +313,258 @@ def _finite_or_none(value: float) -> float | None:
     source-channel code path -- which reuses those same primitives and
     has never produced NaN -- completely unaffected."""
     return float(value) if np.isfinite(value) else None
+
+
+@dataclass(slots=True)
+class _LeafAuthorityResult:
+    """Result of leaf calibration authority collection for a calculated channel.
+
+    Stage 3B-2B-1 (DEC-213). Returned by _collect_leaf_authorities().
+
+    When ``blocked_reason`` is non-None, the traversal encountered a
+    structural condition that prevents authority resolution (OD-3: missing
+    source, missing BEN5K channel, absent BEN5K authority, circular dependency,
+    or unreachable calc chain). No fabricated authority objects are used in
+    these cases — the reason string itself is the machine-readable signal.
+
+    When ``blocked_reason`` is None, ``authorities`` holds the full list of
+    PhysicalCalibrationAuthority objects (or None for not-assessed leaves)
+    from every deduplicated source-channel leaf in the dependency tree.
+    """
+
+    authorities: list  # list[PhysicalCalibrationAuthority | None]
+    blocked_reason: str | None  # "source_registry_unavailable" | "source_unavailable" |
+    # "channel_not_found_ben5k" | "ben5k_authority_absent" |
+    # "circular_dependency" | "calculated_channel_not_found" | None
+
+
+def _collect_leaf_authorities(
+    channel: CalculatedChannel,
+    *,
+    workspace_id: str | None,
+    source_registry: WorkspaceRegistry | None,
+    calc_registry: CalculatedChannelRegistry | None,
+    _path_visited: frozenset | None = None,
+    _seen_leaves: set | None = None,
+) -> _LeafAuthorityResult:
+    """Stage 3B-2B-1 (DEC-213): traverse the full dependency tree and collect
+    the original physical-leaf calibration authorities.
+
+    Design decisions
+    ----------------
+    OD-1 (fail-closed): if any source-kind ref exists in the tree and
+    ``source_registry`` or ``workspace_id`` is None, returns a
+    ``blocked_reason`` rather than silently skipping the gate.
+
+    OD-3 (machine-readable reasons): missing source, missing BEN5K channel,
+    absent BEN5K authority — each returns a specific ``blocked_reason`` string.
+    No synthetic PhysicalCalibrationAuthority objects are fabricated.
+
+    BEN5K identity: ``active.record.metadata.format_variant ==
+    FORMAT_VARIANT_BEN5K_LEGACY`` — same check as Stage 3B-2A, never derived
+    from channel names, timestamps or nominal values.
+
+    Deduplication: each ``(source_id, channel_name)`` leaf is collected once,
+    even when the same source channel appears in multiple branches of the tree.
+
+    Cycle detection: uses ``_path_visited`` (the set of calc-channel IDs on the
+    current DFS path). Real cycles are prevented at creation time by
+    ``would_create_cycle()``, but this provides a defensive safeguard.
+    """
+    if _path_visited is None:
+        _path_visited = frozenset()
+    if _seen_leaves is None:
+        _seen_leaves = set()
+
+    # Add the current channel to the DFS path.
+    current_path = _path_visited | frozenset({channel.id})
+
+    authorities: list = []
+
+    for ref in channel.inputs:
+        if ref.kind == "source":
+            # OD-1: fail closed if the registry or workspace_id is unavailable.
+            if source_registry is None or workspace_id is None:
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="source_registry_unavailable",
+                )
+            # Deduplication by stable (source_id, channel_name) identity.
+            leaf_key: tuple = (ref.source_id, ref.channel_name)
+            if leaf_key in _seen_leaves:
+                continue
+            _seen_leaves.add(leaf_key)
+
+            active = source_registry.get(workspace_id, ref.source_id)
+            if active is None:
+                # OD-3: source not found — fail closed.
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="source_unavailable",
+                )
+
+            is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+            full_ch = next(
+                (ch for ch in active.record.analog_channels
+                 if ch.name == ref.channel_name),
+                None,
+            )
+            if full_ch is None:
+                if is_ben5k:
+                    # OD-3: BEN5K channel missing from analog_channels — fail closed.
+                    return _LeafAuthorityResult(
+                        authorities=[],
+                        blocked_reason="channel_not_found_ben5k",
+                    )
+                # Non-BEN5K: treat missing channel as not-assessed (backward compat).
+                authorities.append(None)
+                continue
+
+            authority = full_ch.calibration_authority
+            if authority is None:
+                if is_ben5k:
+                    # OD-3: BEN5K channel with absent authority — fail closed;
+                    # no fabricated PhysicalCalibrationAuthority object (OD-3).
+                    return _LeafAuthorityResult(
+                        authorities=[],
+                        blocked_reason="ben5k_authority_absent",
+                    )
+                # Non-BEN5K: None authority = not-assessed; existing compat behaviour.
+                authorities.append(None)
+            else:
+                authorities.append(authority)
+
+        elif ref.kind == "calculated":
+            calc_id = ref.calculated_channel_id
+            # Defensive cycle detection (real cycles prevented at creation time).
+            if calc_id in current_path:
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="circular_dependency",
+                )
+            if calc_registry is None or workspace_id is None:
+                # Can't traverse the calc chain without its registry.
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="source_registry_unavailable",
+                )
+            inner = calc_registry.get(workspace_id, calc_id)
+            if inner is None:
+                return _LeafAuthorityResult(
+                    authorities=[],
+                    blocked_reason="calculated_channel_not_found",
+                )
+            inner_result = _collect_leaf_authorities(
+                inner,
+                workspace_id=workspace_id,
+                source_registry=source_registry,
+                calc_registry=calc_registry,
+                _path_visited=current_path,
+                _seen_leaves=_seen_leaves,
+            )
+            if inner_result.blocked_reason is not None:
+                return inner_result
+            authorities.extend(inner_result.authorities)
+
+        else:
+            # Unknown ChannelRef kind — fail closed (defensive).
+            return _LeafAuthorityResult(
+                authorities=[],
+                blocked_reason=f"unknown_ref_kind:{ref.kind}",
+            )
+
+    return _LeafAuthorityResult(authorities=authorities, blocked_reason=None)
+
+
+def _check_creation_authority(
+    inputs: list[ChannelRef],
+    *,
+    workspace_id: str,
+    source_registry: WorkspaceRegistry,
+    calc_registry: CalculatedChannelRegistry,
+) -> None:
+    """Stage 3B-2B-2 (DEC-213): pre-flight Invalid-calibration authority gate
+    for calculated-channel creation.
+
+    OD-5 (strict): fires for ALL engineering types — no VOLTAGE/CURRENT
+    restriction.  Raises ``InvalidCalibrationAuthorityError`` when any
+    source-kind ref carries an explicitly Invalid authority, or when any
+    calc-kind ref's dependency tree resolves to Invalid leaf authorities.
+
+    Unverified and Not Assessed sources pass this gate unchanged (backward
+    compat, OD-5 carve-out: Unverified exploratory is allowed).
+
+    Called BEFORE ``_resolve_input()`` in ``create_calculated_channel()``
+    so that Invalid authority is rejected before any sample arrays are read.
+    """
+    for ref in inputs:
+        if ref.kind == "source":
+            active = source_registry.get(workspace_id, ref.source_id)
+            if active is None:
+                # Source not found — let _resolve_input() raise SourceNotFoundError.
+                continue
+            is_ben5k = active.record.metadata.format_variant == FORMAT_VARIANT_BEN5K_LEGACY
+            full_ch = next(
+                (ch for ch in active.record.analog_channels if ch.name == ref.channel_name),
+                None,
+            )
+            if full_ch is None:
+                if is_ben5k:
+                    raise InvalidCalibrationAuthorityError(
+                        f"BEN5K channel '{ref.channel_name}' was not found in the source's analog "
+                        "channels; physical calibration authority cannot be determined.",
+                        reason="channel_not_found_ben5k",
+                        input_ref=ref.channel_name,
+                    )
+                # Non-BEN5K: treat as not-assessed (backward compat).
+                continue
+            authority = full_ch.calibration_authority
+            if authority is None:
+                if is_ben5k:
+                    raise InvalidCalibrationAuthorityError(
+                        f"BEN5K channel '{ref.channel_name}' has no calibration authority record; "
+                        "it cannot be used as a calculated-channel input.",
+                        reason="ben5k_authority_absent",
+                        input_ref=ref.channel_name,
+                    )
+                # Non-BEN5K: None authority = not-assessed (backward compat).
+                continue
+            if authority.status == CALIBRATION_INVALID:
+                raise InvalidCalibrationAuthorityError(
+                    f"Channel '{ref.channel_name}' has an explicitly Invalid physical calibration "
+                    "authority and cannot be used as a calculated-channel input.",
+                    reason=authority.reason,
+                    input_ref=ref.channel_name,
+                )
+        elif ref.kind == "calculated":
+            inner = calc_registry.get(workspace_id, ref.calculated_channel_id)
+            if inner is None:
+                # Calc channel not found — let _resolve_input() raise CalculatedChannelNotFoundError.
+                continue
+            leaf_result = _collect_leaf_authorities(
+                inner,
+                workspace_id=workspace_id,
+                source_registry=source_registry,
+                calc_registry=calc_registry,
+            )
+            if leaf_result.blocked_reason is not None:
+                raise InvalidCalibrationAuthorityError(
+                    f"Calculated channel '{ref.calculated_channel_id}' dependency traversal is "
+                    f"blocked: {leaf_result.blocked_reason}.",
+                    reason=leaf_result.blocked_reason,
+                    input_ref=ref.calculated_channel_id,
+                )
+            eligibility = evaluate_calibration_eligibility(
+                [a for a in leaf_result.authorities if a is not None],
+                PURPOSE_EXPLORATORY_ANALYSIS,
+            )
+            if not eligibility.eligible:
+                raise InvalidCalibrationAuthorityError(
+                    f"Calculated channel '{ref.calculated_channel_id}' cannot be used as input: "
+                    "physical calibration is invalid.",
+                    reason=eligibility.reason,
+                    input_ref=ref.calculated_channel_id,
+                )
 
 
 @dataclass(slots=True)
@@ -735,6 +997,15 @@ def create_calculated_channel(
     existing_names = {c.name for c in calc_registry.list_for_workspace(workspace_id)}
     if clean_name in existing_names:
         raise DuplicateCalculatedChannelNameError(f"A calculated channel named '{clean_name}' already exists.")
+
+    # Stage 3B-2B-2 (DEC-213): pre-flight Invalid-calibration authority gate.
+    # OD-5 (strict): fires for ALL engineering types, before _resolve_input().
+    _check_creation_authority(
+        inputs,
+        workspace_id=workspace_id,
+        source_registry=source_registry,
+        calc_registry=calc_registry,
+    )
 
     resolved = [
         _resolve_input(ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry)
@@ -1423,6 +1694,38 @@ def _resolve_effective_per_unit_for_calculated_channel(
     resolution exactly as before. See
     `app.services.calculated_group_aware_per_unit`'s own module
     docstring for the full rule."""
+    # Stage 3B-2B-1 calibration authority gate (DEC-213).
+    # OD-4: Only VOLTAGE and CURRENT types can produce authoritative PU output.
+    # POWER, ROCOF, FREQUENCY and UNDEFINED reach STATUS_NOT_APPLICABLE via
+    # the existing resolve_per_unit() path below — that path is preserved
+    # unchanged and must not be overridden by this gate.
+    if channel.engineering_type in (VOLTAGE, CURRENT):
+        leaf_result = _collect_leaf_authorities(
+            channel,
+            workspace_id=workspace_id,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+        )
+        if leaf_result.blocked_reason is not None:
+            return PerUnitResolution(
+                status=STATUS_CALIBRATION_UNAVAILABLE,
+                profile_id=None,
+                base_amount=None,
+                base_unit=None,
+                reason=leaf_result.blocked_reason,
+            )
+        eligibility = evaluate_calibration_eligibility(
+            [a for a in leaf_result.authorities if a is not None],
+            PURPOSE_ENGINEERING_CALCULATION,
+        )
+        if not eligibility.eligible:
+            return PerUnitResolution(
+                status=STATUS_CALIBRATION_UNAVAILABLE,
+                profile_id=None,
+                base_amount=None,
+                base_unit=None,
+                reason=eligibility.reason,
+            )
     if (channel.engineering_type == CURRENT and all(reg is not None for reg in (
         workspace_id, source_registry, per_unit_registry, calc_registry, group_registry,
         voltage_config_registry, current_config_registry,
@@ -1508,6 +1811,29 @@ def extract_calculated_waveform_range(
     SAME `_clip_and_reduce()` core the source-channel waveform endpoint
     uses (full-resolution-threshold + peak-preserving min/max envelope,
     never a second reduction algorithm, section 48/49)."""
+    # Stage 3B-2B-2 Invalid calibration guard (OD-6): block entirely for
+    # Invalid authority leaves, unconditional on unit_mode.
+    if source_registry is not None and workspace_id is not None and calc_registry is not None:
+        _leaf = _collect_leaf_authorities(
+            channel,
+            workspace_id=workspace_id,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+        )
+        if _leaf.blocked_reason is not None:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' cannot be evaluated: {_leaf.blocked_reason}.",
+                reason=_leaf.blocked_reason,
+            )
+        _elig = evaluate_calibration_eligibility(
+            [a for a in _leaf.authorities if a is not None],
+            PURPOSE_EXPLORATORY_ANALYSIS,
+        )
+        if not _elig.eligible:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' cannot be evaluated: physical calibration is invalid.",
+                reason=_elig.reason,
+            )
     effective_start, effective_end, original_sample_count, representation, out_time, out_values = _clip_and_reduce(
         channel.time, channel.values, start_time=start_time, end_time=end_time, point_budget=point_budget
     )
@@ -1578,6 +1904,29 @@ def extract_calculated_cursor_values(
     """
     results: list[CalculatedCursorValues] = []
     for channel in channels:
+        # Stage 3B-2B-2 Invalid calibration guard (OD-6): block entirely,
+        # unconditional on unit_mode, per channel in the batch.
+        if source_registry is not None and workspace_id is not None and calc_registry is not None:
+            _leaf = _collect_leaf_authorities(
+                channel,
+                workspace_id=workspace_id,
+                source_registry=source_registry,
+                calc_registry=calc_registry,
+            )
+            if _leaf.blocked_reason is not None:
+                raise InvalidCalibrationAuthorityError(
+                    f"Calculated channel '{channel.name}' cannot be evaluated: {_leaf.blocked_reason}.",
+                    reason=_leaf.blocked_reason,
+                )
+            _elig = evaluate_calibration_eligibility(
+                [a for a in _leaf.authorities if a is not None],
+                PURPOSE_EXPLORATORY_ANALYSIS,
+            )
+            if not _elig.eligible:
+                raise InvalidCalibrationAuthorityError(
+                    f"Calculated channel '{channel.name}' cannot be evaluated: physical calibration is invalid.",
+                    reason=_elig.reason,
+                )
         a_index = _nearest_sample_index(channel.time, cursor_a_time)
         b_index = _nearest_sample_index(channel.time, cursor_b_time)
         a_value = _finite_or_none(channel.values[a_index]) if a_index is not None else None
@@ -1646,6 +1995,29 @@ def resolve_calculated_peak_value(
     """+Peak/-Peak for one calculated channel (section 55) -- calls the
     SAME `_peak_in_range()` core (earliest-tie argmax/argmin, non-finite
     masking) `resolve_peak_value` uses for source channels."""
+    # Stage 3B-2B-2 Invalid calibration guard (OD-6): block entirely,
+    # unconditional on unit_mode.
+    if source_registry is not None and workspace_id is not None and calc_registry is not None:
+        _leaf = _collect_leaf_authorities(
+            channel,
+            workspace_id=workspace_id,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+        )
+        if _leaf.blocked_reason is not None:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' cannot be evaluated: {_leaf.blocked_reason}.",
+                reason=_leaf.blocked_reason,
+            )
+        _elig = evaluate_calibration_eligibility(
+            [a for a in _leaf.authorities if a is not None],
+            PURPOSE_EXPLORATORY_ANALYSIS,
+        )
+        if not _elig.eligible:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' cannot be evaluated: physical calibration is invalid.",
+                reason=_elig.reason,
+            )
     available, sample_index, elapsed_seconds, value = _peak_in_range(
         channel.time, channel.values, mode=mode, start_time=start_time, end_time=end_time
     )
@@ -1712,6 +2084,29 @@ def resolve_calculated_annotation_anchor(
     `approximate_elapsed_seconds` falls outside this channel's own
     recorded bounds, matching `resolve_annotation_anchor`'s own contract.
     """
+    # Stage 3B-2B-2 Invalid calibration guard (OD-6): block entirely,
+    # unconditional on unit_mode.
+    if source_registry is not None and workspace_id is not None and calc_registry is not None:
+        _leaf = _collect_leaf_authorities(
+            channel,
+            workspace_id=workspace_id,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+        )
+        if _leaf.blocked_reason is not None:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' cannot be evaluated: {_leaf.blocked_reason}.",
+                reason=_leaf.blocked_reason,
+            )
+        _elig = evaluate_calibration_eligibility(
+            [a for a in _leaf.authorities if a is not None],
+            PURPOSE_EXPLORATORY_ANALYSIS,
+        )
+        if not _elig.eligible:
+            raise InvalidCalibrationAuthorityError(
+                f"Calculated channel '{channel.name}' cannot be evaluated: physical calibration is invalid.",
+                reason=_elig.reason,
+            )
     index = _nearest_sample_index(channel.time, approximate_elapsed_seconds)
     if index is None:
         return None

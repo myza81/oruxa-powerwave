@@ -136,11 +136,13 @@ class TestNothingIsGuessed:
         payload = _traces(client, "KPDN1")
         assert payload["traces"] == [] and payload["readiness_status"] == "no_reference"
 
-    def test_pu_without_a_base_plots_nothing(self, client):
+    def test_pu_with_auto_resolved_base_plots_traces(self, client):
+        # After Slice 5D-2: auto-base resolves the PU base from COMTRADE import, so after
+        # prepare the PU reference is immediately satisfied — traces are generated.
         _add_reference(client, unit="pu")
         _prepare(client, "KPDN1")
-        assert _readiness(client, "KPDN1")["status"] == "action_required"
-        assert _traces(client, "KPDN1")["traces"] == []
+        assert _readiness(client, "KPDN1")["status"] == "ready"
+        assert len(_traces(client, "KPDN1")["traces"]) > 0
 
     def test_a_base_that_is_not_applied_yet_plots_nothing(self, client):
         _add_reference(client, representation="phase_ground_rms", unit="pu")
