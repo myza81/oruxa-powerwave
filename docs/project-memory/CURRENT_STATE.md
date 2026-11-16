@@ -9,6 +9,36 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## BEN5K Fast AC P1 — owner accepted; local commit authorized (2026-11-17)
+
+[DECISION] Owner accepted the bounded numerical correction in the P1 engineering
+change report and authorized a LOCAL COMMIT on 2026-11-17. P2, push, merge and
+deployment remain unauthorized. The correction is isolated on
+`fix/ben5k-fast-ac-scaling-p1`, based on fetched
+`origin/main=dfdab78`; prior dirty investigation work and other worktrees remain.
+
+[FACT] Reviewed BPHE/GPTH/Permas Fast AC configurations now use
+`(signed_word >> 4) * descriptor_gain * sqrt(2)` at the native adapter boundary.
+Original words, metadata and physical mapping remain. Shared BEN32 conversion,
+PU mathematics, frontend code and DEC-213 gates are unchanged; corrected channels
+remain Unverified. Unknown configurations/nonzero offsets/unidentified DC and
+all Slow/SubBen/unsupported layouts do not acquire the new contract.
+
+BPHE's 14 x 1,148 independent export comparison passes numerically; its existing
+native descriptor/mapping defects remain unresolved and P2 has not begun.
+Focused regression: 1,112 backend tests passed without skips; 31 browser tests
+passed. Full backend: 12,873 passed, 271 skipped, zero failures/errors. Skips are
+Windows POSIX-shell checks and unrelated relay-PDF/profile cases; no required
+BEN evidence check was skipped.
+Local-commit confirmation on 2026-11-17: the same focused 1,112 checks passed
+again without failures/skips; runtime code and fixtures were unchanged. The
+full backend and browser suites were not repeated.
+See [P1 engineering change report](BEN5K_FAST_AC_P1_CHANGE_REPORT_2026-11-16.md)
+for applicability, results, exclusions and remaining limits.
+
+Next milestone: DEV waveform UAT on GPTH/Permas after PR and CI approval and
+deployment authorization. No warning redesign or further feature work is included.
+
 ## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
 
 [FACT] Three pre-existing browser test failures corrected and committed as `0429c27` + `0af9b41`

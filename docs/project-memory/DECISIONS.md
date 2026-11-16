@@ -29446,3 +29446,25 @@ Open owner decisions:
 - J-4: Approve/reject H2 for current after J-3 confirmed.
 - J-5: Assessment of Permas Jaya re-classification impact.
 - J-6: Whether exploratory analysis of Unverified channels requires a separate UI state.
+
+### Owner-authorized local P1 numerical candidate (2026-11-16)
+
+Following review of `BEN_WIDE_SCALING_ROOT_CAUSE_2026-11-16.md`, the owner explicitly
+authorized an isolated branch from current main implementing the evidenced
+zero-offset legacy Fast AC formula `(signed_word >> 4) * gain * sqrt(2)` for BPHE
+and the report's bounded GPTH/Permas applicability. This authorization supersedes
+the earlier pending numerical-implementation permission for this LOCAL candidate
+only. It does not authorize physical-verification claims, changing Unverified
+status/gates, shared BEN32 behavior, PU mathematics, a frontend multiplier, P2,
+push, merge or deployment. Original binary words and metadata must remain.
+Nonzero offsets, unidentified DC, legacy Slow, SubBen and unsupported layouts
+must not silently acquire this transform.
+
+Implementation and evidence: [P1 engineering change report](BEN5K_FAST_AC_P1_CHANGE_REPORT_2026-11-16.md).
+
+**Owner acceptance (2026-11-17):** the owner accepted this bounded P1 correction
+as reported and explicitly authorized a local commit on
+`fix/ben5k-fast-ac-scaling-p1`. Applicability, the zero-offset contract and
+Unverified safeguards remain as reviewed. This does not authorize push, merge,
+deployment, P2, warning redesign or other features. The next milestone is DEV
+waveform UAT on GPTH/Permas after PR and CI approval and deployment authorization.

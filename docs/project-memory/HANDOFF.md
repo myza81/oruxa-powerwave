@@ -4,9 +4,39 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-15** (Post-DEC-213 browser regression maintenance committed: F-1/F-2/F-3 test
-corrections committed as `0429c27` + `0af9b41`. Working tree clean. NOT pushed or merged.
-Awaiting owner engineering review before next authorized action.)
+Last updated: **2026-11-17** — owner accepted bounded P1; LOCAL COMMIT authorized.
+
+## Continue from the accepted local P1 correction
+
+Branch `fix/ben5k-fast-ac-scaling-p1` is based on fetched current
+`origin/main=dfdab78`. Read [the P1 engineering change report](BEN5K_FAST_AC_P1_CHANGE_REPORT_2026-11-16.md).
+The original dirty investigation checkout and all prior worktrees are preserved.
+
+Owner approved the zero-offset AC formula for BPHE and bounded same-family
+GPTH/Permas applicability. A legacy-only projection now applies arithmetic signed
+`>> 4`, gain and sqrt(2) exactly once for the reviewed configurations/channels.
+Unknown/nonzero-offset/DC/unrelated formats retain existing behavior. The new
+transform ID describes arithmetic; status stays Unverified and all DEC-213 gates
+remain. Mapping goldens, raw words, shared BEN32 conversion, PU and frontend code
+are unchanged.
+
+BPHE's 16,072 independent export comparisons pass numerically. Its end-to-end
+mapping remains wrong and is explicitly tested as unresolved; P2 is not started.
+1,112 focused backend tests and 31 browser tests passed without skips. Full
+backend: 12,873 passed, 271 skipped, zero failures/errors. Skips cover POSIX-shell
+checks on Windows and unrelated relay-PDF/profile cases, not required BEN checks.
+Precise evidence limits and validation results are in the report.
+Local-commit confirmation on 2026-11-17 repeated only the focused BEN/DEC-213
+selection: 1,112 passed without skips/failures. Full backend and browser results
+above are retained from the reviewed candidate; runtime code/fixtures are unchanged.
+
+Owner accepted the reviewed candidate and authorized its local commit on
+2026-11-17. Runtime code and evidence fixtures are unchanged from that candidate.
+Next milestone: DEV waveform UAT on GPTH/Permas after PR and CI approval and
+deployment authorization; do not begin it under the local-commit instruction.
+No push, merge, deployment or P2 work is authorized. The old "not pushed/merged"
+entries below are historical: current main already contains PR #8. This P1
+candidate is local and unmerged.
 
 ## Stage 3B-3 — Calibration UI/UX presentation (2026-11-14)
 

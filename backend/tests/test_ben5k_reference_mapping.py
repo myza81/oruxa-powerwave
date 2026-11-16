@@ -2,13 +2,15 @@
 
 Owner recordings are immutable and uncommitted. Supply --ben-reference-dir.
 Expected columns are pinned independently of the classifier under test; signed
-packed samples are read directly with struct, retaining the existing formula.
+packed samples are read directly with struct, then projected by the approved P1
+zero-offset Fast AC contract. Original mapping hashes remain unchanged.
 """
 
 from dataclasses import replace
 from functools import cache
 import hashlib
 import json
+import math
 from pathlib import Path
 import struct
 
@@ -71,7 +73,8 @@ def _golden_values(data, spec, channel):
     descriptor = channel["descriptor_offset"]
     assert data[descriptor + 53] == channel["logical_word_index"]
     gain, offset = struct.unpack_from("<ff", data, descriptor + 28)
-    return raw, raw.astype(float) * gain + offset, gain, offset
+    assert offset == 0.0
+    return raw, (raw.astype(np.int32) >> 4).astype(float) * gain * math.sqrt(2), gain, offset
 
 
 @pytest.mark.parametrize("record_id,channel", CHANNELS, ids=[f"{r}-{c['name']}" for r, c in CHANNELS])
@@ -91,6 +94,8 @@ def test_every_channel_uses_its_pinned_physical_payload(mapping_reference_root, 
     assert metadata.unit == unit
     assert metadata.measurement_side == "unknown"
     assert metadata.primary_ratio is None and metadata.secondary_ratio is None
+    assert metadata.calibration_authority.status == "unverified"
+    assert metadata.calibration_authority.transform_id == "ben5k_v2_fast_ac_s12_gain_sqrt2_zero_offset"
 
 
 @pytest.mark.parametrize("record_id", RECORDS)
@@ -134,8 +139,7 @@ def test_all_real_channels_reach_provider_api_cursors_peaks_and_calculation(
             assert cursors[name]["b_value"] == values[2500]
             assert peaks[name, "min"]["value"] == float(values.min())
             assert peaks[name, "max"]["value"] == float(values.max())
-        # A downstream calculation on an affected Current channel, still using
-        # the existing packed-word formula. No calibration hypothesis is applied.
+        # The same corrected Current numerator reaches exploratory calculation.
         name = "KTBR2 IR" if record_id == "permas_jaya" else "SDAI2 IB"
         calculation = client.post(f"{base}/calculated-channels", json={
             "name": "Mapped current polarity", "operation": "reverse_polarity",
@@ -146,5 +150,8 @@ def test_all_real_channels_reach_provider_api_cursors_peaks_and_calculation(
         wave = client.get(f"{base}/calculated-channels/{cid}/waveform")
         assert wave.status_code == 200, wave.text
         np.testing.assert_array_equal(wave.json()["values"], -expected[name])
+        blocked = client.get(f"{url}/waveform", params={"channel_name": name, "unit_mode": "per_unit"})
+        assert blocked.status_code == 200, blocked.text
+        assert blocked.json()["per_unit_status"] == "calibration_unavailable"
         for name, values in expected.items():
             np.testing.assert_array_equal(active.record.waveform_data[name], values)

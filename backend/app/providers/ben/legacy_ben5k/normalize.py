@@ -44,6 +44,11 @@ from app.providers.ben.legacy_ben5k.reader import (
     read_channel_descriptors,
 )
 from app.providers.ben.legacy_ben5k.channel_map import classify_channels
+from app.providers.ben.legacy_ben5k.engineering import (
+    Ben5kRecord,
+    has_supported_fast_ac_configuration,
+    is_supported_fast_ac_descriptor,
+)
 
 # BEN5K uses the same trigger-time base as SubBen.
 _YEAR_BASE = layout.TRIGGER_TIME_YEAR_BASE  # 1900
@@ -166,8 +171,12 @@ def parse_ben5k(data: bytes) -> BenRecord:
     header = _build_header(header5k, data)
 
     # ── 5. Build value_channels from recorded_analog ─────────────────────
+    supported_fast_ac = has_supported_fast_ac_configuration(data, header5k)
+    fast_ac_channel_ids: set[int] = set()
     value_channels: list[BenValueChannel] = []
     for idx, ch in enumerate(ch_map.recorded_analog):
+        if supported_fast_ac and is_supported_fast_ac_descriptor(data, ch):
+            fast_ac_channel_ids.add(idx)
         # Map BEN5K type_byte → measurement kind
         if ch.type_byte == 0x00:
             measurement = "voltage"
@@ -314,10 +323,11 @@ def parse_ben5k(data: bytes) -> BenRecord:
             ),
         ))
 
-    return BenRecord(
+    return Ben5kRecord(
         header=header,
         value_channels=tuple(value_channels),
         digital_channels=tuple(digital_channels),
         diagnostics=tuple(diagnostics),
         sample_words=sample_words,
+        fast_ac_channel_ids=frozenset(fast_ac_channel_ids),
     )
