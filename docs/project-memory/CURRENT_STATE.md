@@ -9,15 +9,17 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## BEN5K BPHE layout P2 — owner accepted; local commit authorized (2026-11-17)
+## BEN5K P2 closed; GPTH legacy Slow P3 accepted for local commit (2026-11-17)
 
-[DECISION] Owner confirmed P1 passed GPTH/Permas DEV UAT and authorized focused
-BPHE descriptor/mapping P2. PR #9 is merged at fetched main `781b2b0`. P2 is
-isolated on `fix/ben5k-bphe-layout-p2` from that commit. Owner accepted the bounded
-P2 engineering report and explicitly authorized its LOCAL COMMIT. Push, merge and
-deployment remain unauthorized; earlier dirty work is preserved.
+[FACT] P2 PR #10 is merged at fetched main
+`856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV UAT is accepted.
+Post-merge [CI #424](https://github.com/myza81/oruxa-powerwave/actions/runs/44010122459)
+and [automatic DEV deployment](https://github.com/myza81/oruxa-powerwave/actions/runs/44011270803)
+both passed. The deployment job/log confirms that exact merge SHA, successful
+backend health and "Deployment successful." P2 operational closure is verified,
+not inferred from the merge or pre-merge UAT.
 
-[FACT] The local native BPHE import now exposes all 14 analog channels. Variable
+[FACT] Native BPHE import exposes all 14 analog channels. Variable
 feeder/sensor tables derive its descriptor region; an explicit independently
 matched descriptor/physical-word table is bounded to the reviewed BPHE embedded
 configuration fingerprint. Both same-name VR occurrences remain distinct.
@@ -27,19 +29,36 @@ precision. This is numerical/export parity, not physical instrument verification
 P1 conversion/applicability, all 62 October mapping goldens and complete raw/
 engineering array hashes, BEN32 Fast/Slow independent parity, BEN6K controls,
 DEC-213 Unverified gates, PU math and frontend runtime code are preserved.
-Focused backend: **1,135 passed**. Browser: **32 passed**, including all 14 BPHE
-plotted arrays against the independent export. Both runs have zero skips/failures.
-Local-commit verification confirmed the recorded JUnit results and evidence
-hashes; implementation, tests and numerical evidence are unchanged from the
-accepted candidate. The manifest distinguishes Git-blob LF hashes from original
-Windows CRLF hashes. The unrelated full backend suite was not repeated for P2.
+Accepted P2 validation: **1,135 backend / 32 browser passes**, zero skips/failures.
+See the [P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
 
-See [P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md) for all
-identities/positions, before/after evidence, reproduction and limits. General
-sparse mapping beyond the reviewed BPHE configuration remains unproven; new
-BPHE-style configurations are refused. The accepted October inventories remain
-frozen; earlier configured Permas entries are not promoted in P2. Digital mapping,
-legacy Slow, other variants, warnings and calibration redesign remain outside P2.
+[DECISION] Owner accepted the bounded GPTH 2022 legacy `28 ff 03` Slow P3
+candidate and authorized its LOCAL COMMIT. Branch `fix/ben5k-gpth-slow-p3` starts
+at main `856c74b2`; earlier dirty work and frozen GRNE studies remain untouched.
+No P3 push, merge or deployment is authorized.
+
+[FACT] The P3 candidate routes class flag 1 at `0x3C` separately from Fast.
+GPTH's `0x1300` acquisition frames recover 20 calculated Hz/MW channels and
+20 binary indications. All **28,040 engineering samples** and **28,040 binary
+states** match the original pinned export within its printed coefficient precision.
+Its configuration-specific formula is full signed int16 times catalog gain / 16
+plus catalog offset; it never uses Fast's sample shift or sqrt(2).
+All channels remain Unverified, with UNKNOWN recorder clock basis. General Slow
+mapping, GRNE `29 ff`, and the availability meaning of constant `0x0800` channels
+are not established by this export. See the
+[P3 engineering report](BEN5K_GPTH_SLOW_P3_CHANGE_REPORT_2026-11-17.md).
+
+P3 validation: **1,172 focused backend / 33 browser passes**, zero failures,
+errors or skips. Real provider/import/stored arrays/API/waveform/cursors/peaks
+and all 20 actual plotted Slow arrays are checked against the pinned export.
+BPHE's full 14/16,072 comparison and all 62 October raw/engineering array hashes
+remain identical to P2/P1; BEN32 independent Fast/Slow parity, BEN6K's 103-column
+control and DEC-213 safeguards pass. The unrelated full backend suite was not rerun.
+Local-commit confirmation reran the 37 P3 checks successfully, with no skips or
+implementation changes. The accepted test and evidence artifacts are unchanged.
+
+General P2 sparse mapping remains unproven and unreviewed BPHE-style profiles
+are refused. Accepted October inventories remain frozen.
 
 [OPEN] [DECISION MODE: DEFER] **BEN-wide inventory — additional Permas configured
 entries.** The count-derived start `0x6A0` exposes `PGPS2 VR`, `PGPS2 VY`,
@@ -49,8 +68,9 @@ inventory. Its accepted 27 channels remain unchanged; configured-inventory
 completeness is unresolved. This is recorded for later owner direction, not a
 correction authorized in P2.
 
-Next milestone: P2 integration and owner DEV UAT, each subject to separate
-authorization. Do not start another BEN correction stage before both are complete.
+Next milestone: separately authorized PR and CI, then authorized DEV deployment
+for owner GPTH Slow UAT before merging to main. No release action or further BEN
+stage is authorized by the local-commit decision.
 
 ## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
 

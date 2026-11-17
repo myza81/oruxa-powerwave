@@ -4,14 +4,18 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-17** — owner accepted bounded BPHE P2; LOCAL COMMIT authorized.
+Last updated: **2026-11-17** — P2 closure verified; GPTH Slow P3 accepted for local commit.
 
-## Continue from the accepted local P2 correction
+## Continue from the owner-accepted local GPTH Slow P3 correction
 
-Read [the P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
-Branch `fix/ben5k-bphe-layout-p2` is isolated from fetched main `781b2b0` (PR #9).
-Owner confirmed P1 GPTH/Permas DEV UAT passed. Existing dirty investigation work
-and all previous worktrees remain intact.
+P2 PR #10 merged at `856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV
+UAT accepted. Post-merge CI run `44010122459` and automatic DEV deployment
+`44011270803` passed. Deploy job `133798574462` confirms the exact merge SHA and
+successful backend health. Evidence is linked in CURRENT_STATE and the P3 report.
+
+Branch `fix/ben5k-gpth-slow-p3` is isolated from that fetched main. Read
+[the P3 engineering report](BEN5K_GPTH_SLOW_P3_CHANGE_REPORT_2026-11-17.md).
+Existing dirty investigation work and all previous worktrees remain intact.
 
 BPHE discovery derives the catalog start from feeder/sensor counts, not 0xBBA.
 Its complete 14-channel physical map is explicit and fingerprint-bounded to the
@@ -20,19 +24,29 @@ Both duplicate VR descriptors remain distinct; original words and descriptor byt
 are preserved. P1 math, October's 62 accepted channels, BEN32/BEN6K, Unverified
 gates, PU and frontend runtime code are unchanged.
 
-Validation: **1,135 focused backend / 32 browser tests passed**, no skips/failures.
-All 16,072 BPHE native values match the independent export; actual provider/API,
-cursors/peaks and browser plots are covered. October full array hashes match the
-accepted P1 baseline bit for bit. The unrelated full backend suite was not rerun.
-Local-commit verification checked the JUnit results, evidence hashes and unchanged
-implementation/test content; the accepted test runs remain valid without reruns.
+P3 separates header class flag 1 from Fast, reads explicit physical-word frames,
+and applies full signed int16 * (catalog gain / 16) + offset only to the reviewed
+GPTH configuration. Complete original export parity: 20 calculated channels,
+28,040 engineering samples; 20 indications, 28,040 binary states. DEC-213 remains
+Unverified; clock basis remains UNKNOWN. The ten constant `0x0800` channel arrays
+are retained exactly as exported, without claiming active/valid measurements.
 
-Owner accepted the P2 report and explicitly authorized the local commit on this
-branch. No push, merge or deployment is authorized. P2 integration and owner DEV
-UAT must complete before another BEN correction stage begins.
+Owner accepted the bounded P3 candidate and authorized its LOCAL COMMIT.
+Push, merge, DEV/PROD deployment and another BEN stage remain unauthorized.
+Next milestone: separately authorized PR/CI, then authorized DEV deployment for
+owner GPTH Slow UAT before merging to main.
+Existing full Fast BPHE/October summaries match P2/P1.
+Final focused validation: **1,172 backend / 33 browser passes**, no skips/failures.
+BEN32 Fast/Slow export parity, BEN6K's 103-column hashes and DEC-213 gates pass.
+Local JUnit lives at `.local-data/p3-final-regression.xml` and `p3-browser.xml`;
+committable evidence, source hashes and reproduction are linked in the P3 report.
+Local-commit confirmation reran only the 37 P3 checks: all passed without skips
+or implementation changes; JUnit is `.local-data/p3-commit-check.xml`.
 
-No legacy Slow/digital/other-variant correction, warning redesign or new
-calibration framework is included. Broader sparse mapping remains unproven.
+The frozen GRNE S1–S6 `29 ff` study remains separate and unsupported; its nominal
+scaling hypotheses are not used for GPTH. No warning redesign, calibration
+framework, shared BEN32/BEN6K conversion or PU change is included. Broader P2
+sparse mapping remains unproven.
 The four earlier Permas `PGPS2 VR/VY/VB/IR` configured entries are an unresolved
 BEN-wide inventory issue, deferred in [CURRENT_STATE.md](CURRENT_STATE.md).
 Do not promote them or change the accepted 27 Permas channels under P2 authority.
