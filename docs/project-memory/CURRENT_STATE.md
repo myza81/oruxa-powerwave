@@ -9,35 +9,48 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## BEN5K Fast AC P1 — owner accepted; local commit authorized (2026-11-17)
+## BEN5K BPHE layout P2 — owner accepted; local commit authorized (2026-11-17)
 
-[DECISION] Owner accepted the bounded numerical correction in the P1 engineering
-change report and authorized a LOCAL COMMIT on 2026-11-17. P2, push, merge and
-deployment remain unauthorized. The correction is isolated on
-`fix/ben5k-fast-ac-scaling-p1`, based on fetched
-`origin/main=dfdab78`; prior dirty investigation work and other worktrees remain.
+[DECISION] Owner confirmed P1 passed GPTH/Permas DEV UAT and authorized focused
+BPHE descriptor/mapping P2. PR #9 is merged at fetched main `781b2b0`. P2 is
+isolated on `fix/ben5k-bphe-layout-p2` from that commit. Owner accepted the bounded
+P2 engineering report and explicitly authorized its LOCAL COMMIT. Push, merge and
+deployment remain unauthorized; earlier dirty work is preserved.
 
-[FACT] Reviewed BPHE/GPTH/Permas Fast AC configurations now use
-`(signed_word >> 4) * descriptor_gain * sqrt(2)` at the native adapter boundary.
-Original words, metadata and physical mapping remain. Shared BEN32 conversion,
-PU mathematics, frontend code and DEC-213 gates are unchanged; corrected channels
-remain Unverified. Unknown configurations/nonzero offsets/unidentified DC and
-all Slow/SubBen/unsupported layouts do not acquire the new contract.
+[FACT] The local native BPHE import now exposes all 14 analog channels. Variable
+feeder/sensor tables derive its descriptor region; an explicit independently
+matched descriptor/physical-word table is bounded to the reviewed BPHE embedded
+configuration fingerprint. Both same-name VR occurrences remain distinct.
+All 16,072 engineering samples match the original CFG/DAT within printed gain
+precision. This is numerical/export parity, not physical instrument verification.
 
-BPHE's 14 x 1,148 independent export comparison passes numerically; its existing
-native descriptor/mapping defects remain unresolved and P2 has not begun.
-Focused regression: 1,112 backend tests passed without skips; 31 browser tests
-passed. Full backend: 12,873 passed, 271 skipped, zero failures/errors. Skips are
-Windows POSIX-shell checks and unrelated relay-PDF/profile cases; no required
-BEN evidence check was skipped.
-Local-commit confirmation on 2026-11-17: the same focused 1,112 checks passed
-again without failures/skips; runtime code and fixtures were unchanged. The
-full backend and browser suites were not repeated.
-See [P1 engineering change report](BEN5K_FAST_AC_P1_CHANGE_REPORT_2026-11-16.md)
-for applicability, results, exclusions and remaining limits.
+P1 conversion/applicability, all 62 October mapping goldens and complete raw/
+engineering array hashes, BEN32 Fast/Slow independent parity, BEN6K controls,
+DEC-213 Unverified gates, PU math and frontend runtime code are preserved.
+Focused backend: **1,135 passed**. Browser: **32 passed**, including all 14 BPHE
+plotted arrays against the independent export. Both runs have zero skips/failures.
+Local-commit verification confirmed the recorded JUnit results and evidence
+hashes; implementation, tests and numerical evidence are unchanged from the
+accepted candidate. The manifest distinguishes Git-blob LF hashes from original
+Windows CRLF hashes. The unrelated full backend suite was not repeated for P2.
 
-Next milestone: DEV waveform UAT on GPTH/Permas after PR and CI approval and
-deployment authorization. No warning redesign or further feature work is included.
+See [P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md) for all
+identities/positions, before/after evidence, reproduction and limits. General
+sparse mapping beyond the reviewed BPHE configuration remains unproven; new
+BPHE-style configurations are refused. The accepted October inventories remain
+frozen; earlier configured Permas entries are not promoted in P2. Digital mapping,
+legacy Slow, other variants, warnings and calibration redesign remain outside P2.
+
+[OPEN] [DECISION MODE: DEFER] **BEN-wide inventory — additional Permas configured
+entries.** The count-derived start `0x6A0` exposes `PGPS2 VR`, `PGPS2 VY`,
+`PGPS2 VB` and `PGPS2 IR` before the accepted `0xBBA` window. Promoting these
+entries would change duplicate logical-slot selection and the frozen Permas
+inventory. Its accepted 27 channels remain unchanged; configured-inventory
+completeness is unresolved. This is recorded for later owner direction, not a
+correction authorized in P2.
+
+Next milestone: P2 integration and owner DEV UAT, each subject to separate
+authorization. Do not start another BEN correction stage before both are complete.
 
 ## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
 

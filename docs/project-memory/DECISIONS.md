@@ -29468,3 +29468,31 @@ as reported and explicitly authorized a local commit on
 Unverified safeguards remain as reviewed. This does not authorize push, merge,
 deployment, P2, warning redesign or other features. The next milestone is DEV
 waveform UAT on GPTH/Permas after PR and CI approval and deployment authorization.
+
+### BPHE descriptor/physical mapping P2 — local candidate authorization (2026-11-17)
+
+Owner confirmed successful P1 GPTH/Permas DEV UAT and PR #9 merge at `781b2b0`,
+then authorized focused BPHE descriptor discovery and physical mapping correction
+on an isolated `fix/ben5k-bphe-layout-p2` branch from latest main. Acceptance is
+all 14 native analog identities and all 16,072 values against the original pinned
+BPHE export, duplicate-name identity, actual browser/API visibility and values,
+while preserving P1, all 62 October mapping goldens, BEN32/BEN6K and DEC-213.
+If no general physical mapping convention is proven, the owner permits a clearly
+bounded evidence-backed BPHE correction with unsupported layouts distinguished.
+No commit, push, merge or deployment is authorized before owner reviews this local
+candidate. Slow/other variant corrections, warning redesign and calibration
+framework changes remain outside scope.
+
+Candidate, evidence and exact applicability:
+[P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
+
+**Owner acceptance (2026-11-17):** the owner accepted the bounded BPHE P2
+candidate and authorized its LOCAL COMMIT on `fix/ben5k-bphe-layout-p2`, based on
+main `781b2b0a`. Preserve count-derived discovery, the configuration-specific
+independent physical map, all 14/16,072 BPHE comparisons, the 62 bit-identical
+GPTH/Permas arrays, P1 conversion, BEN32/BEN6K and DEC-213 safeguards. The existing
+1,135 backend / 32 browser passes remain valid without implementation changes.
+Additional early Permas configured entries are recorded as an unresolved BEN-wide
+inventory issue; they do not authorize inventory expansion. Push, merge and
+deployment remain unauthorized. No further BEN correction stage may start until
+P2 integration and owner DEV UAT are complete.

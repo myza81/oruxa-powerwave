@@ -1,0 +1,2266 @@
+{
+  "bphe": {
+    "file_sha256": "9ea6ca81eea6ef7b76210d574b73cc59f21d8fd3454999f22d440620eabc4ab9",
+    "sample_count": 1148,
+    "channels": [
+      {
+        "name": "YGPN/BBTU1 VR",
+        "source_name": "YGPN/BBTU1 VR",
+        "phase": "A",
+        "physical_word": 0,
+        "raw_sha256": "188657585b4468287ee8b64c4a32e95973f431a602a570f79ff7d1d495b0cffa",
+        "engineering_sha256": "47070d46967a1d20c6850d529d8763e1bd6f57bf7396618eec0596f8f5805604",
+        "gain": 0.13433872163295746,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 2031,
+            "engineering": 23.937938902734235
+          },
+          {
+            "index": 500,
+            "signed_raw": 543,
+            "engineering": 6.2694601888113475
+          },
+          {
+            "index": 1147,
+            "signed_raw": 543,
+            "engineering": 6.2694601888113475
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 6.438502282435365e-07,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU1 VY",
+        "source_name": "YGPN/BBTU1 VY",
+        "phase": "B",
+        "physical_word": 1,
+        "raw_sha256": "1f707498a5eb9d65a9b93892f179a4d0523083d1761750656534ce86fe81c206",
+        "engineering_sha256": "dc6ddeb1200dca6633d9e8b0f6acb8e005cd856a60d91a8a8ebed6b8a9b66fd8",
+        "gain": 0.13433872163295746,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -16753,
+            "engineering": -199.10285690528158
+          },
+          {
+            "index": 500,
+            "signed_raw": -20449,
+            "engineering": -242.98907822696103
+          },
+          {
+            "index": 1147,
+            "signed_raw": 16415,
+            "engineering": 194.73323313732215
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 6.278388866576279e-07,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU1 VB",
+        "source_name": "YGPN/BBTU1 VB",
+        "phase": "C",
+        "physical_word": 2,
+        "raw_sha256": "9bb715dd202d261fd035136fa6513b9def021a07fca6d35d04e3f1485c1b4eb2",
+        "engineering_sha256": "3eac5473839eb2004e7fa7b28047e4e9181fb9eb869c267bc16afe8cdc802961",
+        "gain": 0.13433872163295746,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 14751,
+            "engineering": 174.97493436046216
+          },
+          {
+            "index": 500,
+            "signed_raw": 13742,
+            "engineering": 163.00596490909504
+          },
+          {
+            "index": 1147,
+            "signed_raw": -16993,
+            "engineering": -201.95261153655946
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 5.929050530539826e-07,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU1 IR",
+        "source_name": "YGPN/BBTU1 IR",
+        "phase": "A",
+        "physical_word": 4,
+        "raw_sha256": "ff635eaae160dd9585d666a59b78e85b7a853d1647c2d500a2afdf49f549cfa5",
+        "engineering_sha256": "63911f62db1d64971fe1f4158c3eb088e2334a483a8c7b08fdb83e6393c9db3b",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 143,
+            "engineering": 0.21167120914371587
+          },
+          {
+            "index": 500,
+            "signed_raw": 159,
+            "engineering": 0.23813011028668035
+          },
+          {
+            "index": 1147,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 1.0974863462465123e-08,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU1 IY",
+        "source_name": "YGPN/BBTU1 IY",
+        "phase": "B",
+        "physical_word": 5,
+        "raw_sha256": "1cd2ca2a27c767e679de50b1b28c73761e327ac9a50e035600d286857330009e",
+        "engineering_sha256": "289f3a76da7299e0e30dc85acb3234c79d6ddd2dc951549a2e49dd88b2f27e1d",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 383,
+            "engineering": 0.6085547262881831
+          },
+          {
+            "index": 500,
+            "signed_raw": 47,
+            "engineering": 0.05291780228592897
+          },
+          {
+            "index": 1147,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 1.1317827897094901e-08,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU1 IB",
+        "source_name": "YGPN/BBTU1 IB",
+        "phase": "C",
+        "physical_word": 6,
+        "raw_sha256": "1514e2c061df6527b06758f5eabc353a4e5ede24d9a84d7ffd449166e44c9d11",
+        "engineering_sha256": "5d0e038da405e53063dfd13d546545f6a2022140f10bebcc885f923776adc699",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -497,
+            "engineering": -0.8466848365748635
+          },
+          {
+            "index": 500,
+            "signed_raw": -449,
+            "engineering": -0.76730813314597
+          },
+          {
+            "index": 1147,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 1.1317827897094901e-08,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU1 IN",
+        "source_name": "YGPN/BBTU1 IN",
+        "phase": "N",
+        "physical_word": 7,
+        "raw_sha256": "d97f18255faf866e7631ca297ef6c32e38b60dd38c2a583b38ba39ab8b1d4393",
+        "engineering_sha256": "6ee6d441f68f69a3fe4d3b9d44c1f94df7b833acdb5a6a1b140a99ef268ce4e4",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -17,
+            "engineering": -0.05291780228592897
+          },
+          {
+            "index": 500,
+            "signed_raw": 255,
+            "engineering": 0.39688351714446723
+          },
+          {
+            "index": 1147,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 6.859289580773975e-09,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 VR",
+        "source_name": "YGPN/BBTU2 VR",
+        "phase": "A",
+        "physical_word": 11,
+        "raw_sha256": "f0578ef89a729db00bdbfd72d12edcb7ef28450e38a663b332f82abcb3f0f574",
+        "engineering_sha256": "47cf6bc2befcd8ae00d70169569f4290865e6a22e185f3cdde76ef601dc550cf",
+        "gain": 0.13433872163295746,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 2015,
+            "engineering": 23.747955260649043
+          },
+          {
+            "index": 500,
+            "signed_raw": 511,
+            "engineering": 5.889492904640963
+          },
+          {
+            "index": 1147,
+            "signed_raw": 559,
+            "engineering": 6.45944383089654
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 6.448206306686188e-07,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 VR_1",
+        "source_name": "YGPN/BBTU2 VR",
+        "phase": "B",
+        "physical_word": 12,
+        "raw_sha256": "6f5f5f19872a462b6fd58bfce17d842dce167ac6b7f2830d3a6508448f3e1d4f",
+        "engineering_sha256": "7352750f9f180219af80339de23d3172627e2874eebf2087c2c71a9bbaaa789a",
+        "gain": 0.13433872163295746,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -16753,
+            "engineering": -199.10285690528158
+          },
+          {
+            "index": 500,
+            "signed_raw": -20401,
+            "engineering": -242.41912730070544
+          },
+          {
+            "index": 1147,
+            "signed_raw": 16415,
+            "engineering": 194.73323313732215
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 6.254129232274863e-07,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 VB",
+        "source_name": "YGPN/BBTU2 VB",
+        "phase": "C",
+        "physical_word": 13,
+        "raw_sha256": "a4d089a33a9d627dfe4fd47b36aed4a6d6b9373ddb99c4d4abdd077935b76982",
+        "engineering_sha256": "5583c51a2c37c08ee189edaf226f8ded6121ffadcee8c459fd983323a2ad8771",
+        "gain": 0.13433872163295746,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 14735,
+            "engineering": 174.78495071837696
+          },
+          {
+            "index": 500,
+            "signed_raw": 13726,
+            "engineering": 162.81598126700985
+          },
+          {
+            "index": 1147,
+            "signed_raw": -16961,
+            "engineering": -201.57264425238907
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 5.924198660522961e-07,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 IR",
+        "source_name": "YGPN/BBTU2 IR",
+        "phase": "A",
+        "physical_word": 15,
+        "raw_sha256": "cd3fccda66b1687d2b7090622d36fd0b812f21af8cc9232cc7b96643194ebfef",
+        "engineering_sha256": "ae424da981e68720087848f1c6936c1aa61dc978e6215829a5c814a5bd15121a",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 143,
+            "engineering": 0.21167120914371587
+          },
+          {
+            "index": 500,
+            "signed_raw": 191,
+            "engineering": 0.2910479125726093
+          },
+          {
+            "index": 1147,
+            "signed_raw": 15,
+            "engineering": 0.0
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 1.1317827897094901e-08,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 IY",
+        "source_name": "YGPN/BBTU2 IY",
+        "phase": "B",
+        "physical_word": 16,
+        "raw_sha256": "d99564b1891977cede76ff217ee5ac3694887038a3a8f0b9ef355e2db8e6003e",
+        "engineering_sha256": "9ef378c181002368e0020c19db86ad7b2f11969a4b5a26acc9b72c9c0e5a4ed5",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 335,
+            "engineering": 0.5291780228592896
+          },
+          {
+            "index": 500,
+            "signed_raw": -33,
+            "engineering": -0.07937670342889344
+          },
+          {
+            "index": 1147,
+            "signed_raw": 15,
+            "engineering": 0.0
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 1.1317827897094901e-08,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 IB",
+        "source_name": "YGPN/BBTU2 IB",
+        "phase": "C",
+        "physical_word": 17,
+        "raw_sha256": "0715d6be975b323b4d8e0197e8a28bac0249fbec4ac4a0284fab93ac8e3408ad",
+        "engineering_sha256": "f04bea24e450fe3eb7faee2d98cee4469d8315125303534df6ea68681446018c",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -449,
+            "engineering": -0.76730813314597
+          },
+          {
+            "index": 500,
+            "signed_raw": -433,
+            "engineering": -0.7408492320030055
+          },
+          {
+            "index": 1147,
+            "signed_raw": 15,
+            "engineering": 0.0
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 1.0631898916813043e-08,
+        "export_all_match": true
+      },
+      {
+        "name": "YGPN/BBTU2 IN",
+        "source_name": "YGPN/BBTU2 IN",
+        "phase": "N",
+        "physical_word": 18,
+        "raw_sha256": "607e686e1361a2546767b456a90a5ec0df0d22cf8b37a8aa29bdeb6cfb692544",
+        "engineering_sha256": "8e9684f827abc844d20cb7472023e3c6d80a793594260415cc42e562cbf24068",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 15,
+            "engineering": 0.0
+          },
+          {
+            "index": 500,
+            "signed_raw": 334,
+            "engineering": 0.5291780228592896
+          },
+          {
+            "index": 1147,
+            "signed_raw": 15,
+            "engineering": 0.0
+          }
+        ],
+        "export_values_compared": 1148,
+        "export_max_abs_error": 8.231147541337691e-09,
+        "export_all_match": true
+      }
+    ]
+  },
+  "permas_jaya": {
+    "file_sha256": "bc9f78ac3008b79308a7230f0f0a61f1e308b4bc10e16a346748e529c007ee87",
+    "sample_count": 7719,
+    "channels": [
+      {
+        "name": "PGPS2 IY",
+        "source_name": "PGPS2 IY",
+        "phase": "B",
+        "physical_word": 5,
+        "raw_sha256": "39b622321ea3fc6d7ab7945cd61a5fc15de572238d11a4b0343187b37ecfbcde",
+        "engineering_sha256": "5d9424b98f1a5e5bbed8dd13eb3adf4cf8fbd0e51c2a6ea36acd975011a29c45",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -321,
+            "engineering": -0.4445095613288988
+          },
+          {
+            "index": 500,
+            "signed_raw": -305,
+            "engineering": -0.42334243936085597
+          },
+          {
+            "index": 7718,
+            "signed_raw": 559,
+            "engineering": 0.7196821469134551
+          }
+        ]
+      },
+      {
+        "name": "PGPS2 IB",
+        "source_name": "PGPS2 IB",
+        "phase": "C",
+        "physical_word": 6,
+        "raw_sha256": "4b2ba6d2c6922aa62f7ddd7cf1a5bb78f46990b1002ca0ac3330dd879f9c4c6d",
+        "engineering_sha256": "a84aeb087d0e1d7e21de42d23e429c83365344d19f06c6dd99d75bd3b209a2a6",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -273,
+            "engineering": -0.3810081954247704
+          },
+          {
+            "index": 500,
+            "signed_raw": -305,
+            "engineering": -0.42334243936085597
+          },
+          {
+            "index": 7718,
+            "signed_raw": -289,
+            "engineering": -0.40217531739281315
+          }
+        ]
+      },
+      {
+        "name": "PGPS2 IN",
+        "source_name": "PGPS2 IN",
+        "phase": "N",
+        "physical_word": 7,
+        "raw_sha256": "e0cb543c83c37b06b6e3a6cd9df98f28260ef0bfaf5d659d8acdd6066842652c",
+        "engineering_sha256": "febe7b41b60cf6c8466e55fd60cf880d583d03efaee76acca8bb5ab36f6b7384",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -17,
+            "engineering": -0.0423342439360856
+          },
+          {
+            "index": 500,
+            "signed_raw": -17,
+            "engineering": -0.0423342439360856
+          },
+          {
+            "index": 7718,
+            "signed_raw": -33,
+            "engineering": -0.0635013659041284
+          }
+        ]
+      },
+      {
+        "name": "PLTG1 VR",
+        "source_name": "PLTG1 VR",
+        "phase": "A",
+        "physical_word": 8,
+        "raw_sha256": "3ae1070a024b7eae3e6a2f09f237a583a2db114ad2b653d2a7e861d2aa3656b9",
+        "engineering_sha256": "03ef5027c39e043988b78ff32ae1276809c4f2cda5cb59260dc9a619b028fda4",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18481,
+            "engineering": -219.65565833698773
+          },
+          {
+            "index": 500,
+            "signed_raw": -18641,
+            "engineering": -221.55579378972982
+          },
+          {
+            "index": 7718,
+            "signed_raw": 6095,
+            "engineering": 72.20514720420012
+          }
+        ]
+      },
+      {
+        "name": "PLTG1 VY",
+        "source_name": "PLTG1 VY",
+        "phase": "B",
+        "physical_word": 9,
+        "raw_sha256": "9c2d4644330ff23061cf6903356265188a792f69f228ac65027c4dcfccdd4757",
+        "engineering_sha256": "74a1cfe4a71daba9cea92e1aca1ea310e4499ba7f34d59f69164ca566ff7887f",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 13183,
+            "engineering": 156.3811477606755
+          },
+          {
+            "index": 500,
+            "signed_raw": 12815,
+            "engineering": 152.01083621936866
+          },
+          {
+            "index": 7718,
+            "signed_raw": -18881,
+            "engineering": -224.405996968843
+          }
+        ]
+      },
+      {
+        "name": "PLTG1 VB",
+        "source_name": "PLTG1 VB",
+        "phase": "C",
+        "physical_word": 10,
+        "raw_sha256": "c16268bba98e1a31dd83550bd950486f6bceae907adb8112eab1d2f7323653a7",
+        "engineering_sha256": "cb84a5e17eba645edfb219c3c31e35a3d002d9362c34d4f68c0547c7f6d254f4",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 5007,
+            "engineering": 59.28422612555378
+          },
+          {
+            "index": 500,
+            "signed_raw": 5503,
+            "engineering": 65.17464602905432
+          },
+          {
+            "index": 7718,
+            "signed_raw": 12431,
+            "engineering": 147.4505111327876
+          }
+        ]
+      },
+      {
+        "name": "PLTG1 IR",
+        "source_name": "PLTG1 IR",
+        "phase": "A",
+        "physical_word": 12,
+        "raw_sha256": "1da86bc1b73c1404a276fb1eb7c218c6077fd786b5ac21f3ca7655cd3e4ed6a2",
+        "engineering_sha256": "e774fe0c2af130a2d528e41931bdd081e2ff488c841a3661513c43cbd034b123",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -257,
+            "engineering": -0.4498013194303962
+          },
+          {
+            "index": 500,
+            "signed_raw": -257,
+            "engineering": -0.4498013194303962
+          },
+          {
+            "index": 7718,
+            "signed_raw": 575,
+            "engineering": 0.9260615400037568
+          }
+        ]
+      },
+      {
+        "name": "PLTG1 IY",
+        "source_name": "PLTG1 IY",
+        "phase": "B",
+        "physical_word": 13,
+        "raw_sha256": "c19fec3c519ad359cdb1b30e754b49faaacd2e0cf5815cd03fda6d5487f620c9",
+        "engineering_sha256": "cecd376ed916a42415b185f906b71b42f93fbbe32f0e7993c60257918e5c7a2a",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          },
+          {
+            "index": 500,
+            "signed_raw": -33,
+            "engineering": -0.07937670342889344
+          },
+          {
+            "index": 7718,
+            "signed_raw": -145,
+            "engineering": -0.2645890114296448
+          }
+        ]
+      },
+      {
+        "name": "PLTG1 IB",
+        "source_name": "PLTG1 IB",
+        "phase": "C",
+        "physical_word": 14,
+        "raw_sha256": "cd1f0181128106b5acd380323d0629859c3097bbf1f5ab77a86bb4338df3a19f",
+        "engineering_sha256": "c3a13b7292c72fee1e39035b631d0813d2510ac4cd083c982e957c44fde5cbb1",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          },
+          {
+            "index": 500,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          },
+          {
+            "index": 7718,
+            "signed_raw": -17,
+            "engineering": -0.05291780228592897
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 VR",
+        "source_name": "KTBR2 VR",
+        "phase": "A",
+        "physical_word": 15,
+        "raw_sha256": "b960ccd8a434bd66c87b30794232680bc5164b1e094fd5c0763633a095fe3be8",
+        "engineering_sha256": "6d7486dcc3eee8747a718659e51e90af909a07f96aeb9c6da9f50562a9b04920",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18577,
+            "engineering": -220.79573960863297
+          },
+          {
+            "index": 500,
+            "signed_raw": -18737,
+            "engineering": -222.6958750613751
+          },
+          {
+            "index": 7718,
+            "signed_raw": 6063,
+            "engineering": 71.82512011365169
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 VY",
+        "source_name": "KTBR2 VY",
+        "phase": "B",
+        "physical_word": 16,
+        "raw_sha256": "a12e5a57d3e7b817d76517f356c90ba2db8ca5d74d34b76d05221fb1af8fe483",
+        "engineering_sha256": "95c1dd26badb87d9001fa33c56a9964743a7109be287d37abca66298ab864fea",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 12863,
+            "engineering": 152.5808768551913
+          },
+          {
+            "index": 500,
+            "signed_raw": 12447,
+            "engineering": 147.6405246780618
+          },
+          {
+            "index": 7718,
+            "signed_raw": -19009,
+            "engineering": -225.92610533103667
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 VB",
+        "source_name": "KTBR2 VB",
+        "phase": "C",
+        "physical_word": 17,
+        "raw_sha256": "083cab887b96b50da47c56296bf6b0113448285fdfc1759eb7dbccb873e3d7d5",
+        "engineering_sha256": "6205dd5f54375c22f9b416dfffc244a051b17a0c3bcbc27309eb6919741632f6",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 4911,
+            "engineering": 58.144144853908514
+          },
+          {
+            "index": 500,
+            "signed_raw": 5391,
+            "engineering": 63.84455121213484
+          },
+          {
+            "index": 7718,
+            "signed_raw": 12527,
+            "engineering": 148.59059240443287
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 IR",
+        "source_name": "KTBR2 IR",
+        "phase": "A",
+        "physical_word": 19,
+        "raw_sha256": "b072c5196506cf24e98932176530993f8328a36b7d3d9dad5f2f2fbbcc1f9bab",
+        "engineering_sha256": "6e70ecdf67ebd09da5838d0c7e14bc349ca9cfc7793d56367f2c6c26a6d51dab",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -945,
+            "engineering": -1.2700273180825679
+          },
+          {
+            "index": 500,
+            "signed_raw": -945,
+            "engineering": -1.2700273180825679
+          },
+          {
+            "index": 7718,
+            "signed_raw": 623,
+            "engineering": 0.8043506347856263
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 IY",
+        "source_name": "KTBR2 IY",
+        "phase": "B",
+        "physical_word": 20,
+        "raw_sha256": "3b51a41162a5e47f972859bdd287294fd67c7db9138f3889d580ae65e8d21b53",
+        "engineering_sha256": "2fde1ecf82d1551f4f38d1cd4ed37413c3ac68839de4ee0410648c1f59a8d6c4",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 607,
+            "engineering": 0.7831835128175836
+          },
+          {
+            "index": 500,
+            "signed_raw": 575,
+            "engineering": 0.7408492688814979
+          },
+          {
+            "index": 7718,
+            "signed_raw": -1105,
+            "engineering": -1.4816985377629959
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 IB",
+        "source_name": "KTBR2 IB",
+        "phase": "C",
+        "physical_word": 21,
+        "raw_sha256": "6d1a43123b3b90b8fd990e7511ef010aa047f11616c948e40b3cd622c51964cc",
+        "engineering_sha256": "2e030605b559db77e035fbf762bf6baa9f98125417253c748e7d292de85b8670",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 223,
+            "engineering": 0.2751725855845564
+          },
+          {
+            "index": 500,
+            "signed_raw": 255,
+            "engineering": 0.31750682952064196
+          },
+          {
+            "index": 7718,
+            "signed_raw": 447,
+            "engineering": 0.5715122931371556
+          }
+        ]
+      },
+      {
+        "name": "KTBR2 IN",
+        "source_name": "KTBR2 IN",
+        "phase": "N",
+        "physical_word": 22,
+        "raw_sha256": "de3b4615a9afe2543868bde22ca75135acaf284e3109b5b1c6f48b33a43632be",
+        "engineering_sha256": "aa8b658eb4354d4b68f3d8476618288bdd5b7949e743a58dac0cb2050098ddb0",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 31,
+            "engineering": 0.0211671219680428
+          },
+          {
+            "index": 500,
+            "signed_raw": 31,
+            "engineering": 0.0211671219680428
+          },
+          {
+            "index": 7718,
+            "signed_raw": -49,
+            "engineering": -0.0846684878721712
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 VR",
+        "source_name": "PGPS1 VR",
+        "phase": "A",
+        "physical_word": 23,
+        "raw_sha256": "0fdb7c4b1cc503477037053ecc3bc57d417e0cab9946279a7135298acafa5024",
+        "engineering_sha256": "4c65205a1dddcb93bd013c6b4ed69d8404137ee62aceae12d6445101bd0b79d5",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18529,
+            "engineering": -220.22569897281036
+          },
+          {
+            "index": 500,
+            "signed_raw": -18705,
+            "engineering": -222.31584797082667
+          },
+          {
+            "index": 7718,
+            "signed_raw": 6063,
+            "engineering": 71.82512011365169
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 VY",
+        "source_name": "PGPS1 VY",
+        "phase": "B",
+        "physical_word": 24,
+        "raw_sha256": "ab94a8d6d06678c77c6b153817a46c3ca883294c77d45bf2567d24c3285d47ce",
+        "engineering_sha256": "041ccccf22a80e5bc8b112c9a57ff043bc6313cc81017e3688df873b4543f2d1",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 12687,
+            "engineering": 150.490727857175
+          },
+          {
+            "index": 500,
+            "signed_raw": 12271,
+            "engineering": 145.5503756800455
+          },
+          {
+            "index": 7718,
+            "signed_raw": -19089,
+            "engineering": -226.87617305740773
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 VB",
+        "source_name": "PGPS1 VB",
+        "phase": "C",
+        "physical_word": 25,
+        "raw_sha256": "d8766368600f469a671e770e17958a9ffd634308d22638376b75f876ffc912e5",
+        "engineering_sha256": "fe068c606e4ff10344c59178adb395091888aa53f86421d13a740b69f28a38f1",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 4863,
+            "engineering": 57.57410421808588
+          },
+          {
+            "index": 500,
+            "signed_raw": 5343,
+            "engineering": 63.2745105763122
+          },
+          {
+            "index": 7718,
+            "signed_raw": 12479,
+            "engineering": 148.02055176861023
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 IR",
+        "source_name": "PGPS1 IR",
+        "phase": "A",
+        "physical_word": 27,
+        "raw_sha256": "3fc99f08210778172a52276fe0646a29c8d9af50b9cef6c483bc4d0cf60af317",
+        "engineering_sha256": "6c3f38bac04b70db432dd6834175e0b8512c2fef42f4719ed86209e523e5dd21",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -481,
+            "engineering": -0.6561807810093268
+          },
+          {
+            "index": 500,
+            "signed_raw": -465,
+            "engineering": -0.6350136590412839
+          },
+          {
+            "index": 7718,
+            "signed_raw": 527,
+            "engineering": 0.6773479029773696
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 IY",
+        "source_name": "PGPS1 IY",
+        "phase": "B",
+        "physical_word": 28,
+        "raw_sha256": "6bebc0094f62bea0a48aa905a888066167fc57dbb33c3f85e39a08b4c3d1d9c2",
+        "engineering_sha256": "54e7b2e40d9de5f0350bef9e51b14308994e4c79b2c73e06e750e340c253838c",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -289,
+            "engineering": -0.40217531739281315
+          },
+          {
+            "index": 500,
+            "signed_raw": -305,
+            "engineering": -0.42334243936085597
+          },
+          {
+            "index": 7718,
+            "signed_raw": -241,
+            "engineering": -0.3386739514886848
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 IB",
+        "source_name": "PGPS1 IB",
+        "phase": "C",
+        "physical_word": 29,
+        "raw_sha256": "3a0b26a9ec84a4877da994dda1d8dc8a97ed37949d6019ff819d39a2ce0bcbd3",
+        "engineering_sha256": "e18cb09cb535784657e985da6f33075c8af4695ab7b606fec9a8b82e8cfa261d",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -17,
+            "engineering": -0.0423342439360856
+          },
+          {
+            "index": 500,
+            "signed_raw": -1,
+            "engineering": -0.0211671219680428
+          },
+          {
+            "index": 7718,
+            "signed_raw": -97,
+            "engineering": -0.1481698537762996
+          }
+        ]
+      },
+      {
+        "name": "PGPS1 IN",
+        "source_name": "PGPS1 IN",
+        "phase": "N",
+        "physical_word": 30,
+        "raw_sha256": "a5913981f924c95f2f87e023b1f03f97bff20e7a92d6045de7c61f8d9032cabf",
+        "engineering_sha256": "e62fe490c1f55b32b88b7ff5a8694d18418dddd9122f8ddf92759154e89cace3",
+        "gain": 0.014967415481805801,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -292,
+            "engineering": -0.40217531739281315
+          },
+          {
+            "index": 500,
+            "signed_raw": -320,
+            "engineering": -0.42334243936085597
+          },
+          {
+            "index": 7718,
+            "signed_raw": -128,
+            "engineering": -0.1693369757443424
+          }
+        ]
+      },
+      {
+        "name": "PLTG2 VR",
+        "source_name": "PLTG2 VR",
+        "phase": "A",
+        "physical_word": 0,
+        "raw_sha256": "78a5046efaf0d950e443e4464d2c32f79cdfc9cbc843b54a108cd8c6101826ff",
+        "engineering_sha256": "200f82c87c40b386fd4104c6d52409c7eae342741823f4fccdc70d228e350c72",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18609,
+            "engineering": -221.1757666991814
+          },
+          {
+            "index": 500,
+            "signed_raw": -18769,
+            "engineering": -223.07590215192351
+          },
+          {
+            "index": 7718,
+            "signed_raw": 6111,
+            "engineering": 72.39516074947433
+          }
+        ]
+      },
+      {
+        "name": "PLTG2 VY",
+        "source_name": "PLTG2 VY",
+        "phase": "B",
+        "physical_word": 1,
+        "raw_sha256": "162b375334a266447e6ae6b04e83d957eaf0922b47ddd99a1283e354951f6095",
+        "engineering_sha256": "9aca0b969b621c1476d32a62db8a5047c9001768b753f181002fc8f7aa917cfc",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 12671,
+            "engineering": 150.30071431190078
+          },
+          {
+            "index": 500,
+            "signed_raw": 12239,
+            "engineering": 145.17034858949708
+          },
+          {
+            "index": 7718,
+            "signed_raw": -19025,
+            "engineering": -226.11611887631088
+          }
+        ]
+      },
+      {
+        "name": "PLTG2 VB",
+        "source_name": "PLTG2 VB",
+        "phase": "C",
+        "physical_word": 2,
+        "raw_sha256": "d522e0fff3a421c601c81748d6896405eb21c075f67a4ba2e724dc187a9a0dca",
+        "engineering_sha256": "75b474169d5926b3a35b2a94fe64270c5a0773bc866d3c69d6fb3cebae59ac04",
+        "gain": 0.13435986638069153,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 4815,
+            "engineering": 57.00406358226325
+          },
+          {
+            "index": 500,
+            "signed_raw": 5295,
+            "engineering": 62.704469940489574
+          },
+          {
+            "index": 7718,
+            "signed_raw": 12447,
+            "engineering": 147.6405246780618
+          }
+        ]
+      },
+      {
+        "name": "PLTG2 IR",
+        "source_name": "PLTG2 IR",
+        "phase": "A",
+        "physical_word": 4,
+        "raw_sha256": "56a81563752742b2db4bbb9de76ff3be66fd1354aec40fb67aa6735e99c66fef",
+        "engineering_sha256": "f76abf4db93484638069de644c50e40439524cd7a2b74c8c0dda4cc5575eeef1",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 591,
+            "engineering": 0.9525204411467214
+          },
+          {
+            "index": 500,
+            "signed_raw": 607,
+            "engineering": 0.9789793422896859
+          },
+          {
+            "index": 7718,
+            "signed_raw": -273,
+            "engineering": -0.4762602205733607
+          }
+        ]
+      }
+    ]
+  },
+  "gpth": {
+    "file_sha256": "55bf6866b6d86262930afc6282fb5255f7124c966fc2a507e06897b912acfa88",
+    "sample_count": 8262,
+    "channels": [
+      {
+        "name": "TBIN1 VR",
+        "source_name": "TBIN1 VR",
+        "phase": "A",
+        "physical_word": 0,
+        "raw_sha256": "1c5c8d564c7dfb64c28653e56eea257a3877fe4f4a1b9a4ab641153bcc3102a0",
+        "engineering_sha256": "385d51924dd020705d0e323bff661d5744118e7f461dcff44c2854e2fae6dcb0",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18945,
+            "engineering": -225.1376829491441
+          },
+          {
+            "index": 500,
+            "signed_raw": -18929,
+            "engineering": -224.94769334327987
+          },
+          {
+            "index": 8261,
+            "signed_raw": -1729,
+            "engineering": -20.708867039203973
+          }
+        ]
+      },
+      {
+        "name": "TBIN1 VY",
+        "source_name": "TBIN1 VY",
+        "phase": "B",
+        "physical_word": 1,
+        "raw_sha256": "9ed01c26df4b2a16eb3775a583f8426f30c3ad656ef4f1e2eb3a13cb3d1174f1",
+        "engineering_sha256": "6bc12910659160aed0c56b06f64589b9b1b9b4b64bf8b492dcd573636306d20d",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 10815,
+            "engineering": 128.24298395837323
+          },
+          {
+            "index": 500,
+            "signed_raw": 10319,
+            "engineering": 122.35330617658127
+          },
+          {
+            "index": 8261,
+            "signed_raw": 18335,
+            "engineering": 217.53809871457386
+          }
+        ]
+      },
+      {
+        "name": "TBIN1 VB",
+        "source_name": "TBIN1 VB",
+        "phase": "C",
+        "physical_word": 2,
+        "raw_sha256": "f1c4975411ac70643b1b396cd5ccf227618746c96741b11892457bbef498b73f",
+        "engineering_sha256": "ca0d0a0b32167ee76869c5ac7898a99331013bc0fcee7cb18dd072921e85960a",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 7983,
+            "engineering": 94.61482372039981
+          },
+          {
+            "index": 500,
+            "signed_raw": 8463,
+            "engineering": 100.3145118963275
+          },
+          {
+            "index": 8261,
+            "signed_raw": -16385,
+            "engineering": -194.73934601086304
+          }
+        ]
+      },
+      {
+        "name": "TBIN1 IR",
+        "source_name": "TBIN1 IR",
+        "phase": "A",
+        "physical_word": 4,
+        "raw_sha256": "7c67c0e11ae849db13afe4e7c78b31c1e3b39e3431ffcbb9151ead0f38224d49",
+        "engineering_sha256": "f9de4d45f1cf54af6b5f9d911ce741d7c5a57049b25848d4bdaff7ae19822de0",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 591,
+            "engineering": 0.9525204411467214
+          },
+          {
+            "index": 500,
+            "signed_raw": 591,
+            "engineering": 0.9525204411467214
+          },
+          {
+            "index": 8261,
+            "signed_raw": -17,
+            "engineering": -0.05291780228592897
+          }
+        ]
+      },
+      {
+        "name": "TBIN1 IY",
+        "source_name": "TBIN1 IY",
+        "phase": "B",
+        "physical_word": 5,
+        "raw_sha256": "186024fb6b162d9553902e514ccb0b9676f3d39546a949dd9af01e0dacd412ca",
+        "engineering_sha256": "79fc7e36b22a52b8bc4bbd847e4e47ab09c37ddb6813f0730ddb50ac5d47a1b9",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -289,
+            "engineering": -0.5027191217163252
+          },
+          {
+            "index": 500,
+            "signed_raw": -257,
+            "engineering": -0.4498013194303962
+          },
+          {
+            "index": 8261,
+            "signed_raw": -305,
+            "engineering": -0.5291780228592896
+          }
+        ]
+      },
+      {
+        "name": "TBIN1 IB",
+        "source_name": "TBIN1 IB",
+        "phase": "C",
+        "physical_word": 6,
+        "raw_sha256": "df1c4e6ab7d76fcf4e5d80c25fc19ab66d3369ec42a23eef15696910f8639e47",
+        "engineering_sha256": "8bf4a8d233822abdfe5f623cccdefecd7541d97b6780431a668a4293212fc02d",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -225,
+            "engineering": -0.39688351714446723
+          },
+          {
+            "index": 500,
+            "signed_raw": -241,
+            "engineering": -0.42334241828743174
+          },
+          {
+            "index": 8261,
+            "signed_raw": 399,
+            "engineering": 0.6350136274311475
+          }
+        ]
+      },
+      {
+        "name": "TBIN1 IN",
+        "source_name": "TBIN1 IN",
+        "phase": "N",
+        "physical_word": 7,
+        "raw_sha256": "8693c7f1c369f86a6d4bb3e8c6a284da3514c3ff8f7b714b3ece546745ede266",
+        "engineering_sha256": "6b24cd2d24e134a0f5ee6fce25819af6029c1343a1d38ddee80d20660664fe45",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          },
+          {
+            "index": 500,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          },
+          {
+            "index": 8261,
+            "signed_raw": -1,
+            "engineering": -0.026458901142964484
+          }
+        ]
+      },
+      {
+        "name": "SDAI1 VR",
+        "source_name": "SDAI1 VR",
+        "phase": "A",
+        "physical_word": 8,
+        "raw_sha256": "253fe8c559a47b7b07337032b72b08e4a8d25e5c78d8395e0c336a46c36b67f2",
+        "engineering_sha256": "9779eb63b1b04c08e46ccc25a7d554330ab2c8ea121fa9a8b2e48b2be6c09be7",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -19009,
+            "engineering": -225.89764137260116
+          },
+          {
+            "index": 500,
+            "signed_raw": -19009,
+            "engineering": -225.89764137260116
+          },
+          {
+            "index": 8261,
+            "signed_raw": -1713,
+            "engineering": -20.518877433339718
+          }
+        ]
+      },
+      {
+        "name": "SDAI1 VY",
+        "source_name": "SDAI1 VY",
+        "phase": "B",
+        "physical_word": 9,
+        "raw_sha256": "91f418be98d483f6dc17688e71076b72cf5de5496b60057019a3480f0320c4fa",
+        "engineering_sha256": "3bffd219feb9c8167b6806836d6772fbaa01d1c12b41f5c46ffc402c063125ae",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 10751,
+            "engineering": 127.48302553491621
+          },
+          {
+            "index": 500,
+            "signed_raw": 10271,
+            "engineering": 121.7833373589885
+          },
+          {
+            "index": 8261,
+            "signed_raw": 18399,
+            "engineering": 218.29805713803088
+          }
+        ]
+      },
+      {
+        "name": "SDAI1 VB",
+        "source_name": "SDAI1 VB",
+        "phase": "C",
+        "physical_word": 10,
+        "raw_sha256": "7a6233e853d4daa49dab379e461b44e5ef96d0bc85b334a1f97d8ac015d4c1e8",
+        "engineering_sha256": "63a45ef8f56adf66d96b8c92d505a5cafd48993b27d5df73add471860845c18e",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 8031,
+            "engineering": 95.18479253799258
+          },
+          {
+            "index": 500,
+            "signed_raw": 8527,
+            "engineering": 101.07447031978454
+          },
+          {
+            "index": 8261,
+            "signed_raw": -16417,
+            "engineering": -195.11932522259156
+          }
+        ]
+      },
+      {
+        "name": "SDAI1 IR",
+        "source_name": "SDAI1 IR",
+        "phase": "A",
+        "physical_word": 12,
+        "raw_sha256": "89bfc89e250e73a58a9163d008cf5d4b3e2d383d00c754b668309fdc216d109b",
+        "engineering_sha256": "881263fe67ab550512f8670d86b80599e4e182c4b78c95f2b703d4895d1186c4",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 143,
+            "engineering": 0.21167120914371587
+          },
+          {
+            "index": 500,
+            "signed_raw": 143,
+            "engineering": 0.21167120914371587
+          },
+          {
+            "index": 8261,
+            "signed_raw": 159,
+            "engineering": 0.23813011028668035
+          }
+        ]
+      },
+      {
+        "name": "SDAI1 IY",
+        "source_name": "SDAI1 IY",
+        "phase": "B",
+        "physical_word": 13,
+        "raw_sha256": "72597dff0e2e5a1ec9af7aabc60e80bb5e9dbe97fa2b3dc032579a010fc0c4e5",
+        "engineering_sha256": "285c8c5b7fabe5802829abf2cfb32a2ba800f4380826aafaa339cfb1f4552ad3",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 111,
+            "engineering": 0.15875340685778688
+          },
+          {
+            "index": 500,
+            "signed_raw": 127,
+            "engineering": 0.18521230800075136
+          },
+          {
+            "index": 8261,
+            "signed_raw": -17,
+            "engineering": -0.05291780228592897
+          }
+        ]
+      },
+      {
+        "name": "SDAI1 IB",
+        "source_name": "SDAI1 IB",
+        "phase": "C",
+        "physical_word": 14,
+        "raw_sha256": "d7982518bcb1100bf6da5c2106610218c21943381a33c03db67952fd1ae737fd",
+        "engineering_sha256": "3692b4030d50294ef1ed5a75a479a08e328be4384b949874d58f33a9af7178d8",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -65,
+            "engineering": -0.1322945057148224
+          },
+          {
+            "index": 500,
+            "signed_raw": -65,
+            "engineering": -0.1322945057148224
+          },
+          {
+            "index": 8261,
+            "signed_raw": -65,
+            "engineering": -0.1322945057148224
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 VR",
+        "source_name": "SDNK1 VR",
+        "phase": "A",
+        "physical_word": 15,
+        "raw_sha256": "97cd258fdab11d2ef622aa2834a2bce649ccdfea8b3c030eeb7e5c6f7adcc8a1",
+        "engineering_sha256": "e8cfee9bd932b365644e8a806856a4d0bfe93a0704f037baaceef47f6ff0e872",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18977,
+            "engineering": -225.51766216087262
+          },
+          {
+            "index": 500,
+            "signed_raw": -18993,
+            "engineering": -225.7076517667369
+          },
+          {
+            "index": 8261,
+            "signed_raw": -1729,
+            "engineering": -20.708867039203973
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 VY",
+        "source_name": "SDNK1 VY",
+        "phase": "B",
+        "physical_word": 16,
+        "raw_sha256": "1a9e6f551f856c32835034915e3d0bf092b1b9da703cfbeaa9922f565c8cd382",
+        "engineering_sha256": "57615d5c9d18e2576f5242948c00f63809252600b3f643724fdd190627a8307d",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 10783,
+            "engineering": 127.86300474664472
+          },
+          {
+            "index": 500,
+            "signed_raw": 10287,
+            "engineering": 121.97332696485276
+          },
+          {
+            "index": 8261,
+            "signed_raw": 18367,
+            "engineering": 217.91807792630237
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 VB",
+        "source_name": "SDNK1 VB",
+        "phase": "C",
+        "physical_word": 17,
+        "raw_sha256": "cd234c43de7d1b7d7942bbe03e31e9bdd6b2f5670c401c95f9b1d01140991f44",
+        "engineering_sha256": "dd2fccbb23b184d5d968f86c3e1643bd2df657cb947076f63f7af7afd9ce975f",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 7999,
+            "engineering": 94.80481332626407
+          },
+          {
+            "index": 500,
+            "signed_raw": 8495,
+            "engineering": 100.69449110805601
+          },
+          {
+            "index": 8261,
+            "signed_raw": -16385,
+            "engineering": -194.73934601086304
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 IR",
+        "source_name": "SDNK1 IR",
+        "phase": "A",
+        "physical_word": 19,
+        "raw_sha256": "5b2f68048aabcfbe03b241e961f4676435fe58353fd07f0cfac62e511ca73f69",
+        "engineering_sha256": "4b5e142552247b282a216caa945a8712e6bfa4db4b31af7442c494dcada061e6",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 95,
+            "engineering": 0.1322945057148224
+          },
+          {
+            "index": 500,
+            "signed_raw": 95,
+            "engineering": 0.1322945057148224
+          },
+          {
+            "index": 8261,
+            "signed_raw": -49,
+            "engineering": -0.10583560457185794
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 IY",
+        "source_name": "SDNK1 IY",
+        "phase": "B",
+        "physical_word": 20,
+        "raw_sha256": "47340b31cf11e6e55f074474f4d1b9f47dab57aa3de64b368b8440ffca98b8fa",
+        "engineering_sha256": "172e78fc2089d85e8f5eaf89458dc6e8fe04bf7e17178f114ebc9662b39b73c3",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -33,
+            "engineering": -0.07937670342889344
+          },
+          {
+            "index": 500,
+            "signed_raw": -33,
+            "engineering": -0.07937670342889344
+          },
+          {
+            "index": 8261,
+            "signed_raw": 31,
+            "engineering": 0.026458901142964484
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 IB",
+        "source_name": "SDNK1 IB",
+        "phase": "C",
+        "physical_word": 21,
+        "raw_sha256": "4cb53b6b93993f6ed363bced2e06bd359adf9cab26dc7ea4d9ccf23e479f4e0e",
+        "engineering_sha256": "939d9e586035238e8bf5e042807f56a0682aaf2b19c9f04d9676f6f39d03c78a",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 31,
+            "engineering": 0.026458901142964484
+          },
+          {
+            "index": 500,
+            "signed_raw": 15,
+            "engineering": 0.0
+          },
+          {
+            "index": 8261,
+            "signed_raw": 111,
+            "engineering": 0.15875340685778688
+          }
+        ]
+      },
+      {
+        "name": "SDNK1 IN",
+        "source_name": "SDNK1 IN",
+        "phase": "N",
+        "physical_word": 22,
+        "raw_sha256": "4f8554f180bd2b8995fcb79ccea822a51512937774c3f99a70c9f58f905ceaa2",
+        "engineering_sha256": "7d6a0b21c44b69af00473be1524d2770d1d151e78efedbf6bf30a2087a3ce30b",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 31,
+            "engineering": 0.026458901142964484
+          },
+          {
+            "index": 500,
+            "signed_raw": 31,
+            "engineering": 0.026458901142964484
+          },
+          {
+            "index": 8261,
+            "signed_raw": 47,
+            "engineering": 0.05291780228592897
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 VR",
+        "source_name": "TBIN2 VR",
+        "phase": "A",
+        "physical_word": 23,
+        "raw_sha256": "fc6134d73dfdf83ce6a95a337664124d2152b36c547585573fa988273c95f208",
+        "engineering_sha256": "71b175135e54ca39280d9eca31b34204d82d23fd410153d14fadac55c48ee0b3",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18977,
+            "engineering": -225.51766216087262
+          },
+          {
+            "index": 500,
+            "signed_raw": -18977,
+            "engineering": -225.51766216087262
+          },
+          {
+            "index": 8261,
+            "signed_raw": -1761,
+            "engineering": -21.088846250932487
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 VY",
+        "source_name": "TBIN2 VY",
+        "phase": "B",
+        "physical_word": 24,
+        "raw_sha256": "ab985cf6d953d11033e4f66b3a6b4a42d062e4232a66c86d7918165f11eba4a4",
+        "engineering_sha256": "c269991b9d908991e9c9c13579abc32136c21834aaa3dc032e2ee0a32c1167bf",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 10751,
+            "engineering": 127.48302553491621
+          },
+          {
+            "index": 500,
+            "signed_raw": 10255,
+            "engineering": 121.59334775312425
+          },
+          {
+            "index": 8261,
+            "signed_raw": 18399,
+            "engineering": 218.29805713803088
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 VB",
+        "source_name": "TBIN2 VB",
+        "phase": "C",
+        "physical_word": 25,
+        "raw_sha256": "5fb6c254300cf87f2232901b2e8a99efc14c6e4daaa16a6be65c74cbefa2c244",
+        "engineering_sha256": "bf205bbca8fcf1e1caf7746c90c032bfc0fd28855a517b29769f57a9e1d0c0a5",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 7967,
+            "engineering": 94.42483411453556
+          },
+          {
+            "index": 500,
+            "signed_raw": 8479,
+            "engineering": 100.50450150219176
+          },
+          {
+            "index": 8261,
+            "signed_raw": -16369,
+            "engineering": -194.5493564049988
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 IR",
+        "source_name": "TBIN2 IR",
+        "phase": "A",
+        "physical_word": 26,
+        "raw_sha256": "45a5e94360a1b3b865ab2738135f721e9dd590aa2fc0ba69a1a1361536c948d5",
+        "engineering_sha256": "59563a186004c01e2284bdbf9a8c418f1f2d90f508a100f06d062a7ddcf59e59",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 703,
+            "engineering": 1.1377327491474727
+          },
+          {
+            "index": 500,
+            "signed_raw": 703,
+            "engineering": 1.1377327491474727
+          },
+          {
+            "index": 8261,
+            "signed_raw": -65,
+            "engineering": -0.1322945057148224
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 IY",
+        "source_name": "TBIN2 IY",
+        "phase": "B",
+        "physical_word": 27,
+        "raw_sha256": "397c42e87b801c053256509d16c7c3cef7853260f25cc1138d0c231ae005e518",
+        "engineering_sha256": "0f6cb6bb91052f82c3b08a6db4f825ffda539e90c60ef8e58796d52e44c85c69",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -321,
+            "engineering": -0.5556369240022542
+          },
+          {
+            "index": 500,
+            "signed_raw": -305,
+            "engineering": -0.5291780228592896
+          },
+          {
+            "index": 8261,
+            "signed_raw": -273,
+            "engineering": -0.4762602205733607
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 IB",
+        "source_name": "TBIN2 IB",
+        "phase": "C",
+        "physical_word": 28,
+        "raw_sha256": "4cd71e1e05c2bbd3003ca564879e9359efcab3084491c565ff8feec1e86a3583",
+        "engineering_sha256": "f9ee2159c7f487e70559a3a0995bf66a04d4501e357bbe848d80ae5662012b22",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -337,
+            "engineering": -0.5820958251452186
+          },
+          {
+            "index": 500,
+            "signed_raw": -353,
+            "engineering": -0.6085547262881831
+          },
+          {
+            "index": 8261,
+            "signed_raw": 415,
+            "engineering": 0.6614725285741121
+          }
+        ]
+      },
+      {
+        "name": "TBIN2 IN",
+        "source_name": "TBIN2 IN",
+        "phase": "N",
+        "physical_word": 29,
+        "raw_sha256": "b27e49ae6284e623569edbbcc51f51d3b6a85f67c43572de4f7659f78c31fcf5",
+        "engineering_sha256": "f57858179b5c9a893cdfa86448b2c5052aacf5ba1de9cb5ee0c82d2e5b2ac92e",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 79,
+            "engineering": 0.10583560457185794
+          },
+          {
+            "index": 500,
+            "signed_raw": 79,
+            "engineering": 0.10583560457185794
+          },
+          {
+            "index": 8261,
+            "signed_raw": 15,
+            "engineering": 0.0
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 VR",
+        "source_name": "SDAI2 VR",
+        "phase": "A",
+        "physical_word": 30,
+        "raw_sha256": "e61011aab01334f688a6880debfdfd3bb8ca8a8aa55ea529138140f22b2d9609",
+        "engineering_sha256": "6a377fe98eea102923909e72474fe7714e10b6bd944f955530766f5489726836",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -18817,
+            "engineering": -223.61776610223006
+          },
+          {
+            "index": 500,
+            "signed_raw": -18833,
+            "engineering": -223.80775570809433
+          },
+          {
+            "index": 8261,
+            "signed_raw": -1569,
+            "engineering": -18.80897098056141
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 VY",
+        "source_name": "SDAI2 VY",
+        "phase": "B",
+        "physical_word": 31,
+        "raw_sha256": "e02d4143080a2325cafa1375bc6c6210ebc91090a52504440d2d520c887ec909",
+        "engineering_sha256": "152fa9ed0e63d97d3f2aeddbc784b031e4589b80925f1dd6916f5383350727b8",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 10879,
+            "engineering": 129.00294238183025
+          },
+          {
+            "index": 500,
+            "signed_raw": 10367,
+            "engineering": 122.92327499417405
+          },
+          {
+            "index": 8261,
+            "signed_raw": 18479,
+            "engineering": 219.24800516735218
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 VB",
+        "source_name": "SDAI2 VB",
+        "phase": "C",
+        "physical_word": 32,
+        "raw_sha256": "6e4e3c555f375beb6a7a40302778e06eec7ce6d03db2bae508451f989476e3ad",
+        "engineering_sha256": "435633ae5a6a804fd6c9382d207ffa5be5b65c0d2ea8cdf750574cc8fefb5d02",
+        "gain": 0.13434293866157532,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 8111,
+            "engineering": 96.13474056731386
+          },
+          {
+            "index": 500,
+            "signed_raw": 8607,
+            "engineering": 102.02441834910582
+          },
+          {
+            "index": 8261,
+            "signed_raw": -16289,
+            "engineering": -193.5994083756775
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 IR",
+        "source_name": "SDAI2 IR",
+        "phase": "A",
+        "physical_word": 34,
+        "raw_sha256": "a540d2cb318d24054ba76726d1c2406ddc2b72f796ba35edaeb5c41a5eabc9cf",
+        "engineering_sha256": "8ffb852f305c999322abbffd6a6073958a49c713c64c45d0348778a70442b6bb",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 431,
+            "engineering": 0.6879314297170765
+          },
+          {
+            "index": 500,
+            "signed_raw": 415,
+            "engineering": 0.6614725285741121
+          },
+          {
+            "index": 8261,
+            "signed_raw": 687,
+            "engineering": 1.1112738480045083
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 IY",
+        "source_name": "SDAI2 IY",
+        "phase": "B",
+        "physical_word": 35,
+        "raw_sha256": "100a5612eefc9c29e7f646ef5e7e49af4338fb6931880a018ea4ebf804853040",
+        "engineering_sha256": "673867459afbb42f878f5a3a3897c7c2145ed0638c01c0434ef8c5d1bae868a8",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 191,
+            "engineering": 0.2910479125726093
+          },
+          {
+            "index": 500,
+            "signed_raw": 191,
+            "engineering": 0.2910479125726093
+          },
+          {
+            "index": 8261,
+            "signed_raw": -513,
+            "engineering": -0.8731437377178279
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 IB",
+        "source_name": "SDAI2 IB",
+        "phase": "C",
+        "physical_word": 36,
+        "raw_sha256": "e9ad6055a3acf42ba1c5bb15a3aead4df20cb01dcb99247b6840fd3d60f0060a",
+        "engineering_sha256": "ebfef627f8cd6a327fe5b17d4adde4cfd0a4e1a3db9dcca0b7e7cd715248f328",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -65,
+            "engineering": -0.1322945057148224
+          },
+          {
+            "index": 500,
+            "signed_raw": -81,
+            "engineering": -0.15875340685778688
+          },
+          {
+            "index": 8261,
+            "signed_raw": 335,
+            "engineering": 0.5291780228592896
+          }
+        ]
+      },
+      {
+        "name": "SDAI2 IN",
+        "source_name": "SDAI2 IN",
+        "phase": "N",
+        "physical_word": 37,
+        "raw_sha256": "26da80872175d6050cbad476b2dafe4ebb94ae972b3b488956911c029b9eb839",
+        "engineering_sha256": "ed5dedbbc24201eabbaef49436cbd0f9665873055fe8e4597420bf777112bd3a",
+        "gain": 0.018709268420934677,
+        "offset": 0.0,
+        "unit": "kA",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": 191,
+            "engineering": 0.2910479125726093
+          },
+          {
+            "index": 500,
+            "signed_raw": 191,
+            "engineering": 0.2910479125726093
+          },
+          {
+            "index": 8261,
+            "signed_raw": 207,
+            "engineering": 0.31750681371557377
+          }
+        ]
+      },
+      {
+        "name": "SGT1 VY_LV",
+        "source_name": "SGT1 VY_LV",
+        "phase": "B",
+        "physical_word": 11,
+        "raw_sha256": "cfde947b84a274858af5c762f170640f859e4b4e83531b8d00f71d4d3436f9f8",
+        "engineering_sha256": "9852f74d85cc0247cffa86e8c0ae6a82618f94c41fc6c174af10b246caa4bad4",
+        "gain": 0.06448464095592499,
+        "offset": 0.0,
+        "unit": "kV",
+        "calibration_status": "unverified",
+        "samples": [
+          {
+            "index": 0,
+            "signed_raw": -129,
+            "engineering": -0.820755484241658
+          },
+          {
+            "index": 500,
+            "signed_raw": -129,
+            "engineering": -0.820755484241658
+          },
+          {
+            "index": 8261,
+            "signed_raw": -17,
+            "engineering": -0.18239010760925733
+          }
+        ]
+      }
+    ]
+  }
+}
