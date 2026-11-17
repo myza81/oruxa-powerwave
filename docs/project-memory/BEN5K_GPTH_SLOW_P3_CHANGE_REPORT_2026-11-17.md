@@ -2,8 +2,17 @@
 
 Branch: `fix/ben5k-gpth-slow-p3`, based on fetched main
 `856c74b23b56b60a20fabae712687273293780c5`. On 2026-11-17 the owner accepted
-this bounded candidate and authorized its LOCAL COMMIT. No P3 push, merge or
-deployment is authorized. Prior dirty work and every earlier worktree are preserved.
+this bounded candidate and authorized its LOCAL COMMIT. Subsequent integration
+and UAT decisions are recorded below. Prior dirty work and earlier worktrees are preserved.
+
+**Integration/UAT follow-up:** decoder commit
+`ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` was pushed with separate owner
+authorization as PR #11. CI #426 passed. Owner DEV UAT is **not accepted**;
+the peak/navigator presentation findings and the owner-accepted correction
+are recorded in the [focused UAT report](BEN5K_GPTH_SLOW_P3_UAT_VALUES_FIX_2026-11-17.md).
+The numerical evidence below is preserved. The owner authorized committing/pushing
+the focused correction, updating PR #11 and confirming new-head CI. Merge and
+DEV/PROD deployment remain unauthorized; owner DEV retest is still pending.
 
 **Result:** native import now exposes all **20 calculated channels** (10 Hz,
 10 MW) and **20 binary indications**. The complete original export comparison

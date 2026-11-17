@@ -10387,11 +10387,11 @@
                                      item (explicitly out of scope, section 90). -->
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_max" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MAX"></span>
-                                    Maximum Peak (+Peak)
+                                    Maximum Peak
                                 </button>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_min" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MIN"></span>
-                                    Minimum Peak (-Peak)
+                                    Minimum Peak
                                 </button>
                             </div>
                         </div>
@@ -10934,11 +10934,11 @@
                                 </button>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_max" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MAX"></span>
-                                    Maximum Peak (+Peak)
+                                    Maximum Peak
                                 </button>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_min" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MIN"></span>
-                                    Minimum Peak (-Peak)
+                                    Minimum Peak
                                 </button>
                             </div>
                         </div>
@@ -20475,7 +20475,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // A Peak's value line: Waveform's text, or "PU unavailable".
         function wwErPeakValueLine(annotation) {
             const peak = wwErAnnotationPeak(annotation);
-            if (peak && peak.puUnavailable) return (annotation.type === "peak_max" ? "+Peak" : "-Peak") + ": PU unavailable";
+            if (peak && peak.puUnavailable) return (annotation.type === "peak_max" ? "Maximum" : "Minimum") + ": PU unavailable";
             return wwPeakValueLineText(wwErAsWaveformAnnotation(annotation));
         }
 
@@ -21009,7 +21009,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwErCreatePeak(trace, type) {
             const ui = wwErState.annotationUi;
             const generation = ui.generation;
-            const label = type === "peak_max" ? "+Peak" : "-Peak";
+            const label = type === "peak_max" ? "Maximum" : "Minimum";
             ui.busy = true;
             try {
                 const displayKey = wwErChannelUnitDisplay(trace.kind, trace.sourceId, trace.channelName).key;
@@ -36980,8 +36980,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwAnnotationCategoryLabel(annotation) {
             if (annotation.type === "text_note") return "NOTE";
-            if (annotation.type === "peak_max") return "+PEAK";
-            if (annotation.type === "peak_min") return "-PEAK";
+            if (annotation.type === "peak_max") return "MAXIMUM";
+            if (annotation.type === "peak_min") return "MINIMUM";
             return String(annotation.type || "").toUpperCase();
         }
 
@@ -36997,7 +36997,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // never a stale prior value presented as current.
         function wwPeakValueLineText(annotation) {
             const data = annotation.data || {};
-            const prefix = annotation.type === "peak_max" ? "+Peak" : "-Peak";
+            // Max/min describe ordered samples in the current view, not their
+            // sign: a negative-only channel still has a negative maximum.
+            const prefix = annotation.type === "peak_max" ? "Maximum" : "Minimum";
             if (!data.available) return prefix + ": Unavailable for current view";
             const valueText = wwFormatEngineeringValue(data.peakValue);
             const unitText = data.unit ? " " + data.unit : "";
@@ -37112,7 +37114,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwCalloutBodyHtml()'s own glyph above.
         function wwPeakBodyHtml(type) {
             const isMax = type === "peak_max";
-            const label = isMax ? "+Peak" : "-Peak";
+            const label = isMax ? "Maximum" : "Minimum";
             const glyphPath = isMax ? "M9 4 L14 12 L4 12 Z" : "M9 14 L4 6 L14 6 Z";
             return '<div class="ww-annotation-header ww-annotation-header--peak">' +
                     '<span class="ww-peak-glyph" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="' + glyphPath + '"/></svg></span>' +
@@ -38491,7 +38493,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Section 17/31: keep placement mode (and its ribbon)
                     // active on a network failure so the engineer can
                     // simply try again -- never a silent dead end.
-                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": could not reach the backend.");
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "Maximum" : "Minimum") + ": could not reach the backend.");
                     return;
                 }
                 // Section 35: reject a stale response -- the workspace may
@@ -38509,7 +38511,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const result = body && Array.isArray(body.results) ? body.results[0] : null;
                 if (!response.ok || !result) {
                     const message = (body && body.detail && body.detail.message) || "Could not resolve a peak value.";
-                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": " + message);
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "Maximum" : "Minimum") + ": " + message);
                     return;
                 }
                 if (!result.available) {
@@ -38517,7 +38519,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // annotation when the current viewport has no valid
                     // sample for this channel -- concise feedback only,
                     // placement mode stays active (section 17).
-                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") +
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "Maximum" : "Minimum") +
                         ": no valid samples for " + channelName + " in the current visible range.");
                     return;
                 }
@@ -44766,11 +44768,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Phase 2C-C4A: ONE shared decision for the sticky ruler's
         // Elapsed-mode display unit. Refined by the sub-ms precision fix:
         // the ruler's coordinate domain now remains elapsed seconds too;
-        // only tick TEXT is scaled to ms/s/min.
+        // only tick TEXT is scaled to ms/s.
         function wwStickyRulerElapsedUnit(spanSeconds) {
             if (spanSeconds < 1) return { scale: 1000, tickformat: ",.1f", title: "Time (ms)" };
-            if (spanSeconds < 60) return { scale: 1, tickformat: ".3~f", title: "Time (s)" };
-            return { scale: 1 / 60, tickformat: ".2~f", title: "Time (min)" };
+            // Keep long views in seconds, matching the waveform's time axis.
+            return { scale: 1, tickformat: ".3~f", title: "Time (s)" };
         }
 
         function wwRulerTickLabelsForRange(start, end, unit) {
@@ -44973,7 +44975,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     xaxis: {
                         type: "linear",
                         range: xrange,
-                        title: title,
+                        title: { text: title },
                         gridcolor: colors.grid, zeroline: false, showgrid: false,
                         ticks: "outside", tickcolor: colors.grid, ticklen: 4,
                         tickmode: tickPresentation.tickmode,
@@ -45002,7 +45004,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 Plotly.relayout(chartEl, {
                     "xaxis.type": "linear",
                     "xaxis.range": xrange,
-                    "xaxis.title": title,
+                    "xaxis.title.text": title,
                     "xaxis.tickmode": tickPresentation.tickmode,
                     "xaxis.tickvals": tickPresentation.tickvals,
                     "xaxis.ticktext": tickPresentation.ticktext,

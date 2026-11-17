@@ -219,3 +219,41 @@ def test_original_import_stored_engineering_api_waveforms_both_cursors_peaks_and
             assert cursor_values[name]["b_value"] == pytest.approx(expected[400], abs=2e-7)
             for mode, value in (("min", expected.min()), ("max", expected.max())):
                 assert peak_values[name, mode]["value"] == pytest.approx(value, abs=2e-7)
+
+
+@pytest.mark.ben_reference
+def test_original_owner_uat_negative_maximum_and_cursor_timestamps(original, settings):
+    paths, cfg, dat = original
+    evidence = next(c for c in EVIDENCE["analog"] if c["name"] == "POWER TBIN 1")
+    definition = cfg.analog_defs[evidence["export_column"]]
+    expected = dat[:, 2 + evidence["export_column"]] * definition.a + definition.b
+    assert np.all(expected < 0)
+    assert int(np.argmax(expected)) == 382
+    assert int(np.argmin(expected)) == 404
+    with TestClient(create_app(replace(settings, ben5k_experimental_enabled=True))) as client:
+        base = "/api/v1/workspaces/ws-gpth-slow-uat/sources"
+        response = client.post(base, files={"ben_file": (paths[0].name, paths[0].read_bytes(), "x")})
+        assert response.status_code == 201, response.text
+        url = f"{base}/{response.json()['source_id']}"
+        for index in (0, 382, 1401):
+            time = index / 20
+            response = client.post(f"{url}/cursor-values", json={
+                "analog_channel_names": ["POWER TBIN 1"],
+                "cursor_a_time": time, "cursor_b_time": time,
+            })
+            assert response.status_code == 200, response.text
+            body = response.json()
+            for cursor in ("a", "b"):
+                assert body[f"cursor_{cursor}"]["sample_time"] == time
+                assert body["channels"][0][f"{cursor}_value"] == pytest.approx(expected[index], abs=2e-7)
+            assert body["channels"][0]["unit"] == "MW"
+        response = client.post(f"{url}/peak-values", json={
+            "requests": [{"channel_name": "POWER TBIN 1", "mode": "max"}],
+            "start_time": 0, "end_time": 70.05,
+        })
+        assert response.status_code == 200, response.text
+        peak = response.json()["results"][0]
+        assert peak["sample_index"] == 382
+        assert peak["elapsed_seconds"] == 19.1
+        assert peak["value"] == pytest.approx(expected[382], abs=2e-7)
+        assert peak["unit"] == "MW"

@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## BEN5K P2 closed; GPTH legacy Slow P3 accepted for local commit (2026-11-17)
+## BEN5K P2 closed; P3 presentation fix accepted for integration; DEV retest pending (2026-11-17)
 
 [FACT] P2 PR #10 is merged at fetched main
 `856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV UAT is accepted.
@@ -28,16 +28,24 @@ precision. This is numerical/export parity, not physical instrument verification
 
 P1 conversion/applicability, all 62 October mapping goldens and complete raw/
 engineering array hashes, BEN32 Fast/Slow independent parity, BEN6K controls,
-DEC-213 Unverified gates, PU math and frontend runtime code are preserved.
+DEC-213 Unverified gates and PU math are preserved. P2 itself changed no frontend
+runtime code; the focused P3 presentation correction is described below.
 Accepted P2 validation: **1,135 backend / 32 browser passes**, zero skips/failures.
 See the [P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
 
-[DECISION] Owner accepted the bounded GPTH 2022 legacy `28 ff 03` Slow P3
-candidate and authorized its LOCAL COMMIT. Branch `fix/ben5k-gpth-slow-p3` starts
-at main `856c74b2`; earlier dirty work and frozen GRNE studies remain untouched.
-No P3 push, merge or deployment is authorized.
+[FACT] The accepted GPTH Slow decoder commit
+`ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` is pushed on
+`fix/ben5k-gpth-slow-p3`; [PR #11](https://github.com/myza81/oruxa-powerwave/pull/11)
+targets main `856c74b2` and remains open/unmerged. CI #426 passed: 12,800 backend
+passes, 404 skips; DEV/PROD Compose and isolation checks passed.
 
-[FACT] The P3 candidate routes class flag 1 at `0x3C` separately from Fast.
+[UAT] Owner GPTH Slow DEV UAT is **not accepted**. The owner reviewed and accepted
+the focused peak/time-ruler correction, authorizing local commit, push to the same
+branch, PR #11 description update and new-head CI confirmation. Merge, DEV/PROD
+deployment and the next BEN stage remain unauthorized. Earlier dirty work, the
+separate identity cleanup and frozen GRNE studies remain untouched.
+
+[FACT] The P3 decoder routes class flag 1 at `0x3C` separately from Fast.
 GPTH's `0x1300` acquisition frames recover 20 calculated Hz/MW channels and
 20 binary indications. All **28,040 engineering samples** and **28,040 binary
 states** match the original pinned export within its printed coefficient precision.
@@ -48,14 +56,26 @@ mapping, GRNE `29 ff`, and the availability meaning of constant `0x0800` channel
 are not established by this export. See the
 [P3 engineering report](BEN5K_GPTH_SLOW_P3_CHANGE_REPORT_2026-11-17.md).
 
-P3 validation: **1,172 focused backend / 33 browser passes**, zero failures,
+P3 decoder validation before UAT: **1,172 focused backend / 33 browser passes**, zero failures,
 errors or skips. Real provider/import/stored arrays/API/waveform/cursors/peaks
 and all 20 actual plotted Slow arrays are checked against the pinned export.
 BPHE's full 14/16,072 comparison and all 62 October raw/engineering array hashes
 remain identical to P2/P1; BEN32 independent Fast/Slow parity, BEN6K's 103-column
 control and DEC-213 safeguards pass. The unrelated full backend suite was not rerun.
-Local-commit confirmation reran the 37 P3 checks successfully, with no skips or
-implementation changes. The accepted test and evidence artifacts are unchanged.
+At the decoder commit, local-commit confirmation reran the 37 P3 checks
+successfully, with no skips or implementation changes.
+
+[FACT] The UAT peak number is correct: full-record maximum sample 382 is
+`-220.05862319469452 MW` at `19.100 s`; all samples are negative. The local fix
+uses Maximum/Minimum wording, keeps long lower-axis labels in seconds and supplies
+Plotly's required title object. The old `0, 0.333, 0.667, 1` labels represented
+minutes with a missing unit title, not normalized samples. No decoder, measurement
+service, time alignment or calibration implementation changed. See the
+[focused UAT change report](BEN5K_GPTH_SLOW_P3_UAT_VALUES_FIX_2026-11-17.md).
+Follow-up validation: **642 focused backend passes** and **83 distinct browser
+scenarios with passing final results**, including both corrected legacy wording
+assertions rerun in their affected suites. All numerical controls and authority
+gates remain intact; the report preserves the exact run breakdown.
 
 General P2 sparse mapping remains unproven and unreviewed BPHE-style profiles
 are refused. Accepted October inventories remain frozen.
@@ -68,9 +88,9 @@ inventory. Its accepted 27 channels remain unchanged; configured-inventory
 completeness is unresolved. This is recorded for later owner direction, not a
 correction authorized in P2.
 
-Next milestone: separately authorized PR and CI, then authorized DEV deployment
-for owner GPTH Slow UAT before merging to main. No release action or further BEN
-stage is authorized by the local-commit decision.
+Next milestone after correction integration and passing new-head CI: separately
+authorized DEV deployment for owner retesting before any merge. P3 UAT remains
+pending; no merge, deployment or further BEN stage is authorized.
 
 ## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
 

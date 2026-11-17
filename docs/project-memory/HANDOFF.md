@@ -4,9 +4,9 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-17** — P2 closure verified; GPTH Slow P3 accepted for local commit.
+Last updated: **2026-11-17** — P3 UAT correction accepted for commit/push and PR #11 integration; DEV retest pending.
 
-## Continue from the owner-accepted local GPTH Slow P3 correction
+## Continue from the owner-accepted P3 UAT presentation correction
 
 P2 PR #10 merged at `856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV
 UAT accepted. Post-merge CI run `44010122459` and automatic DEV deployment
@@ -22,7 +22,8 @@ Its complete 14-channel physical map is explicit and fingerprint-bounded to the
 independent export. Do not generalize it into a universal packing/subtraction rule.
 Both duplicate VR descriptors remain distinct; original words and descriptor bytes
 are preserved. P1 math, October's 62 accepted channels, BEN32/BEN6K, Unverified
-gates, PU and frontend runtime code are unchanged.
+gates and PU math are unchanged. Only the reviewed shared frontend presentation
+correction below changes runtime behaviour.
 
 P3 separates header class flag 1 from Fast, reads explicit physical-word frames,
 and applies full signed int16 * (catalog gain / 16) + offset only to the reviewed
@@ -31,17 +32,34 @@ GPTH configuration. Complete original export parity: 20 calculated channels,
 Unverified; clock basis remains UNKNOWN. The ten constant `0x0800` channel arrays
 are retained exactly as exported, without claiming active/valid measurements.
 
-Owner accepted the bounded P3 candidate and authorized its LOCAL COMMIT.
-Push, merge, DEV/PROD deployment and another BEN stage remain unauthorized.
-Next milestone: separately authorized PR/CI, then authorized DEV deployment for
-owner GPTH Slow UAT before merging to main.
+Decoder commit `ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` was pushed with owner
+authorization; PR #11 remains open/unmerged. CI #426 passed backend (12,800 passed,
+404 skipped) and Compose validation. Owner DEV UAT is **not accepted**: peak
+terminology and the lower time ruler caused misleading readings. The owner now
+accepts the focused correction and authorizes local commit, push to this branch,
+PR #11 description update and confirmation of CI on the new head. Merge, DEV/PROD
+deployment and the next BEN stage remain unauthorized. Read the
+[UAT report](BEN5K_GPTH_SLOW_P3_UAT_VALUES_FIX_2026-11-17.md).
+The maximum is numerically correct at sample 382 / 19.100 s / -220.058623 MW.
+The old lower labels are minutes with an absent Plotly unit title. Local changes
+use Maximum/Minimum labels, seconds for long ruler views and a valid title object.
+Native values, peak/cursor service calculations and sample/t0 alignment are intact.
+Next milestone after passing new-head CI: separately authorized DEV retest before merging.
 Existing full Fast BPHE/October summaries match P2/P1.
-Final focused validation: **1,172 backend / 33 browser passes**, no skips/failures.
+Decoder validation before UAT: **1,172 backend / 33 browser passes**, no skips/failures.
 BEN32 Fast/Slow export parity, BEN6K's 103-column hashes and DEC-213 gates pass.
 Local JUnit lives at `.local-data/p3-final-regression.xml` and `p3-browser.xml`;
 committable evidence, source hashes and reproduction are linked in the P3 report.
 Local-commit confirmation reran only the 37 P3 checks: all passed without skips
 or implementation changes; JUnit is `.local-data/p3-commit-check.xml`.
+The current UAT follow-up has **642 focused backend passes** and **83 distinct
+browser scenarios with passing final results**. Two obsolete peak-label assertions
+were updated and rerun; the new report/evidence records the individual runs.
+The same full Fast summary is still bit-identical to P2/P1. Integration verification
+confirmed all 18 reviewed candidate file hashes and the recorded JUnit hashes/counts.
+Only documentation is updated for the new owner decision; the full local suites
+are not repeated. Check new-head CI independently of decoder CI #426. The original
+checkout and product-identity cleanup worktree remain excluded and preserved.
 
 The frozen GRNE S1–S6 `29 ff` study remains separate and unsupported; its nominal
 scaling hypotheses are not used for GPTH. No warning redesign, calibration
