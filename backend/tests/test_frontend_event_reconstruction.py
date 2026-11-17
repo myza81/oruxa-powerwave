@@ -1630,7 +1630,7 @@ class TestEventReconstructionToolConsistency:
         wf_split = _between(source, '<div class="ww-split-btn" id="wwAnnotateSplit">', 'id="wwAnnotationListBtn"')
         er_split = _between(page, '<div class="ww-split-btn" id="wwErAnnotateSplit">', 'id="wwErAnnotationListBtn"')
         for same in ('title="Annotate" aria-label="Annotate"', 'aria-label="Annotation type"', "Text Note", "Callout",
-                     "Maximum Peak (+Peak)", "Minimum Peak (-Peak)"):
+                     "Maximum Peak", "Minimum Peak"):
             assert same in er_split and same in wf_split, same
         for kind in ("text_note", "callout", "peak_max", "peak_min"):
             assert f'data-annotation-type="{kind}"' in er_split

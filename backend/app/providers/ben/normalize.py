@@ -43,6 +43,7 @@ from app.domain import (
 )
 from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
 from app.providers.ben.model import BenRecord, BenRecordClass
+from app.providers.ben.legacy_ben5k.engineering import Ben5kRecord, FAST_AC_TRANSFORM_ID
 from app.domain.source_timezone import TimeBasis
 from app.domain.physical_calibration import (
     PhysicalCalibrationAuthority,
@@ -64,12 +65,17 @@ _PARAMETER_TYPES = {
 }
 
 # Stage 3B-1 (DEC-213): every BEN5K legacy analog channel carries this
-# authority — the current decoder formula (raw_s16 * scale + offset) has
-# not been independently verified against traceable physical measurements.
+# authority. Numerical interpretation and instrument calibration are independent;
+# even corrected P1 channels remain Unverified with the same reason and gates.
 _BEN5K_CHANNEL_AUTHORITY = PhysicalCalibrationAuthority(
     status=CALIBRATION_UNVERIFIED,
     reason=REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED,
     transform_id="ben5k_v1_raw_s16_linear_scale_offset",
+)
+_BEN5K_FAST_AC_CHANNEL_AUTHORITY = PhysicalCalibrationAuthority(
+    status=CALIBRATION_UNVERIFIED,
+    reason=REASON_CODE_BEN5K_CALIBRATION_UNVERIFIED,
+    transform_id=FAST_AC_TRANSFORM_ID,
 )
 
 
@@ -106,6 +112,9 @@ def to_disturbance_record(
     analog_channels: list[AnalogChannel] = []
     for channel, name in zip(record.value_channels, value_names):
         columns[name] = record.engineering_values(channel)
+        authority = channel_authority
+        if is_legacy_ben5k and isinstance(record, Ben5kRecord) and record.uses_fast_ac_contract(channel):
+            authority = _BEN5K_FAST_AC_CHANNEL_AUTHORITY
         analog_channels.append(
             AnalogChannel(
                 name=name,
@@ -117,7 +126,7 @@ def to_disturbance_record(
                 primary_ratio=channel.primary_rating,
                 secondary_ratio=channel.secondary_rating_in_channel_unit,
                 parameter_type=_PARAMETER_TYPES.get(channel.measurement or ""),
-                calibration_authority=channel_authority,
+                calibration_authority=authority,
             )
         )
 

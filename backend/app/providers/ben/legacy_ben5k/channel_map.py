@@ -52,6 +52,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.providers.ben.legacy_ben5k.reader import Ben5kAnalogChannel, Ben5kDigitalChannel
+from app.providers.ben.errors import BenStructureError
 
 _UNSUPPORTED_WORD_GROUP = 0
 
@@ -240,6 +241,7 @@ def classify_channels(
     words_per_sample: int,
     *,
     sample_words: np.ndarray | None = None,
+    physical_words_by_descriptor: dict[int, int] | None = None,
 ) -> Ben5kChannelMap:
     """Classify *analog* and *digital* descriptor lists into availability groups.
 
@@ -254,6 +256,9 @@ def classify_channels(
             Other constant-value columns (e.g. 0xFFFF quiescent) stay in
             verified_digital — they represent real channels that did not
             transition during this recording.
+        physical_words_by_descriptor: Complete independently established map for
+            the reviewed BPHE configuration only. Keys are descriptor byte
+            offsets, not names or logical selectors. Bypasses phantom/RMS guesses.
 
     Returns:
         Ben5kChannelMap with all six classification groups populated.
@@ -312,7 +317,15 @@ def classify_channels(
 
     # Build phantom-corrected physical word map.  When sample_words is
     # available, run phantom detection; otherwise use identity (wi == phys).
-    if sample_words is not None:
+    if physical_words_by_descriptor is not None:
+        offsets = [ch.descriptor_offset for ch in analog]
+        positions = list(physical_words_by_descriptor.values())
+        if (len(offsets) != len(set(offsets)) or set(offsets) != set(physical_words_by_descriptor)
+                or len(positions) != len(set(positions))
+                or any(not 0 <= pos < first_digital_sw for pos in positions)):
+            raise BenStructureError("Reviewed descriptor-to-physical mapping is incomplete or conflicting")
+        physical_map = physical_words_by_descriptor
+    elif sample_words is not None:
         physical_map = _compute_physical_mapping(analog, sample_words)
     else:
         physical_map = {ch.word_index: ch.word_index for ch in analog}
@@ -322,7 +335,8 @@ def classify_channels(
     inactive_analog: list[Ben5kAnalogChannel] = []
 
     for ch in analog:
-        phys = physical_map.get(ch.word_index)
+        key = ch.descriptor_offset if physical_words_by_descriptor is not None else ch.word_index
+        phys = physical_map.get(key)
         if phys is None:
             # Phantom channel: no physical slot in the payload.
             inactive_analog.append(ch)

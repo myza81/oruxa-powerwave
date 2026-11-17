@@ -1,8 +1,8 @@
 """Config-area reader for the BEN5K flat binary layout.
 
-Extracts the fixed header fields and channel descriptors from the flat
-configuration area that starts at offset 0xDC. There is no typed-section
-framing; the layout is entirely position- and stride-based.
+Extracts fixed header fields and channel descriptors from the flat configuration.
+The reviewed BPHE extension derives its catalog bounds from the variable feeder
+and sensor tables; the accepted GPTH/Permas catalog windows remain unchanged.
 
 All byte offsets are documented in:
   docs/project-memory/LEGACY_BEN5K_DECODER_DESIGN.md
@@ -14,10 +14,13 @@ Confirmed by direct binary analysis of:
 
 from __future__ import annotations
 
+import math
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from app.providers.ben.errors import BenStructureError, BenTruncatedError
+from app.providers.ben import layout
+from app.providers.ben.errors import BenStructureError, BenTruncatedError, BenUnsupportedVariantError
+from app.providers.ben.legacy_ben5k.bphe_layout import is_reviewed_bphe_configuration, bphe_physical_words
 
 # ── Fixed header field offsets (shared with SubBen family) ───────────────────
 
@@ -224,9 +227,9 @@ def read_channel_descriptors(
 ) -> tuple[list[Ben5kAnalogChannel], list[Ben5kDigitalChannel]]:
     """Walk the flat channel descriptor area and return analog and digital channels.
 
-    Descriptors are 58 bytes each and start at _SHORT_FEEDER_NAME_END (0xBB6).
-    The walk stops when the payload area is reached.  Within each descriptor,
-    byte 3 == 0xFF discriminates digital from analog.
+    Reviewed BPHE uses count-derived bounds and strict, non-overlapping record
+    recognition. Other accepted paths retain the historical GPTH window below.
+    Descriptors are 58 bytes each; byte 3 == 0xFF marks a digital descriptor.
 
     Confirmed facts:
     - First analog descriptor starts at 0xBBA (_FIRST_DESCRIPTOR_OFFSET).
@@ -240,6 +243,25 @@ def read_channel_descriptors(
     - Name filter: non-empty, first character is printable ASCII and not '-'.
     """
     end = _payload_offset(data, header)
+    # P2 extends only the independently reviewed BPHE acquisition layout. The
+    # October catalog windows/inventories remain exactly as accepted in P1.
+    # In particular, deriving Permas's earlier configured entries is not approval
+    # to expose them or reassign its existing accepted physical columns.
+    if data[layout.RECORD_CLASS_FLAG_OFFSET] == 0:  # Fast only; legacy Slow remains outside P2.
+        reviewed_bphe = is_reviewed_bphe_configuration(data, end)
+        has_flat_prefix = data[0xF8:0xFE] == b"SubBen"
+        compact_bphe_topology = (data[0xED:0xEE] == b"\x02" and data[0xF7:0xF8] == b"\x0c"
+                                 and header.words_per_sample == 24)
+        if reviewed_bphe or has_flat_prefix or compact_bphe_topology:
+            region = read_descriptor_region(data, header)
+            if reviewed_bphe:
+                analog, digital = _read_structured_descriptors(data, region)
+                positions = bphe_physical_words(analog, header.words_per_sample)
+                return [replace(ch, physical_word_index=positions[ch.descriptor_offset]) for ch in analog], digital
+            # A compact catalog with this topology must not silently fall back
+            # to the GPTH window and its amplitude-based physical-map heuristic.
+            if region.feeder_count == 2 and region.sensor_count == 12 and header.words_per_sample == 24:
+                raise BenUnsupportedVariantError("Unreviewed BPHE-style configuration: physical mapping is not established")
     analog: list[Ben5kAnalogChannel] = []
     digital: list[Ben5kDigitalChannel] = []
 
@@ -295,6 +317,93 @@ def read_channel_descriptors(
         else:
             off += 1
 
+    return analog, digital
+
+
+@dataclass(frozen=True)
+class Ben5kDescriptorRegion:
+    """Count-derived catalog bounds, excluding the fixed configuration footer."""
+    start: int
+    end: int
+    feeder_count: int
+    sensor_count: int
+
+
+def read_descriptor_region(data: bytes, header: Ben5kHeader) -> Ben5kDescriptorRegion:
+    """Locate the catalog from the flat prefix, not a recorder-specific offset.
+
+    Fixed prefix through 0x12C; n long feeder texts (129 bytes); s sensor
+    records (20 bytes); six-byte separator; n short names (22 bytes); four-byte
+    first-record prefix. n occurs at both 0xED and 0xF6, s at 0xF7. These counts
+    independently yield BPHE 0x354, GPTH 0xBBA and Permas 0x6A0.
+    """
+    payload = _payload_offset(data, header)
+    footer = b"\xff\xff\x70\x00\x02\x00\x00\xff\x6f\x00"
+    if payload < 0x12C + len(footer):
+        raise BenTruncatedError("BEN5K flat configuration prefix is truncated")
+    if data[0xF8:0xFE] != b"SubBen":
+        raise BenStructureError("BEN5K flat configuration prefix is invalid", offset=0xF8)
+    n, s = data[0xED], data[0xF7]
+    if not 1 <= n <= 32 or n != data[0xF6] or s == 0:
+        raise BenStructureError("BEN5K flat catalog counts disagree", offset=0xED)
+    if struct.unpack_from("<H", data, 0x114)[0] != header.words_per_sample:
+        raise BenStructureError("BEN5K configuration acquisition width disagrees", offset=0x114)
+    sensors = 0x12C + n * 129
+    separator = sensors + s * 20
+    start = separator + 6 + n * 22 + 4
+    end = payload - len(footer)
+    if start + _DESC_SIZE > end:
+        raise BenTruncatedError("BEN5K declared catalog extends beyond its configuration boundary", offset=start)
+    if data[end:payload] != footer:
+        raise BenTruncatedError("BEN5K configuration footer is missing or truncated", offset=end)
+    if data[separator:separator + 6] != b"\xff" * 6:
+        raise BenStructureError("BEN5K sensor/name table boundary is invalid", offset=separator)
+    for off in range(sensors, separator, 20):
+        if not 1 <= data[off] <= n or data[off + 1] != 0xFF:
+            raise BenStructureError("BEN5K sensor table entry is invalid", offset=off)
+    return Ben5kDescriptorRegion(start, end, n, s)
+
+
+def _read_structured_descriptors(
+    data: bytes, region: Ben5kDescriptorRegion,
+) -> tuple[list[Ben5kAnalogChannel], list[Ben5kDigitalChannel]]:
+    """Recognize complete, non-overlapping descriptors inside proven bounds.
+
+    Flat catalogs contain variable ancillary records between descriptors. Scan
+    candidate starts independently so an overlapping interpretation is rejected
+    rather than whichever candidate happens to be found first winning.
+    """
+    analog: list[Ben5kAnalogChannel] = []
+    digital: list[Ben5kDigitalChannel] = []
+    spans: list[int] = []
+    for off in range(region.start, region.end - _DESC_SIZE + 1):
+        raw_name = data[off + 4:off + 20]
+        name, _, padding = raw_name.partition(b"\x00")
+        if not name or name.startswith(b"-") or not all(32 <= b <= 126 for b in name) or any(padding):
+            continue
+        label = name.decode("ascii").strip()
+        if not label:
+            continue
+        b0, phase, _, b3 = data[off:off + 4]
+        if (b0 in (0, 4) and phase in (1, 2, 3, 4) and b3 != 0xFF
+                and data[off + 20:off + 22] == {0: b"KV", 4: b"KA"}[b0]
+                and data[off + 49:off + 53] == b"\xff\xff\xff\x02"
+                and data[off + 57] == 0xFF):
+            gain, bias, low, high = struct.unpack_from("<ffff", data, off + 28)
+            if not all(math.isfinite(v) for v in (gain, bias, low, high)) or low >= high:
+                continue
+            logical = data[off + 53]
+            analog.append(Ben5kAnalogChannel(
+                label, logical, gain, bias, low, high, b0, phase,
+                struct.unpack_from("<H", data, off + 2)[0], off, logical,
+            ))
+            spans.append(off)
+        elif (b3 == 0xFF and b0 in (1, 2, 3) and data[off + 2] < 16
+                and data[off + 20:off + 22] == b"\x04\x05"):
+            digital.append(Ben5kDigitalChannel(label, phase, data[off + 2], b0, off))
+            spans.append(off)
+    if any(right < left + _DESC_SIZE for left, right in zip(spans, spans[1:])):
+        raise BenStructureError("BEN5K descriptor interpretations overlap")
     return analog, digital
 
 

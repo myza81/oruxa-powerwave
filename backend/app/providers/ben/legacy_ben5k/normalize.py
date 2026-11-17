@@ -1,4 +1,4 @@
-"""BEN5K record normalizer: builds a ``BenRecord`` from raw BEN5K bytes.
+"""Legacy BEN5K Fast normalizer: builds a ``BenRecord`` from raw bytes.
 
 Entry point: ``parse_ben5k(data: bytes) -> BenRecord``
 
@@ -25,7 +25,7 @@ from dataclasses import replace
 import numpy as np
 
 from app.providers.ben import layout
-from app.providers.ben.errors import BenStructureError, BenTruncatedError
+from app.providers.ben.errors import BenStructureError, BenTruncatedError, BenUnsupportedVariantError
 from app.providers.ben.model import (
     BenChannelKind,
     BenDiagnostic,
@@ -44,6 +44,12 @@ from app.providers.ben.legacy_ben5k.reader import (
     read_channel_descriptors,
 )
 from app.providers.ben.legacy_ben5k.channel_map import classify_channels
+from app.providers.ben.legacy_ben5k.bphe_layout import is_reviewed_bphe_configuration, bphe_physical_words
+from app.providers.ben.legacy_ben5k.engineering import (
+    Ben5kRecord,
+    has_supported_fast_ac_configuration,
+    is_supported_fast_ac_descriptor,
+)
 
 # BEN5K uses the same trigger-time base as SubBen.
 _YEAR_BASE = layout.TRIGGER_TIME_YEAR_BASE  # 1900
@@ -118,7 +124,8 @@ def _build_header(header5k: Ben5kHeader, data: bytes) -> BenHeader:
 def parse_ben5k(data: bytes) -> BenRecord:
     """Parse a BEN5K file into a ``BenRecord``.
 
-    This is the ONLY public entry point for the legacy BEN5K decoder.
+    Direct entry point for the legacy Fast decoder. Slow uses gpth_slow.py
+    through the class-aware experimental dispatcher.
     It must NOT be called from production paths — use ``parse_ben_experimental()``
     in parser.py to opt in.
 
@@ -138,6 +145,11 @@ def parse_ben5k(data: bytes) -> BenRecord:
 
     # ── 1. Read header and channel descriptors ─────────────────────────────
     header5k = read_header(data)
+    if data[layout.RECORD_CLASS_FLAG_OFFSET] != 0:
+        raise BenUnsupportedVariantError(
+            "Legacy Fast decoder requires record-class flag 0; use class-aware dispatch",
+            offset=layout.RECORD_CLASS_FLAG_OFFSET,
+        )
     analog_raw, digital_raw = read_channel_descriptors(data, header5k)
 
     # ── 2. Build sample_words matrix (needed for variance detection) ───────
@@ -155,19 +167,26 @@ def parse_ben5k(data: bytes) -> BenRecord:
     ).reshape(header5k.sample_count, header5k.words_per_sample)
 
     # ── 3. Classify channels with payload variance analysis ────────────────
+    reviewed_bphe = data[layout.RECORD_CLASS_FLAG_OFFSET] == 0 and is_reviewed_bphe_configuration(data, data_offset)
+    physical_words = bphe_physical_words(analog_raw, header5k.words_per_sample) if reviewed_bphe else None
     ch_map = classify_channels(
         list(analog_raw),
         list(digital_raw),
         header5k.words_per_sample,
         sample_words=sample_words,
+        physical_words_by_descriptor=physical_words,
     )
 
     # ── 4. Build canonical BenHeader ──────────────────────────────────────
     header = _build_header(header5k, data)
 
     # ── 5. Build value_channels from recorded_analog ─────────────────────
+    supported_fast_ac = has_supported_fast_ac_configuration(data, header5k)
+    fast_ac_channel_ids: set[int] = set()
     value_channels: list[BenValueChannel] = []
     for idx, ch in enumerate(ch_map.recorded_analog):
+        if supported_fast_ac and is_supported_fast_ac_descriptor(data, ch):
+            fast_ac_channel_ids.add(idx)
         # Map BEN5K type_byte → measurement kind
         if ch.type_byte == 0x00:
             measurement = "voltage"
@@ -226,7 +245,7 @@ def parse_ben5k(data: bytes) -> BenRecord:
                 hardware_address=None,
                 slot=slot,
                 invalid_raw_value=None,
-                descriptor_raw=b"",
+                descriptor_raw=data[ch.descriptor_offset:ch.descriptor_offset + 58] if reviewed_bphe else b"",
             )
         )
 
@@ -253,7 +272,18 @@ def parse_ben5k(data: bytes) -> BenRecord:
             )
         )
 
+    if not value_channels and not digital_channels:
+        raise BenUnsupportedVariantError("Legacy Fast decoder found no supported recorded channels")
+
     # ── 7. Attach diagnostics ─────────────────────────────────────────────
+    if reviewed_bphe:
+        diagnostics.append(BenDiagnostic(
+            code="ben5k_bphe_reviewed_physical_mapping",
+            severity="info",
+            message="BPHE configuration-specific independent-export mapping; descriptor/logical/physical words: "
+                + "; ".join(f"{ch.descriptor_offset:#x}/{ch.word_index}/{ch.physical_word_index}"
+                            for ch in ch_map.recorded_analog),
+        ))
     diagnostics.append(BenDiagnostic(
         code="time_basis_unconfirmed",
         severity="warning",
@@ -314,10 +344,11 @@ def parse_ben5k(data: bytes) -> BenRecord:
             ),
         ))
 
-    return BenRecord(
+    return Ben5kRecord(
         header=header,
         value_channels=tuple(value_channels),
         digital_channels=tuple(digital_channels),
         diagnostics=tuple(diagnostics),
         sample_words=sample_words,
+        fast_ac_channel_ids=frozenset(fast_ac_channel_ids),
     )

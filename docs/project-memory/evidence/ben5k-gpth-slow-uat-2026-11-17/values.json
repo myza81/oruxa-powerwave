@@ -1,0 +1,101 @@
+{
+  "approved_decoder_commit": "ff1209d98a3d9e8b43eab0bf068176cb69a4cba2",
+  "oracle_files": [
+    {
+      "name": "GPTH 275.ben",
+      "size": 68212,
+      "sha256": "ddfd892304fad179255b7984502e58c816d4b4227fbaa02cb57149819a4866b4"
+    },
+    {
+      "name": "GPTH 275 slow Ben time_124149878.cfg",
+      "size": 1974,
+      "sha256": "de0f583412bb01707ba19d8dacdeb17d071c42d0b6b82c4b50a6865ec63abeac"
+    },
+    {
+      "name": "GPTH 275 slow Ben time_124149878.dat",
+      "size": 284607,
+      "sha256": "fcc67ee8e1a87b8fc996c407f4f74208bc1b5a52c5b80899f81af41a07ab277f"
+    }
+  ],
+  "channel": "POWER TBIN 1",
+  "unit": "MW",
+  "sampling_rate_hz": 20,
+  "sample_count": 1402,
+  "duration_seconds": 70.05,
+  "sample_comparisons": [
+    {
+      "sample_index": 0,
+      "elapsed_seconds": 0.0,
+      "export_raw": -801,
+      "native_mw": -257.700229793787,
+      "independent_export_mw": -257.7002297733
+    },
+    {
+      "sample_index": 382,
+      "elapsed_seconds": 19.1,
+      "export_raw": -684,
+      "native_mw": -220.05862319469452,
+      "independent_export_mw": -220.05862317720002
+    },
+    {
+      "sample_index": 404,
+      "elapsed_seconds": 20.2,
+      "export_raw": -1534,
+      "native_mw": -493.5232865214348,
+      "independent_export_mw": -493.52328648220004
+    },
+    {
+      "sample_index": 1401,
+      "elapsed_seconds": 70.05,
+      "export_raw": -1236,
+      "native_mw": -397.6497927904129,
+      "independent_export_mw": -397.6497927588
+    }
+  ],
+  "full_record_maximum": {
+    "sample_index": 382,
+    "elapsed_seconds": 19.1,
+    "independent_mw": -220.05862317720002,
+    "native_mw": -220.05862319469452
+  },
+  "full_record_minimum": {
+    "sample_index": 404,
+    "elapsed_seconds": 20.2,
+    "independent_mw": -493.52328648220004,
+    "native_mw": -493.5232865214348
+  },
+  "before": {
+    "peak_header": "+PEAK",
+    "peak_line": "+Peak: -220.1 MW",
+    "peak_time": "t = 19.100 s",
+    "ruler_domain_seconds": [
+      0,
+      70.05
+    ],
+    "ruler_labels": [
+      "0",
+      "0.333",
+      "0.667",
+      "1"
+    ],
+    "ruler_label_scale": 0.016666666666666666,
+    "ruler_unit_title_missing": true
+  },
+  "after": {
+    "peak_header": "MAXIMUM",
+    "peak_line": "Maximum: -220.1 MW",
+    "peak_time": "t = 19.100 s",
+    "ruler_domain_seconds": [
+      0,
+      70.05
+    ],
+    "ruler_labels": [
+      "0",
+      "20",
+      "40",
+      "60"
+    ],
+    "ruler_title": "Time (s)"
+  },
+  "interpretation": "Max/min are signed ordered finite samples in the visible viewport, earliest tie. The shown maximum is also the full-record maximum. Native arrays and elapsed time are unchanged. t0 uses the user cursor position and only changes event-relative presentation; cursor requests resolve on the native source time array."
+}

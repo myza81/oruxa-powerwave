@@ -125,8 +125,9 @@ implies electrical meaning.
 - **Progressive validation.** Relay support is validated family-by-family /
   model-by-model against real setting sheets; an unvalidated relay uses the
   fallback rather than a best guess.
-- **Benchmark hierarchy** (existing `powerwave` > `detego.app` > owner
-  requirements) applies to later UI; Slice 1 has none.
+- **Product direction.** Later UI follows owner-defined engineering requirements
+  and Oruxa's UI/UX standards ([product direction](PRODUCT_REFERENCES.md));
+  Slice 1 has no UI.
 
 ## Relay styles the model must carry (design samples)
 

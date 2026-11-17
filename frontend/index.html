@@ -564,9 +564,8 @@
 
         /* ---- Recordings page (Phase 3B) -- a sibling of Workspace Row,
            same "dominant content area" treatment as Main Workspace, but
-           with no contextual sidebar (section 21). Clear/simple/list-
-           based per the Detego benchmark (layout only -- Oruxa tokens
-           throughout, no Detego branding/colors/icons copied). ---- */
+           with no contextual sidebar (section 21). Compact list layout
+           using Oruxa theme tokens throughout. ---- */
         #pageRecordings {
             flex: 1 1 auto;
             display: flex;
@@ -3996,8 +3995,8 @@
            cursor-state badges -- NOT a table column (owner's explicit
            instruction), pushed to the right edge of the existing
            .channel-name-cell flex row via margin-left:auto so the row
-           reads "● NAME ....... A:0 B:1", matching the Detego-style
-           reference. Neutral styling only (--surface-tint/--panel-border/
+           reads "● NAME ....... A:0 B:1".
+           Neutral styling only (--surface-tint/--panel-border/
            --text-dim), deliberately never --ok/--error -- digital
            semantics vary by signal, so 0/1 must never visually imply
            healthy/alarm (section 12's own explicit instruction). */
@@ -4294,8 +4293,8 @@
            Reuses the existing .confirm-overlay backdrop (position: fixed,
            inset: 0, var(--overlay-backdrop)) -- only the inner box differs
            (wider, scrollable, more structured content than a plain
-           confirm dialog). Detego's "Edit Channel Groups" workflow is the
-           layout/workflow benchmark; styling is entirely Oruxa tokens. */
+           confirm dialog). Create groups, assign channels and Apply;
+           styling uses Oruxa theme tokens. */
         .group-editor-box {
             background: var(--panel);
             border: 1px solid var(--panel-border);
@@ -5379,11 +5378,10 @@
            A thin horizontal grip at the bottom of every panel/lane, in all
            three layout modes (Grouped/Separate/Custom -- this rule is
            deliberately unscoped, not ".ww-tg-panels.ww-panels-unified only").
-           Detego's own vertical panel-resize interaction is the UX
-           benchmark for placement/feel (subtle, discoverable, direct drag)
-           -- no Detego styling/branding copied; colors are existing Oruxa
-           theme tokens. The 8px hit area sits entirely BELOW the chart
-           (zero overlap with the plotting area), so it never intercepts
+           The handle is subtle and discoverable, with direct dragging
+           and colors from existing Oruxa theme tokens. The 8px hit area
+           sits entirely BELOW the chart (zero overlap with the plotting
+           area), so it never intercepts
            Plotly hover/crosshair -- only the small centered grip mark is
            visible by default, widening and accenting on hover/active drag. */
         .ww-resize-handle {
@@ -5428,10 +5426,7 @@
            right-side layout column (that was still not the intended
            layout per owner clarification). It is now OVERLAID directly on
            top of the waveform lane, floating near the right edge,
-           vertically centered -- following Detego's own separate-waveform
-           label placement as the explicit layout benchmark for this
-           specific treatment (Oruxa colors/tokens/implementation only; no
-           Detego branding/typography/icons copied). The chart area is no
+           vertically centered, using Oruxa theme tokens. The chart area is no
            longer split into two grid columns -- it fills the full lane
            width, and the label floats on top of it via absolute
            positioning against the now-relatively-positioned `.ww-panel`. */
@@ -10387,11 +10382,11 @@
                                      item (explicitly out of scope, section 90). -->
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_max" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MAX"></span>
-                                    Maximum Peak (+Peak)
+                                    Maximum Peak
                                 </button>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_min" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MIN"></span>
-                                    Minimum Peak (-Peak)
+                                    Minimum Peak
                                 </button>
                             </div>
                         </div>
@@ -10934,11 +10929,11 @@
                                 </button>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_max" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MAX"></span>
-                                    Maximum Peak (+Peak)
+                                    Maximum Peak
                                 </button>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_min" aria-pressed="false">
                                     <span class="ww-icon" data-ww-icon="ANNOTATION_PEAK_MIN"></span>
-                                    Minimum Peak (-Peak)
+                                    Minimum Peak
                                 </button>
                             </div>
                         </div>
@@ -14866,10 +14861,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         </div>
     </div>
 
-    <!-- Phase 2C-C1: Custom Groups editor. Detego's "Edit Channel Groups"
-         workflow is the layout/workflow benchmark for this dialog (no
-         Detego branding/colors/icons copied -- Oruxa theme tokens
-         throughout). Editing happens in an in-memory working copy
+    <!-- Phase 2C-C1: Custom Groups editor using Oruxa theme tokens.
+         Editing happens in an in-memory working copy
          (groupEditorState); ww.customGroups itself is only written on
          Apply, so Cancel/close/Escape/backdrop-click all discard changes
          cleanly by construction. -->
@@ -15538,11 +15531,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
          never distort the normalized annotation positions that width
          would otherwise affect -- section 30's own explicit concern).
          No existing right-side drawer pattern existed in this codebase
-         to reuse (the Detego reference is UI/UX inspiration only, no
-         branding/colors/wording copied -- section 54); this is a new,
-         minimal one using the SAME theme tokens/border/radius language
-         as every other panel. Body content is entirely DERIVED from
-         ww.annotations by wwRenderAnnotationList() -- never a second,
+         to reuse; this is a minimal one using the SAME theme tokens,
+         border and radius language as every other panel. Body content is
+         entirely DERIVED from ww.annotations by wwRenderAnnotationList() -- never a second,
          competing list state -- and is generic across annotation TYPES
          (wwAnnotationCategoryLabel()/wwAnnotationSummary() dispatch on
          `annotation.type`), not hard-wired to text_note's own shape. -->
@@ -20475,7 +20466,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // A Peak's value line: Waveform's text, or "PU unavailable".
         function wwErPeakValueLine(annotation) {
             const peak = wwErAnnotationPeak(annotation);
-            if (peak && peak.puUnavailable) return (annotation.type === "peak_max" ? "+Peak" : "-Peak") + ": PU unavailable";
+            if (peak && peak.puUnavailable) return (annotation.type === "peak_max" ? "Maximum" : "Minimum") + ": PU unavailable";
             return wwPeakValueLineText(wwErAsWaveformAnnotation(annotation));
         }
 
@@ -21009,7 +21000,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwErCreatePeak(trace, type) {
             const ui = wwErState.annotationUi;
             const generation = ui.generation;
-            const label = type === "peak_max" ? "+Peak" : "-Peak";
+            const label = type === "peak_max" ? "Maximum" : "Minimum";
             ui.busy = true;
             try {
                 const displayKey = wwErChannelUnitDisplay(trace.kind, trace.sourceId, trace.channelName).key;
@@ -29827,10 +29818,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //     waveform lane (absolutely positioned against a now-relative
         //     `.ww-panel`, floating near the right edge, vertically
         //     centered) instead of occupying its own grid column --
-        //     following Detego's own separate-waveform label placement as
-        //     the explicit layout benchmark for this specific treatment
-        //     (Oruxa tokens/implementation only, no Detego branding/
-        //     typography/icons copied). No DOM/JS change beyond CSS
+        //     using Oruxa theme tokens. No DOM/JS change beyond CSS
         //     positioning; the same `.ww-legend`/`.ww-legend-item`/
         //     `.ww-legend-label` markup and the same remove control are
         //     reused unchanged.
@@ -29840,8 +29828,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //     two modes (color dot + name; see analogChannelNameCellHtml()),
         //     with its own per-channel remove control
         //     (wwSyncChannelBrowserDisplayState()). Separate mode's own
-        //     `.ww-legend` chip -- this bullet's own Detego-benchmarked
-        //     overlay placement, dot, name/unit, and remove control -- is
+        //     `.ww-legend` chip -- its overlay placement, dot, name/unit,
+        //     and remove control -- is
         //     explicitly PRESERVED UNCHANGED (the owner approved its
         //     current look as-is); wwRenderLegend() is simply no longer
         //     called for Grouped/Custom panels, see its own comment.
@@ -36980,8 +36968,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwAnnotationCategoryLabel(annotation) {
             if (annotation.type === "text_note") return "NOTE";
-            if (annotation.type === "peak_max") return "+PEAK";
-            if (annotation.type === "peak_min") return "-PEAK";
+            if (annotation.type === "peak_max") return "MAXIMUM";
+            if (annotation.type === "peak_min") return "MINIMUM";
             return String(annotation.type || "").toUpperCase();
         }
 
@@ -36997,7 +36985,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // never a stale prior value presented as current.
         function wwPeakValueLineText(annotation) {
             const data = annotation.data || {};
-            const prefix = annotation.type === "peak_max" ? "+Peak" : "-Peak";
+            // Max/min describe ordered samples in the current view, not their
+            // sign: a negative-only channel still has a negative maximum.
+            const prefix = annotation.type === "peak_max" ? "Maximum" : "Minimum";
             if (!data.available) return prefix + ": Unavailable for current view";
             const valueText = wwFormatEngineeringValue(data.peakValue);
             const unitText = data.unit ? " " + data.unit : "";
@@ -37112,7 +37102,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwCalloutBodyHtml()'s own glyph above.
         function wwPeakBodyHtml(type) {
             const isMax = type === "peak_max";
-            const label = isMax ? "+Peak" : "-Peak";
+            const label = isMax ? "Maximum" : "Minimum";
             const glyphPath = isMax ? "M9 4 L14 12 L4 12 Z" : "M9 14 L4 6 L14 6 Z";
             return '<div class="ww-annotation-header ww-annotation-header--peak">' +
                     '<span class="ww-peak-glyph" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="' + glyphPath + '"/></svg></span>' +
@@ -38491,7 +38481,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Section 17/31: keep placement mode (and its ribbon)
                     // active on a network failure so the engineer can
                     // simply try again -- never a silent dead end.
-                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": could not reach the backend.");
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "Maximum" : "Minimum") + ": could not reach the backend.");
                     return;
                 }
                 // Section 35: reject a stale response -- the workspace may
@@ -38509,7 +38499,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const result = body && Array.isArray(body.results) ? body.results[0] : null;
                 if (!response.ok || !result) {
                     const message = (body && body.detail && body.detail.message) || "Could not resolve a peak value.";
-                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": " + message);
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "Maximum" : "Minimum") + ": " + message);
                     return;
                 }
                 if (!result.available) {
@@ -38517,7 +38507,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // annotation when the current viewport has no valid
                     // sample for this channel -- concise feedback only,
                     // placement mode stays active (section 17).
-                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") +
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "Maximum" : "Minimum") +
                         ": no valid samples for " + channelName + " in the current visible range.");
                     return;
                 }
@@ -39226,7 +39216,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_DIGITAL_LANE_PX = 22;
         // Phase 4A-UAT1B: the truncation budget shrank from 26 -- the
         // label is now a small overlaid pill near the left edge of each
-        // lane (owner visual benchmark), not a wide Y-axis tick column,
+        // lane (owner visual specification), not a wide Y-axis tick column,
         // so it has less horizontal room by design. The FULL name is
         // still always available via each trace's own hovertext.
         const WW_DIGITAL_NAME_MAX_CHARS = 18;
@@ -39345,7 +39335,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwRemoveChannelsForSource, and the digital add/remove functions
         // below) -- always via Plotly.react.
         //
-        // Phase 4A-UAT1B rendering redesign (owner visual benchmark,
+        // Phase 4A-UAT1B rendering redesign (owner visual specification,
         // logic-analyzer style): each lane is ONE flat Y position, not two
         // (previously low/high plateaus via a single `hv`-shaped trace).
         // A thin, muted BASELINE trace spans the whole record at that Y --
@@ -44766,11 +44756,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Phase 2C-C4A: ONE shared decision for the sticky ruler's
         // Elapsed-mode display unit. Refined by the sub-ms precision fix:
         // the ruler's coordinate domain now remains elapsed seconds too;
-        // only tick TEXT is scaled to ms/s/min.
+        // only tick TEXT is scaled to ms/s.
         function wwStickyRulerElapsedUnit(spanSeconds) {
             if (spanSeconds < 1) return { scale: 1000, tickformat: ",.1f", title: "Time (ms)" };
-            if (spanSeconds < 60) return { scale: 1, tickformat: ".3~f", title: "Time (s)" };
-            return { scale: 1 / 60, tickformat: ".2~f", title: "Time (min)" };
+            // Keep long views in seconds, matching the waveform's time axis.
+            return { scale: 1, tickformat: ".3~f", title: "Time (s)" };
         }
 
         function wwRulerTickLabelsForRange(start, end, unit) {
@@ -44973,7 +44963,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     xaxis: {
                         type: "linear",
                         range: xrange,
-                        title: title,
+                        title: { text: title },
                         gridcolor: colors.grid, zeroline: false, showgrid: false,
                         ticks: "outside", tickcolor: colors.grid, ticklen: 4,
                         tickmode: tickPresentation.tickmode,
@@ -45002,7 +44992,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 Plotly.relayout(chartEl, {
                     "xaxis.type": "linear",
                     "xaxis.range": xrange,
-                    "xaxis.title": title,
+                    "xaxis.title.text": title,
                     "xaxis.tickmode": tickPresentation.tickmode,
                     "xaxis.tickvals": tickPresentation.tickvals,
                     "xaxis.ticktext": tickPresentation.ticktext,
@@ -48550,11 +48540,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ------------------------------------------------------------------
         // Phase 2C-C1: Custom Groups editor
         //
-        // Detego's "Edit Channel Groups" dialog is the workflow/layout
-        // benchmark for this modal (DEC-020) -- create groups, assign
-        // displayed channels into them, Apply -- but nothing here is
-        // copied from Detego's own styling/branding; Oruxa theme tokens
-        // throughout (see the modal's own CSS).
+        // Create groups, assign displayed channels into them, then Apply.
+        // The modal uses Oruxa theme tokens throughout (see its own CSS).
         //
         // groupEditorState is a WORKING COPY, entirely separate from
         // ww.customGroups, while the modal is open: { groups: [{id,

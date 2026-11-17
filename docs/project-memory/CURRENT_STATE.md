@@ -9,6 +9,110 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Independent product direction (owner decision, 2026-11-17)
+
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
+
+The external benchmarking direction is retired. Active guidance and historical
+design descriptions express Oruxa's own engineering and UI/UX requirements;
+original wording remains in Git history. See
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) and the amended DEC-020.
+
+Cleanup commit `6bd2c6c0f8b091c7b88871020f4d416192f54827` was created locally
+from approved main `856c74b2`. The owner then confirmed P3 DEV UAT acceptance
+and requested this local update against merged main
+`fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Both histories and P3's engineering
+code, regression tests and evidence are preserved; cleanup changes only
+documentation and frontend comments relative to that main. The separate P3
+worktree remains untouched. No cleanup push, merge into main or deployment is
+authorized; this task adds no product direction or application behaviour.
+
+## BEN5K P2/P3 — owner DEV UAT accepted; P3 merged (2026-11-17)
+
+[FACT] P2 PR #10 is merged at fetched main
+`856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV UAT is accepted.
+Post-merge [CI #424](https://github.com/myza81/oruxa-powerwave/actions/runs/44010122459)
+and [automatic DEV deployment](https://github.com/myza81/oruxa-powerwave/actions/runs/44011270803)
+both passed. The deployment job/log confirms that exact merge SHA, successful
+backend health and "Deployment successful." P2 operational closure is verified,
+not inferred from the merge or pre-merge UAT.
+
+[FACT] Native BPHE import exposes all 14 analog channels. Variable
+feeder/sensor tables derive its descriptor region; an explicit independently
+matched descriptor/physical-word table is bounded to the reviewed BPHE embedded
+configuration fingerprint. Both same-name VR occurrences remain distinct.
+All 16,072 engineering samples match the original CFG/DAT within printed gain
+precision. This is numerical/export parity, not physical instrument verification.
+
+P1 conversion/applicability, all 62 October mapping goldens and complete raw/
+engineering array hashes, BEN32 Fast/Slow independent parity, BEN6K controls,
+DEC-213 Unverified gates and PU math are preserved. P2 itself changed no frontend
+runtime code; the focused P3 presentation correction is described below.
+Accepted P2 validation: **1,135 backend / 32 browser passes**, zero skips/failures.
+See the [P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
+
+[FACT] GPTH Slow decoder commit `ff1209d98a3d9e8b43eab0bf068176cb69a4cba2`
+and UAT presentation correction `81bfeb5fa7b39890dc7b5f332ccab420ce90d054`
+are in main through [PR #11](https://github.com/myza81/oruxa-powerwave/pull/11),
+merged at `fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Decoder CI #426 passed
+12,800 backend tests with 404 skips. Correction
+[CI #428](https://github.com/myza81/oruxa-powerwave/actions/runs/44050004884)
+passed 12,800 backend tests with 405 skips; DEV/PROD Compose and isolation checks
+passed. These pre-merge checks do not establish a post-merge deployment result.
+
+[DECISION] The owner explicitly confirmed corrected GPTH Slow DEV UAT is
+**accepted**, superseding the earlier pending/failed-UAT status, and requested
+the local post-P3 cleanup update. This confirmation comes from owner direction,
+not an inference from the merge. No further BEN stage or cleanup release action
+is authorized. Earlier dirty work and frozen GRNE studies remain untouched.
+
+[FACT] The P3 decoder routes class flag 1 at `0x3C` separately from Fast.
+GPTH's `0x1300` acquisition frames recover 20 calculated Hz/MW channels and
+20 binary indications. All **28,040 engineering samples** and **28,040 binary
+states** match the original pinned export within its printed coefficient precision.
+Its configuration-specific formula is full signed int16 times catalog gain / 16
+plus catalog offset; it never uses Fast's sample shift or sqrt(2).
+All channels remain Unverified, with UNKNOWN recorder clock basis. General Slow
+mapping, GRNE `29 ff`, and the availability meaning of constant `0x0800` channels
+are not established by this export. See the
+[P3 engineering report](BEN5K_GPTH_SLOW_P3_CHANGE_REPORT_2026-11-17.md).
+
+P3 decoder validation before UAT: **1,172 focused backend / 33 browser passes**, zero failures,
+errors or skips. Real provider/import/stored arrays/API/waveform/cursors/peaks
+and all 20 actual plotted Slow arrays are checked against the pinned export.
+BPHE's full 14/16,072 comparison and all 62 October raw/engineering array hashes
+remain identical to P2/P1; BEN32 independent Fast/Slow parity, BEN6K's 103-column
+control and DEC-213 safeguards pass. The unrelated full backend suite was not rerun.
+At the decoder commit, local-commit confirmation reran the 37 P3 checks
+successfully, with no skips or implementation changes.
+
+[FACT] The UAT peak number is correct: full-record maximum sample 382 is
+`-220.05862319469452 MW` at `19.100 s`; all samples are negative. The merged fix
+uses Maximum/Minimum wording, keeps long lower-axis labels in seconds and supplies
+Plotly's required title object. The old `0, 0.333, 0.667, 1` labels represented
+minutes with a missing unit title, not normalized samples. No decoder, measurement
+service, time alignment or calibration implementation changed. See the
+[focused UAT change report](BEN5K_GPTH_SLOW_P3_UAT_VALUES_FIX_2026-11-17.md).
+Follow-up validation: **642 focused backend passes** and **83 distinct browser
+scenarios with passing final results**, including both corrected legacy wording
+assertions rerun in their affected suites. All numerical controls and authority
+gates remain intact; the report preserves the exact run breakdown.
+
+General P2 sparse mapping remains unproven and unreviewed BPHE-style profiles
+are refused. Accepted October inventories remain frozen.
+
+[OPEN] [DECISION MODE: DEFER] **BEN-wide inventory — additional Permas configured
+entries.** The count-derived start `0x6A0` exposes `PGPS2 VR`, `PGPS2 VY`,
+`PGPS2 VB` and `PGPS2 IR` before the accepted `0xBBA` window. Promoting these
+entries would change duplicate logical-slot selection and the frozen Permas
+inventory. Its accepted 27 channels remain unchanged; configured-inventory
+completeness is unresolved. This is recorded for later owner direction, not a
+correction authorized in P2.
+
+The cleanup remains local for owner review after reconciliation and lightweight
+validation against the merged P3 baseline. Push, merge into main, deployment and
+further BEN correction work require separate authorization.
+
 ## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
 
 [FACT] Three pre-existing browser test failures corrected and committed as `0429c27` + `0af9b41`
