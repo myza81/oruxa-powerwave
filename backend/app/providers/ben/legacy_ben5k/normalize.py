@@ -44,6 +44,7 @@ from app.providers.ben.legacy_ben5k.reader import (
     read_channel_descriptors,
 )
 from app.providers.ben.legacy_ben5k.channel_map import classify_channels
+from app.providers.ben.legacy_ben5k.bphe_layout import is_reviewed_bphe_configuration, bphe_physical_words
 from app.providers.ben.legacy_ben5k.engineering import (
     Ben5kRecord,
     has_supported_fast_ac_configuration,
@@ -160,11 +161,14 @@ def parse_ben5k(data: bytes) -> BenRecord:
     ).reshape(header5k.sample_count, header5k.words_per_sample)
 
     # ── 3. Classify channels with payload variance analysis ────────────────
+    reviewed_bphe = data[layout.RECORD_CLASS_FLAG_OFFSET] == 0 and is_reviewed_bphe_configuration(data, data_offset)
+    physical_words = bphe_physical_words(analog_raw, header5k.words_per_sample) if reviewed_bphe else None
     ch_map = classify_channels(
         list(analog_raw),
         list(digital_raw),
         header5k.words_per_sample,
         sample_words=sample_words,
+        physical_words_by_descriptor=physical_words,
     )
 
     # ── 4. Build canonical BenHeader ──────────────────────────────────────
@@ -235,7 +239,7 @@ def parse_ben5k(data: bytes) -> BenRecord:
                 hardware_address=None,
                 slot=slot,
                 invalid_raw_value=None,
-                descriptor_raw=b"",
+                descriptor_raw=data[ch.descriptor_offset:ch.descriptor_offset + 58] if reviewed_bphe else b"",
             )
         )
 
@@ -263,6 +267,14 @@ def parse_ben5k(data: bytes) -> BenRecord:
         )
 
     # ── 7. Attach diagnostics ─────────────────────────────────────────────
+    if reviewed_bphe:
+        diagnostics.append(BenDiagnostic(
+            code="ben5k_bphe_reviewed_physical_mapping",
+            severity="info",
+            message="BPHE configuration-specific independent-export mapping; descriptor/logical/physical words: "
+                + "; ".join(f"{ch.descriptor_offset:#x}/{ch.word_index}/{ch.physical_word_index}"
+                            for ch in ch_map.recorded_analog),
+        ))
     diagnostics.append(BenDiagnostic(
         code="time_basis_unconfirmed",
         severity="warning",

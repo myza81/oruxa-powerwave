@@ -1,0 +1,22 @@
+{
+  "base_commit": "781b2b0ab978e7e472bf2f4742ca34db78744a3a",
+  "baseline_executed_commit": "eb67c5282fc5e0fd9a643bc4ea2098fe3a29c249",
+  "baseline_and_main_tree": "90a95859c6c24b4d4bbbd3db734c9016ee52a7a0",
+  "bphe_before_channels": 7,
+  "bphe_after_channels": 14,
+  "bphe_export_values_matched": 16072,
+  "bphe_max_abs_error": 6.448206306686188e-07,
+  "gpth_channels_bit_identical": 35,
+  "permas_channels_bit_identical": 27,
+  "artifact_hash_representation": "Git blob bytes: UTF-8 JSON with LF line endings",
+  "artifacts": {
+    "before.json": "c8ed34958f7ff02c40af783bd81170fbea2d699b73ca1d750185d4fbc7e16bcd",
+    "after.json": "403e35ee419d0091ffe274361d73b25594e55a51039379d6be526a8ec3694165"
+  },
+  "original_windows_artifacts_crlf": {
+    "before.json": "ba38c745ecf0bedc39a28281b4e0ce696175a3a7448f9fa17c56e80319953980",
+    "after.json": "863d00fab3a544289c5bb4f9e8b0a57751196a7243d54fe7f48da5208fde7fbd"
+  },
+  "reproduction_script_sha256": "7bcec57812d74eaa47af2692f480989e65afded77b797f1498981afd96adb249",
+  "browser_screenshot_sha256": "98c5718f1a302e55c80e5223ef762f478a51654d9388df05ad96aa49b0e5f680"
+}
