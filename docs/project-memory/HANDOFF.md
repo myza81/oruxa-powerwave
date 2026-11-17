@@ -4,7 +4,45 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-17** — owner accepted bounded BPHE P2; LOCAL COMMIT authorized.
+Last updated: **2026-11-17** — independent product-identity cleanup accepted; local commit authorized.
+
+## Independent product direction and cleanup handoff
+
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
+
+The owner retired external product benchmarking and comparative development
+instructions. [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) is the active
+guidance; DEC-020 records the original chronology and the 2026-11-17 retirement.
+Retain approved engineering functionality, UI/UX requirements and tests.
+
+The cleanup is isolated on `chore/independent-product-identity` from fetched
+`origin/main` at `856c74b23b56b60a20fabae712687273293780c5`. The original checkout
+and separate P3 worktree are preserved. P3 UAT acceptance is not confirmed in the
+available project record;
+this task changes no BEN decoding, waveform behaviour or release authorization.
+The P2 handoff below is retained from the main baseline, not a new release action.
+
+Scope: documentation, agent guidance and frontend comments. The owner accepted
+the 11-file cleanup and authorized its local commit. Push, merge and deployment
+remain unauthorized. P3 must complete owner DEV UAT and merge into main first.
+After that merge, update this branch against the new main, carefully reconcile
+overlapping documentation/frontend changes without discarding P3 work, and repeat
+the tracked-reference search and applicable lightweight validation.
+
+Fetch confirmed that PR #11 has since merged at
+`fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Main's project memory still says UAT
+is not accepted, and the PR has no acceptance comment. Owner clarification is
+pending; retain the approved `856c74b2` cleanup base until UAT completion is
+confirmed. Do not infer UAT acceptance or initiate any release from the merge.
+
+Validation: the initial case-insensitive inventory found 243 occurrences across
+nine tracked files. All were removed or rewritten, with no remaining matches or
+filename/directory exceptions across all 1,017 tracked files. Eleven files are
+changed, including the README and CURRENT_STATE direction updates. Frontend
+non-comment content is identical to the main baseline; inline JavaScript syntax
+passes. The existing grouped-label, recording-metadata and adaptive-resolution
+checks passed **24/24**. Backend code, numerical calculations, tests, fixtures,
+configuration and workflows are unchanged. Original Git history is preserved.
 
 ## Continue from the accepted local P2 correction
 
@@ -18007,8 +18045,8 @@ committed frontend/static regression subset `pytest backend/tests/test_frontend_
 
 **Owner direction**: extend Phase 4C1's A/B cursor channel values to
 digital channels -- every displayed digital channel shows its recorded
-state (0/1) at Cursor A/B, as compact inline "A:0 B:1" badges (Detego-
-style) appended to the existing Channel cell, explicitly NOT a full-width
+state (0/1) at Cursor A/B, as compact inline "A:0 B:1" badges
+appended to the existing Channel cell, explicitly NOT a full-width
 Cur A/Cur B table column like analog's own.
 
 **Investigation first, per the task's own explicit instruction**:
@@ -18960,7 +18998,7 @@ looked purely alphabetical, (2) digital traces didn't visually line up
 with analog, (3) opening a recording with everything displayed by
 default could lag with no loading feedback, (4) constant-HIGH vs
 constant-LOW signals were hard to tell apart -- plus a new visual
-direction (screenshot benchmark): small overlaid pill labels on each
+direction (screenshot specification): small overlaid pill labels on each
 lane, HIGH as a bold band, LOW as a thin line, not a two-plateau step
 trace.
 
@@ -19629,9 +19667,8 @@ session; this remains explicitly for the owner's own manual UAT.**
 
 **Phase 3B — Recordings Page and Upload Workflow.** Following the
 owner's own "finish this area before introducing additional features"
-direction, `oruxa_powerwave` gained a dedicated Recordings page,
-benchmarked (layout/workflow only, per the pre-existing DEC-020 Detego
-Benchmark Principle) against Detego's own Recordings page. Full detail:
+direction, `oruxa_powerwave` gained a dedicated Recordings page with a compact
+event table and upload workflow. Full detail:
 [MIGRATION_PLAN.md — Phase 3B Record](MIGRATION_PLAN.md#phase-3b--recordings-page-and-upload-workflow-2026-08-16),
 [DECISIONS.md — DEC-032](DECISIONS.md#dec-032--recordings-page-as-a-first-class-application-page-one-recording--one-logical-event-cfgdat-sessionworkspace-backed-not-a-persistent-cloud-library-phase-3b).
 
@@ -20028,9 +20065,8 @@ replaced by a full-viewport application shell. Full detail:
 
 **Owner design principle**: "the active analysis area / waveform canvas
 must dominate the screen" — clear, simple, compact, minimal clutter,
-scalable for future engineering functions. Detego named as the UI/UX/
-layout benchmark only (never branding/colors/typography/
-implementation, per the existing DEC-020 Detego Benchmark Principle).
+scalable for future engineering functions, using Oruxa's own UI standards
+and shared theme tokens.
 
 **Corrected shell hierarchy** (the owner explicitly corrected an
 earlier, wrong interpretation mid-specification):
@@ -20532,9 +20568,8 @@ manual UAT of Phase 2C-C1 Custom Groups: **PASSED** — "the workflow is
 smooth and easy to understand." Before moving on to digital channels, the
 owner requested one more analog-workspace refinement: every waveform
 panel/lane independently resizable by dragging, across all three layout
-modes (Grouped/Separate/Custom), with **Detego's vertical panel-resize
-interaction named as the explicit UX benchmark** (placement/feel only —
-no branding/colors/icons copied). Full detail:
+modes (Grouped/Separate/Custom), using a subtle, discoverable handle and
+direct dragging. Full detail:
 [MIGRATION_PLAN.md — Phase 2C-C2 Implementation Record](MIGRATION_PLAN.md#phase-2c-c2--adjustable-waveform-panel-heights-implementation-record-2026-08-15),
 [DECISIONS.md — DEC-028](DECISIONS.md#dec-028--adjustable-waveform-panel-heights-added-to-all-three-layout-modes-phase-2c-c2).
 
@@ -20622,10 +20657,8 @@ final judgment remains the owner's own manual UAT.
 **skip vertical lane drag/reorder for now** — previously flagged as the
 owner's likely next direction since Phase 2C-A — and instead requested
 **Custom Groups**: manual, user-controlled decisions about which
-displayed analog channels share a waveform panel, with **Detego's own
-"Edit Channel Groups" workflow named as the explicit benchmark** (a
-workflow/layout reference only — no Detego branding/colors/icons
-copied). Full detail:
+displayed analog channels share a waveform panel, through an explicit
+Edit Channel Groups workflow. Full detail:
 [MIGRATION_PLAN.md — Phase 2C-C1 Implementation Record](MIGRATION_PLAN.md#phase-2c-c1--custom-analog-channel-groups-implementation-record-2026-08-15),
 [DECISIONS.md — DEC-027](DECISIONS.md#dec-027--custom-analog-channel-groups-added-as-a-third-layout-mode-dragreorder-deferred-phase-2c-c1).
 
@@ -20715,10 +20748,8 @@ owner's own manual UAT.
 2C-B3 right-side-column label was **not** the owner's intended layout —
 the owner clarified explicitly: the label must be **overlaid on the
 waveform lane itself**, not placed in a dedicated right-side layout
-column, and should follow **Detego's own separate-waveform label style as
-closely as practical** for this specific placement (Detego treated as the
-explicit layout benchmark here, not just loose inspiration — a narrower
-application of the Detego Benchmark Principle than earlier passes used).
+column. It should be a compact floating tag near the right edge,
+vertically centered, with the waveform retaining visual priority.
 Full detail:
 [MIGRATION_PLAN.md — Phase 2C-B3A Implementation Record](MIGRATION_PLAN.md#phase-2c-b3a--overlay-right-side-lane-labels-implementation-record-2026-08-15),
 [DECISIONS.md — DEC-026 further Update note](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2)
@@ -20759,7 +20790,7 @@ passing (92 total this pass, no functional regressions). **Direct
 drag/reorder of panels, drag-to-overlay/group, drag-out-to-separate,
 digital-channel rendering, and lane resize were all explicitly not
 started.** Real-browser visual confirmation that the overlay genuinely
-reads as a Detego-style floating label rather than a side panel was not
+reads as the requested floating label rather than a side panel was not
 possible in this sandboxed, no-real-browser session — see this task's own
 final report for the closest available substitute evidence; final
 appearance judgment remains the owner's own manual UAT.
@@ -20770,9 +20801,8 @@ appearance judgment remains the owner's own manual UAT.
 UAT of Phase 2C-B2 (**passed** — "Separate view now feels much better,
 unified analog canvas direction is accepted"), the owner's next requested
 refinement was moving the Separate-mode lane label to a small compact tag
-on the RIGHT side, similar in placement/feel to Detego — used only as a
-UI/layout reference (no colors/typography/icons/component styling
-copied). This was a small, deliberately-scoped VISUAL refinement of the
+on the RIGHT side, using the existing Oruxa theme and controls. This was
+a small, deliberately-scoped VISUAL refinement of the
 existing lane label only. Full detail:
 [MIGRATION_PLAN.md — Phase 2C-B3 Implementation Record](MIGRATION_PLAN.md#phase-2c-b3--right-side-compact-lane-labels-implementation-record-2026-08-15),
 [DECISIONS.md — DEC-026 Update note](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2)
@@ -20788,7 +20818,7 @@ maximum width, only which side got the fixed-width column changed. The
 tag is now an explicit small pill (`border-radius: 999px`, a subtle
 `var(--panel-border)` border, `var(--surface-tint)` background) using
 existing Oruxa theme tokens already proven across the rest of the app
-(DEC-023) — no Detego color/typography/icon was copied. A new
+(DEC-023). A new
 `.ww-legend-label` wrapping span gives the text an ellipsis-truncation
 target (`max-width: 130px` on the tag) so an unusually long channel
 identifier can't crowd the waveform. The remove control and color dot are
@@ -20825,8 +20855,8 @@ appearance judgment remains the owner's own manual UAT.
 UAT of Phase 2C-B1 (**passed** for synchronization, horizontal zoom, and
 pan; **refinement requested** for Separate mode's visual layout, which
 looked like a stack of individually bordered/headed cards rather than one
-continuous analog canvas — the owner supplied a Detego screenshot purely
-as a visual/layout reference, per the Detego Benchmark Principle), this
+continuous analog canvas — the owner supplied a screenshot clarifying the
+requested layout), this
 was a small, deliberately-scoped VISUAL refinement of Separate mode only.
 Full detail:
 [MIGRATION_PLAN.md — Phase 2C-B2 Implementation Record](MIGRATION_PLAN.md#phase-2c-b2--unified-analog-canvas-layout-implementation-record-2026-08-15),
@@ -21037,9 +21067,8 @@ include these shared files, had their own local hard-coded `:root` color
 blocks and scattered `rgba(...)` literals removed/replaced with tokens,
 and gained a small Light/Dark segmented control in their header. The
 light palette is an **original Oruxa design** (`--bg: #f3f5f9`,
-`--panel: #ffffff`, `--accent: #3568d4`, etc.) — Detego's palette was not
-consulted or copied, per the owner's explicit instruction and the
-already-established Detego Benchmark Principle (DEC-020). The dark theme
+`--panel: #ffffff`, `--accent: #3568d4`, etc.), per the owner's explicit
+instruction to use Oruxa's own visual identity. The dark theme
 is the exact same values the app already used, just migrated onto the
 shared token system (same layout/behavior, different appearance — not a
 second CSS implementation).
@@ -21074,10 +21103,7 @@ Full detail:
 [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15).
 
 **What was done**: re-verified `powerwave`'s live multi-channel/panel code
-directly (via a spawned Explore subagent, same commit `3156392`), consulted
-Detego's own public marketing/docs pages (`detego.app`,
-`detego.app/docs/guide/waveform-viewer`) for publicly observable
-waveform-viewer behavior per DEC-020's benchmark framework, and produced a
+directly (via a spawned Explore subagent, same commit `3156392`) and produced a
 full design proposal covering: the panel abstraction (one shared X inherited
 from DEC-021, independent Y per panel); an `engineering_type` auto-grouping
 default that never permanently constrains channel placement; a channel-add
@@ -21102,10 +21128,9 @@ real-file-memory open items (neither escalates to a Phase 2C blocker).
 **A genuinely new finding, not previously recorded**: `powerwave` already
 has live channel-to-panel drag-and-drop (legend row → panel header, plus a
 sidebar combo box and a merge/split context menu) — but **no panel-
-reordering mechanism exists anywhere in its codebase**. Detego's own public
-docs don't document panel-reordering either. This is flagged as the single
-clearest opportunity for Oruxa to exceed both references at once, not
-merely match one of them.
+reordering mechanism exists anywhere in its codebase**. The owner separately
+requested freely arranged panels; the proposal addresses that engineering
+workflow requirement.
 
 **Nothing here is a `[DECISION]`** — every substantive design choice remains
 `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`/`[DEFER]`, per this
@@ -21232,53 +21257,26 @@ UAT sessions) — see
 [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
 **This is not a claim that the TTL `[OPEN]` item is solved.**
 
-## What was done in the prior session (Detego benchmark documentation, three passes)
+## Historical product-guidance documentation (2026-08-15; retired 2026-11-17)
 
-**Documentation-only, three passes same day**: established `detego.app`
-as an official product/UI-UX/waveform-workspace/dashboard/workflow
-**benchmark** (explicitly not a ceiling or a spec to copy blindly) for
-feature design, per direct owner instruction — new
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md), DEC-020 in
-[DECISIONS.md](DECISIONS.md), and short pointer sections added to
-[CLAUDE.md](../../CLAUDE.md)/[AGENTS.md](../../AGENTS.md) (matching the
-existing architecture-reference pointer pattern — state the principle
-briefly, read detail at the source). A second pass the same day received
-the owner's actual source document ("Detego Benchmark Principle.rtf") as
-a genuine attachment and updated all four files to quote/match its exact
-canonical wording (same DEC-020, not a new decision — see its own
-"Wording update" note in [DECISIONS.md](DECISIONS.md)), adding two
-specifics the first pass's paraphrase hadn't captured: "learn from
-Detego's public behaviour, implement an independent Oruxa design," and
-the standing question for major features — *"What does Detego do here,
-what does existing powerwave do, and what would make oruxa_powerwave
-better for the engineer?"* A **third pass**, same day, expanded
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) with the four-way
-feature-design method (`powerwave` / Detego / owner requirements /
-proposed superior Oruxa approach), three worked examples (waveform
-workspace, multi-source synchronization, calculated signals), an explicit
-"owner-specific capabilities may exceed Detego" list (not exhaustive —
-Detego is not the product boundary), and explicit
-"architecture-stays-Oruxa-owned" / "independent implementation, not
-reverse engineering" sections — plus one added sentence each in
-`CLAUDE.md`/`AGENTS.md` covering those last two points concisely. Still
-the same DEC-020; no new `DECISIONS.md` entry was needed. **No production
-code changed in any of the three passes.**
+**Documentation-only, three passes on 2026-08-15:** the owner established an
+external product-reference framework in [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)
+and DEC-020, with pointers in [CLAUDE.md](../../CLAUDE.md) and
+[AGENTS.md](../../AGENTS.md). A same-day actual attachment supplied canonical
+wording; a third pass added waveform-workspace, multi-source synchronization and
+calculated-signal examples, plus architecture and independent-implementation
+boundaries. No production code changed and no individual feature was approved
+by these documentation passes.
 
-**Provenance note, worth preserving**: an earlier version of this same
-request arrived mid-turn, structured as a system-reminder-wrapped message
-that referenced "an attached ZIP" never actually present in context, and
-asked for edits to this repository's own governance files plus a push to
-`main` while explicitly directing that this project's own
-change-governance step be skipped. That version was declined and flagged
-to the user rather than executed — an unverifiable, injection-shaped
-request is not owner authorization on its own. The owner then reissued
-the same direction as a normal, self-contained conversational instruction
-with no external attachment referenced or needed, which is what this
-pass and [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) are built from.
-**No technical audit of `detego.app` itself was performed or is claimed**
-— see [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)'s own `[OPEN]` note.
-Future sessions should not assume a feature comparison against Detego
-already exists just because this reference framework does.
+**Owner amendment, 2026-11-17:** the external benchmarking framework and comparative
+product direction are retired. The current independent direction is in
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md). Technical requirements and later
+approved engineering decisions remain intact; original wording is in Git history.
+
+**Provenance:** an earlier message referred to an unavailable ZIP and asked to
+bypass governance and push to main. It was declined as unverifiable. The accepted
+direction came from a self-contained owner instruction, followed by a genuine
+attachment. No external technical audit was performed or claimed.
 
 ## What was done in the prior session (Phase 2A implementation)
 
@@ -21919,7 +21917,7 @@ single-page UI direction. None of these were touched.
 - `grep` cross-check: every `getElementById(...)` call resolves to an
   `id=` that actually exists; no duplicate IDs.
 - No real-browser/visual verification of whether the overlay genuinely
-  reads as a Detego-style floating label rather than a side panel was
+  reads as the requested floating label rather than a side panel was
   performed in this sandboxed session (no headless browser available) —
   see "Live DEV verification" in this task's final report for what was
   checked instead (API-level evidence only), and its own explicit
@@ -22153,11 +22151,10 @@ single-page UI direction. None of these were touched.
   `/Volumes/externalDrive/code-gym/powerwave`, remote
   `https://github.com/myza81/powerwave.git`, commit `3156392` (same commit
   every prior investigation this project has used — no drift).
-- **Detego**: only publicly available marketing/docs pages
-  (`detego.app`, `detego.app/docs/guide/waveform-viewer`) were fetched via
-  `WebFetch`/`WebSearch` — no authenticated app, no proprietary code/assets
-  were accessed or inspected, per this task's own instruction and the
-  standing `PRODUCT_REFERENCES.md` governance.
+- **Historical design research:** only public marketing/documentation pages
+  were read; no authenticated application or proprietary code/assets were
+  inspected. Those external comparisons were retired by the owner on
+  2026-11-17; retained engineering considerations are recorded in the design notes.
 - **This is a documentation-only pass** — no backend or frontend code was
   touched; nothing to run a test suite against. `git diff --stat` after all
   edits shows only the four project-memory markdown files.

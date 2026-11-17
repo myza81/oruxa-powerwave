@@ -53,40 +53,30 @@ Its recurring test for any decision: *if this component moves to another server
 tomorrow, what needs to change?* The answer should be configuration, DNS,
 credentials and network settings — not business logic.
 
-## Product/engineering reference framework — the Detego Benchmark Principle
+## Independent product direction
 
 **Read [docs/project-memory/PRODUCT_REFERENCES.md](docs/project-memory/PRODUCT_REFERENCES.md)
-before making a major feature-design decision** (Phase 2B/2C waveform-workspace
-design in particular). That document quotes the owner-supplied "Detego
-Benchmark Principle" verbatim (DEC-020) — summarized here, not duplicated.
+before making a major feature-design decision.** It records the owner's
+independent product direction and engineering requirements.
 
-`detego.app` is an official product, UI/UX, waveform-workspace, dashboard,
-and workflow benchmark for `oruxa_powerwave`. **It is NOT the target
-ceiling and NOT a specification to copy blindly.**
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
 
-Required hierarchy, in order of authority, for major feature design:
+Use owner requirements, approved decisions and UAT to define feature scope.
+Do not introduce external product comparisons or imitation/surpassing goals
+into development guidance.
+Validate engineering behaviour against independent numerical evidence and
+established regression contracts. Existing `powerwave` code remains read-only
+migration evidence under the startup rule above; it does not prescribe the
+product's UI or feature scope.
 
-1. **Existing `powerwave`** — proven engineering behaviour / reusable
-   engineering logic.
-2. **`detego.app`** — benchmark for product quality, workflow, UI/UX and
-   interaction ideas.
-3. **Owner requirements / approved decisions / UAT** — final authority.
+For major features, identify the engineering task, required numerical and timing
+semantics, interaction needs, performance constraints and acceptance evidence.
+Retain the project's waveform, channel-management and usability requirements.
+Design interfaces using Oruxa's own UI standards and shared theme tokens.
 
-The design goal is for `oruxa_powerwave` to become more capable and more
-useful to engineers than Detego where justified. **If Detego lacks a
-capability required by the owner, do not omit or weaken that capability
-merely to stay consistent with Detego.** If Detego's workflow is good,
-learn from the public behaviour and implement an independent Oruxa
-design.
-
-For major features, ask: *"What does Detego do here, what does existing
-powerwave do, and what would make oruxa_powerwave better for the
-engineer?"*
-
-This project's own architecture ([docs/architecture/oruxa-architecture.md](docs/architecture/oruxa-architecture.md))
-stays authoritative regardless of Detego's technical choices, and any
-Detego-inspired UI must be an independent Oruxa implementation — never
-reverse-engineered or copied from Detego's own code/assets.
+This project's [architecture](docs/architecture/oruxa-architecture.md) remains
+authoritative. Product design does not override its portability, data ownership
+or API boundaries.
 
 ## Per-Unit measurement model — mandatory before any Per-Unit work
 

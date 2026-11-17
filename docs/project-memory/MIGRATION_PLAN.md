@@ -2411,31 +2411,17 @@ tag, its vendored directory under `frontend/vendor/`, and its Dockerfile
 `COPY` line — nothing else in the frontend or backend references a
 specific library by name.
 
-### Detego benchmark observations
+### Waveform prototype design considerations
 
-A single, bounded, public-page fetch of `detego.app`'s own marketing
-copy (not a technical audit, not an interactive walkthrough, not
-reverse-engineered) surfaced these high-level, publicly-stated points,
-used only as design-direction inspiration for this prototype, never as a
-spec:
+The prototype explored a workspace with distinct waveform, phasor and harmonic
+views, chart zoom/pan, cursors and RMS overlays as possible later capabilities.
+Its minimal chrome was limited to a renderer selector, Reset View and a small
+debug panel. These were design considerations, not approval to implement the
+later capabilities. The external comparison used in this historical design pass
+was retired by the owner on 2026-11-17; the technical considerations remain.
 
-- Multi-panel dashboard with waveforms, phasors, and harmonics presented
-  as distinct views within one workspace.
-- Explicitly advertises "zoom, cursors, and RMS overlay" on waveform
-  displays, plus pan.
-- Toolbar/chrome described as minimal, favoring direct chart interaction
-  over menu-heavy controls — informed this prototype's own choice to keep
-  chrome to a renderer selector + Reset View + a small debug panel, no
-  more.
-- Detego's own marketing copy states it uses "interactive Plotly.js
-  charts" — noted factually (it is public marketing text, not something
-  inferred from technical inspection) but **not** treated as a reason to
-  favor Plotly in this UAT, per DEC-020's explicit "do not favor it
-  merely because Detego uses or appears to use it."
-
-No deeper inspection was performed — consistent with
-`docs/project-memory/PRODUCT_REFERENCES.md`'s standing `[OPEN]` note that
-no full technical audit of Detego exists in this project's memory.
+Renderer selection was based on measured performance and owner UAT. A library's
+use in another application was not selection evidence.
 
 ### Performance comparison
 
@@ -2821,15 +2807,11 @@ introduce the centralized toolbar — making the requirement visible to
 anyone using the page, not just recorded in code comments and
 project-memory.
 
-### Detego benchmark note
+### Renderer selection evidence
 
-Per [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)'s standing framework:
-**Plotly was selected because of the owner's own hands-on UAT, not
-because Detego's public marketing copy happens to mention using
-Plotly.js** (that observation was noted factually during the earlier
-renderer-comparison pass and explicitly flagged then as not a reason to
-favor Plotly — DEC-020). This decision record does not imply otherwise;
-the UAT findings above are the entire stated reason.
+**Plotly was selected because of the owner's hands-on UAT.** The UAT findings
+above are the stated reason for DEC-022; no external product choice establishes
+the suitability of a rendering library for Oruxa-Powerwave.
 
 ### Tests
 
@@ -2962,8 +2944,8 @@ documentation.
   `AxisDisplayMode.SHARED`. The alternative `DEDICATED` (one axis per
   channel) mode exists in the same function but is **only reachable from
   confirmed-dead code** (`visualization_manager.py`, `flexible_plot_canvas.py`).
-  In other words: `powerwave` already behaves like Detego's "Proportional"
-  mode **permanently, with no "Fit" equivalent ever exposed to the user** —
+  In other words: shared same-unit scaling is enabled in the desktop code
+  **permanently, with no "Fit" equivalent ever exposed to the user** —
   the reverse of what §19 below initially proposes as Oruxa's own default.
   This tension is addressed directly in §19.
 - **Legend / channel identity**: a real, always-visible per-panel legend
@@ -3005,71 +2987,37 @@ original Phase 2 discovery/design pass, not repeating it):
 
 ---
 
-### 3. Detego benchmark findings
+### 3. Waveform workspace design considerations
 
-Gathered from Detego's own public marketing page (`detego.app`) and its public
-documentation page (`detego.app/docs/guide/waveform-viewer`) — publicly
-observable behavior only, per this task's instruction; no proprietary code or
-assets were inspected or reverse-engineered.
+Historical proposal from 2026-08-15, retained as engineering design context.
+The owner retired its external product comparisons on 2026-11-17. The items
+below do not approve implementation; later decisions record what actually shipped.
 
-`[FACT]`, from Detego's public docs, classified per this task's §6 scheme:
-
-- **Channel list sidebar** — three collapsible sections (Analog/Digital/
-  Computed), per-section count badge, per-channel visibility toggle, bulk
-  show/hide-all. **[USEFUL BENCHMARK]** — closely matches Phase 1's
-  already-shipped collapsible Analog/Digital grouping; extending it with
-  visibility toggles (rather than building a separate legend) is a natural fit.
-- **Grouping modes**: *Separate subplots* (no overlay), *Group by type*
-  (auto-detects voltage/current and overlays related channels, e.g. Ia/Ib/Ic),
-  *Custom groups* (a dedicated editor dialog; saved per-recording). **[USEFUL
-  BENCHMARK]** for the three-mode concept itself; **[ORUXA SHOULD DO BETTER]**
-  for the *mechanism* — a modal "custom groups editor" duplicates what direct
-  drag-and-drop already gives Oruxa for free once panels are draggable (see
-  §13) — a second, separate grouping UI would be redundant complexity Detego
-  needs (no drag/reorder is documented) but Oruxa does not.
-- **Panel resize**: per-channel drag dividers, plus toolbar-level
-  increase/decrease/reset-height buttons; a draggable analog/digital split
-  divider. **[USEFUL BENCHMARK]** for the toolbar-level global controls
-  (simple to build first); the per-panel divider is a reasonable **[NEEDS
-  UAT]** refinement once the coarser global control is validated.
-- **Y-axis scaling**: exactly two modes, "Fit" (each channel scaled to its own
-  space) and "Proportional" (same-unit channels share one scale). **[USEFUL
-  BENCHMARK]** — directly reusable naming and concept; see §22.
-- **Toolbar**: five groups separated by dividers — Navigation (zoom/pan/reset),
-  Measurement (A/B cursors, hover mode), Channel display (height, Y-scale),
-  Export (report/COMTRADE export), Annotate. **[USEFUL BENCHMARK]** for the
-  *grouping-by-concern* structure; **[NOT NEEDED]** for Phase 2C specifically —
-  Measurement/Export/Annotate are Phase 5+/out of scope here (§28 of this doc).
-- **Cursors**: single hover cursor (click to place, sidebar shows readouts at
-  that time) plus dual A/B measurement cursors with Δt and a t₀
-  time-reference re-basing feature. Both snap to the nearest recorded sample,
-  never interpolate. **[USEFUL BENCHMARK]**, explicitly **[NOT NEEDED]** for
-  Phase 2C's own scope (cursors are Phase 5) — but the sample-snapping
-  principle already matches Oruxa's existing Plotly `spikesnap: "data"`
-  configuration (DEC-022), so no future rework is implied.
-- **Legend**: no separate legend panel is documented — channel identity comes
-  from the sidebar's phase-colored dots plus a group-hover tooltip showing
-  every visible channel's value at that time. **[USEFUL BENCHMARK]** — directly
-  informs §23's recommendation to avoid building a second, separate legend UI.
-- **Drag-and-drop channel/panel reordering**: **not documented anywhere** in
-  Detego's own public guide. **[ORUXA SHOULD DO BETTER]** — this is exactly
-  the capability the owner has explicitly asked for (§13) that Detego itself
-  does not appear to offer; per DEC-020/PRODUCT_REFERENCES.md's own explicit
-  rule ("if Detego lacks a capability required by the owner, do not omit or
-  weaken it merely to stay consistent with Detego"), this is not a reason to
-  skip it — it is a specific, named opportunity for Oruxa to exceed the
-  benchmark.
-- **Rendering library**: Detego's own marketing copy states its charts are
-  "driven by interactive Plotly.js" — `[FACT]`, noted for completeness only.
-  **This is explicitly not evidence for, or repetition of, DEC-022** — Plotly
-  was selected in Phase 2B purely from the owner's own hands-on UAT
-  (DEC-022's Reason section), before this Detego docs page was even
-  consulted for Phase 2C. Recorded here only so a future reader doesn't
-  mistake the coincidence for a justification neither decision actually used.
-
-`[OPEN]` No further Detego audit (its actual client-side code, exact visual
-styling, or authenticated-app-only behavior) was performed — this reflects
-only what its own public marketing/docs pages state, per governance.
+- **Channel browser:** collapsible Analog/Digital/Computed sections, counts,
+  per-channel visibility and bulk actions can extend Phase 1's existing browser.
+  Reuse its channel identities and state rather than creating a second catalogue.
+- **Grouping:** consider Separate, automatic-by-engineering-type and Custom modes.
+  This pass proposed direct drag as the custom-group mechanism (§9/§13);
+  the owner later selected an explicit editor in DEC-027. Keep that chronology.
+- **Panel height:** global increase/decrease/reset controls and per-panel drag
+  dividers were options for evaluation. Independent heights must survive re-renders.
+  A separate analog/digital split divider was also a design consideration.
+- **Y scaling:** distinguish viewport-aware Fit from shared same-unit Proportional
+  scaling. Both have engineering uses; the proposed initial scope is in §19.
+- **Toolbar:** organize controls by Navigation, Measurement, Channel display,
+  Export and Annotate concerns. Only controls within the current phase's approved
+  scope belong in its initial implementation (§28).
+- **Cursors:** shared hover readouts, A/B measurements, delta-time and an explicit
+  time reference are useful design considerations for later phases. Engineering
+  readouts use the nearest recorded sample without interpolation and preserve
+  declared timing semantics. A visual hover mechanism alone does not define the
+  later measurement API.
+- **Identity:** reuse sidebar color dots, names and metadata, with compact trace
+  labels and detailed hover values, avoiding a competing legend state (§21).
+- **Arrangement:** the owner explicitly requested movable channels and panels
+  (§13); evaluate direct manipulation against that task, not product comparisons.
+- **Renderer:** DEC-022 already selected Plotly through owner UAT. This design
+  pass does not reopen that selection or establish any additional library evidence.
 
 ---
 
@@ -3145,7 +3093,7 @@ channel into the workspace in the first place."
 | Option | Behavior | Assessment |
 |---|---|---|
 | A. One channel per panel | Every selected channel gets its own panel | Simplest to reason about, but defeats the entire point of grouped-phase comparison (VA/VB/VC) that engineers actually want by default |
-| B. Auto-group by engineering type | Voltage together, Current together, etc. — already Phase 1's backend-computed `engineering_type` | **Recommended** — matches `powerwave`'s own default-panel intent (§2), matches Detego's own "Group by type" default, requires zero new classification logic |
+| B. Auto-group by engineering type | Voltage together, Current together, etc. — already Phase 1's backend-computed `engineering_type` | **Recommended** — uses the existing backend classification and groups related engineering quantities without new classification logic |
 | C. Auto-group by source/phase family | Group by detected phase (A/B/C) across engineering types | More sophisticated, but riskier — would require inferring phase *relationships* across types, a stronger claim than the existing conservative classifier makes; not justified for a first slice |
 | D. All selected channels in one plot | Single panel, everything overlaid | Rejected outright — mixes incompatible units by default (V and A superimposed) with no engineering justification |
 | E. Smart heuristic (beyond type) | E.g. combine B + C + naming similarity | Speculative complexity beyond what evidence supports; `_infer_panel_for_channel()`'s own third tier (name-keyword matching) was already deliberately *dropped* when Phase 1's classifier was built, favoring `Undefined` over a guess — repeating that mistake here would contradict an already-established project convention |
@@ -3170,15 +3118,13 @@ principle already established for the channel classifier itself — never guess)
 from the workspace-level viewport, DEC-021), containing one or more traces,
 with its own independent Y axis.**
 
-This is the right abstraction — confirmed by evidence from all three
-reference points:
+This abstraction is supported by the inspected migration evidence and the
+approved shared-time contract:
 
 - **`powerwave`**: `_infer_panel_for_channel()` already routes multiple
   channels into one shared panel by default (voltage, current, power,
   frequency, digital, other) — the same "one region, several traces, shared
   X" shape, just without a user-facing reorder mechanism (§2).
-- **Detego**: "Group by type... overlays related ones" is the identical
-  concept under a different name.
 - **DEC-021**: already establishes the shared-X/independent-Y split at the
   *workspace* level; a panel is simply the *unit* that owns one of those
   independent Y axes.
@@ -3213,15 +3159,14 @@ undivided attention.
 
 ### 9. Grouping behavior — modes
 
-Adopting Detego's three-mode *concept* (§3), with an Oruxa-specific mechanism
-for the third mode:
+The historical proposal considered three modes (§3), with direct manipulation
+as the proposed mechanism for the third mode:
 
 - **Separate** — every channel gets its own panel (§6 Option A), available as
   an explicit workspace-level toggle for a user who wants maximum clarity
   over compactness.
 - **Automatic** — group by `engineering_type` (§6 Option B, the default).
-- **Custom** — **not** a separate modal editor (Detego's own mechanism,
-  **[ORUXA SHOULD DO BETTER]** per §3) — Oruxa's "custom" state is simply
+- **Custom** — in this proposal, no separate modal editor; the state is simply
   *whatever the user has manually rearranged via drag* (§13). No dedicated
   "custom groups" UI needs to be built at all; dragging *is* the custom-group
   editor, which is both simpler to build and more directly manipulable than a
@@ -3242,12 +3187,9 @@ panel if more than one exists) rather than a guessed placement.
 `[FACT]` directly informs this section: `powerwave` already has a live,
 proven channel-to-panel drag mechanism (§2) — but **no panel-reordering
 mechanism at all**, confirmed absent by both grep and direct inspection.
-Detego's own public docs (§3) document neither. **This makes panel
-reordering itself the single clearest opportunity for Oruxa to exceed both
-references at once**, not merely match one of them — `powerwave` proves
-channel-to-panel movement is a real, validated engineering need (its users
-have had this for years), while panel-level reordering has apparently never
-been built in either reference product.
+Channel-to-panel movement has established engineering use. The owner's request
+to arrange panels freely supplies the requirement for panel-level reordering;
+its acceptance criteria must be evaluated within Oruxa's own workspace.
 
 Assessing the task's own six candidate behaviors:
 
@@ -3296,13 +3238,10 @@ Direct manipulation must never fight the chart's own zoom/pan drag gesture
 ### 12. Panel resizing
 
 - **First slice**: **global height controls only** — toolbar-level
-  "Decrease/Increase/Reset heights" (directly reusing Detego's own observed
-  pattern, §3 — a genuinely useful, low-cost benchmark idea), applied to
-  every panel at once. Simple to build, no per-panel state to persist yet.
+  "Decrease/Increase/Reset heights", applied to every panel at once.
+  Simple to build, no per-panel state to persist yet.
 - **`[DECISION MODE: NEEDS UAT]` refinement, not first slice**: per-panel
-  drag dividers (Detego also has this, as a finer-grained option layered on
-  top of its global controls, not a replacement for them; `powerwave` also
-  has this, via its native `QSplitter` handles, §2) — worth adding once
+  drag dividers for finer control of individual panels — worth adding once
   the coarser global control is in front of the owner and a real opinion can
   form about whether individual panels actually need independent heights in
   practice.
@@ -3549,13 +3488,13 @@ NEEDS UAT]` for the Fit/Proportional toggle:
 | A. Per-panel autoscale to the panel's *entire* record | No | Defeats the purpose of zooming — a small excursion could stay visually flat against a Y range sized for the whole record |
 | B. Per-panel autoscale to the *currently visible* (viewport) data | **Yes** | Matches the already-recorded ANALYSIS-mode recommendation; keeps zoom meaningful for both X and Y together |
 | C. Whole-record autoscale | No | Same problem as A |
-| D. Same-unit proportional/shared scaling (Detego's "Proportional") | Later, as a toggle | Genuinely useful for direct magnitude comparison across same-unit channels (e.g. comparing VA/VB/VC peak values) but its value is best judged once real multi-channel panels exist to react to — `[NEEDS UAT]` |
+| D. Same-unit proportional/shared scaling | Later, as a toggle | Genuinely useful for direct magnitude comparison across same-unit channels (e.g. comparing VA/VB/VC peak values) but its value is best judged once real multi-channel panels exist to react to — `[NEEDS UAT]` |
 | E. Manually locked scale | Defer | No evidence of need yet; an edge case worth revisiting only if UAT surfaces a real request for it |
 
 **A real tension surfaced by the `powerwave` investigation (§2), addressed
 directly rather than glossed over**: `powerwave`'s own live behavior is the
 *reverse* of this recommendation — its shared-scale-by-unit grouping
-(Detego's "Proportional" concept) is **always on**, with no per-channel/
+is **always on**, with no per-channel/
 "Fit" mode ever reachable from live code, and its autoscale is computed from
 the **entire session window**, not the live viewport. This recommendation
 deliberately departs from `powerwave`'s own default, for a stated reason
@@ -3566,18 +3505,13 @@ against a Y range sized for the whole record's other channels — the exact
 same "defeats the purpose of zooming" problem already identified and fixed
 for the X axis (§Phase 2 design's §12). Shipping viewport-aware **Fit** as
 Oruxa's own default is a specific, evidenced improvement over the existing
-desktop app, not an arbitrary choice — while still offering **Proportional**
-(matching both Detego's naming and `powerwave`'s own always-on default) as a
-toggle once real feedback justifies it.
+desktop code's observed limitation — while still offering **Proportional**
+as a toggle once real feedback justifies it.
 
-**Recommendation**: ship **B ("Fit," Detego's own naming is a reasonable,
-reusable label, computed viewport-aware — an explicit improvement over
-`powerwave`'s own stale, full-session-window autoscale) as the only mode in
-the first slice**; add a **Fit ↔ Proportional** toggle (Detego's exact
-two-mode naming, directly reusable; matches `powerwave`'s own always-on
-behavior when set to Proportional) as a later, evidence-gated refinement
-(§28 — 2C-D) once real multi-channel comparison feedback exists to judge it
-by.
+**Recommendation**: ship **B (viewport-aware "Fit") as the only mode in
+the first slice**, so zoomed transients remain readable; add a
+**Fit ↔ Proportional** toggle as a later, evidence-gated refinement
+(§28 — 2C-D) once real multi-channel magnitude-comparison feedback exists.
 
 ---
 
@@ -3615,8 +3549,8 @@ support (no new mechanism needed).
 
 ### 21. Legend / channel identity
 
-Directly informed by Detego's own observed minimalism (§3: "no separate
-legend panel is documented... sidebar phase-colored dots plus tooltip"):
+Use the existing channel browser for detailed identity and keep the chart
+labels compact:
 
 - **Full metadata (unit, phase, source) stays in the existing Phase 1
   sidebar** — already built, already searchable/collapsible/grouped, and now
@@ -3634,8 +3568,7 @@ legend panel is documented... sidebar phase-colored dots plus tooltip"):
 
 **Recommendation**: this three-tier split (sidebar = full metadata, panel
 header/legend-row = compact identity, hover = full instantaneous detail)
-avoids ever building a second, separate, competing legend UI — directly
-matching Detego's own observed approach and reusing Phase 1's already-shipped
+avoids a second, competing legend UI and reuses Phase 1's already-shipped
 sidebar rather than duplicating it.
 
 ---
@@ -3651,9 +3584,8 @@ session, regardless of panel membership or reorder), with **phase-aware
 coloring applied automatically whenever a channel's `phase` metadata is known**
 (Phase 1's already-shipped `phase` field on the analog channel model) —
 falling back to a plain deterministic color cycle when phase is null/
-`Undefined`. This is closer to an industry-standard convention (Detego's own
-IEC/ANSI phase-color scheme, §3) than a stylistic preference, so it's treated
-as `[ANALYSIS]`, not `[UAT]`. **The exact hex values / which convention (IEC
+`Undefined`. Treat semantic phase coloring as an engineering presentation
+choice requiring `[ANALYSIS]`, rather than a purely stylistic `[UAT]` choice. **The exact hex values / which convention (IEC
 60446 vs. ANSI/IEEE)** is a small, low-risk detail worth a quick
 `[COMPARISON]` at actual implementation time, not resolved here. User-editable
 color is explicitly **deferred** — no evidence of need yet, not requested by
@@ -3672,9 +3604,8 @@ Not implemented this pass; concept only, to keep future compatibility clean
   shared X viewport, reused for a "current hover time" instead of "current
   visible range").
 - **Value readout**: each panel shows its own trace's value(s) at that shared
-  time (matches both Detego's own single-cursor sidebar readout and Oruxa's
-  already-existing `spikesnap: "data"` sample-snapped hover, DEC-022,
-  unchanged).
+  time, retaining Oruxa's existing `spikesnap: "data"` sample-snapped hover
+  (DEC-022, unchanged).
 - **Horizontal guide**: stays **local** to the panel actually being hovered —
   broadcasting a horizontal (Y-value) guide line across panels with unrelated
   units/scales would be meaningless.
@@ -3707,10 +3638,9 @@ status (Phase 2.x/2D, per the original Phase 2 discovery pass §14). Comparing
 the task's own candidate designs:
 
 - **Separate digital section, collapsible, below the analog panels** —
-  **recommended direction** (not decided/implemented) — matches both
-  `powerwave`'s own default panel list (which already includes a distinct
-  "digital" panel, §2) and Detego's own sidebar (a distinct "Digital"
-  section). The existing "panel = shared X + own Y + one or more traces"
+  **recommended direction** (not decided/implemented) — keeps boolean
+  states separate from analog engineering-unit axes. The existing
+  "panel = shared X + own Y + one or more traces"
   abstraction (§7) already accommodates this without modification — a digital
   panel simply holds step-rendered traces instead of continuous-line ones,
   with a boolean hi/lo range instead of an engineering-unit Y axis.
@@ -3979,19 +3909,22 @@ throughout — this pass builds on them, not around them.
 
 ---
 
-### 33. Detego vs. `powerwave` vs. proposed Oruxa direction
+### 33. Engineering requirements and proposed Oruxa direction
 
-| Behavior | Detego benchmark | Existing `powerwave` | Owner requirement | Proposed Oruxa direction |
-|---|---|---|---|---|
-| Channel browser | Sidebar: Analog/Digital/Computed sections, count badges, visibility toggles | Sidebar channel tree with per-channel visibility checkboxes | (none stated beyond general flexibility) | Extend Phase 1's already-shipped, already-UAT'd collapsible/searchable browser with checkboxes + "Add N selected" (§5) — reuse, don't rebuild |
-| Grouping | Separate / Group-by-type / Custom (modal editor) | Auto-routes by `_infer_panel_for_channel()`; manual move via drag+combo+merge/split menu | "Groupable," "flexible vertically," never permanently constrained | Auto-group by `engineering_type` (§6/§9) as default; "custom" = drag state, no separate editor dialog (**exceeds Detego** — one less UI to learn) |
-| Panel arrangement | Not documented (no reorder found) | Channel↔panel move is live (drag/combo/menu); **panel reorder does not exist** | Owner explicitly wants panels "not fixed in one location" | Both channel↔panel move **and** panel reorder (§10) — **exceeds both references at once**, the clearest opportunity in this whole design |
-| Zoom/pan | Zoom (drag), Pan, Reset | Zoom/pan is local PyQtGraph re-view over a once-decimated array; no viewport re-fetch | DEC-021: workspace-level, shared across every channel | Shared X viewport broadcast across all panels (§15/§16), each zoom/pan re-fetches genuinely finer detail (already true since Phase 2A, DEC-019) — improves on `powerwave`'s own non-re-fetching zoom |
-| Toolbar | 5 grouped sections (Nav/Measurement/Display/Export/Annotate), one shared toolbar | No single toolbar — controls are distributed across sidebar/legend/context-menus/splitters | DEC-021: centralized, never one modebar per channel | Minimal centralized toolbar (§13): Reset Time View, Autoscale Y, Add channels, Reset Layout — grows later per §28, never one native modebar per panel |
-| Crosshair | Single hover cursor (click-placed) + A/B measurement cursors, sample-snapped | Three-way fragmented cursor ownership (confirmed, unresolved in `powerwave` itself) | Native, sample-snapped (already shipped, DEC-022) | Extend the already-proven single-owner Plotly spike-line mechanism to a shared, broadcast hover time across panels (§23) — avoids reproducing `powerwave`'s own fragmentation |
-| Y scaling | Two explicit modes: Fit / Proportional | One mode only, always-on, non-toggleable shared-by-unit, non-viewport-aware | (none stated beyond general readability) | Viewport-aware Fit as default (**improves on `powerwave`'s stale full-record autoscale**), Proportional as a later toggle (matches Detego's naming; matches `powerwave`'s own default when toggled) — §19 |
-| Panel resize | Per-panel drag divider + global height presets | Native `QSplitter` drag, but **sizes silently discarded on every rebuild** (confirmed bug) | (none stated) | Global height controls first (§12), explicit persisted per-panel height in Oruxa's own state model (§27) — avoids `powerwave`'s own confirmed data-loss bug |
-| Multi-source readiness | Not documented | Native — session model already supports multiple sources with independent native sample rates | "Do not build assumptions that later prevent" multi-source | Every panel's trace state already carries `source_id` (§26); no shared-time-grid assumption anywhere (unchanged Phase 2 principle) |
+Historical design summary; proposals retain the approval status of this pass.
+Later decisions and implementation records govern subsequent owner selections.
+
+| Behaviour | Engineering requirement or evidence | Proposed Oruxa direction |
+|---|---|---|
+| Channel browser | Reuse the existing collapsible/searchable browser and stable channel identities | Checkboxes plus Add N selected (§5) |
+| Grouping | Owner requires groupable channels without permanent placement constraints | Initial `engineering_type` groups; this pass proposes drag-defined custom state (§6/§9), later superseded by DEC-027's editor |
+| Panel arrangement | Owner requires panels not fixed in one location | Channel-to-panel movement and panel reordering (§10) |
+| Zoom/pan | DEC-021 requires workspace-level shared time; DEC-019 requires full-resolution detail | Broadcast one X viewport across panels and re-fetch finer detail (§15/§16) |
+| Toolbar | DEC-021 requires centralized controls | Reset Time View, Autoscale Y, Add channels and Reset Layout; expand only within approved scope (§13/§28) |
+| Crosshair | DEC-022 establishes native sample-snapped hover | One owner for shared hover time, with local Y guides (§23) |
+| Y scaling | Zoomed excursions and same-unit magnitudes must remain readable | Viewport-aware Fit first; evidence-gated Proportional toggle later (§19) |
+| Panel resize | Explicit heights must survive structural rebuilds | Global controls first in this proposal; store later per-panel height in workspace state (§12/§27) |
+| Multi-source readiness | Preserve independent source rates and identity | Carry `source_id` on every trace and avoid a shared-time-grid assumption (§26) |
 
 ---
 
@@ -4130,7 +4063,7 @@ not a frontend framework:
   banners, the waveform page, and the Plotly chart itself (below) — the
   full list the task asked for.
 
-### Light-theme palette (original Oruxa direction, not Detego's)
+### Oruxa light-theme palette
 
 `--bg: #f3f5f9`, `--panel: #ffffff`, `--panel-border: #d9dfea`,
 `--text: #1b2333`, `--text-dim: #5c6579`, `--accent: #3568d4`,
@@ -4139,11 +4072,8 @@ not a frontend framework:
 focused, bright without being harsh (an off-white page background with
 pure-white panel surfaces gives subtle depth without shadows/gradients),
 subtle low-alpha borders, a restrained mid-blue accent, and high enough
-text/background contrast for extended reading. No technical audit of
-Detego's actual palette was performed for this task (nor was one needed) —
-per DEC-020/`PRODUCT_REFERENCES.md`, Detego is a UI/UX *workflow* benchmark
-only, never a source of colors, and the owner repeated that constraint
-directly.
+text/background contrast for extended reading. The owner explicitly required
+Oruxa's own palette, implemented through the shared theme-token system.
 
 ### Dark theme
 
@@ -4575,8 +4505,7 @@ added to the existing central toolbar (reusing the same `.theme-toggle`
 visual pattern already used for the Zoom/Pan pair), visible whenever the
 toolbar itself is visible (i.e. whenever at least one channel is
 displayed). Grouped is the default, matching Phase 2C-A's existing
-behaviour exactly. **Custom** mode (Detego's own third grouping mode, per
-the Phase 2C design record's Detego findings) was deliberately not built.
+behaviour exactly. **Custom** mode was deliberately not built in this slice.
 
 ### Grouped mode — confirmed unchanged
 
@@ -4754,9 +4683,8 @@ horizontal zoom, pan, shared X/time movement. **Refinement required**:
 Separate mode's *visual layout* looked like a stack of independently
 bordered, individually-headed dedicated cards/panels (one per channel) —
 not the single continuous analog canvas the owner wanted. The owner
-supplied a Detego screenshot purely as a visual/layout reference (per the
-Detego Benchmark Principle, DEC-020) for what "one continuous canvas with
-independent lanes" should look like, and this task's own specification is
+supplied a screenshot clarifying what "one continuous canvas with independent
+lanes" should look like, and this task's own specification is
 the resolved target: **each analog channel keeps its own lane and its own
 Y scale (never merged onto one shared Y axis), but the surrounding visual
 chrome — card borders, repeated backgrounds, repeated headers — should
@@ -4966,10 +4894,8 @@ The owner manually UAT'd the completed Phase 2C-B2 (unified analog canvas)
 implementation and confirmed: **Separate view now feels much better; the
 unified analog canvas direction is accepted.** The next refinement
 requested was label placement: in Separate mode, the lane label should
-appear as a small compact label tag on the RIGHT side, similar in
-placement/feel to Detego — used only as a UI/layout reference (per the
-Detego Benchmark Principle, DEC-020), never as a source of exact colors,
-typography, icons, or component styling to copy.
+appear as a small compact label tag on the RIGHT side, using Oruxa's
+existing colors, typography, icons and component styling.
 
 ### Right-side label refinement
 
@@ -4994,8 +4920,8 @@ transparent text row — per this task's own §7 "subtle border or pill/tag
 treatment if useful." Both colors are existing Oruxa theme tokens already
 used elsewhere in this file (`--surface-tint` for the search-highlight/
 group-header background, `--panel-border` for every existing hairline
-divider) — **no Detego color, typography, or icon was copied**; the tag's
-own CSS was re-verified this pass to have no inline style override, so
+divider). The tag's CSS was re-verified this pass to have no inline style
+override, so
 Light/Dark readability comes entirely from the same token system already
 proven across the rest of the app (DEC-023). The tag has a `max-width`
 (130px) so an unusually long channel identifier truncates with an
@@ -5110,11 +5036,8 @@ clarified explicitly:
 
 - the label must be **overlaid ON the waveform lane itself**, not placed
   in a dedicated right-side layout column;
-- it should follow **Detego's own separate-waveform label style as
-  closely as practical** — for this specific placement treatment, Detego
-  is the explicit layout benchmark, not just loose inspiration (a
-  narrower, more literal application of the Detego Benchmark Principle,
-  DEC-020, than earlier Phase 2C-B2/B3 passes used it for).
+- it should be a compact floating tag near the right edge, roughly vertically
+  centered, with low visual weight so the waveform remains dominant.
 
 ### Overlay label correction
 
@@ -5132,21 +5055,13 @@ on the pill itself via `pointer-events: auto`) keeps the small amount of
 empty space around the compact tag from blocking chart hover/crosshair
 interaction underneath it.
 
-### Detego alignment
+### Owner-specified overlay presentation
 
-For this specific Separate-mode label placement, Detego's own compact
-overlay-tag style (floating near the right edge of the waveform trace
-itself, not in a side panel) was used as the direct layout benchmark, per
-the owner's own explicit instruction (§4 of this task). What was
-followed: the **placement** (overlaid on the trace, right-aligned,
-roughly vertically centered) and the **compactness** (small pill, low
-visual weight relative to the waveform). What was **not** copied: Detego's
-color palette, typography, toolbar, branding, or icons — the tag's
-background/border/text still use the same Oruxa theme tokens already
-established (`--surface-tint`, `--panel-border`, `--text-dim`), unchanged
-from Phase 2C-B3, and no Detego asset or code was inspected to build this
-(per DEC-020's "independent implementation, not reverse engineering"
-principle, unchanged).
+The Separate-mode label floats on the waveform near its right edge, roughly
+vertically centered. Its small pill shape keeps visual weight low. Background,
+border and text use the existing Oruxa tokens (`--surface-tint`, `--panel-border`,
+`--text-dim`), unchanged from Phase 2C-B3. No reserved label column reduces the
+waveform width.
 
 ### Interaction behavior — remove control preserved cleanly
 
@@ -5229,7 +5144,7 @@ no CI/deployment workflow file, no other frontend file.
 ### Honest limitation
 
 This sandboxed session has no real browser. Whether the overlay tag
-genuinely reads as a Detego-style floating label rather than a dedicated
+genuinely reads as the requested floating label rather than a dedicated
 side panel to a human eye — the actual visual goal of this task — was
 **not** visually confirmed here; only structural/CSS-source evidence
 (absolute positioning, z-index stacking, right/top offsets, single-lane
@@ -5242,8 +5157,8 @@ owner's own manual UAT, per this task's own §13.
 
 `[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-027).
 Adds the third and final grouping mode the Phase 2C design record's own
-§9/§3 left open ("Custom" — Detego's own third grouping mode — was
-explicitly deferred at both Phase 2C-A and Phase 2C-B1). **Direct
+§9/§3 left open ("Custom" was explicitly deferred at both Phase 2C-A and
+Phase 2C-B1). **Direct
 vertical drag/reorder, drag-to-overlay/group by direct lane dragging,
 digital-channel rendering, lane resize, and backend persistence remain
 explicitly not started.**
@@ -5254,9 +5169,7 @@ The owner explicitly chose to **skip vertical lane drag/reorder for now**
 — the previously-stated "owner's own next direction" from every prior
 Phase 2C-B record — and instead requested **Custom Groups**: manual,
 user-controlled decisions about which displayed analog channels share a
-waveform panel, with Detego's own "Edit Channel Groups" workflow as the
-explicit reference (a workflow/layout benchmark only, per the Detego
-Benchmark Principle, DEC-020 — no Detego branding/colors/icons copied).
+waveform panel, through an explicit Edit Channel Groups workflow.
 
 ### Layout modes
 
@@ -5275,7 +5188,7 @@ itself is hidden when nothing is displayed).
    below) so Custom is never an empty or broken state on first entry.
 3. User clicks **Edit Channel Groups**, opening a modal (Oruxa styling
    throughout — `.confirm-overlay` backdrop reused from the app's existing
-   one-and-only prior modal pattern, no Detego palette/typography/icons).
+   one-and-only prior modal pattern and existing theme tokens).
 4. The modal shows an **Unassigned channels** list (compact chips, each
    with a `<select>` "Add to group…" control) and a **Groups** section
    (`+ Add group` button; each group is a card with an editable name
@@ -5451,10 +5364,8 @@ The owner completed manual UAT of Phase 2C-C1 (Custom Groups):
 understand." Before moving on to digital channels, the owner requested
 one more analog-workspace refinement: every waveform panel/lane should be
 vertically resizable by dragging, across all three layout modes
-(Grouped/Separate/Custom), with **Detego's vertical panel-resize
-interaction named as the explicit UX benchmark** — placement/feel only,
-per the Detego Benchmark Principle (DEC-020); no Detego branding, colors,
-icons, or implementation copied.
+(Grouped/Separate/Custom), using a subtle, discoverable resize handle,
+direct dragging and a clear vertical-resize cursor.
 
 ### Resize interaction
 
@@ -6559,11 +6470,8 @@ load-bearing this phase.
 
 "The active analysis area / waveform canvas must dominate the screen"
 — clear, simple, compact controls, minimal visual clutter, scalable for
-future engineering functions. Detego named as the UI/UX/layout
-benchmark (never branding/colors/typography/implementation — per the
-existing Detego Benchmark Principle, DEC-020,
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)); Oruxa's own existing
-Light/Dark theme tokens used throughout, no palette redesign.
+future engineering functions. Oruxa's existing Light/Dark theme tokens are
+used throughout, with no palette redesign.
 
 ### Corrected shell hierarchy
 
@@ -7347,8 +7255,7 @@ redundant by this design's own choice, not merely incomplete data):
 **Recording** (display name + the full CFG/DAT filenames as contained
 secondary text, reusing Phase 3A-UAT4's `overflow-wrap: anywhere`/
 `min-width: 0` containment technique), **Station**, **Recorder**,
-**Channels** (`NA + MD`, mirroring Detego's own compact convention —
-layout only, no Detego colors/branding), **Duration**, **Imported**
+**Channels** (compact `NA + MD` counts), **Duration**, **Imported**
 (`created_at`, a real timezone-aware backend timestamp — distinct from
 the deliberately timezone-naive per-sample COMTRADE timestamps
 elsewhere in this app), **Actions**. "Format" was deliberately NOT its
@@ -15616,7 +15523,7 @@ both cases. Group/custom-group HEADINGS ("Voltage", "Current", "Group
 `.ww-legend`, `.ww-legend-item`, `.ww-legend-dot`, `.ww-legend-label`,
 `.ww-legend-remove`, and their Separate-mode overlay-positioning
 overrides (`#wwPanels.ww-panels-unified .ww-legend`, etc., including
-the Detego-benchmarked right-side overlay placement from Phase
+the owner-approved right-side overlay placement from Phase
 2C-B3A) are all present in the CSS exactly as before this phase --
 zero changes. `panel.legendEl`/`wwRenderLegend()`'s own implementation
 are unchanged; only the CALL SITES became conditional on layout mode
@@ -16026,7 +15933,7 @@ those two architectural commitments.
 3. Opening a recording with all analog + digital displayed by default
    could lag with no visible loading state.
 4. Constant-HIGH vs constant-LOW digital signals were hard to tell apart.
-5. New owner visual direction (screenshot benchmark): small overlaid
+5. New owner visual direction (screenshot specification): small overlaid
    pill labels directly on each lane; HIGH shown as a bold/thick band;
    LOW as a thin line; no two-plateau step trace as the primary visual.
 
@@ -16080,7 +15987,7 @@ matching `.ww-sticky-ruler`'s own horizontal padding exactly. This was
 only possible because of change C below (labels no longer need a wide
 Y-axis tick column).
 
-**C. Rendering redesign to the owner's visual benchmark** (fixes
+**C. Rendering redesign to the owner's visual specification** (fixes
 Finding 4, delivers the new visual direction): each digital lane is now
 ONE flat Y position (not two), carrying exactly two traces --
 `wwDigitalHighIntervals(entry)` (new) derives the channel's HIGH-state
@@ -16103,7 +16010,7 @@ Channel name labels moved from Y-axis ticks to Plotly **annotations**
 regardless of X zoom/pan -- never drifting with the data), rendered as a
 small opaque pill (`colors.panel` background, `colors.grid` border,
 9px font) directly overlaid on the lane, matching the owner's screenshot
-benchmark. Truncation budget shrank from 26 to 18 characters (a smaller
+specification. Truncation budget shrank from 26 to 18 characters (a smaller
 overlay pill, not a wide column); the FULL name remains available via
 the baseline trace's own hovertext, unchanged in spirit from before.
 The Y axis itself is now fully hidden (`visible: false`) -- it carried
@@ -16167,7 +16074,7 @@ backend file touched this pass).
 
 No real browser is available in this sandbox -- the actual rendered
 appearance of the bold HIGH band / thin baseline / overlaid pill labels
-against the owner's screenshot benchmark, real pixel alignment as
+against the owner's screenshot specification, real pixel alignment as
 perceived by eye (not just asserted equal margin values), and the
 loading overlay's real-world timing/feel were reasoned through and
 structurally exercised via jsdom, but not visually confirmed --

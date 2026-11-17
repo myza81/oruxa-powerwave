@@ -9,6 +9,27 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Independent product direction (owner decision, 2026-11-17)
+
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
+
+The external benchmarking direction is retired. Active guidance and historical
+design descriptions now express Oruxa's own engineering and UI/UX requirements;
+the original wording remains in Git history. See
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) and the amended DEC-020.
+This local cleanup changes documentation and frontend comments only. It is
+isolated from the P3 worktree and changes no numerical behaviour or release authority.
+
+Owner accepted the 11-file cleanup and authorized local commit only. Do not push,
+merge or deploy it. P3 must pass owner DEV UAT and merge first; then update this
+branch against the new main, preserve P3 changes during reconciliation and repeat
+the reference search and applicable lightweight checks on the integrated result.
+
+Fetched main now records PR #11 merged at `fb0e0c507841efda2a41dc03bafc95c990eabdf7`.
+Its project memory still says DEV UAT is not accepted, and the PR has no acceptance
+comment. UAT completion is not inferred from the merge. The approved cleanup base
+remains `856c74b2` until that sequencing prerequisite is confirmed by the owner.
+
 ## BEN5K BPHE layout P2 — owner accepted; local commit authorized (2026-11-17)
 
 [DECISION] Owner confirmed P1 passed GPTH/Permas DEV UAT and authorized focused
