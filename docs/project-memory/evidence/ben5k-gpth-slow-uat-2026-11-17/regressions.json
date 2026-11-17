@@ -1,0 +1,66 @@
+{
+  "approved_decoder_commit": "ff1209d98a3d9e8b43eab0bf068176cb69a4cba2",
+  "backend_total_passed": 642,
+  "browser_unique_scenarios_latest_passed": 83,
+  "browser_unique_failed": 0,
+  "browser_unique_skipped": 0,
+  "runs": {
+    "p3-uat-backend.xml": {
+      "tests": 375,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "02e6205087b08883bb2250eadcf2b35ddb7de41fbddc18b4f910d23cd857fc4f"
+    },
+    "p3-uat-controls.xml": {
+      "tests": 267,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "36c73db64b036a12a711f91e879bae8609313e0901cb59b3d72e2d7a44cdd54f"
+    },
+    "p3-uat-browser-regression.xml": {
+      "tests": 83,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "76c1bb4b461c8c832a64f9998a78125efff8e644b5219fb710aaac9c6e3959c0"
+    },
+    "p3-uat-annotation-rerun.xml": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "21e5771c839d4dd7befd7b03ee8eb293202609127958f8863af7b9aa7cf4975e"
+    },
+    "p3-uat-provenance-rerun.xml": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "6e157ca7a2ad1f8bc073b4f8414d7dd903fb2fd8fd671f8abd76e2d804e87738"
+    }
+  },
+  "initial_browser_failures": [
+    "Event Reconstruction annotations -- each type \u203a Maximum / Minimum Peak: the targeted channel only (native and calculated), over the visible range, live",
+    "Scenario F \u2014 Peak annotation: exploratory channels append \u26a0 glyph \u203a wwPeakValueLineText appends \u26a0 for exploratory_unverified; omits it for not_assessed"
+  ],
+  "resolution": "The two failures expected obsolete +/-Peak wording. Category and prefix expectations were updated; the affected annotation spec (6 tests) and provenance case (1 test) were rerun successfully. Warning-glyph checks remain unchanged. The final per-scenario results above replace those two earlier expectations; no runtime changes were required after the broader run.",
+  "p3_engineering_values_matched": 28040,
+  "p3_binary_states_matched": 28040,
+  "bphe_channels": 14,
+  "bphe_engineering_values": 16072,
+  "gpth_arrays_unchanged": 35,
+  "permas_arrays_unchanged": 27,
+  "complete_fast_summary_equal": true,
+  "canonical_fast_summary_sha256": "403e35ee419d0091ffe274361d73b25594e55a51039379d6be526a8ec3694165",
+  "untouched_runtime": [
+    "BEN5K GPTH Slow decoder",
+    "P1/P2 Fast conversions and mappings",
+    "BEN32 Fast/Slow and BEN6K SubBen conversion",
+    "waveform/peak/cursor service calculations",
+    "sample/time alignment",
+    "PU mathematics",
+    "DEC-213 authority and gates"
+  ]
+}

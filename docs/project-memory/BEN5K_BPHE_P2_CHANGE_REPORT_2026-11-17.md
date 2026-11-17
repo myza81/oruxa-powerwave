@@ -1,11 +1,16 @@
-# BPHE legacy BEN5K layout P2 — owner-accepted local correction
+# BPHE legacy BEN5K layout P2 — merged; operational closure verified
 
 Branch: `fix/ben5k-bphe-layout-p2`, isolated from fetched
 `origin/main=781b2b0ab978e7e472bf2f4742ca34db78744a3a` (PR #9 merged).
-Owner confirmed GPTH/Permas P1 DEV UAT passed. On 2026-11-17 the owner accepted
-this bounded P2 candidate and authorized its LOCAL COMMIT on the isolated branch.
-No push, merge or deployment is authorized or performed. P2 integration and owner
-DEV UAT must complete before another BEN correction stage starts.
+Owner confirmed GPTH/Permas P1 DEV UAT passed, then accepted this P2 candidate,
+GitHub integration and BPHE DEV UAT. PR #10 merged at
+`856c74b23b56b60a20fabae712687273293780c5`. Post-merge
+[CI #424](https://github.com/myza81/oruxa-powerwave/actions/runs/44010122459) and
+[automatic DEV deployment](https://github.com/myza81/oruxa-powerwave/actions/runs/44011270803)
+passed. Deploy job `133798574462` logs that exact version, backend health success
+and "Deployment successful." This closes P2 operationally while preserving the
+bounded applicability and unresolved inventory limitations below. P3 has separate
+owner authorization for local GPTH Slow work; no P3 release action is authorized.
 
 **Result:** native BPHE import exposes **14 analog channels**; all **16,072**
 engineering values match the original independent export. Both duplicate-name

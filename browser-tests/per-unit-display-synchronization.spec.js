@@ -480,7 +480,7 @@ test("callout and peak readouts follow the same basis while their anchors stay f
         await expect(meta).toHaveText(new RegExp(`^VA .* ${(mode === "per_unit" ? Math.sqrt(2) : PEAK_KV).toFixed(3).replace(".", "\\.")} ${mode === "per_unit" ? "pu" : "kV"}$`));
       } else {
         const box = page.locator(`.ww-annotation[data-annotation-id="${current[i].id}"]`);
-        await expect(box).toContainText(`+Peak: ${(mode === "per_unit" ? Math.sqrt(2) : PEAK_KV).toFixed(1)} ${mode === "per_unit" ? "pu" : "kV"}`);
+        await expect(box).toContainText(`Maximum: ${(mode === "per_unit" ? Math.sqrt(2) : PEAK_KV).toFixed(1)} ${mode === "per_unit" ? "pu" : "kV"}`);
       }
     }
   }
@@ -519,7 +519,7 @@ for (const kind of ["callout", "peak"]) {
       await page.evaluate(() => wwSetAnnotationDrawerOpen(true));
       await expect(page.locator(`.ww-annotation-list-item[data-annotation-id="${id}"] .ww-annotation-list-item-meta`))
         .toHaveText(/^VA .* 1\.414 pu$/);
-    } else await expect(page.locator(`.ww-annotation[data-annotation-id="${id}"]`)).toContainText("+Peak: 1.4 pu");
+    } else await expect(page.locator(`.ww-annotation[data-annotation-id="${id}"]`)).toContainText("Maximum: 1.4 pu");
   });
 }
 

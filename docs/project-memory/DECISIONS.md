@@ -820,6 +820,14 @@ against that main, preserve P3 changes when reconciling overlapping files, and
 repeat the tracked-reference search and applicable lightweight validation. This
 acceptance authorizes no additional product-direction or application changes.
 
+**Owner post-P3 confirmation (2026-11-17):** the owner explicitly confirmed P3
+DEV UAT acceptance and requested the local cleanup update after its original
+commit. Main contains PR #11 at `fb0e0c507841efda2a41dc03bafc95c990eabdf7`.
+Reconcile the cleanup against that main while retaining P3's code, evidence and
+history, then repeat the reference search and applicable lightweight validation.
+This authorizes a local integration commit on the cleanup branch; push, merge
+into main, deployment and unrelated work remain unauthorized.
+
 ---
 
 ## DEC-021 — Waveform navigation is workspace-level, not channel-level
@@ -29441,3 +29449,59 @@ Additional early Permas configured entries are recorded as an unresolved BEN-wid
 inventory issue; they do not authorize inventory expansion. Push, merge and
 deployment remain unauthorized. No further BEN correction stage may start until
 P2 integration and owner DEV UAT are complete.
+
+### P2 operational closure and local GPTH legacy Slow P3 authorization (2026-11-17)
+
+Owner accepted BPHE DEV UAT and confirmed PR #10 merge at
+`856c74b23b56b60a20fabae712687273293780c5`. Verified post-merge CI run
+`44010122459` and automatic DEV run `44011270803` both succeeded; deployment job
+`133798574462` confirms the merge SHA and backend health. This supersedes the
+earlier P2 pending integration/UAT status. General sparse mapping and the
+additional configured Permas entries remain unresolved; inventories stay frozen.
+
+Owner authorized focused P3 for GPTH 2022 `28 ff 03` Slow, reusing the exact-event
+independent 20-channel CFG/DAT, with a bounded local implementation if evidence
+is sufficient. Do not transfer Fast AC arithmetic or GRNE `29 ff` assumptions.
+Preserve P1/P2, BEN32/BEN6K, DEC-213, PU and UI behavior. No P3 commit, push,
+merge, DEV/PROD deployment or further BEN correction stage is authorized.
+
+Evidence, candidate and applicability:
+[GPTH Slow P3 engineering report](BEN5K_GPTH_SLOW_P3_CHANGE_REPORT_2026-11-17.md).
+
+**Owner acceptance (2026-11-17):** the owner accepted the bounded GPTH legacy
+Slow P3 candidate and authorized its LOCAL COMMIT on `fix/ben5k-gpth-slow-p3`,
+based on main `856c74b23b56b60a20fabae712687273293780c5`. Preserve class dispatch
+at `0x3C`, explicit physical-word frames, the independently established full-s16
+Slow conversion, all 20 calculated/20 binary identities and complete export
+parity. Preserve P1/P2, BEN32/BEN6K and DEC-213. Ten constant `0x0800` arrays retain
+their exported values without claiming active or physically valid measurements.
+The local-commit decision supersedes only the earlier P3 commit restriction;
+push, merge, deployment and another BEN stage remain unauthorized. The next
+milestone is separately authorized PR/CI and DEV deployment for owner GPTH Slow
+UAT before merging to main. No GRNE/general Slow, PU, calibration or UI change
+is included.
+
+### GPTH Slow P3 DEV UAT values defect — focused local follow-up (2026-11-17)
+
+P3 commit `ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` reached PR #11 with owner
+integration authorization; CI #426 passed. Owner DEV UAT is explicitly **not
+accepted**. The owner authorized investigation and the smallest evidenced LOCAL
+correction to peak callout and navigator/cursor presentation, on the current P3
+branch. This does not authorize commit, push, merge, DEV/PROD deployment or a next
+BEN stage. Preserve the independent Slow export, P1/P2, BEN32/BEN6K, DEC-213 and
+all existing time/sample alignment rules; do not change scaling assumptions.
+
+Evidence, bounded UI correction and regression results:
+[P3 UAT values report](BEN5K_GPTH_SLOW_P3_UAT_VALUES_FIX_2026-11-17.md).
+
+**Owner acceptance for controlled integration (2026-11-17):** the owner accepted
+the focused P3 UAT presentation correction and authorized local commit, push to
+`fix/ben5k-gpth-slow-p3`, PR #11 description update and confirmation of CI on the
+new head. This supersedes the follow-up commit/push restriction above, preserving
+decoder commit `ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` and its history.
+Keep signed extrema, numerical values, A/B sample resolution, time alignment and
+event t0 intact; use shared Maximum/Minimum terminology across Waveform and Event
+Reconstruction. Preserve P3 export/binary parity, P1/P2, BEN32/BEN6K and DEC-213.
+PR #11 must remain open/unmerged. DEV/PROD deployment, another BEN stage, unrelated
+UI/calibration work and product-identity cleanup are excluded. The next milestone
+is separately authorized owner DEV retesting after passing CI.

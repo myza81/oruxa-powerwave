@@ -4,77 +4,104 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-17** — independent product-identity cleanup accepted; local commit authorized.
+Last updated: **2026-11-17** — P3 DEV UAT accepted; local product-identity cleanup reconciled with merged main.
 
 ## Independent product direction and cleanup handoff
 
 Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
 
 The owner retired external product benchmarking and comparative development
-instructions. [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) is the active
-guidance; DEC-020 records the original chronology and the 2026-11-17 retirement.
-Retain approved engineering functionality, UI/UX requirements and tests.
+instructions. [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) is active guidance;
+DEC-020 retains the original chronology and the 2026-11-17 retirement. Approved
+engineering functionality, UI/UX requirements, decisions and UAT evidence remain.
 
-The cleanup is isolated on `chore/independent-product-identity` from fetched
-`origin/main` at `856c74b23b56b60a20fabae712687273293780c5`. The original checkout
-and separate P3 worktree are preserved. P3 UAT acceptance is not confirmed in the
-available project record;
-this task changes no BEN decoding, waveform behaviour or release authorization.
-The P2 handoff below is retained from the main baseline, not a new release action.
+Cleanup commit `6bd2c6c0f8b091c7b88871020f4d416192f54827` was created on
+`chore/independent-product-identity` from main `856c74b2`. The owner subsequently
+confirmed P3 DEV UAT acceptance and requested this local update against merged
+main `fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Both histories are retained.
+The current-state/handoff overlaps are reconciled without removing P3's code,
+tests, original engineering comparisons, screenshots or evidence. P3's separate
+worktree and the original checkout are preserved.
 
-Scope: documentation, agent guidance and frontend comments. The owner accepted
-the 11-file cleanup and authorized its local commit. Push, merge and deployment
-remain unauthorized. P3 must complete owner DEV UAT and merge into main first.
-After that merge, update this branch against the new main, carefully reconcile
-overlapping documentation/frontend changes without discarding P3 work, and repeat
-the tracked-reference search and applicable lightweight validation.
+Scope remains the same 11 cleanup files: documentation, agent guidance and
+frontend comments relative to merged main. There is no numerical, functional,
+UI redesign or new product-direction change. No cleanup push, merge into main
+or deployment is authorized.
 
-Fetch confirmed that PR #11 has since merged at
-`fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Main's project memory still says UAT
-is not accepted, and the PR has no acceptance comment. Owner clarification is
-pending; retain the approved `856c74b2` cleanup base until UAT completion is
-confirmed. Do not infer UAT acceptance or initiate any release from the merge.
+Integrated verification: all 243 obsolete references are removed or rewritten,
+with zero remaining tracked content/path matches across 1,035 files. All **24
+lightweight checks passed**; inline JavaScript syntax and whitespace checks passed.
+The 922 local documentation links introduce no newly broken paths/anchors, and
+all 212 decision identifiers retain their order. All 26 P3-specific code, test,
+report and evidence files are byte-identical to merged main. Frontend content
+after excluding comments is also identical, including P3's shared Maximum/Minimum
+and time-ruler correction. The net cleanup diff remains the same 11 files.
 
-Validation: the initial case-insensitive inventory found 243 occurrences across
-nine tracked files. All were removed or rewritten, with no remaining matches or
-filename/directory exceptions across all 1,017 tracked files. Eleven files are
-changed, including the README and CURRENT_STATE direction updates. Frontend
-non-comment content is identical to the main baseline; inline JavaScript syntax
-passes. The existing grouped-label, recording-metadata and adaptive-resolution
-checks passed **24/24**. Backend code, numerical calculations, tests, fixtures,
-configuration and workflows are unchanged. Original Git history is preserved.
+## P3 accepted and merged — preserved engineering handoff
 
-## Continue from the accepted local P2 correction
+P2 PR #10 merged at `856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV
+UAT accepted. Post-merge CI run `44010122459` and automatic DEV deployment
+`44011270803` passed. Deploy job `133798574462` confirms the exact merge SHA and
+successful backend health. Evidence is linked in CURRENT_STATE and the P3 report.
 
-Read [the P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
-Branch `fix/ben5k-bphe-layout-p2` is isolated from fetched main `781b2b0` (PR #9).
-Owner confirmed P1 GPTH/Permas DEV UAT passed. Existing dirty investigation work
-and all previous worktrees remain intact.
+Branch `fix/ben5k-gpth-slow-p3` is isolated from that fetched main. Read
+[the P3 engineering report](BEN5K_GPTH_SLOW_P3_CHANGE_REPORT_2026-11-17.md).
+Existing dirty investigation work and all previous worktrees remain intact.
 
 BPHE discovery derives the catalog start from feeder/sensor counts, not 0xBBA.
 Its complete 14-channel physical map is explicit and fingerprint-bounded to the
 independent export. Do not generalize it into a universal packing/subtraction rule.
 Both duplicate VR descriptors remain distinct; original words and descriptor bytes
 are preserved. P1 math, October's 62 accepted channels, BEN32/BEN6K, Unverified
-gates, PU and frontend runtime code are unchanged.
+gates and PU math are unchanged. Only the reviewed shared frontend presentation
+correction below changes runtime behaviour.
 
-Validation: **1,135 focused backend / 32 browser tests passed**, no skips/failures.
-All 16,072 BPHE native values match the independent export; actual provider/API,
-cursors/peaks and browser plots are covered. October full array hashes match the
-accepted P1 baseline bit for bit. The unrelated full backend suite was not rerun.
-Local-commit verification checked the JUnit results, evidence hashes and unchanged
-implementation/test content; the accepted test runs remain valid without reruns.
+P3 separates header class flag 1 from Fast, reads explicit physical-word frames,
+and applies full signed int16 * (catalog gain / 16) + offset only to the reviewed
+GPTH configuration. Complete original export parity: 20 calculated channels,
+28,040 engineering samples; 20 indications, 28,040 binary states. DEC-213 remains
+Unverified; clock basis remains UNKNOWN. The ten constant `0x0800` channel arrays
+are retained exactly as exported, without claiming active/valid measurements.
 
-Owner accepted the P2 report and explicitly authorized the local commit on this
-branch. No push, merge or deployment is authorized. P2 integration and owner DEV
-UAT must complete before another BEN correction stage begins.
+Decoder commit `ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` and correction
+`81bfeb5fa7b39890dc7b5f332ccab420ce90d054` are preserved in PR #11 merge
+`fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Decoder CI #426 passed backend
+(12,800 passed, 404 skipped) and Compose validation. Correction CI #428 passed
+12,800 backend tests with 405 skips, plus DEV/PROD Compose and isolation checks.
+The owner explicitly confirmed corrected DEV UAT is **accepted**, superseding
+the earlier unsuccessful UAT status after the peak/time-ruler correction.
+This is owner confirmation, not an assumption from the merge; no post-merge
+deployment success is claimed here. Read the preserved
+[UAT report](BEN5K_GPTH_SLOW_P3_UAT_VALUES_FIX_2026-11-17.md).
+The maximum is numerically correct at sample 382 / 19.100 s / -220.058623 MW.
+The old lower labels are minutes with an absent Plotly unit title. Local changes
+use Maximum/Minimum labels, seconds for long ruler views and a valid title object.
+Native values, peak/cursor service calculations and sample/t0 alignment are intact.
+The cleanup update is local only; any push, merge into main or deployment requires separate authorization.
+Existing full Fast BPHE/October summaries match P2/P1.
+Decoder validation before UAT: **1,172 backend / 33 browser passes**, no skips/failures.
+BEN32 Fast/Slow export parity, BEN6K's 103-column hashes and DEC-213 gates pass.
+Local JUnit lives at `.local-data/p3-final-regression.xml` and `p3-browser.xml`;
+committable evidence, source hashes and reproduction are linked in the P3 report.
+Local-commit confirmation reran only the 37 P3 checks: all passed without skips
+or implementation changes; JUnit is `.local-data/p3-commit-check.xml`.
+The current UAT follow-up has **642 focused backend passes** and **83 distinct
+browser scenarios with passing final results**. Two obsolete peak-label assertions
+were updated and rerun; the new report/evidence records the individual runs.
+The same full Fast summary is still bit-identical to P2/P1. Integration verification
+confirmed all 18 reviewed candidate file hashes and the recorded JUnit hashes/counts.
+Only documentation is updated for the new owner decision; the full local suites
+are not repeated. Check new-head CI independently of decoder CI #426. The original
+checkout and product-identity cleanup worktree remain excluded and preserved.
 
-No legacy Slow/digital/other-variant correction, warning redesign or new
-calibration framework is included. Broader sparse mapping remains unproven.
+The frozen GRNE S1–S6 `29 ff` study remains separate and unsupported; its nominal
+scaling hypotheses are not used for GPTH. No warning redesign, calibration
+framework, shared BEN32/BEN6K conversion or PU change is included. Broader P2
+sparse mapping remains unproven.
 The four earlier Permas `PGPS2 VR/VY/VB/IR` configured entries are an unresolved
 BEN-wide inventory issue, deferred in [CURRENT_STATE.md](CURRENT_STATE.md).
 Do not promote them or change the accepted 27 Permas channels under P2 authority.
-The old local-only/not-merged entries below are historical; main contains PRs #8/#9.
+The old local-only/not-merged entries below are historical; main includes P1/P2/P3 through PRs #9/#10/#11.
 
 ## Stage 3B-3 — Calibration UI/UX presentation (2026-11-14)
 

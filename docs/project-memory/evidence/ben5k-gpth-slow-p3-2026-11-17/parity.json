@@ -1,0 +1,1089 @@
+{
+  "files": [
+    {
+      "name": "GPTH 275.ben",
+      "size": 68212,
+      "sha256": "ddfd892304fad179255b7984502e58c816d4b4227fbaa02cb57149819a4866b4"
+    },
+    {
+      "name": "GPTH 275 slow Ben time_124149878.cfg",
+      "size": 1974,
+      "sha256": "de0f583412bb01707ba19d8dacdeb17d071c42d0b6b82c4b50a6865ec63abeac"
+    },
+    {
+      "name": "GPTH 275 slow Ben time_124149878.dat",
+      "size": 284607,
+      "sha256": "fcc67ee8e1a87b8fc996c407f4f74208bc1b5a52c5b80899f81af41a07ab277f"
+    }
+  ],
+  "configuration_sha256": "3caff3c4cccef555d7521da101ff722bcb162200afdcf5ba1941e1457addff38",
+  "sample_count": 1402,
+  "analog_channels": 20,
+  "engineering_values_matched": 28040,
+  "max_abs_error": 1.0325000232569437e-07,
+  "binary_channels": 20,
+  "binary_states_matched": 28040,
+  "constant_0x0800_channels": 10,
+  "channels": [
+    {
+      "channel_id": 151,
+      "name": "FREQ UR TBIN 2",
+      "physical_word": 0,
+      "frame_offset": 2012,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 6,
+      "values_matched": 1402,
+      "max_abs_error": 1.0325000232569437e-07,
+      "raw_sha256": "7f1a762fb24835b7c1fc6d0799fb2d483f860817aa4db707a1d945c5c06f4b87",
+      "engineering_sha256": "8b8ea5d305284d0f2024c9e2fc1042ee9cad1beee28266d301ff17d39de71fd2",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -78,
+          "engineering": 49.9619140586
+        },
+        {
+          "index": 2,
+          "raw": -79,
+          "engineering": 49.9614257773
+        },
+        {
+          "index": 399,
+          "raw": 443,
+          "engineering": 50.2163086159
+        },
+        {
+          "index": 400,
+          "raw": 548,
+          "engineering": 50.2675781524
+        },
+        {
+          "index": 401,
+          "raw": 629,
+          "engineering": 50.3071289377
+        },
+        {
+          "index": 446,
+          "raw": 2065,
+          "engineering": 51.0083008845
+        },
+        {
+          "index": 1001,
+          "raw": 1066,
+          "engineering": 50.5205078658
+        },
+        {
+          "index": 1401,
+          "raw": 1121,
+          "engineering": 50.5473633373
+        }
+      ]
+    },
+    {
+      "channel_id": 152,
+      "name": "FREQ UY SDAI 2",
+      "physical_word": 1,
+      "frame_offset": 2072,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 8,
+      "values_matched": 1402,
+      "max_abs_error": 1.0320000143337893e-07,
+      "raw_sha256": "3d2ad427fdf8d601cb4525450602524fa2629e2829fc00880cf819874dcdbff7",
+      "engineering_sha256": "fe9029ae5ab1c733908d822b6256f5b3cffe79c4d54afa1b6b1fc66306963eac",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -78,
+          "engineering": 49.9619140586
+        },
+        {
+          "index": 2,
+          "raw": -79,
+          "engineering": 49.9614257773
+        },
+        {
+          "index": 399,
+          "raw": 454,
+          "engineering": 50.2216797102
+        },
+        {
+          "index": 400,
+          "raw": 523,
+          "engineering": 50.2553711199
+        },
+        {
+          "index": 401,
+          "raw": 631,
+          "engineering": 50.3081055003
+        },
+        {
+          "index": 446,
+          "raw": 2064,
+          "engineering": 51.0078126032
+        },
+        {
+          "index": 1001,
+          "raw": 1067,
+          "engineering": 50.5209961471
+        },
+        {
+          "index": 1401,
+          "raw": 1121,
+          "engineering": 50.5473633373
+        }
+      ]
+    },
+    {
+      "channel_id": 143,
+      "name": "POWER TBIN 1",
+      "physical_word": 2,
+      "frame_offset": 2132,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 0,
+      "values_matched": 1402,
+      "max_abs_error": 3.923474878320121e-08,
+      "raw_sha256": "84ceabbf431b2ea8501e5d6502e4b0a23075e2b2508ee380f4414fae93fc1339",
+      "engineering_sha256": "1fa1c148ee887b0ba378692a03eb1f9505270571a9bf019d8258261a6c3736a6",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -801,
+          "engineering": -257.7002297733
+        },
+        {
+          "index": 382,
+          "raw": -684,
+          "engineering": -220.05862317720002
+        },
+        {
+          "index": 399,
+          "raw": -874,
+          "engineering": -281.18601850420004
+        },
+        {
+          "index": 400,
+          "raw": -947,
+          "engineering": -304.6718072351
+        },
+        {
+          "index": 401,
+          "raw": -1047,
+          "engineering": -336.8441205651
+        },
+        {
+          "index": 404,
+          "raw": -1534,
+          "engineering": -493.52328648220004
+        },
+        {
+          "index": 1001,
+          "raw": -1251,
+          "engineering": -402.4756397583
+        },
+        {
+          "index": 1401,
+          "raw": -1236,
+          "engineering": -397.6497927588
+        }
+      ]
+    },
+    {
+      "channel_id": 144,
+      "name": "POWER SDAI 1",
+      "physical_word": 3,
+      "frame_offset": 2192,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 2,
+      "values_matched": 1402,
+      "max_abs_error": 3.089672873102245e-08,
+      "raw_sha256": "f4a1e7b2ec91951f8c257d113293c2a27bbfeec4b41e4051e49680fba17cbd89",
+      "engineering_sha256": "d5682a7d92bc56c3b922494eb386bc0ba1fae02e6dd8e4488ff6c1fa808f9457",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 22,
+          "engineering": 7.077908932600001
+        },
+        {
+          "index": 378,
+          "raw": -118,
+          "engineering": -37.9633297294
+        },
+        {
+          "index": 399,
+          "raw": 455,
+          "engineering": 146.3840256515
+        },
+        {
+          "index": 400,
+          "raw": 555,
+          "engineering": 178.5563389815
+        },
+        {
+          "index": 401,
+          "raw": 684,
+          "engineering": 220.05862317720002
+        },
+        {
+          "index": 404,
+          "raw": 1208,
+          "engineering": 388.6415450264
+        },
+        {
+          "index": 1001,
+          "raw": 939,
+          "engineering": 302.0980221687
+        },
+        {
+          "index": 1401,
+          "raw": 921,
+          "engineering": 296.3070057693
+        }
+      ]
+    },
+    {
+      "channel_id": 145,
+      "name": "POWER SDNK 1",
+      "physical_word": 4,
+      "frame_offset": 2252,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 4,
+      "values_matched": 1402,
+      "max_abs_error": 1.1765308727262891e-08,
+      "raw_sha256": "899084062d256595a7bec2f9e7f8512549cf94c65ae23f6ab3bc6b0442e9c587",
+      "engineering_sha256": "b384a17f718adcc62bbcd6d0cc5f0a4c0e5588c7b67cf4207662a2bf800996e9",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -55,
+          "engineering": -17.6947723315
+        },
+        {
+          "index": 195,
+          "raw": -51,
+          "engineering": -16.4078797983
+        },
+        {
+          "index": 399,
+          "raw": -209,
+          "engineering": -67.2401348597
+        },
+        {
+          "index": 400,
+          "raw": -233,
+          "engineering": -74.96149005890001
+        },
+        {
+          "index": 401,
+          "raw": -273,
+          "engineering": -87.8304153909
+        },
+        {
+          "index": 403,
+          "raw": -460,
+          "engineering": -147.992641318
+        },
+        {
+          "index": 1001,
+          "raw": -375,
+          "engineering": -120.6461749875
+        },
+        {
+          "index": 1401,
+          "raw": -377,
+          "engineering": -121.28962125410001
+        }
+      ]
+    },
+    {
+      "channel_id": 146,
+      "name": "POWER TBIN 2",
+      "physical_word": 5,
+      "frame_offset": 2312,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 7,
+      "values_matched": 1402,
+      "max_abs_error": 3.949054416807485e-08,
+      "raw_sha256": "b591e0c265ae706b9e443056539657f8a632a9f98fdc7d1e16733698ff6e6651",
+      "engineering_sha256": "09df264f5225e8c6fe021e9c7cd4c387fa02cf5ca0c79022dbecb3fef6fdf70e",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -800,
+          "engineering": -257.37850664
+        },
+        {
+          "index": 383,
+          "raw": -684,
+          "engineering": -220.05862317720002
+        },
+        {
+          "index": 399,
+          "raw": -864,
+          "engineering": -277.9687871712
+        },
+        {
+          "index": 400,
+          "raw": -936,
+          "engineering": -301.13285276880003
+        },
+        {
+          "index": 401,
+          "raw": -1036,
+          "engineering": -333.30516609880004
+        },
+        {
+          "index": 404,
+          "raw": -1544,
+          "engineering": -496.7405178152
+        },
+        {
+          "index": 1001,
+          "raw": -1250,
+          "engineering": -402.153916625
+        },
+        {
+          "index": 1401,
+          "raw": -1234,
+          "engineering": -397.0063464922
+        }
+      ]
+    },
+    {
+      "channel_id": 147,
+      "name": "POWER SDAI 2",
+      "physical_word": 6,
+      "frame_offset": 2372,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 9,
+      "values_matched": 1402,
+      "max_abs_error": 3.0359615266206674e-08,
+      "raw_sha256": "06f48fd8376c1b6f3feaf4a82e2723eaecf66839bdde274ea46ea2fb086e3383",
+      "engineering_sha256": "22adece76355635bf606f13c5d780478fe67bbb3e4ecc8c08cf2e74b89dae7ce",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 18,
+          "engineering": 5.7910163994
+        },
+        {
+          "index": 378,
+          "raw": -129,
+          "engineering": -41.5022841957
+        },
+        {
+          "index": 399,
+          "raw": 433,
+          "engineering": 139.3061167189
+        },
+        {
+          "index": 400,
+          "raw": 529,
+          "engineering": 170.19153751570002
+        },
+        {
+          "index": 401,
+          "raw": 658,
+          "engineering": 211.6938217114
+        },
+        {
+          "index": 404,
+          "raw": 1187,
+          "engineering": 381.8853592271
+        },
+        {
+          "index": 1001,
+          "raw": 921,
+          "engineering": 296.3070057693
+        },
+        {
+          "index": 1401,
+          "raw": 907,
+          "engineering": 291.8028819031
+        }
+      ]
+    },
+    {
+      "channel_id": 149,
+      "name": "FREQ UY SDAI 1",
+      "physical_word": 8,
+      "frame_offset": 2676,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 3,
+      "values_matched": 1402,
+      "max_abs_error": 1.0320000143337893e-07,
+      "raw_sha256": "bcebb77d88ef383c3f5593df23c7c2d085ce8ee7ccc77fd18e8002181d6604a0",
+      "engineering_sha256": "d6486431ca12192b59de35e5ec01a1efe661d45641f1babe4882110a75fbf9f3",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -78,
+          "engineering": 49.9619140586
+        },
+        {
+          "index": 2,
+          "raw": -79,
+          "engineering": 49.9614257773
+        },
+        {
+          "index": 399,
+          "raw": 454,
+          "engineering": 50.2216797102
+        },
+        {
+          "index": 400,
+          "raw": 523,
+          "engineering": 50.2553711199
+        },
+        {
+          "index": 401,
+          "raw": 632,
+          "engineering": 50.3085937816
+        },
+        {
+          "index": 446,
+          "raw": 2064,
+          "engineering": 51.0078126032
+        },
+        {
+          "index": 1001,
+          "raw": 1067,
+          "engineering": 50.5209961471
+        },
+        {
+          "index": 1401,
+          "raw": 1121,
+          "engineering": 50.5473633373
+        }
+      ]
+    },
+    {
+      "channel_id": 150,
+      "name": "FREQ UB SDNK 1",
+      "physical_word": 9,
+      "frame_offset": 2736,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 5,
+      "values_matched": 1402,
+      "max_abs_error": 1.0325000232569437e-07,
+      "raw_sha256": "4cd762ca5971e48dad2d34066985499287ba1bcd6f2f1a4d2f8ed0adf0de8414",
+      "engineering_sha256": "9cce5eb8d2c3bbb72c02eb9dad6d382249813f606f9807292e101f06105b0ae3",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -78,
+          "engineering": 49.9619140586
+        },
+        {
+          "index": 2,
+          "raw": -79,
+          "engineering": 49.9614257773
+        },
+        {
+          "index": 399,
+          "raw": 434,
+          "engineering": 50.211914084200004
+        },
+        {
+          "index": 400,
+          "raw": 537,
+          "engineering": 50.2622070581
+        },
+        {
+          "index": 401,
+          "raw": 617,
+          "engineering": 50.3012695621
+        },
+        {
+          "index": 446,
+          "raw": 2065,
+          "engineering": 51.0083008845
+        },
+        {
+          "index": 1001,
+          "raw": 1067,
+          "engineering": 50.5209961471
+        },
+        {
+          "index": 1401,
+          "raw": 1121,
+          "engineering": 50.5473633373
+        }
+      ]
+    },
+    {
+      "channel_id": 148,
+      "name": "FREQ UR TBIN 1",
+      "physical_word": 10,
+      "frame_offset": 2796,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 1,
+      "values_matched": 1402,
+      "max_abs_error": 1.0320000143337893e-07,
+      "raw_sha256": "8327c90420952203cd6aa36b531224123f17b4102b614b3f19c484dcf2bf763a",
+      "engineering_sha256": "9603be20ae21b1360ae7ea0758d24707d02bf9f688ea7c1f37610b13caa37632",
+      "constant_0x0800": false,
+      "samples": [
+        {
+          "index": 0,
+          "raw": -78,
+          "engineering": 49.9619140586
+        },
+        {
+          "index": 1,
+          "raw": -79,
+          "engineering": 49.9614257773
+        },
+        {
+          "index": 399,
+          "raw": 443,
+          "engineering": 50.2163086159
+        },
+        {
+          "index": 400,
+          "raw": 548,
+          "engineering": 50.2675781524
+        },
+        {
+          "index": 401,
+          "raw": 628,
+          "engineering": 50.3066406564
+        },
+        {
+          "index": 446,
+          "raw": 2064,
+          "engineering": 51.0078126032
+        },
+        {
+          "index": 1001,
+          "raw": 1066,
+          "engineering": 50.5205078658
+        },
+        {
+          "index": 1401,
+          "raw": 1121,
+          "engineering": 50.5473633373
+        }
+      ]
+    },
+    {
+      "channel_id": 238,
+      "name": "POWER SDNK 2",
+      "physical_word": 11,
+      "frame_offset": 2859,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 10,
+      "values_matched": 1402,
+      "max_abs_error": 5.2381210480234586e-08,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "fff2fd9e894454a27330abb40e81cd0c8797ac79857dd7e32fd3c6d19f8ef878",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        }
+      ]
+    },
+    {
+      "channel_id": 239,
+      "name": "POWER HV TX1",
+      "physical_word": 12,
+      "frame_offset": 2919,
+      "native_gain": 2.059030055999756,
+      "effective_gain": 0.12868937849998474,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 12,
+      "values_matched": 1402,
+      "max_abs_error": 3.126388037344441e-11,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "1ee36bd9e78e85eee5b513d90115d01ee639673bab55c8ade2a3a09d19d1da69",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 263.555847168
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 263.555847168
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 263.555847168
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 263.555847168
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 263.555847168
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 263.555847168
+        }
+      ]
+    },
+    {
+      "channel_id": 240,
+      "name": "POWER HV TX2",
+      "physical_word": 13,
+      "frame_offset": 2979,
+      "native_gain": 2.0590200424194336,
+      "effective_gain": 0.1286887526512146,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 14,
+      "values_matched": 1402,
+      "max_abs_error": 9.991248361984617e-08,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "cae3f787877a1da1b29075ae1eb1f834dbfd5cea3e4fdf646b7e3c4256927ec2",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 263.5545655296
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 263.5545655296
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 263.5545655296
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 263.5545655296
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 263.5545655296
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 263.5545655296
+        }
+      ]
+    },
+    {
+      "channel_id": 242,
+      "name": "FREQ UR HV TX1",
+      "physical_word": 15,
+      "frame_offset": 3187,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 13,
+      "values_matched": 1402,
+      "max_abs_error": 1.0240000136718663e-07,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "2512333edcdb86d3c58608d571a4e4a93778a6d37c9b50249c75f28b80613c0f",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        }
+      ]
+    },
+    {
+      "channel_id": 243,
+      "name": "FREQ UY HV TX2",
+      "physical_word": 16,
+      "frame_offset": 3247,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 15,
+      "values_matched": 1402,
+      "max_abs_error": 1.0240000136718663e-07,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "2512333edcdb86d3c58608d571a4e4a93778a6d37c9b50249c75f28b80613c0f",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        }
+      ]
+    },
+    {
+      "channel_id": 241,
+      "name": "FREQ UB SDNK 2",
+      "physical_word": 17,
+      "frame_offset": 3307,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 11,
+      "values_matched": 1402,
+      "max_abs_error": 1.0240000136718663e-07,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "2512333edcdb86d3c58608d571a4e4a93778a6d37c9b50249c75f28b80613c0f",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        }
+      ]
+    },
+    {
+      "channel_id": 298,
+      "name": "POWER PLNG 1",
+      "physical_word": 18,
+      "frame_offset": 3370,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 16,
+      "values_matched": 1402,
+      "max_abs_error": 5.2381210480234586e-08,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "fff2fd9e894454a27330abb40e81cd0c8797ac79857dd7e32fd3c6d19f8ef878",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        }
+      ]
+    },
+    {
+      "channel_id": 299,
+      "name": "POWER PLNG 2",
+      "physical_word": 19,
+      "frame_offset": 3430,
+      "native_gain": 5.1475701332092285,
+      "effective_gain": 0.3217231333255768,
+      "offset": 0.0,
+      "unit": "MW",
+      "export_column": 18,
+      "values_matched": 1402,
+      "max_abs_error": 5.2381210480234586e-08,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "fff2fd9e894454a27330abb40e81cd0c8797ac79857dd7e32fd3c6d19f8ef878",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 658.8889769984
+        }
+      ]
+    },
+    {
+      "channel_id": 301,
+      "name": "FREQ UY  PLNG 2",
+      "physical_word": 21,
+      "frame_offset": 3590,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 19,
+      "values_matched": 1402,
+      "max_abs_error": 1.0240000136718663e-07,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "2512333edcdb86d3c58608d571a4e4a93778a6d37c9b50249c75f28b80613c0f",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        }
+      ]
+    },
+    {
+      "channel_id": 300,
+      "name": "FREQ UR PLNG 1",
+      "physical_word": 22,
+      "frame_offset": 3650,
+      "native_gain": 0.0078125,
+      "effective_gain": 0.00048828125,
+      "offset": 50.0,
+      "unit": "Hz",
+      "export_column": 17,
+      "values_matched": 1402,
+      "max_abs_error": 1.0240000136718663e-07,
+      "raw_sha256": "e0c6a459ed6da5efacebdbf5ea1ef0ea4bd42e9dec53929d4612d09f84180ad0",
+      "engineering_sha256": "2512333edcdb86d3c58608d571a4e4a93778a6d37c9b50249c75f28b80613c0f",
+      "constant_0x0800": true,
+      "samples": [
+        {
+          "index": 0,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 399,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 400,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1001,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        },
+        {
+          "index": 1401,
+          "raw": 2048,
+          "engineering": 51.0000001024
+        }
+      ]
+    }
+  ]
+}

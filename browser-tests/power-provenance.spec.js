@@ -532,7 +532,7 @@ test.describe("Scenario F — Peak annotation: exploratory channels append ⚠ g
     }, benCalc.id);
 
     expect(benPeakText, "BEN5K exploratory peak text must contain ⚠").toContain("⚠");
-    expect(benPeakText, "BEN5K exploratory peak text must have +Peak prefix").toContain("+Peak");
+    expect(benPeakText, "BEN5K exploratory peak text must have Maximum prefix").toContain("Maximum");
 
     // COMTRADE channel (not_assessed) → peak text must NOT include ⚠.
     const comPeakText = await page.evaluate((channelId) => {

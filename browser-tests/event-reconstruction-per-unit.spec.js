@@ -479,7 +479,7 @@ test.describe("Event Reconstruction Per-Unit Display -- cursors and annotations"
     expect(pu.callout.meta).toContain(" pu");
     await expect.poll(async () => (await look(id("peak_max"))).sampleIndex).toBe(eng.peak.sampleIndex);
     expect((await look(id("peak_max"))).value).toBeCloseTo(eng.peak.value / LG_BASE_KV, 9);
-    expect((await look(id("peak_max"))).valueLine).toMatch(/^\+Peak: .* pu$/);
+    expect((await look(id("peak_max"))).valueLine).toMatch(/^Maximum: .* pu$/);
     // Drawn on the pu axis at that value.
     const placed = await page.evaluate((annotationId) => {
       const a = wwErAnnotationById(annotationId);
