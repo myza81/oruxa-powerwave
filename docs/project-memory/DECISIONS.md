@@ -763,96 +763,70 @@ Impact:
 
 ---
 
-## DEC-020 — `detego.app` is adopted as a UI/UX/product benchmark, not a ceiling or an architecture requirement
+## DEC-020 — Product-design guidance; external benchmarking retired by owner
 
-Date: 2026-08-15
-Status: Approved
-Source: explicit project-owner direction, given directly in conversation
-(not via any external attachment — see the note in Alternatives
-considered below).
+Date: 2026-08-15; amended by owner on 2026-11-17.
+Status: Historical benchmarking direction retired; retained engineering requirements remain approved.
+Source: explicit project-owner instructions, issued directly in conversation.
 
-Decision:
-`detego.app` is adopted as a **UI/UX, workflow, dashboard, and product
-benchmark** for `oruxa_powerwave` feature design, to be consulted
-routinely during Phase 2B/2C waveform-workspace design in particular. For
-major feature design, use the three-way comparison recorded in full in
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md):
+Historical decision (2026-08-15):
+The owner established a product/UI-UX reference framework for Phase 2B/2C
+waveform-workspace design, alongside verified desktop engineering evidence.
+Owner requirements, approved decisions and UAT remained final authority;
+the framework did not prescribe architecture, approve individual features or
+limit required engineering capabilities. The engineering substance was clear
+waveform interaction, useful channel organization, responsive charts and an
+independent Oruxa implementation under its own architecture.
 
-```text
-powerwave                          = proven engineering behaviour /
-                                      reusable logic
-detego.app                         = UI/UX, workflow, dashboard, and
-                                      product benchmark
-owner requirements / approved
-decisions / UAT                    = final authority
-```
+Chronology:
 
-**Detego is a benchmark, not a ceiling**: `oruxa_powerwave` should aim to
-be more capable and more useful than Detego wherever the owner's
-engineering requirements justify it. A feature Detego lacks is never, on
-its own, a reason to withhold that feature from `oruxa_powerwave`.
-Detego's own implementation must not be blindly copied or treated as an
-architecture requirement — it is consulted for inspiration/comparison,
-never as a specification to satisfy feature-for-feature.
+- The original request was accepted when reissued as a self-contained owner
+  instruction. An earlier message referring to an unavailable ZIP and directing
+  governance to be skipped was declined as unverifiable.
+- A same-day wording update used an actual owner-supplied attachment. A third
+  documentation pass added feature-design examples for waveform workspaces,
+  multi-source synchronization and calculated signals, plus architecture and
+  implementation boundaries. These were documentation changes, not feature
+  approvals or production-code changes. No external technical audit was claimed.
+- On 2026-11-17, the owner retired the external benchmarking framework and all
+  comparative product direction. The original wording remains in Git history;
+  this entry retains the decision's chronology and engineering substance.
 
-Reason:
-The project already has one engineering-behaviour reference
-(`powerwave`) but no equivalent reference for UI/UX/workflow quality,
-even though the owner has stated (recorded across this project's Phase 1
-UAT passes) that `oruxa_powerwave` should emphasize UI/UX more heavily
-than the desktop application. Establishing an explicit product/UI
-benchmark, with equally explicit limits on its authority, prevents two
-failure modes at once: designing Phase 2B/2C waveform UX from first
-principles with no external reference point, and — the opposite risk —
-silently treating Detego's feature set as a de facto scope ceiling or its
-implementation as something to copy rather than learn from.
+Current owner direction (2026-11-17):
 
-Alternatives considered:
-The same request was first received mid-turn, structured as a
-system-reminder-wrapped message referencing "an attached ZIP" that was
-never actually present in the assistant's accessible context, asking for
-edits to this repository's governance files and a push to `main` while
-explicitly directing the assistant to skip this document's own
-change-governance step. The assistant declined to act on that version,
-flagging it as an unverifiable, injection-shaped request rather than
-executing it — see the conversation record for the full flag. The owner
-then reissued the same direction as a normal, direct conversational
-instruction with self-contained content (no external attachment
-referenced or needed), which is the version this decision and
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) are built from. No
-technical audit of `detego.app` itself (its actual features, architecture,
-or UI) has been performed — this decision establishes the *reference
-relationship and its limits*, not a feature comparison; see
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)'s own `[OPEN]` note.
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
+
+Future feature decisions use Oruxa-Powerwave's engineering requirements,
+architecture, UI/UX standards, independent numerical evidence and owner decisions.
+Existing waveform interaction, channel management, responsive-chart and
+large-file performance requirements remain in force. Existing desktop code is
+read-only migration evidence, not a product-design target.
 
 Impact:
-- [CLAUDE.md](../../CLAUDE.md) and [AGENTS.md](../../AGENTS.md) both gain
-  a short pointer to [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md),
-  matching the existing pattern used for the architecture reference
-  document (state the principle briefly, read the detail at the source).
-- Does **not** retroactively change any already-approved decision in this
-  document, and does not by itself approve or reject any specific Phase
-  2B/2C feature — it only establishes how Detego may be used as evidence
-  in a future `[PROPOSAL]`, per
-  [README.md's decision-mode framework](README.md#decision-modes).
-- No production code was changed for this decision.
 
-**Wording update (2026-08-15, same day)**: the owner subsequently supplied
-the actual source document ("Detego Benchmark Principle.rtf") as a real
-attachment, containing canonical wording for this same decision — a
-substantively different situation from the earlier declined attempt (a
-message referencing a ZIP that was never actually present). This is not a
-new decision (no `DEC-021` was created): the substance is unchanged, but
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) was updated to quote the
-owner-supplied text verbatim as the authoritative statement, and now
-additionally includes two specifics not spelled out in this entry's
-original wording above: (1) *"If Detego's workflow is good, learn from
-the public behaviour and implement an independent Oruxa design"*, and
-(2) the standing question to ask for major features — *"What does Detego
-do here, what does existing powerwave do, and what would make
-oruxa_powerwave better for the engineer?"* Both are part of this same
-DEC-020 decision, not separate ones. [CLAUDE.md](../../CLAUDE.md)/
-[AGENTS.md](../../AGENTS.md) were updated to match this wording too.
+- [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md), [CLAUDE.md](../../CLAUDE.md)
+  and [AGENTS.md](../../AGENTS.md) record the independent direction.
+- Later engineering decisions retain their identifiers, dates, technical
+  requirements and approval status. Historical descriptions are expressed in
+  Oruxa's own terms; Git history is preserved.
+- This identity cleanup changes documentation and frontend comments only.
+  It authorizes no numerical, functional, architectural or release changes.
+
+**Owner local-commit acceptance (2026-11-17):** the 11-file independent identity
+cleanup is accepted for local commit on `chore/independent-product-identity`,
+based on main `856c74b2`. Push, merge and deployment remain unauthorized. P3 must
+complete owner DEV UAT and merge into main first. Then update the cleanup branch
+against that main, preserve P3 changes when reconciling overlapping files, and
+repeat the tracked-reference search and applicable lightweight validation. This
+acceptance authorizes no additional product-direction or application changes.
+
+**Owner post-P3 confirmation (2026-11-17):** the owner explicitly confirmed P3
+DEV UAT acceptance and requested the local cleanup update after its original
+commit. Main contains PR #11 at `fb0e0c507841efda2a41dc03bafc95c990eabdf7`.
+Reconcile the cleanup against that main while retaining P3's code, evidence and
+history, then repeat the reference search and applicable lightweight validation.
+This authorizes a local integration commit on the cleanup branch; push, merge
+into main, deployment and unrelated work remain unauthorized.
 
 ---
 
@@ -1056,7 +1030,7 @@ Decision:
 > Oruxa Powerwave supports Light and Dark appearance.
 > Light is the preferred/default direction.
 > Theme is a general application preference.
-> Detego is only a UI/UX benchmark; Oruxa uses its own palette.
+> Oruxa uses its own palette and shared theme tokens.
 
 Implemented as a small, shared, reusable theme-token system (CSS custom
 properties, `frontend/theme.css`) and a shared preference module
@@ -1070,11 +1044,8 @@ choice persists in `localStorage` (`powerwave.theme`) and applies
 immediately without a page reload. Dark is preserved through the same
 token system — same layout, same behavior, different appearance — not a
 second, parallel CSS implementation. The original Oruxa light palette
-(clean, professional, restrained accent, subtle borders) is explicitly
-**not** derived from or matching Detego's visual identity — Detego was
-consulted only per the already-established Detego Benchmark Principle
-(DEC-020/`PRODUCT_REFERENCES.md`) as a UI/UX workflow benchmark, never as
-a source of colors.
+(clean, professional, restrained accent, subtle borders) defines the
+application's own visual identity through shared theme tokens.
 
 Also recorded by this same decision:
 
@@ -1122,10 +1093,8 @@ directly contradicts the task's own "do not scatter hard-coded colors"
 instruction and this project's established preference for token-based,
 maintainable styling); a full settings-page redesign (rejected — the
 owner explicitly asked for a simple selector, not a redesigned settings
-experience); copying Detego's visual palette (rejected outright — the
-Detego Benchmark Principle, DEC-020, is explicit that Detego is a UI/UX
-*workflow* benchmark, never a source of colors or visual identity, and the
-owner repeated that constraint directly for this task); keeping
+experience); adopting an external visual palette (rejected — the owner
+required Oruxa's own visual identity); keeping
 `spikethickness: 1` unchanged and relying only on alpha/dash (a legitimate
 fallback the owner explicitly authorized if `1` really were the practical
 minimum — not needed here, since a genuinely thinner native value was
@@ -1299,8 +1268,7 @@ slice: the waveform workspace supports two user-selectable layout modes,
 **Grouped** (the existing Phase 2C-A default — panels formed by
 `engineering_type`) and **Separate** (one panel/lane per displayed analog
 channel), switchable via a simple toolbar control. **Custom** grouping
-(matching Detego's own third mode, per the Phase 2C design record's §3
-Detego findings) is explicitly **not** built in this slice.
+is explicitly **not** built in this slice.
 
 Confirmed as part of this same decision:
 
@@ -1374,8 +1342,7 @@ Source: explicit project-owner instructions opening the Phase 2C-B2 task
 (2026-08-15), following manual UAT of Phase 2C-B1 that passed for
 synchronization/zoom/pan but flagged Separate mode's visual layout (a
 stack of individually-carded/headed panels) as not the desired appearance,
-with an owner-supplied Detego screenshot as a visual/layout reference only
-(per the Detego Benchmark Principle, DEC-020).
+with an owner-supplied screenshot clarifying the requested visual layout.
 
 Decision:
 
@@ -1410,8 +1377,8 @@ Reason:
 
 The owner's own Phase 2C-B1 UAT explicitly identified the individually-
 carded panel appearance as not matching the intended product direction,
-supplied a Detego screenshot as a layout/interaction reference (never a
-specification to copy, per DEC-020), and this task's own specification
+supplied a screenshot clarifying the layout/interaction, and this task's
+own specification
 (§3/§4/§6) is the owner directly selecting "one continuous canvas,
 independent lanes, independent Y scales" as the resolved visual target.
 Per this project's own governance, a genuine owner selection of a specific
@@ -1457,9 +1424,8 @@ Impact:
 **Update (2026-08-15, Phase 2C-B3, same day)**: following owner UAT
 confirming the unified-canvas direction itself is accepted ("Separate view
 now feels much better"), the lane label moved from the canvas's left edge
-to its right edge and was restyled as a small compact pill/tag (Detego
-used only as a placement/compactness reference, never for exact colors,
-typography, or icons — unchanged principle). This is a refinement of the
+to its right edge and was restyled as a small compact pill/tag using
+Oruxa's existing colors, typography and controls. This is a refinement of the
 same visual-presentation concern this decision already covers, not a new
 architectural direction — no new decision entry was added for it, per
 governance (only add an entry for something not already captured). See
@@ -1470,10 +1436,8 @@ keeps its own independent Y axis; Grouped mode is still untouched.
 **Update (2026-08-15, Phase 2C-B3A, same day, correction)**: the owner
 clarified the Phase 2C-B3 right-side-column placement was still not the
 intended layout — the label must be **overlaid on the waveform lane
-itself**, not placed in a dedicated right-side layout column, and should
-follow **Detego's own separate-waveform label style as closely as
-practical** for this specific placement (Detego treated as the explicit
-layout benchmark here, not just loose inspiration). The dedicated
+itself**, not placed in a dedicated right-side layout column. The owner
+requested a compact floating tag near the lane's right edge. The dedicated
 fixed-width grid column was removed; the label (same DOM/markup) is now
 absolutely positioned over the chart area (pinned near the right edge,
 vertically centered, `z-index` above the chart) instead of occupying its
@@ -1494,13 +1458,12 @@ Source: explicit project-owner instructions opening the Phase 2C-C1 task
 (2026-08-15) — the owner's own direct choice to skip vertical lane
 drag/reorder for now (previously flagged, in every Phase 2C-B record
 since Phase 2C-A, as the owner's stated *next* direction) and implement
-Custom Groups instead, with Detego's "Edit Channel Groups" workflow named
-explicitly as the reference.
+Custom Groups instead, using an explicit Edit Channel Groups workflow.
 
 Decision:
 
 The Phase 2C design record's own previously-open question — Custom
-grouping, Detego's own third grouping mode, explicitly deferred at both
+grouping, explicitly deferred at both
 Phase 2C-A (DEC-024) and Phase 2C-B1 (DEC-025) — is resolved for this
 slice: the waveform workspace supports a third user-selectable layout
 mode, **Custom**, alongside Grouped and Separate. In Custom mode, the
@@ -1602,8 +1565,7 @@ Status: Approved
 Source: explicit project-owner instructions opening the Phase 2C-C2 task
 (2026-08-15), following the owner's own manual UAT of Phase 2C-C1 Custom
 Groups (**passed** — "the Custom Groups workflow is smooth and easy to
-understand"), naming Detego's vertical panel-resize interaction as the
-explicit UX benchmark for this specific feature.
+understand"), requesting direct vertical panel resizing for this feature.
 
 Decision:
 
@@ -1648,16 +1610,14 @@ Confirmed as part of this same decision:
   policy Phase 2C-C1 (DEC-027) already established for `ww.customGroups`,
   for the same reason (a channel re-added later naturally regains its old
   height).
-- Detego's placement/feel (subtle discoverable handle, direct drag, clear
-  vertical-resize cursor) was used as the interaction reference only — no
-  Detego branding, colors, icons, or implementation were copied; the
-  handle's own styling uses existing Oruxa theme tokens exclusively.
+- The interaction uses a subtle discoverable handle, direct drag and a clear
+  vertical-resize cursor. The handle uses existing Oruxa theme tokens exclusively.
 
 Reason:
 
 The owner's own instructions opening this task are the explicit act of
-requesting this feature next (ahead of digital channels), naming Detego
-as the specific UX benchmark, and this task's own §6/§13 required
+requesting this feature next (ahead of digital channels), and this task's
+own §6/§13 required
 concrete, documented, tested choices (height bounds; cross-mode height
 behavior) rather than leaving them open. Per this project's own
 governance, resolving named required choices with an owner-directed
@@ -2233,9 +2193,7 @@ entry was added, per governance. See
 Date: 2026-08-16
 Status: Approved
 Source: explicit project-owner instructions opening the Phase 3B task
-(2026-08-16), benchmarked against Detego's own Recordings page (layout
-reference only, per DEC-020's Detego Benchmark Principle — no Detego
-branding/colors/icons copied).
+(2026-08-16), specifying a compact Recordings page and upload workflow.
 
 Decision:
 
@@ -2315,9 +2273,8 @@ Reason:
 
 The owner's own instructions opening this task are the explicit request
 for this page, framed as "finish this area before introducing
-additional features," with Detego's Recordings page named as the
-layout/workflow benchmark (per the pre-existing DEC-020 Detego
-Benchmark Principle) and an explicit, repeated instruction not to
+additional features," with a compact recording-list/upload workflow and
+an explicit, repeated instruction not to
 silently change the project's existing no-persistent-event-storage
 philosophy while doing so.
 
@@ -2338,10 +2295,8 @@ would multiply network calls just to render a list, contrary to this
 phase's own "Recordings page should not refetch... merely by opening"
 performance instruction; the additive `SourceSummaryOut` field change is
 lower-risk and lower-cost); implementing folders/sharing/upload-history
-now because Detego has them (rejected — the task's own explicit
-instruction that folders are future work, and DEC-020 already
-establishes that Detego is a benchmark, not a specification to copy
-blindly); auto-navigating to Waveform immediately after a successful
+now (rejected — the task explicitly leaves folders and related capabilities
+for future work); auto-navigating to Waveform immediately after a successful
 upload (rejected — the task's own explicit preferred flow is
 upload → list → user chooses Open/Analyse).
 
@@ -4344,9 +4299,7 @@ purpose-built callout subsystem:
 
 Reason:
 
-Detego-benchmark-informed (per the project's own Detego Benchmark
-Principle, DEC-020) but an independent Oruxa implementation: a data-
-anchored callout is standard waveform-analysis tooling, and the owner's
+A data-anchored callout supports waveform analysis, and the owner's
 own explicit requirement (full-resolution sample authority, never a
 reduced/approximate anchor) mirrors the SAME engineering-integrity bar
 DEC-040 already set for A/B cursor measurements — reusing that exact
@@ -14019,8 +13972,8 @@ manual raw-channel picker (still never introduced).
 Reason: The Bay/Quantity/Mode model forced an artificial one-role-
 subset-at-a-time workflow that does not match how an engineer actually
 reads a bay's own phasor diagram (all resolvable Voltage/Current phases
-together, the way Detego and the existing Waveform display both already
-work) — this was a real UAT usability finding, not a latent defect in
+together, consistently with Oruxa's existing Waveform display) — this was a
+real UAT usability finding, not a latent defect in
 DEC-089's own original reasoning, which remains correct for what it
 covered (resolver-driven, no manual channel picker, hand-rolled SVG,
 stale-request protection). Aggregating server-side rather than issuing

@@ -4,6 +4,16 @@ This directory is the **shared living project memory** for the migration from
 `powerwave` (the existing desktop application) to `oruxa_powerwave` (this
 repository, the new web application).
 
+## Independent product direction
+
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
+
+The owner's 2026-11-17 direction retires external product benchmarking.
+Read [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) for engineering and UI/UX
+requirements; [DEC-020](DECISIONS.md#dec-020--product-design-guidance-external-benchmarking-retired-by-owner)
+records the historical decision and its retirement. Existing approved technical
+requirements remain in force.
+
 ## Why this exists
 
 This project is worked on from multiple machines (Windows laptop, Mac mini)

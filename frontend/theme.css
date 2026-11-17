@@ -7,10 +7,8 @@
  *
  * Light is the default/preferred direction (no [data-theme] attribute, or
  * data-theme="light"); Dark is opt-in via [data-theme="dark"], set by
- * theme.js from the user's saved preference. Values are an original Oruxa
- * palette -- not derived from or matching Detego's visual identity; Detego
- * is a UI/UX workflow benchmark only, never a source of colors (see
- * docs/project-memory/PRODUCT_REFERENCES.md).
+ * theme.js from the user's saved preference. Values define Oruxa's own
+ * palette through shared tokens (see docs/project-memory/PRODUCT_REFERENCES.md).
  *
  * Every page that includes this file must render correctly using ONLY
  * these custom properties for color -- no page should hard-code a literal

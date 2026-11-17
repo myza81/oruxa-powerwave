@@ -9,7 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-## BEN5K P2 closed; P3 presentation fix accepted for integration; DEV retest pending (2026-11-17)
+## Independent product direction (owner decision, 2026-11-17)
+
+Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.
+
+The external benchmarking direction is retired. Active guidance and historical
+design descriptions express Oruxa's own engineering and UI/UX requirements;
+original wording remains in Git history. See
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) and the amended DEC-020.
+
+Cleanup commit `6bd2c6c0f8b091c7b88871020f4d416192f54827` was created locally
+from approved main `856c74b2`. The owner then confirmed P3 DEV UAT acceptance
+and requested this local update against merged main
+`fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Both histories and P3's engineering
+code, regression tests and evidence are preserved; cleanup changes only
+documentation and frontend comments relative to that main. The separate P3
+worktree remains untouched. No cleanup push, merge into main or deployment is
+authorized; this task adds no product direction or application behaviour.
+
+## BEN5K P2/P3 — owner DEV UAT accepted; P3 merged (2026-11-17)
 
 [FACT] P2 PR #10 is merged at fetched main
 `856c74b23b56b60a20fabae712687273293780c5`; owner BPHE DEV UAT is accepted.
@@ -33,17 +51,20 @@ runtime code; the focused P3 presentation correction is described below.
 Accepted P2 validation: **1,135 backend / 32 browser passes**, zero skips/failures.
 See the [P2 engineering report](BEN5K_BPHE_P2_CHANGE_REPORT_2026-11-17.md).
 
-[FACT] The accepted GPTH Slow decoder commit
-`ff1209d98a3d9e8b43eab0bf068176cb69a4cba2` is pushed on
-`fix/ben5k-gpth-slow-p3`; [PR #11](https://github.com/myza81/oruxa-powerwave/pull/11)
-targets main `856c74b2` and remains open/unmerged. CI #426 passed: 12,800 backend
-passes, 404 skips; DEV/PROD Compose and isolation checks passed.
+[FACT] GPTH Slow decoder commit `ff1209d98a3d9e8b43eab0bf068176cb69a4cba2`
+and UAT presentation correction `81bfeb5fa7b39890dc7b5f332ccab420ce90d054`
+are in main through [PR #11](https://github.com/myza81/oruxa-powerwave/pull/11),
+merged at `fb0e0c507841efda2a41dc03bafc95c990eabdf7`. Decoder CI #426 passed
+12,800 backend tests with 404 skips. Correction
+[CI #428](https://github.com/myza81/oruxa-powerwave/actions/runs/44050004884)
+passed 12,800 backend tests with 405 skips; DEV/PROD Compose and isolation checks
+passed. These pre-merge checks do not establish a post-merge deployment result.
 
-[UAT] Owner GPTH Slow DEV UAT is **not accepted**. The owner reviewed and accepted
-the focused peak/time-ruler correction, authorizing local commit, push to the same
-branch, PR #11 description update and new-head CI confirmation. Merge, DEV/PROD
-deployment and the next BEN stage remain unauthorized. Earlier dirty work, the
-separate identity cleanup and frozen GRNE studies remain untouched.
+[DECISION] The owner explicitly confirmed corrected GPTH Slow DEV UAT is
+**accepted**, superseding the earlier pending/failed-UAT status, and requested
+the local post-P3 cleanup update. This confirmation comes from owner direction,
+not an inference from the merge. No further BEN stage or cleanup release action
+is authorized. Earlier dirty work and frozen GRNE studies remain untouched.
 
 [FACT] The P3 decoder routes class flag 1 at `0x3C` separately from Fast.
 GPTH's `0x1300` acquisition frames recover 20 calculated Hz/MW channels and
@@ -66,7 +87,7 @@ At the decoder commit, local-commit confirmation reran the 37 P3 checks
 successfully, with no skips or implementation changes.
 
 [FACT] The UAT peak number is correct: full-record maximum sample 382 is
-`-220.05862319469452 MW` at `19.100 s`; all samples are negative. The local fix
+`-220.05862319469452 MW` at `19.100 s`; all samples are negative. The merged fix
 uses Maximum/Minimum wording, keeps long lower-axis labels in seconds and supplies
 Plotly's required title object. The old `0, 0.333, 0.667, 1` labels represented
 minutes with a missing unit title, not normalized samples. No decoder, measurement
@@ -88,9 +109,9 @@ inventory. Its accepted 27 channels remain unchanged; configured-inventory
 completeness is unresolved. This is recorded for later owner direction, not a
 correction authorized in P2.
 
-Next milestone after correction integration and passing new-head CI: separately
-authorized DEV deployment for owner retesting before any merge. P3 UAT remains
-pending; no merge, deployment or further BEN stage is authorized.
+The cleanup remains local for owner review after reconciliation and lightweight
+validation against the merged P3 baseline. Push, merge into main, deployment and
+further BEN correction work require separate authorization.
 
 ## Post-DEC-213 Browser Regression Maintenance (2026-11-15)
 
