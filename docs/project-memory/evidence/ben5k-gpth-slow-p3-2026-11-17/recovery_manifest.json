@@ -1,0 +1,28 @@
+{
+  "reused_sources": [
+    {
+      "name": "BEN_WIDE_SCALING_ROOT_CAUSE_2026-11-16.md",
+      "sha256": "41b16aafe8587d6ebf831a3da882aa577a7138bab9c8a20839a8d6a2397c628e",
+      "size": 42252
+    },
+    {
+      "name": "manifest.json",
+      "sha256": "7dbd08bfb8dd60e3c0c1aea77a1000e8ca48e71c0aa6ce30cee441a4edc4e1c6",
+      "size": 3777
+    },
+    {
+      "name": "gpth_2022_slow_oracle_identity.json",
+      "sha256": "ec9b57ccf7c972fec43c1ba97b6cb6a3c71757564813f9c5ad59fe5d5c9d193a",
+      "size": 3208
+    },
+    {
+      "name": "BEN5K_SLOW_COMPATIBILITY_INVESTIGATION.md",
+      "sha256": "1582135df127eec77646c39cb71724f9b22699561ed9068a2da4218450d8f409",
+      "size": 63855
+    }
+  ],
+  "grne_study_ref": "914875775999a8ec53146f06b6dd4345f519472f",
+  "grne_report_url": "https://github.com/myza81/oruxa-powerwave/blob/914875775999a8ec53146f06b6dd4345f519472f/docs/project-memory/BEN5K_SLOW_COMPATIBILITY_INVESTIGATION.md",
+  "distinctions": "GRNE 29 ff uses 252-byte groups, 28-byte slots and unresolved selectors/scales. No GRNE prototype code or nominal-derived gain was transferred.",
+  "ben_wide_original_manifest_gpth_identity_verified": true
+}

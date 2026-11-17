@@ -1,0 +1,20 @@
+{
+  "merge_sha": "856c74b23b56b60a20fabae712687273293780c5",
+  "pr": 10,
+  "owner_uat": "BPHE DEV UAT accepted in owner P3 authorization",
+  "ci": {
+    "run_id": 44010122459,
+    "conclusion": "success",
+    "url": "https://github.com/myza81/oruxa-powerwave/actions/runs/44010122459"
+  },
+  "automatic_dev": {
+    "run_id": 44011270803,
+    "job_id": 133798574462,
+    "conclusion": "success",
+    "url": "https://github.com/myza81/oruxa-powerwave/actions/runs/44011270803",
+    "logged_version": "856c74b23b56b60a20fabae712687273293780c5",
+    "health_success_utc": "2026-11-17T03:35:46.7276631Z",
+    "completion_message": "Deployment successful."
+  },
+  "p3_release_actions_performed": false
+}

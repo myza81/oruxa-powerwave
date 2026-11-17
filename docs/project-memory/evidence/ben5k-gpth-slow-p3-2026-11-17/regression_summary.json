@@ -1,0 +1,25 @@
+{
+  "base_commit": "856c74b23b56b60a20fabae712687273293780c5",
+  "bphe_channels": 14,
+  "bphe_export_values": 16072,
+  "gpth_channels_bit_identical": 35,
+  "permas_channels_bit_identical": 27,
+  "complete_fast_summary_equal": true,
+  "baseline_summary_git_blob_sha256": "403e35ee419d0091ffe274361d73b25594e55a51039379d6be526a8ec3694165",
+  "candidate_summary_canonical_sha256": "403e35ee419d0091ffe274361d73b25594e55a51039379d6be526a8ec3694165",
+  "regressions": {
+    "p3-final-regression.xml": {
+      "tests": 1172,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "p3-browser.xml": {
+      "tests": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "initial_sandbox_run": "1171 passed; BEN6K original-file PermissionError only. Final focused run with authorized reference access: all 1172 passed."
+}

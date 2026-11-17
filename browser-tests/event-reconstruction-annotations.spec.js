@@ -198,7 +198,7 @@ test.describe("Event Reconstruction annotations -- Waveform's toolset", () => {
     await expect(page.locator("#wwErAnnotationListBtn")).toHaveAttribute("aria-label", "Annotations");
     await expect(page.locator("#wwErFitRecordBtn")).toHaveAttribute("aria-label", "Fit selected record");
     await page.locator("#wwErAnnotateBtn").click();
-    await expect(page.locator("#wwErAnnotateMenu .ww-split-menu-item")).toHaveText(["Text Note", "Callout", "Maximum Peak (+Peak)", "Minimum Peak (-Peak)"]);
+    await expect(page.locator("#wwErAnnotateMenu .ww-split-menu-item")).toHaveText(["Text Note", "Callout", "Maximum Peak", "Minimum Peak"]);
     await page.keyboard.press("Escape");
     await expect(page.locator("#wwErAnnotateMenu")).toBeHidden();
     // Waveform's own guidance text per tool; Esc cancels.
@@ -435,8 +435,8 @@ test.describe("Event Reconstruction annotations -- each type", () => {
     expect(d.peak.sourceElapsed).toBeCloseTo(0.499, 9);
     expect(d.peak.value).toBeCloseTo(60, 9);
     expect(d.expected.r).toBeCloseTo(1.499, 9);
-    expect(d.header).toBe("+Peak");
-    expect(d.valueLine).toBe(await page.evaluate(() => "+Peak: " + wwFormatEngineeringValue(60) + " MW"));
+    expect(d.header).toBe("Maximum");
+    expect(d.valueLine).toBe(await page.evaluate(() => "Maximum: " + wwFormatEngineeringValue(60) + " MW"));
     expect(d.timeLine).toBe("t = +1.499000 s");
 
     // -Peak on the CALCULATED -P (timing parent STN_B): -60 at r 1.5.
@@ -463,8 +463,8 @@ test.describe("Event Reconstruction annotations -- each type", () => {
     expect((await findDrawn(page, max.annotation_id)).visible).toBe(false);
     await page.locator("#wwErAnnotationListBtn").click();
     await expect(page.locator("#wwErAnnotationListBody .ww-annotation-list-item")).toHaveCount(2);
-    await expect(page.locator("#wwErAnnotationListBody .ww-annotation-list-item-category")).toHaveText(["-PEAK", "+PEAK"]); // newest first
-    await expect(page.locator("#wwErAnnotationListBody .ww-annotation-list-item-preview").nth(1)).toHaveText("+Peak: Unavailable for current view");
+    await expect(page.locator("#wwErAnnotationListBody .ww-annotation-list-item-category")).toHaveText(["MINIMUM", "MAXIMUM"]); // newest first
+    await expect(page.locator("#wwErAnnotationListBody .ww-annotation-list-item-preview").nth(1)).toHaveText("Maximum: Unavailable for current view");
     await expect(page.locator("#wwErAnnotationListBody .ww-annotation-list-item-meta").nth(1)).toContainText("Unavailable for current view");
 
     // Grouped and Combined: on the trace's own Y axis.

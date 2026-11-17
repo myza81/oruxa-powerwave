@@ -756,6 +756,15 @@ def parse_ben_experimental(
     instead, which always rejects BEN5K files with ``BenUnsupportedVariantError``.
     """
     if allow_legacy_ben5k and _is_ben5k(data):
+        class_flag = data[layout.RECORD_CLASS_FLAG_OFFSET]
+        if class_flag == 1:
+            from app.providers.ben.legacy_ben5k.gpth_slow import parse_gpth_slow
+            return parse_gpth_slow(data)
+        if class_flag != 0:
+            raise BenUnsupportedVariantError(
+                f"Legacy BEN5K record class {class_flag} is not supported",
+                offset=layout.RECORD_CLASS_FLAG_OFFSET,
+            )
         from app.providers.ben.legacy_ben5k.normalize import parse_ben5k
         return parse_ben5k(data)
     return parse_ben(data)

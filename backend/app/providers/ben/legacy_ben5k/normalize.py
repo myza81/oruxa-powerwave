@@ -1,4 +1,4 @@
-"""BEN5K record normalizer: builds a ``BenRecord`` from raw BEN5K bytes.
+"""Legacy BEN5K Fast normalizer: builds a ``BenRecord`` from raw bytes.
 
 Entry point: ``parse_ben5k(data: bytes) -> BenRecord``
 
@@ -25,7 +25,7 @@ from dataclasses import replace
 import numpy as np
 
 from app.providers.ben import layout
-from app.providers.ben.errors import BenStructureError, BenTruncatedError
+from app.providers.ben.errors import BenStructureError, BenTruncatedError, BenUnsupportedVariantError
 from app.providers.ben.model import (
     BenChannelKind,
     BenDiagnostic,
@@ -124,7 +124,8 @@ def _build_header(header5k: Ben5kHeader, data: bytes) -> BenHeader:
 def parse_ben5k(data: bytes) -> BenRecord:
     """Parse a BEN5K file into a ``BenRecord``.
 
-    This is the ONLY public entry point for the legacy BEN5K decoder.
+    Direct entry point for the legacy Fast decoder. Slow uses gpth_slow.py
+    through the class-aware experimental dispatcher.
     It must NOT be called from production paths — use ``parse_ben_experimental()``
     in parser.py to opt in.
 
@@ -144,6 +145,11 @@ def parse_ben5k(data: bytes) -> BenRecord:
 
     # ── 1. Read header and channel descriptors ─────────────────────────────
     header5k = read_header(data)
+    if data[layout.RECORD_CLASS_FLAG_OFFSET] != 0:
+        raise BenUnsupportedVariantError(
+            "Legacy Fast decoder requires record-class flag 0; use class-aware dispatch",
+            offset=layout.RECORD_CLASS_FLAG_OFFSET,
+        )
     analog_raw, digital_raw = read_channel_descriptors(data, header5k)
 
     # ── 2. Build sample_words matrix (needed for variance detection) ───────
@@ -265,6 +271,9 @@ def parse_ben5k(data: bytes) -> BenRecord:
                 active_low=layout.DIGITAL_STORED_BIT_ACTIVE_LOW,
             )
         )
+
+    if not value_channels and not digital_channels:
+        raise BenUnsupportedVariantError("Legacy Fast decoder found no supported recorded channels")
 
     # ── 7. Attach diagnostics ─────────────────────────────────────────────
     if reviewed_bphe:
