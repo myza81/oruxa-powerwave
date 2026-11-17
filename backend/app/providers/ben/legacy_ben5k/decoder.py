@@ -14,6 +14,11 @@ import numpy as np
 
 from app.providers.ben.errors import BenStructureError, BenTruncatedError
 from app.providers.ben.legacy_ben5k.reader import Ben5kAnalogChannel, Ben5kDigitalChannel, Ben5kHeader
+from app.providers.ben.legacy_ben5k.engineering import (
+    fast_ac_engineering_values,
+    has_supported_fast_ac_configuration,
+    is_supported_fast_ac_descriptor,
+)
 
 # Active-low digital convention (same as SubBen):
 #   stored bit = 0 → channel is ACTIVE
@@ -33,7 +38,8 @@ def decode_samples(
 
     Returns:
         analog_eng: float32 array, shape (sample_count, len(analog_channels))
-                    Engineering values: scale × raw_int16 + offset
+                    Reviewed Fast AC channels use upper signed 12 bits × gain ×
+                    sqrt(2); other channels retain scale × raw_int16 + offset.
         digital_states: bool array, shape (sample_count, len(digital_channels))
                     True = channel active (active-low assumed: stored 0 → True)
 
@@ -79,6 +85,12 @@ def decode_samples(
         scales = np.array([ch.scale for ch in analog_channels], dtype=np.float32)
         offsets = np.array([ch.offset for ch in analog_channels], dtype=np.float32)
         analog_eng = raw_signed.astype(np.float32) * scales + offsets
+        if has_supported_fast_ac_configuration(data, header):
+            for col, channel in enumerate(analog_channels):
+                if is_supported_fast_ac_descriptor(data, channel):
+                    analog_eng[:, col] = fast_ac_engineering_values(
+                        raw_signed[:, col], channel.scale, channel.offset,
+                    )
     else:
         analog_eng = np.empty((header.sample_count, 0), dtype=np.float32)
 

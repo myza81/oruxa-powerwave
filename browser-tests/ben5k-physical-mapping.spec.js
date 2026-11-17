@@ -1,5 +1,5 @@
-// Physical mapping only. Existing packed-word gain/offset is intentionally
-// retained; these checks do not certify BEN5K absolute calibration.
+// Existing physical-slot goldens plus approved P1 Fast AC projection.
+// Numerical correction does not upgrade DEC-213 physical calibration status.
 const { test, expect } = require("./support/test");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -28,9 +28,10 @@ for (const record of goldens.records) {
       const golden = record.channels.find(channel => channel.name === name);
       const gain = original.readFloatLE(golden.descriptor_offset + 28);
       const offset = original.readFloatLE(golden.descriptor_offset + 32);
+      expect(offset).toBe(0);
       const expected = Array.from({ length: record.sample_count }, (_, i) => {
         const address = record.payload_offset + 2 * (i * record.words_per_sample + golden.physical_word_index);
-        return original.readInt16BE(address) * gain + offset;
+        return (original.readInt16BE(address) >> 4) * gain * Math.sqrt(2);
       });
       const channel = page.locator(`#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-channel-name="${name}"]`);
       await channel.click();
