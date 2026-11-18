@@ -29505,3 +29505,42 @@ Reconstruction. Preserve P3 export/binary parity, P1/P2, BEN32/BEN6K and DEC-213
 PR #11 must remain open/unmerged. DEV/PROD deployment, another BEN stage, unrelated
 UI/calibration work and product-identity cleanup are excluded. The next milestone
 is separately authorized owner DEV retesting after passing CI.
+
+## DEC-214 — Frontend design must be engineer-task-first, not backend-schema-first
+
+Date: 2026-11-19. Status: **Approved — standing requirement.**
+Authority: owner direction (RD-1 D2 UAT review, 2026-11-19).
+
+Decision:
+
+The overarching frontend design principle for all Oruxa-Powerwave features is:
+
+> **The frontend should be designed around what engineers need to accomplish,
+> not around every operation available in the backend.**
+
+Supporting requirements A–I and a UX review gate for new features are recorded
+in [AGENTS.md — Frontend design principle — engineer-task-first](../../AGENTS.md).
+
+This principle applies across all frontend features: waveform analysis,
+Measurement Groups, calculators, protection analysis, file management and future
+modules.
+
+It does not override:
+
+- Electrical notation convention (DEC-117/DEC-118).
+- Existing architectural constraints (oruxa-architecture.md).
+- Engineering safeguards, calculation correctness, and backend validation.
+- Physical calibration integrity and dependency invalidation.
+
+Reason:
+
+RD-1 Slice D2 Voltage Configuration required multiple UAT correction cycles
+because initial implementations exposed internal backend configuration parameters
+(reference-mode selects, base-reference-side selects, revert-to-automatic
+operations) without evaluating whether they served a genuine user task.
+Specific examples: a "Revert to Automatic" button that could return nominal
+voltage to unresolved when no reliable evidence existed; a "Reference Mode"
+dropdown exposed even when the engine had already detected L-L/L-N automatically;
+a standalone "Configuration source" field that combined provenance of independent
+properties into a misleading single label. This principle prevents this class of
+rework in future feature development.
