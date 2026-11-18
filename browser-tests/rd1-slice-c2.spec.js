@@ -70,7 +70,7 @@ test("RD-1 C2-02: voltage group main view has exactly 4 rows (Nominal voltage, R
     await expect(details).toContainText("Nominal voltage");
     await expect(details).toContainText("Reference");
     await expect(details).toContainText("Configuration");
-    await expect(details).toContainText("PU availability");
+    await expect(details).toContainText("Per-unit availability");
 });
 
 test("RD-1 C2-03: voltage group Engineering Evidence section is present", async ({ page }) => {
@@ -109,7 +109,7 @@ test("RD-1 C2-05: current group main view shows Current base, Configuration, PU 
     await expect(details).toContainText("Current Base Configuration");
     await expect(details).toContainText("Current base");
     await expect(details).toContainText("Configuration");
-    await expect(details).toContainText("PU availability");
+    await expect(details).toContainText("Per-unit availability");
 });
 
 test("RD-1 C2-06: current group Engineering Evidence section is present", async ({ page }) => {
@@ -132,11 +132,11 @@ test("RD-1 C2-07: PU availability pill is present in both voltage and current gr
 
     // Voltage group
     await selectGroupByKind(page, "voltage");
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 
     // Current group
     await selectGroupByKind(page, "current");
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 });
 
 test("RD-1 C2-08: CT/VT section shows 'Not available from recording metadata' (not 'Not configured')", async ({ page }) => {
@@ -146,10 +146,13 @@ test("RD-1 C2-08: CT/VT section shows 'Not available from recording metadata' (n
     await selectFirstRecording(page);
     await selectGroupByKind(page, "voltage");
 
-    const details = page.locator("#wwRdDetailsBody");
-    await expect(details).toContainText("CT / VT");
-    await expect(details).toContainText("Not available from recording metadata");
-    await expect(details).not.toContainText("Not configured");
+    // CT/VT is now Instrument transformers inside Engineering Evidence (Slice C-3)
+    const evidenceEl = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
+    await evidenceEl.locator("summary").click();
+    await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
+    await expect(evidenceEl).toContainText("Instrument transformers");
+    await expect(evidenceEl).toContainText("Not available from recording metadata");
+    await expect(evidenceEl).not.toContainText("Not configured");
 });
 
 test("RD-1 C2-09: conflict banner is preserved when manual_conflict_detected", async ({ page }) => {

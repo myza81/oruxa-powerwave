@@ -256,9 +256,11 @@ test("RD-1 C1-10: Slice C group details remain intact after Slice C-1 changes", 
     // Engineering Evidence toggle must be present
     await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
 
-    // PU eligibility pill must be present
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    // PU availability status line must be present (Slice C-3: replaces pill)
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 
-    // CT/VT section must be present
-    await expect(page.locator("#wwRdDetailsBody")).toContainText("CT / VT");
+    // Instrument transformers note in Engineering Evidence (Slice C-3: replaces standalone CT/VT)
+    const evidence = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
+    await evidence.locator("summary").click();
+    await expect(evidence).toContainText("Instrument transformers");
 });

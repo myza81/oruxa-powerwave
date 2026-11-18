@@ -222,11 +222,13 @@ test("TABS-11: Slice C engineering details intact with tabs", async ({ page }) =
     // Engineering Evidence toggle present
     await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
 
-    // PU eligibility pill present
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    // PU status line present (Slice C-3: replaces pill)
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 
-    // CT/VT section present
-    await expect(page.locator("#wwRdDetailsBody")).toContainText("CT / VT");
+    // Instrument transformers note in Engineering Evidence (Slice C-3: replaces standalone CT/VT)
+    const evidence = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
+    await evidence.locator("summary").click();
+    await expect(evidence).toContainText("Instrument transformers");
 
     // Conflict banner absent for a normal group (no spurious warning)
     await expect(page.locator("#wwRdDetailsBody .ww-rd-conflict-banner")).not.toBeVisible();

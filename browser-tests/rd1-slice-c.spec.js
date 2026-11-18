@@ -66,8 +66,8 @@ test("RD-1 C-01: voltage group details — Voltage Base Configuration section is
 
     // Voltage Base Configuration section must be present
     await expect(page.locator("#wwRdDetailsBody")).toContainText("Voltage Base Configuration");
-    // No "Details coming in Slice C" stub text
-    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Slice C");
+    // No placeholder stub text
+    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Details coming in");
 });
 
 test("RD-1 C-02: current group details — Current Base Configuration section is shown", async ({ page }) => {
@@ -94,7 +94,7 @@ test("RD-1 C-02: current group details — Current Base Configuration section is
     expect(hasVoltageSection).toBe(false);
 });
 
-test("RD-1 C-03: group identity header shows name, badge, and channel list", async ({ page }) => {
+test("RD-1 C-03: group identity header shows name and channel list", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -105,14 +105,9 @@ test("RD-1 C-03: group identity header shows name, badge, and channel list", asy
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // Group name in header
+    // Group name in header (Slice C-3: type badge removed from details header)
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name")).toBeVisible();
-    // Badge (V or I)
-    const badge = page.locator("#wwRdDetailsBody .ww-rd-group-badge").first();
-    await expect(badge).toBeVisible();
-    const badgeText = await badge.textContent();
-    expect(["V", "I"]).toContain(badgeText.trim());
-    // Channel count line
+    // Channel list (count + dot-separated names)
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-channels")).toBeVisible();
     const channelText = await page.locator("#wwRdDetailsBody .ww-rd-details-channels").textContent();
     expect(channelText).toMatch(/\d+ channel/);
@@ -133,16 +128,16 @@ test("RD-1 C-04: PU eligible badge shown for configured voltage group", async ({
     for (let i = 0; i < count; i++) {
         await rows.nth(i).click();
         await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 3000 });
-        const eligible = page.locator("#wwRdDetailsBody .ww-rd-pu-eligible");
+        // Slice C-3: PU state shown via .ww-rd-pu-word--eligible (status word) or .ww-rd-pu-status-line
+        const eligible = page.locator("#wwRdDetailsBody .ww-rd-pu-word--eligible");
         const isEligible = await eligible.count();
         if (isEligible > 0) {
-            // Found a configured group — verify badge shows "Eligible"
-            await expect(eligible.first()).toContainText("Eligible");
+            await expect(eligible.first()).toContainText("Available");
             return;
         }
     }
-    // If no configured voltage group found, verify at least a pill is shown
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    // If no configured group found, verify PU section is at least shown
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 });
 
 test("RD-1 C-05: no conflict banner for ordinary auto-resolved base", async ({ page }) => {
@@ -204,7 +199,7 @@ test("RD-1 C-06: Engineering Evidence section is present and toggleable", async 
     await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
 });
 
-test("RD-1 C-07: CT/VT section shows Not available from recording metadata", async ({ page }) => {
+test("RD-1 C-07: instrument transformers note in Engineering Evidence (not standalone CT/VT section)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -215,16 +210,13 @@ test("RD-1 C-07: CT/VT section shows Not available from recording metadata", asy
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // CT/VT section must appear
-    const titles = await page.locator("#wwRdDetailsBody .ww-rd-details-section-title").allTextContents();
-    const hasCTVT = titles.some((t) => t.match(/CT\s*\/\s*VT/i));
-    expect(hasCTVT).toBe(true);
-
-    // Values must show "Not available from recording metadata" (Slice C-2: updated from "Not configured")
-    const notConfigured = page.locator("#wwRdDetailsBody .ww-rd-not-configured");
-    await expect(notConfigured.first()).toBeVisible();
-    const notConfigText = await notConfigured.first().textContent();
-    expect(notConfigText).toContain("Not available from recording metadata");
+    // Slice C-3: CT/VT is no longer a standalone section — it is inside Engineering Evidence.
+    // Open the evidence section and verify the note appears.
+    const evidenceEl = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
+    await evidenceEl.locator("summary").click();
+    await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
+    await expect(evidenceEl).toContainText("Instrument transformers");
+    await expect(evidenceEl).toContainText("Not available from recording metadata");
 });
 
 test("RD-1 C-08: group switching — details update to new group", async ({ page }) => {
@@ -297,7 +289,8 @@ test("RD-1 C-10: details panel renders without layout breakage in dark theme", a
 
     // Key elements visible
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name")).toBeVisible();
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    // Slice C-3: PU state shown via status line, not pill
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 });
 
 test("RD-1 C-11: narrow layout — selecting group navigates to details panel with content", async ({ page }) => {
@@ -321,7 +314,8 @@ test("RD-1 C-11: narrow layout — selecting group navigates to details panel wi
 
     // Details content visible
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-pill")).toBeVisible();
+    // Slice C-3: PU availability shown via status line
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 
     // Back button visible
     await expect(page.locator("#rdBackToGroups")).toBeVisible();

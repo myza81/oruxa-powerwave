@@ -36933,7 +36933,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 configSrc = "Not configured";
             }
             let html = '<div class="ww-rd-section">';
-            html += '<div class="ww-rd-section-heading">Base Configuration<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
+            html += '<div class="ww-rd-section-heading">Current Base Configuration<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
             html += '<div class="ww-rd-field-grid">';
             // Current base (resolved) — full width
             html += '<div class="ww-rd-field ww-rd-field-full">';
@@ -36964,8 +36964,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else {
                 const names = channelRefs.map(function(r) { return escapeHtml(r.channel_name); });
                 const shown = names.slice(0, 5);
-                const extra = channelCount > 5 ? " and " + (channelCount - 5) + " more" : "";
-                channelsText = shown.join(" · ") + extra;
+                const extra = channelCount > 5 ? " · and " + (channelCount - 5) + " more" : "";
+                channelsText = channelCount + " channel" + (channelCount === 1 ? "" : "s") + ": " + shown.join(" · ") + extra;
             }
 
             // Header section: group name + dot-separated channel list (no type badge)
@@ -37020,7 +37020,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : (vc.reference_mode ? "Auto-detected" : null);
 
                 configHtml = '<div class="ww-rd-section">';
-                configHtml += '<div class="ww-rd-section-heading">Base Configuration<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
+                configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
                 configHtml += '<div class="ww-rd-field-grid">';
                 // Left: Nominal voltage (L-L)
                 configHtml += '<div class="ww-rd-field">';
