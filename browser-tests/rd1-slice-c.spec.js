@@ -204,7 +204,7 @@ test("RD-1 C-06: Engineering Evidence section is present and toggleable", async 
     await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
 });
 
-test("RD-1 C-07: CT/VT section shows Not configured", async ({ page }) => {
+test("RD-1 C-07: CT/VT section shows Not available from recording metadata", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -220,11 +220,11 @@ test("RD-1 C-07: CT/VT section shows Not configured", async ({ page }) => {
     const hasCTVT = titles.some((t) => t.match(/CT\s*\/\s*VT/i));
     expect(hasCTVT).toBe(true);
 
-    // Values must show "Not configured"
+    // Values must show "Not available from recording metadata" (Slice C-2: updated from "Not configured")
     const notConfigured = page.locator("#wwRdDetailsBody .ww-rd-not-configured");
     await expect(notConfigured.first()).toBeVisible();
     const notConfigText = await notConfigured.first().textContent();
-    expect(notConfigText).toContain("Not configured");
+    expect(notConfigText).toContain("Not available from recording metadata");
 });
 
 test("RD-1 C-08: group switching — details update to new group", async ({ page }) => {

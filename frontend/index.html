@@ -963,6 +963,7 @@
         .ww-rd-pu-eligible { background: var(--ok-wash); color: var(--ok); }
         .ww-rd-pu-conflict { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
         .ww-rd-pu-missing { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text-dim); }
+        .ww-rd-pu-needs-review { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); opacity: 0.85; }
         details.ww-rd-evidence { margin-bottom: 12px; }
         details.ww-rd-evidence > summary {
             cursor: pointer;
@@ -36708,30 +36709,47 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const st = g.pu_status;
             const reason = g.pu_reason;
             const conflict = g.voltage_config && g.voltage_config.manual_conflict_detected;
+            const baseAuthority = (g.voltage_config && g.voltage_config.base_authority)
+                || (g.current_config && g.current_config.base_authority)
+                || null;
+            const nomKv = g.voltage_config && g.voltage_config.nominal_voltage_ll_kv;
             if (st === "not_applicable") {
                 return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Not applicable</span>';
             }
             if (st === "configured") {
-                return '<span class="ww-rd-pu-pill ww-rd-pu-eligible">Eligible</span>';
+                return '<span class="ww-rd-pu-pill ww-rd-pu-eligible">Available</span>';
             }
-            // base_required — distinguish by reason or conflict flag
+            // base_required — use base_authority + reason for precise labels
             if (reason === "manual_conflict_detected" || conflict) {
-                return '<span class="ww-rd-pu-pill ww-rd-pu-conflict">Blocked — conflict</span>';
+                return '<span class="ww-rd-pu-pill ww-rd-pu-conflict">Blocked — manual base conflicts with channel evidence</span>';
             }
             if (reason === "voltage_base_not_configured") {
                 return '<span class="ww-rd-pu-pill ww-rd-pu-missing">No base configured</span>';
             }
             if (reason === "group_not_confirmed") {
-                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Group not confirmed</span>';
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Measurement group requires review</span>';
             }
             if (reason === "voltage_reference_undetermined") {
-                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Reference undetermined</span>';
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Voltage reference could not be determined</span>';
             }
             if (reason === "base_invalidated") {
-                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Base invalidated</span>';
+                // Use base_authority to distinguish needs_review (evidence gap) from unavailable (invalidated)
+                if (baseAuthority === "needs_review") {
+                    if (nomKv == null) {
+                        return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Nominal voltage not resolved — manual configuration required</span>';
+                    }
+                    return '<span class="ww-rd-pu-pill ww-rd-pu-needs-review">Review required before PU is available</span>';
+                }
+                if (baseAuthority === "unavailable") {
+                    return '<span class="ww-rd-pu-pill ww-rd-pu-conflict">Base invalidated — reconfigure</span>';
+                }
+                // Fallback when base_authority is absent or unknown
+                return nomKv == null
+                    ? '<span class="ww-rd-pu-pill ww-rd-pu-missing">Nominal voltage not resolved — manual configuration required</span>'
+                    : '<span class="ww-rd-pu-pill ww-rd-pu-needs-review">Configuration requires review</span>';
             }
             if (reason === "secondary_equivalent_not_configured") {
-                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Secondary equivalent required</span>';
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Secondary equivalent calculation required</span>';
             }
             return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Not eligible</span>';
         }
@@ -36753,10 +36771,38 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (vc.reference_override) {
                     rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference override</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.reference_override.replace(/_/g, "-")) + '</span></div>';
                 }
+                // Transformer/winding details (moved from main view)
+                if (vc.base_reference_side && vc.base_reference_side !== "unknown") {
+                    const side = vc.base_reference_side === "primary" ? "Primary" : "Secondary";
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference side</span><span class="ww-rd-evidence-val">' + escapeHtml(side) + '</span></div>';
+                }
+                if (vc.secondary_voltage_ll_v != null) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Secondary voltage (L‑L)</span><span class="ww-rd-evidence-val">' + vc.secondary_voltage_ll_v + ' V</span></div>';
+                }
             } else if (kind === "current" && g.current_config) {
                 const cc = g.current_config;
+                // Method and equipment details (moved from main view)
+                if (cc.method && cc.method !== "none") {
+                    const methodLabel = cc.method === "equipment_rating" ? "Equipment rating"
+                        : cc.method === "manual" ? "Manual"
+                        : escapeHtml(cc.method);
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Method</span><span class="ww-rd-evidence-val">' + methodLabel + '</span></div>';
+                }
+                if (cc.equipment_rating_mva != null) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Equipment rating</span><span class="ww-rd-evidence-val">' + cc.equipment_rating_mva + ' MVA</span></div>';
+                }
+                if (cc.manual_voltage_base_kv != null) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Manual V base</span><span class="ww-rd-evidence-val">' + cc.manual_voltage_base_kv + ' kV</span></div>';
+                }
+                if (cc.applicable_voltage_ll_kv != null) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Applicable V base</span><span class="ww-rd-evidence-val">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</span></div>';
+                }
                 if (cc.linked_voltage_group_id) {
                     rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Linked V group</span><span class="ww-rd-evidence-val">' + escapeHtml(cc.linked_voltage_group_id) + '</span></div>';
+                }
+                if (cc.base_reference_side && cc.base_reference_side !== "unknown") {
+                    const side = cc.base_reference_side === "primary" ? "Primary" : "Secondary";
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference side</span><span class="ww-rd-evidence-val">' + escapeHtml(side) + '</span></div>';
                 }
             }
             const body = rows.length > 0
@@ -36770,30 +36816,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!cc) {
                 return '<div class="ww-rd-details-section"><p class="ww-rd-details-section-title">Current Base Configuration</p><p class="ww-rd-config-value ww-rd-not-configured">No configuration available.</p></div>';
             }
-            const methodLabel = cc.method === "equipment_rating" ? "Equipment rating"
-                : cc.method === "manual" ? "Manual"
-                : "None";
-            let rows = '<span class="ww-rd-config-label">Method</span><span class="ww-rd-config-value">' + escapeHtml(methodLabel) + '</span>';
-            if (cc.equipment_rating_mva != null) {
-                rows += '<span class="ww-rd-config-label">Equipment rating</span><span class="ww-rd-config-value">' + cc.equipment_rating_mva + ' MVA</span>';
+            // Main view: effective I-base, configuration source, PU availability
+            const effIbase = cc.resolved_ibase_ka != null
+                ? cc.resolved_ibase_ka.toFixed(4) + ' kA'
+                : (cc.manual_ibase_ka != null ? cc.manual_ibase_ka.toFixed(4) + ' kA' : '— Not resolved');
+            const auth = cc.base_authority;
+            let configSrc;
+            if (cc.manual_ibase_ka != null || (auth === "manual" || auth === "legacy_manual")) {
+                configSrc = "Manual — engineer configured";
+            } else if (cc.method === "equipment_rating") {
+                configSrc = "Derived from equipment rating";
+            } else if (auth === "auto_resolved") {
+                configSrc = "Auto-resolved";
+            } else if (auth === "needs_review") {
+                configSrc = "Review required";
+            } else {
+                configSrc = "Not configured";
             }
-            if (cc.applicable_voltage_ll_kv != null) {
-                rows += '<span class="ww-rd-config-label">Applicable V base</span><span class="ww-rd-config-value">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</span>';
-            }
-            if (cc.resolved_ibase_ka != null) {
-                rows += '<span class="ww-rd-config-label">Resolved I base</span><span class="ww-rd-config-value">' + cc.resolved_ibase_ka.toFixed(4) + ' kA</span>';
-            }
-            if (cc.manual_ibase_ka != null) {
-                rows += '<span class="ww-rd-config-label">Manual I base</span><span class="ww-rd-config-value">' + cc.manual_ibase_ka.toFixed(4) + ' kA</span>';
-            }
-            if (cc.manual_voltage_base_kv != null) {
-                rows += '<span class="ww-rd-config-label">Manual V base</span><span class="ww-rd-config-value">' + cc.manual_voltage_base_kv + ' kV</span>';
-            }
-            if (cc.base_reference_side && cc.base_reference_side !== "unknown") {
-                const side = cc.base_reference_side === "primary" ? "Primary" : "Secondary";
-                rows += '<span class="ww-rd-config-label">Reference side</span><span class="ww-rd-config-value">' + escapeHtml(side) + '</span>';
-            }
-            rows += '<span class="ww-rd-config-label">PU eligibility</span><span class="ww-rd-config-value">' + wwRdPuEligibilityHtml(g) + '</span>';
+            let rows =
+                '<span class="ww-rd-config-label">Current base</span><span class="ww-rd-config-value">' + escapeHtml(effIbase) + '</span>' +
+                '<span class="ww-rd-config-label">Configuration</span><span class="ww-rd-config-value">' + escapeHtml(configSrc) + '</span>';
+            rows += '<span class="ww-rd-config-label">PU availability</span><span class="ww-rd-config-value">' + wwRdPuEligibilityHtml(g) + '</span>';
             return '<div class="ww-rd-details-section"><p class="ww-rd-details-section-title">Current Base Configuration</p><div class="ww-rd-config-table">' + rows + '</div></div>';
         }
 
@@ -36839,34 +36882,36 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const vc = g.voltage_config;
                 const nomKv = vc && vc.nominal_voltage_ll_kv != null
                     ? vc.nominal_voltage_ll_kv + " kV (L‑L)"
-                    : "—";
-                // Authority: derived — base_authority is not exposed on the wire schema
+                    : "— Not resolved";
+                // Authority: use base_authority from API (Slice C-2)
+                const auth = vc && vc.base_authority;
                 let authorityLabel;
-                if (!vc || vc.nominal_voltage_ll_kv == null) {
+                if (!vc) {
                     authorityLabel = "Not configured";
                 } else if (vc.manual_conflict_detected) {
-                    authorityLabel = "Manual (conflict — see warning above)";
-                } else if (vc.detection_reason === "manual_override") {
-                    authorityLabel = "Manual reference override";
+                    authorityLabel = "Manual — engineer configured (conflict, see warning)";
+                } else if (auth === "auto_resolved") {
+                    authorityLabel = "Auto-resolved from channel evidence";
+                } else if (auth === "manual") {
+                    authorityLabel = "Manual — engineer configured";
+                } else if (auth === "legacy_manual") {
+                    authorityLabel = "Legacy manual";
+                } else if (auth === "needs_review") {
+                    authorityLabel = "Review required";
+                } else if (auth === "unavailable") {
+                    authorityLabel = "Unavailable";
                 } else {
-                    authorityLabel = "Configured";
+                    authorityLabel = auth ? escapeHtml(auth) : "Not configured";
                 }
                 const effRef = vc && vc.effective_reference
                     ? (vc.effective_reference === "line_to_line" ? "Line-to-line" : "Line-to-ground")
                     : (vc ? "Undetermined" : "—");
                 const refMode = vc && vc.reference_mode === "manual" ? "manual override" : "auto-detected";
                 let cfgRows =
-                    '<span class="ww-rd-config-label">Effective base</span><span class="ww-rd-config-value">' + escapeHtml(nomKv) + '</span>' +
-                    '<span class="ww-rd-config-label">Authority</span><span class="ww-rd-config-value">' + escapeHtml(authorityLabel) + '</span>' +
-                    '<span class="ww-rd-config-label">Reference</span><span class="ww-rd-config-value">' + escapeHtml(effRef) + ' (' + escapeHtml(refMode) + ')</span>';
-                if (vc && vc.base_reference_side && vc.base_reference_side !== "unknown") {
-                    const side = vc.base_reference_side === "primary" ? "Primary" : "Secondary";
-                    cfgRows += '<span class="ww-rd-config-label">Reference side</span><span class="ww-rd-config-value">' + escapeHtml(side) + '</span>';
-                }
-                if (vc && vc.secondary_voltage_ll_v != null) {
-                    cfgRows += '<span class="ww-rd-config-label">Secondary L‑L</span><span class="ww-rd-config-value">' + vc.secondary_voltage_ll_v + ' V</span>';
-                }
-                cfgRows += '<span class="ww-rd-config-label">PU eligibility</span><span class="ww-rd-config-value">' + wwRdPuEligibilityHtml(g) + '</span>';
+                    '<span class="ww-rd-config-label">Nominal voltage</span><span class="ww-rd-config-value">' + escapeHtml(nomKv) + '</span>' +
+                    '<span class="ww-rd-config-label">Reference</span><span class="ww-rd-config-value">' + escapeHtml(effRef) + ' (' + escapeHtml(refMode) + ')</span>' +
+                    '<span class="ww-rd-config-label">Configuration</span><span class="ww-rd-config-value">' + authorityLabel + '</span>';
+                cfgRows += '<span class="ww-rd-config-label">PU availability</span><span class="ww-rd-config-value">' + wwRdPuEligibilityHtml(g) + '</span>';
                 configHtml =
                     '<div class="ww-rd-details-section">' +
                     '<p class="ww-rd-details-section-title">Voltage Base Configuration</p>' +
@@ -36878,14 +36923,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const evidenceHtml = wwRdEvidenceHtml(g);
 
-            // CT/VT: not in measurement groups schema — always "Not configured"
+            // CT/VT: not in measurement groups schema — not available from recording metadata
             const ctVtHtml =
                 '<div class="ww-rd-details-section">' +
                 '<hr class="ww-rd-section-divider">' +
                 '<p class="ww-rd-details-section-title">CT / VT</p>' +
                 '<div class="ww-rd-config-table">' +
-                '<span class="ww-rd-config-label">VT ratio</span><span class="ww-rd-config-value ww-rd-not-configured">Not configured</span>' +
-                '<span class="ww-rd-config-label">CT ratio</span><span class="ww-rd-config-value ww-rd-not-configured">Not configured</span>' +
+                '<span class="ww-rd-config-label">VT ratio</span><span class="ww-rd-config-value ww-rd-not-configured">Not available from recording metadata</span>' +
+                '<span class="ww-rd-config-label">CT ratio</span><span class="ww-rd-config-value ww-rd-not-configured">Not available from recording metadata</span>' +
                 '</div>' +
                 '</div>';
 
