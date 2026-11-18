@@ -589,6 +589,7 @@
             min-width: 0;
             min-height: 0;
             overflow: hidden;
+            overflow-x: hidden;
         }
         #pageRecordingDetails[hidden] { display: none; }
 
@@ -598,6 +599,7 @@
             flex-direction: row;
             min-height: 0;
             gap: 0;
+            overflow-x: hidden;
         }
 
         .ww-rd-panel {
@@ -612,7 +614,64 @@
 
         .ww-rd-panel--browser { flex: 0 0 260px; }
         .ww-rd-panel--groups  { flex: 0 0 300px; }
-        .ww-rd-panel--details { flex: 1 1 auto; }
+        .ww-rd-panel--details { flex: 1 1 auto; min-width: 320px; }
+
+        /* UAT-B-07: Back navigation button — hidden by default (all
+           breakpoints); only shown in narrow mode via the media query
+           below. border-radius:0 overrides the global button rule so the
+           button spans the full panel width without a gap above the content. */
+        .ww-rd-back-btn {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--panel-border);
+            border-radius: 0;
+            color: var(--accent);
+            font-size: 0.72rem;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            flex-shrink: 0;
+        }
+        .ww-rd-back-btn:hover { color: var(--text); background: var(--hover-tint); }
+
+        /* UAT-B-07: Medium layout (workspace 640–919px): two-column grid
+           at the top (Recording Browser + Group list), Group Details full-
+           width below. Rail width = 52px; 920+52=972 is the viewport
+           threshold between wide and medium. */
+        @media (max-width: 972px) {
+            .ww-rd-layout {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+                grid-template-areas:
+                    "browser groups"
+                    "details details";
+            }
+            .ww-rd-panel--browser { grid-area: browser; }
+            .ww-rd-panel--groups  { grid-area: groups;  }
+            .ww-rd-panel--details { grid-area: details; min-width: 0; }
+        }
+
+        /* UAT-B-07: Narrow layout (workspace <640px): single-column,
+           one panel visible at a time. JS controls visibility via the
+           .ww-rd-narrow-hidden class. 640+52=692 is the viewport threshold
+           between medium and narrow. */
+        @media (max-width: 692px) {
+            .ww-rd-layout {
+                display: flex;
+                flex-direction: column;
+            }
+            .ww-rd-panel--browser,
+            .ww-rd-panel--groups,
+            .ww-rd-panel--details { flex: 1 1 auto; min-width: 0; }
+            .ww-rd-panel.ww-rd-narrow-hidden { display: none; }
+            .ww-rd-back-btn { display: flex; }
+        }
 
         .ww-rd-panel-header {
             display: flex;
@@ -771,12 +830,13 @@
             color: #fff;
         }
 
+        /* UAT-B-06: single-line group rows — name (flex:1), conflict icon
+           (⚠ only when manual_conflict_detected), compact V/I badge. */
         .ww-rd-group-item {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             gap: 6px;
-            padding: 6px 12px;
+            padding: 7px 12px;
             cursor: pointer;
             border-bottom: 1px solid var(--panel-border);
         }
@@ -791,47 +851,31 @@
             outline: 2px solid var(--accent);
             outline-offset: -2px;
         }
-        .ww-rd-group-item-left {
-            display: flex;
-            flex-direction: column;
-            gap: 1px;
-            min-width: 0;
-            flex: 1 1 auto;
-        }
         .ww-rd-group-name {
+            flex: 1;
+            min-width: 0;
             font-size: 0.75rem;
             font-weight: 500;
             color: var(--text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            min-width: 0;
         }
-        .ww-rd-group-subline {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .ww-rd-group-kind {
+        .ww-rd-group-badge {
+            flex: none;
             font-size: 0.62rem;
-            color: var(--text-dim);
-            flex-shrink: 0;
-            text-transform: capitalize;
-        }
-        .ww-rd-group-ch-count {
-            font-size: 0.62rem;
-            color: var(--text-dim);
-            flex-shrink: 0;
-        }
-        .ww-rd-group-conflict {
-            font-size: 0.6rem;
             padding: 1px 5px;
             border-radius: 3px;
-            background: var(--surface-tint);
-            border: 1px solid var(--panel-border);
+            background: var(--hover-tint);
             color: var(--text-dim);
-            flex-shrink: 0;
-            white-space: nowrap;
+        }
+        /* Conflict indicator: amber ⚠ symbol, shown only when
+           manual_conflict_detected === true. Never a text badge. */
+        .ww-rd-group-conflict {
+            flex: none;
+            color: var(--warn);
+            font-size: 13px;
+            line-height: 1;
         }
 
         .ww-rd-groups-body,
@@ -14922,6 +14966,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
                     <!-- Panel 2: Group Summary (Slice C will fill this) -->
                     <div class="ww-rd-panel ww-rd-panel--groups" id="wwRdGroupsPanel">
+                        <!-- UAT-B-07: visible only in narrow layout (≤692px viewport) -->
+                        <button type="button" class="ww-rd-back-btn" id="rdBackToRecordings">← Recordings</button>
                         <div class="ww-rd-panel-header">
                             <h2 class="ww-rd-panel-title">Measurement Groups</h2>
                         </div>
@@ -14941,6 +14987,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
                     <!-- Panel 3: Details / Edit (Slice C/D) -->
                     <div class="ww-rd-panel ww-rd-panel--details" id="wwRdDetailsPanel">
+                        <!-- UAT-B-07: visible only in narrow layout (≤692px viewport) -->
+                        <button type="button" class="ww-rd-back-btn" id="rdBackToGroups">← Groups</button>
                         <div class="ww-rd-panel-header">
                             <h2 class="ww-rd-panel-title">Group Details</h2>
                         </div>
@@ -36193,6 +36241,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             sources: null,           // SourceSummaryOut[] | null — in-memory cache
             groupsLoading: false,    // bool — prevent double-fetch
             groupKindFilter: "all",  // "all"|"voltage"|"current"
+            narrowPanel: "recordings", // "recordings"|"groups"|"details" — narrow-layout only
         };
 
         // ------------------------------------------------------------------
@@ -36206,6 +36255,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ------------------------------------------------------------------
 
         async function wwRdOnPageEntered() {
+            wwRdApplyNarrowLayout(); // UAT-B-07: apply panel visibility on page enter
             if (wwRdState.sources === null) {
                 await wwRdRefreshSources();
             } else {
@@ -36284,6 +36334,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwRdSelectSource(sourceId) {
             wwRdState.selectedSourceId = sourceId;
             wwRdState.selectedGroupId = null;
+            // UAT-B-07: in narrow layout, advance to the groups panel.
+            if (window.matchMedia("(max-width: 692px)").matches) {
+                wwRdState.narrowPanel = "groups";
+                wwRdApplyNarrowLayout();
+            }
             wwRdRenderBrowser();      // update selection highlight
             wwRdRenderGroups();       // show loading state immediately
             if (!sourceId) return;
@@ -36319,23 +36374,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             body.innerHTML = groups.map((g) => {
                 const sel = g.id === wwRdState.selectedGroupId
                     ? ' aria-selected="true"' : ' aria-selected="false"';
-                const chCount = Array.isArray(g.channel_refs) ? g.channel_refs.length : null;
-                const chText = chCount !== null
-                    ? escapeHtml(chCount + " ch") : "";
                 const conflict = g.voltage_config && g.voltage_config.manual_conflict_detected;
-                const conflictBadge = conflict
-                    ? '<span class="ww-rd-group-conflict">conflict</span>' : "";
+                // Single-line row: name | ⚠ (only if conflict) | V or I badge
+                const badge = g.kind === "voltage" ? "V" : g.kind === "current" ? "I" : escapeHtml(g.kind.charAt(0).toUpperCase());
+                const conflictIcon = conflict
+                    ? '<span class="ww-rd-group-conflict" title="Manual base conflict">⚠</span>' : "";
                 return '<div class="ww-rd-group-item" role="option" tabindex="0"' +
                     sel + ' data-group-id="' + escapeHtml(g.id) + '">' +
-                    '<div class="ww-rd-group-item-left">' +
                     '<span class="ww-rd-group-name" title="' + escapeHtml(g.display_name) + '">' +
                     escapeHtml(g.display_name) + '</span>' +
-                    '<div class="ww-rd-group-subline">' +
-                    '<span class="ww-rd-group-kind">' + escapeHtml(g.kind) + '</span>' +
-                    (chText ? '<span class="ww-rd-group-ch-count">' + chText + '</span>' : '') +
-                    '</div>' +
-                    '</div>' +
-                    conflictBadge +
+                    conflictIcon +
+                    '<span class="ww-rd-group-badge">' + badge + '</span>' +
                     '</div>';
             }).join("");
         }
@@ -36349,6 +36398,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             // Slice C will replace this stub with the full read-only details panel.
             body.innerHTML = '<p class="ww-rd-placeholder">Details coming in Slice C.</p>';
+        }
+
+        // UAT-B-07: apply panel visibility for narrow layout. At wider
+        // breakpoints (>692px viewport) all panels are always shown; this
+        // function is a no-op in that case. The CSS controls the back
+        // buttons' own display independently.
+        function wwRdApplyNarrowLayout() {
+            const isNarrow = window.matchMedia("(max-width: 692px)").matches;
+            const browser = document.getElementById("wwRdBrowserPanel");
+            const groups  = document.getElementById("wwRdGroupsPanel");
+            const details = document.getElementById("wwRdDetailsPanel");
+            if (!browser || !groups || !details) return;
+            if (!isNarrow) {
+                browser.classList.remove("ww-rd-narrow-hidden");
+                groups.classList.remove("ww-rd-narrow-hidden");
+                details.classList.remove("ww-rd-narrow-hidden");
+                return;
+            }
+            const p = wwRdState.narrowPanel;
+            browser.classList.toggle("ww-rd-narrow-hidden", p !== "recordings");
+            groups.classList.toggle("ww-rd-narrow-hidden",  p !== "groups");
+            details.classList.toggle("ww-rd-narrow-hidden", p !== "details");
         }
 
         async function wwFetchMeasurementGroupsForSource(sourceId) {
@@ -60694,6 +60765,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const item = e.target.closest(".ww-rd-group-item[data-group-id]");
             if (item) {
                 wwRdState.selectedGroupId = item.dataset.groupId;
+                // UAT-B-07: in narrow layout, advance to the details panel.
+                if (window.matchMedia("(max-width: 692px)").matches) {
+                    wwRdState.narrowPanel = "details";
+                    wwRdApplyNarrowLayout();
+                }
                 wwRdRenderGroups();
                 wwRdRenderDetails();
             }
@@ -60704,6 +60780,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (item) {
                     e.preventDefault();
                     wwRdState.selectedGroupId = item.dataset.groupId;
+                    // UAT-B-07: in narrow layout, advance to the details panel.
+                    if (window.matchMedia("(max-width: 692px)").matches) {
+                        wwRdState.narrowPanel = "details";
+                        wwRdApplyNarrowLayout();
+                    }
                     wwRdRenderGroups();
                     wwRdRenderDetails();
                 }
@@ -60723,6 +60804,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwRdUploadBtn").addEventListener("click", () => {
             openUploadModal();
         });
+        // UAT-B-07: back navigation buttons (narrow layout only).
+        document.getElementById("rdBackToRecordings").addEventListener("click", () => {
+            wwRdState.narrowPanel = "recordings";
+            wwRdApplyNarrowLayout();
+        });
+        document.getElementById("rdBackToGroups").addEventListener("click", () => {
+            wwRdState.narrowPanel = "groups";
+            wwRdApplyNarrowLayout();
+        });
+        // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.
+        window.matchMedia("(max-width: 692px)").addEventListener("change", wwRdApplyNarrowLayout);
 
         wwCalculatorInit();
 
