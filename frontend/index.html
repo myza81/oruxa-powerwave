@@ -576,6 +576,177 @@
             padding: 20px 24px;
         }
         #pageRecordings[hidden] { display: none; }
+
+        /* ---- Recording Details page (RD-1 Slice B) -- a first-class
+           dedicated view (D1 decision). Three-panel flex layout: Recording
+           Browser (fixed narrow left), Group Summary (fixed centre), Group
+           Details (flex-fill right). Same sibling-of-Workspace-Row pattern
+           as #pageRecordings. ---- */
+        #pageRecordingDetails {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+        #pageRecordingDetails[hidden] { display: none; }
+
+        .ww-rd-layout {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: row;
+            min-height: 0;
+            gap: 0;
+        }
+
+        .ww-rd-panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            background: var(--panel);
+            border-right: 1px solid var(--panel-border);
+        }
+        .ww-rd-panel:last-child { border-right: none; }
+
+        .ww-rd-panel--browser { flex: 0 0 260px; }
+        .ww-rd-panel--groups  { flex: 0 0 300px; }
+        .ww-rd-panel--details { flex: 1 1 auto; }
+
+        .ww-rd-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--panel-border);
+            flex-shrink: 0;
+        }
+        .ww-rd-panel-title {
+            margin: 0;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .ww-rd-upload-btn {
+            font-size: 0.72rem;
+            padding: 4px 10px;
+        }
+
+        .ww-rd-search-row {
+            display: flex;
+            gap: 6px;
+            padding: 8px 10px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-rd-search {
+            flex: 1 1 auto;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            color: var(--text);
+            min-width: 0;
+        }
+        .ww-rd-sort {
+            font-size: 0.72rem;
+            padding: 4px 6px;
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            color: var(--text);
+            flex-shrink: 0;
+        }
+
+        .ww-rd-recording-list {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .ww-rd-recording-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-rd-recording-item:last-child { border-bottom: none; }
+        .ww-rd-recording-item:hover { background: var(--hover-tint); }
+        .ww-rd-recording-item[aria-selected="true"] {
+            background: var(--surface-tint);
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+        .ww-rd-recording-item:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+        .ww-rd-recording-item-name {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        .ww-rd-recording-item-meta {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+        }
+
+        .ww-rd-group-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-rd-group-item:last-child { border-bottom: none; }
+        .ww-rd-group-item:hover { background: var(--hover-tint); }
+        .ww-rd-group-item[aria-selected="true"] {
+            background: var(--surface-tint);
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+        .ww-rd-group-item:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+        .ww-rd-group-name {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text);
+            overflow-wrap: anywhere;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .ww-rd-group-kind {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            flex-shrink: 0;
+            text-transform: capitalize;
+        }
+
+        .ww-rd-groups-body,
+        .ww-rd-details-body {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 12px 16px;
+        }
+
+        .ww-rd-placeholder {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-align: center;
+            margin-top: 32px;
+        }
+
         .recordings-header {
             display: flex;
             align-items: center;
@@ -9787,6 +9958,15 @@
                     <span class="shell-nav-icon" data-ww-icon="PAGE_RECORDINGS"></span>
                     <span class="shell-nav-label">Recordings</span>
                 </button>
+                <!-- RD-1 Slice B: dedicated Recording Details workspace --
+                     a first-class page (D1 decision), immediately after
+                     Recordings in the nav rail per the owner's approved
+                     position. Same shellSetCurrentPage() "hide, don't
+                     destroy" lifecycle as every other page. -->
+                <button type="button" class="shell-nav-item" id="mainNavRecordingDetailsBtn" title="Recording Details">
+                    <span class="shell-nav-icon" data-ww-icon="PAGE_RECORDING_DETAILS"></span>
+                    <span class="shell-nav-label">Recording Details</span>
+                </button>
                 <button type="button" class="shell-nav-item" id="mainNavWaveformBtn" title="Waveform">
                     <span class="shell-nav-icon" data-ww-icon="PAGE_WAVEFORM"></span>
                     <span class="shell-nav-label">Waveform</span>
@@ -14601,6 +14781,62 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 <!-- /ww-data-prep-row-7 -->
             </section>
 
+            <!-- RD-1 Slice B: Recording Details — dedicated three-panel view.
+                 D1 decision: a first-class page, not a modal.
+                 D2 decision: wwRdState owns all state; never shares
+                 wwMgSelectedSourceId or wwMgEditState with the existing
+                 Measurement Groups modal. Slice C will fill the groups and
+                 details panels; Slice D adds editing. -->
+            <section id="pageRecordingDetails" aria-label="Recording Details" hidden>
+                <div class="ww-rd-layout">
+
+                    <!-- Panel 1: Recording Browser -->
+                    <div class="ww-rd-panel ww-rd-panel--browser" id="wwRdBrowserPanel">
+                        <div class="ww-rd-panel-header">
+                            <h2 class="ww-rd-panel-title">Recordings</h2>
+                            <button type="button" class="secondary ww-rd-upload-btn" id="wwRdUploadBtn">
+                                Upload New
+                            </button>
+                        </div>
+                        <div class="ww-rd-search-row">
+                            <input type="search" class="ww-rd-search" id="wwRdSearch"
+                                placeholder="Search recordings…" aria-label="Search recordings" autocomplete="off">
+                            <select class="ww-rd-sort" id="wwRdSort" aria-label="Sort recordings">
+                                <option value="name-asc">Name A–Z</option>
+                                <option value="name-desc">Name Z–A</option>
+                                <option value="date-desc">Newest first</option>
+                                <option value="date-asc">Oldest first</option>
+                            </select>
+                        </div>
+                        <div class="ww-rd-recording-list" id="wwRdRecordingList" role="listbox"
+                            aria-label="Recordings" aria-multiselectable="false">
+                            <!-- Populated by wwRdRenderBrowser() -->
+                        </div>
+                    </div>
+
+                    <!-- Panel 2: Group Summary (Slice C will fill this) -->
+                    <div class="ww-rd-panel ww-rd-panel--groups" id="wwRdGroupsPanel">
+                        <div class="ww-rd-panel-header">
+                            <h2 class="ww-rd-panel-title">Measurement Groups</h2>
+                        </div>
+                        <div class="ww-rd-groups-body" id="wwRdGroupsBody">
+                            <!-- Populated by wwRdRenderGroups() -->
+                        </div>
+                    </div>
+
+                    <!-- Panel 3: Details / Edit (Slice C/D) -->
+                    <div class="ww-rd-panel ww-rd-panel--details" id="wwRdDetailsPanel">
+                        <div class="ww-rd-panel-header">
+                            <h2 class="ww-rd-panel-title">Group Details</h2>
+                        </div>
+                        <div class="ww-rd-details-body" id="wwRdDetailsBody">
+                            <p class="ww-rd-placeholder">Select a group to view details.</p>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
             <!-- Slice 4 (DEC-072): Reset All Changes confirmation --
                  reuses the exact same .confirm-overlay/.confirm-box shell
                  as #newWorkspaceConfirmOverlay above (same blast-radius
@@ -15868,6 +16104,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Power & Current tool nav -- owner-supplied power-triangle
             // pictogram (file name kept exactly as supplied).
             CALCULATOR_POWER_CURRENT: "assets/icons/calculator/amparent_square.svg",
+
+            // -- Recording Details (#pageRecordingDetails nav button, RD-1
+            // Slice B) -- no owner asset yet; inline document-with-list SVG
+            // placeholder. Swap for an owner-supplied file when available,
+            // exactly as ANALYSIS_OSCILLATION was swapped. --
+            PAGE_RECORDING_DETAILS: '<svg viewBox="0 0 18 18"><path d="M4 2h7l3 3v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V2Z" stroke-width="1.3" stroke-linejoin="round"/><path d="M10.5 2v3.5H14" stroke-width="1.1" stroke-linejoin="round"/><line x1="6.5" y1="8.5" x2="11.5" y2="8.5" stroke-width="1.1"/><line x1="6.5" y1="11" x2="11.5" y2="11" stroke-width="1.1"/><line x1="6.5" y1="13.5" x2="9.5" y2="13.5" stroke-width="1.1"/></svg>',
         };
 
         // DEC-143: renders one `[data-ww-icon]` placeholder from the
@@ -16319,13 +16561,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 page !== "event-reconstruction" &&
                 page !== "calculated-channels" && page !== "data-preparation" &&
                 page !== "analysis" && page !== "compliance" &&
-                page !== "calculator"
+                page !== "calculator" && page !== "recording-details"
             ) return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
 
             document.getElementById("workspaceRow").hidden = page !== "waveform";
             document.getElementById("pageRecordings").hidden = page !== "recordings";
+            document.getElementById("pageRecordingDetails").hidden = page !== "recording-details";
             document.getElementById("pageEventReconstruction").hidden = page !== "event-reconstruction";
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
             document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
@@ -16347,6 +16590,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // see shellSetActiveView()'s own matching update.
             setShellNavCurrent("mainNavWaveformBtn", page === "waveform" && shell.activeView !== "table");
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
+            setShellNavCurrent("mainNavRecordingDetailsBtn", page === "recording-details");
             setShellNavCurrent("mainNavEventReconstructionBtn", page === "event-reconstruction");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
             setShellNavCurrent("mainNavAnalysisBtn", page === "analysis");
@@ -16409,6 +16653,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // refreshSourceList() already makes) -- never waveform
                 // data, never a plot rebuild (section 32).
                 refreshAllSourceViews();
+            }
+            if (page === "recording-details") {
+                wwRdOnPageEntered();
             }
             if (page === "event-reconstruction") {
                 wwErOnPageEntered();
@@ -17240,6 +17487,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const comtradeRows = (sources || []).map((s) => Object.assign({ _recordingKind: "comtrade" }, s));
             const csvRows = (preparationSources || []).map(preparationSourceAsRecordingRow);
             renderRecordingsTable(comtradeRows.concat(csvRows));
+            // RD-1: invalidate the Recording Details browser cache so it
+            // re-fetches on next page entry (upload, remove, workspace reset).
+            wwRdState.sources = null;
             // Event Reconstruction records/stale state depend on the
             // source set; a no-op unless that page is current.
             wwErNotifyWorkspaceChanged();
@@ -35802,6 +36052,137 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         let wwMgSourcesList = [];
         let wwMgSelectedSourceId = null;
         let wwMgEditState = null;
+
+        // RD-1 Slice B (D2 decision): scoped state for the Recording Details
+        // page. NEVER share with wwMgSelectedSourceId or wwMgEditState.
+        // Persists across navigation ("hide, don't destroy" lifecycle).
+        const wwRdState = {
+            selectedSourceId: null,  // string | null
+            selectedGroupId: null,   // string | null
+            searchQuery: "",         // string
+            sortOrder: "name-asc",   // "name-asc"|"name-desc"|"date-desc"|"date-asc"
+            sources: null,           // SourceSummaryOut[] | null — in-memory cache
+            groupsLoading: false,    // bool — prevent double-fetch
+        };
+
+        // ------------------------------------------------------------------
+        // Recording Details page (RD-1 Slice B)
+        // ------------------------------------------------------------------
+        // D1: a first-class dedicated page, not a modal.
+        // D2: wwRdState is the sole state owner for this page.
+        // Browser uses fetchSourcesList(); groups use
+        // wwFetchMeasurementGroupsForSource() (shared cache, same
+        // as the existing Measurement Groups modal).
+        // ------------------------------------------------------------------
+
+        async function wwRdOnPageEntered() {
+            if (wwRdState.sources === null) {
+                await wwRdRefreshSources();
+            } else {
+                wwRdRenderBrowser(); // re-render from cache (search/sort preserved)
+            }
+        }
+
+        async function wwRdRefreshSources() {
+            const sources = await fetchSourcesList();
+            wwRdState.sources = sources || [];
+            wwRdRenderBrowser();
+        }
+
+        function wwRdRenderBrowser() {
+            const list = document.getElementById("wwRdRecordingList");
+            if (!list) return;
+
+            let items = wwRdState.sources || [];
+
+            const q = wwRdState.searchQuery.trim().toLowerCase();
+            if (q) {
+                items = items.filter((s) => {
+                    const name = recordingDisplayName(s).toLowerCase();
+                    return name.includes(q);
+                });
+            }
+
+            items = items.slice().sort((a, b) => {
+                const nameA = recordingDisplayName(a).toLowerCase();
+                const nameB = recordingDisplayName(b).toLowerCase();
+                switch (wwRdState.sortOrder) {
+                    case "name-desc": return nameB.localeCompare(nameA);
+                    case "date-desc": return (b.created_at || "").localeCompare(a.created_at || "");
+                    case "date-asc":  return (a.created_at || "").localeCompare(b.created_at || "");
+                    default:          return nameA.localeCompare(nameB); // "name-asc"
+                }
+            });
+
+            if (items.length === 0) {
+                list.innerHTML = '<p class="ww-rd-placeholder">' +
+                    (q ? "No recordings match your search." : "No recordings yet.") + '</p>';
+                return;
+            }
+
+            list.innerHTML = items.map((s) => {
+                const name = escapeHtml(recordingDisplayName(s));
+                const meta = escapeHtml(formatRecordingStartTime(s) || "");
+                const sel = s.source_id === wwRdState.selectedSourceId
+                    ? ' aria-selected="true"' : ' aria-selected="false"';
+                return '<div class="ww-rd-recording-item" role="option" tabindex="0"' +
+                    sel + ' data-source-id="' + escapeHtml(s.source_id) + '">' +
+                    '<span class="ww-rd-recording-item-name">' + name + '</span>' +
+                    (meta ? '<span class="ww-rd-recording-item-meta">' + meta + '</span>' : '') +
+                    '</div>';
+            }).join("");
+        }
+
+        async function wwRdSelectSource(sourceId) {
+            wwRdState.selectedSourceId = sourceId;
+            wwRdState.selectedGroupId = null;
+            wwRdRenderBrowser();      // update selection highlight
+            wwRdRenderGroups();       // show loading state immediately
+            if (!sourceId) return;
+            wwRdState.groupsLoading = true;
+            await wwFetchMeasurementGroupsForSource(sourceId);
+            wwRdState.groupsLoading = false;
+            wwRdRenderGroups();       // render fetched groups
+            wwRdRenderDetails();      // reset details panel
+        }
+
+        function wwRdRenderGroups() {
+            const body = document.getElementById("wwRdGroupsBody");
+            if (!body) return;
+            if (!wwRdState.selectedSourceId) {
+                body.innerHTML = '<p class="ww-rd-placeholder">Select a recording to view groups.</p>';
+                return;
+            }
+            if (wwRdState.groupsLoading) {
+                body.innerHTML = '<p class="ww-rd-placeholder">Loading…</p>';
+                return;
+            }
+            const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
+            if (groups.length === 0) {
+                body.innerHTML = '<p class="ww-rd-placeholder">No measurement groups configured.</p>';
+                return;
+            }
+            body.innerHTML = groups.map((g) => {
+                const sel = g.id === wwRdState.selectedGroupId
+                    ? ' aria-selected="true"' : ' aria-selected="false"';
+                return '<div class="ww-rd-group-item" role="option" tabindex="0"' +
+                    sel + ' data-group-id="' + escapeHtml(g.id) + '">' +
+                    '<span class="ww-rd-group-name">' + escapeHtml(g.display_name) + '</span>' +
+                    '<span class="ww-rd-group-kind">' + escapeHtml(g.kind) + '</span>' +
+                    '</div>';
+            }).join("");
+        }
+
+        function wwRdRenderDetails() {
+            const body = document.getElementById("wwRdDetailsBody");
+            if (!body) return;
+            if (!wwRdState.selectedGroupId) {
+                body.innerHTML = '<p class="ww-rd-placeholder">Select a group to view details.</p>';
+                return;
+            }
+            // Slice C will replace this stub with the full read-only details panel.
+            body.innerHTML = '<p class="ww-rd-placeholder">Details coming in Slice C.</p>';
+        }
 
         async function wwFetchMeasurementGroupsForSource(sourceId) {
             if (!sourceId) return [];
@@ -60109,6 +60490,50 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
         document.getElementById("mainNavComplianceBtn").addEventListener("click", () => shellSetCurrentPage("compliance"));
         document.getElementById("mainNavCalculatorBtn").addEventListener("click", () => shellSetCurrentPage("calculator"));
+        document.getElementById("mainNavRecordingDetailsBtn").addEventListener("click", () => shellSetCurrentPage("recording-details"));
+
+        // RD-1 Slice B: Recording Details page event wiring
+        document.getElementById("wwRdSearch").addEventListener("input", (e) => {
+            wwRdState.searchQuery = e.target.value;
+            wwRdRenderBrowser();
+        });
+        document.getElementById("wwRdSort").addEventListener("change", (e) => {
+            wwRdState.sortOrder = e.target.value;
+            wwRdRenderBrowser();
+        });
+        document.getElementById("wwRdRecordingList").addEventListener("click", (e) => {
+            const item = e.target.closest(".ww-rd-recording-item[data-source-id]");
+            if (item) wwRdSelectSource(item.dataset.sourceId);
+        });
+        document.getElementById("wwRdRecordingList").addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                const item = e.target.closest(".ww-rd-recording-item[data-source-id]");
+                if (item) { e.preventDefault(); wwRdSelectSource(item.dataset.sourceId); }
+            }
+        });
+        document.getElementById("wwRdGroupsBody").addEventListener("click", (e) => {
+            const item = e.target.closest(".ww-rd-group-item[data-group-id]");
+            if (item) {
+                wwRdState.selectedGroupId = item.dataset.groupId;
+                wwRdRenderGroups();
+                wwRdRenderDetails();
+            }
+        });
+        document.getElementById("wwRdGroupsBody").addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                const item = e.target.closest(".ww-rd-group-item[data-group-id]");
+                if (item) {
+                    e.preventDefault();
+                    wwRdState.selectedGroupId = item.dataset.groupId;
+                    wwRdRenderGroups();
+                    wwRdRenderDetails();
+                }
+            }
+        });
+        document.getElementById("wwRdUploadBtn").addEventListener("click", () => {
+            openUploadModal();
+        });
+
         wwCalculatorInit();
 
         // Analysis-type nav wiring -- implemented analyzers and lightweight

@@ -9,6 +9,54 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## RD-0B — Voltage-reference safety (2026-11-18)
+
+[FACT] RD-0B committed locally as `5e9113f` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged.
+
+**What is implemented (backend only):**
+- `reconfigure_auto_base_after_membership_change()` — revalidates voltage bases whenever a Voltage
+  Measurement Group's membership or voltage config changes. Triggered by `update_group()` and
+  `put_voltage_config()`.
+- `manual_conflict_detected` / `manual_conflict_detail` fields on `VoltageBaseConfiguration` and
+  `VoltageGroupConfigOut` — surfaces manual vs detected voltage incompatibility without changing
+  the authority enum. Three-case branch: conflict flagged (PU blocked) / compatible / insufficient evidence.
+- PU gate in `resolve_voltage_base_for_group()` — returns `STATUS_BASE_REQUIRED` with
+  `reason="manual_conflict_detected"` when conflict is active.
+- 35 new regression tests (20 membership-change + 15 manual-conflict scenarios).
+
+**Frontend gap remaining (RD-1 scope):**
+- `manual_conflict_detected` / `manual_conflict_detail` are NOT yet consumed by the frontend.
+- PU resolution cache (`wwErState.perUnit.generation`) is not invalidated on voltage-config save.
+Both are documented as RD-1 acceptance criteria in `measurement_groups.py`.
+
+## RD-1 Slice B — Recording Details skeleton (2026-11-18)
+
+[FACT] Slice B committed locally on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged.
+
+**What Slice B delivers (frontend only — `frontend/index.html`):**
+- New ninth nav button "Recording Details" (`mainNavRecordingDetailsBtn`) between Recordings and Waveform.
+- `<section id="pageRecordingDetails">` — three-panel flex layout (Recording Browser 260px fixed,
+  Measurement Groups 300px fixed, Group Details flex-fill).
+- `wwRdState` — scoped state object; never shares `wwMgSelectedSourceId` or `wwMgEditState`.
+- `wwRdOnPageEntered()` / `wwRdRefreshSources()` / `wwRdRenderBrowser()` — recording browser with
+  client-side search and sort, powered by `fetchSourcesList()`.
+- `wwRdSelectSource()` / `wwRdRenderGroups()` / `wwRdRenderDetails()` — groups + placeholder details.
+- "Upload New" button wired to `openUploadModal()` (same as Recordings page).
+- `refreshAllSourceViews()` now invalidates `wwRdState.sources` on every source set change.
+- `PAGE_RECORDING_DETAILS` inline SVG in `WW_TOOL_ICONS`.
+
+**Remaining (Slice C/D):**
+- Slice C: full read-only Group Details panel — `manual_conflict_detected` warning, voltage config,
+  provenance, PU state.
+- Slice D: editing integration (Edit/Apply/Cancel) + PU cache invalidation.
+- Slice E: Playwright regression tests.
+- D3 (waveform navigation): approved for RD-1 scope; integrate in Slice D or its own sub-slice.
+
+Audit: [RD1_SLICE_A_AUDIT_2026-11-18.md](RD1_SLICE_A_AUDIT_2026-11-18.md)
+Plan: [RD1_SLICE_B_PLAN_2026-11-18.md](RD1_SLICE_B_PLAN_2026-11-18.md)
+
 ## Independent product direction (owner decision, 2026-11-17)
 
 Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.

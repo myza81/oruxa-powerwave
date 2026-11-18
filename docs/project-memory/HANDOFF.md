@@ -4,7 +4,100 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-17** — P3 DEV UAT accepted; local product-identity cleanup reconciled with merged main.
+Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — awaiting owner UAT before Slice C.
+
+---
+
+## RD-1 Slice B — Recording Details workspace skeleton (2026-11-18)
+
+**Status:** Committed locally on `feature/vlt-ref-001-voltage-reference-safety`. NOT pushed, deployed, or merged. Awaiting owner UAT.
+
+**What Slice B implements (frontend only):**
+- Nav button "Recording Details" (`mainNavRecordingDetailsBtn`) — ninth nav item, between Recordings and Waveform.
+- `<section id="pageRecordingDetails">` — three-panel layout: Recording Browser (260px) | Measurement Groups (300px) | Group Details (flex-fill).
+- `wwRdState` — scoped state; never shares `wwMgSelectedSourceId`/`wwMgEditState`.
+- Recording browser with client-side search + sort (name A–Z, name Z–A, newest/oldest first).
+- Group panel stub — shows group names and kind; no editing (Slice D).
+- "Upload New" button wired to `openUploadModal()`.
+- `refreshAllSourceViews()` invalidates `wwRdState.sources` on every source set change.
+- `PAGE_RECORDING_DETAILS` inline SVG icon placeholder.
+
+**Remaining work:**
+- Slice C: full read-only Group Details panel — `manual_conflict_detected` warning, voltage config, provenance, PU state.
+- Slice D: Edit/Apply/Cancel integration + PU cache invalidation (`wwErState.perUnit.generation++`).
+- Slice E: Playwright regression tests (11 acceptance criteria in `RD1_SLICE_B_PLAN_2026-11-18.md`).
+- D3 (waveform navigation from Recording Details): approved for RD-1 scope, deferred to Slice D scoping.
+
+**Next action:** Owner UAT for Slice B, then authorize Slice C.
+
+---
+
+## RD-0B + RD-1 Slice A — Voltage-reference safety + Recording Details audit (2026-11-18)
+
+### RD-0B — committed as `5e9113f` on `feature/vlt-ref-001-voltage-reference-safety`
+
+**Status:** Committed locally. NOT pushed, deployed, or merged. Awaiting owner push/merge authorization.
+
+**What RD-0B delivers (backend only — no frontend changes):**
+
+1. **Automatic membership-change recalculation** — `reconfigure_auto_base_after_membership_change()` in
+   `backend/app/services/auto_base_service.py`. Triggered by `update_group()` (membership change) and
+   `put_voltage_config()` (manual kV edit). Closes L-4 from the RD-0A architecture review.
+
+2. **Manual conflict detection (Option A)** — `manual_conflict_detected: bool` and
+   `manual_conflict_detail: str | None` on `VoltageBaseConfiguration` (domain) and
+   `VoltageGroupConfigOut` (Pydantic schema). Three-case branch:
+   - Conflict (>5% tolerance) → flag set, PU blocked via `resolve_voltage_base_for_group()`
+   - Compatible same voltage → flag cleared
+   - Insufficient evidence → flag cleared
+
+3. **Final safety fix** — `put_voltage_config()` now calls
+   `reconfigure_auto_base_after_membership_change()` AFTER `update_voltage_configuration()`,
+   preventing a manual kV edit from bypassing the conflict guard.
+
+**Files changed:**
+- `backend/app/services/auto_base_service.py` — new function + helpers
+- `backend/app/services/measurement_group_service.py` — `update_group()` wired
+- `backend/app/api/v1/measurement_groups.py` — both endpoints wired; RD-1 acceptance criterion comment
+- `backend/app/domain/voltage_group_config.py` — two new fields; PU gate
+- `backend/app/services/voltage_group_config_registry.py` — `update_fields()` extended
+- `backend/app/services/voltage_group_config_service.py` — clears flags on manual kV edit
+- `backend/app/services/measurement_group_view_service.py` — wires new fields through
+- `backend/app/schemas/measurement_group.py` — `VoltageGroupConfigOut` extended
+- `backend/tests/test_rd0b_auto_base_membership_reconfigure.py` (NEW — 20 tests)
+- `backend/tests/test_rd0b_manual_conflict.py` (NEW — 15 tests)
+
+**RD-1 handoff requirements (documented as code comments):**
+- Frontend must consume `manual_conflict_detected` / `manual_conflict_detail` to surface the warning
+- PU resolution cache (`wwErState.perUnit.generation`) must be invalidated on voltage-config save
+- Noted as acceptance criteria in `measurement_groups.py` above `update_measurement_group`
+
+### RD-1 Slice A — read-only preliminary audit
+
+**Status:** Audit complete. Full report at
+`docs/project-memory/RD1_SLICE_A_AUDIT_2026-11-18.md`. No production files modified.
+Awaiting owner approval before Slice B begins.
+
+**Key findings:**
+- Recording Details is currently an inline `<tr>` sibling row (`renderRecordingDetails()` at
+  `frontend/index.html:22209`), not a separate page.
+- Measurement Groups UI is a modal overlay (`#measurementGroupsOverlay` line 15036), opened only from
+  Per-Unit Settings — no entry point from Recording Details today.
+- **Confirmed gap:** `manual_conflict_detected` / `manual_conflict_detail` are not consumed anywhere
+  in the frontend. This is the highest-priority RD-1 safety-visibility gap.
+- PU resolution cache staleness: `wwErState.perUnit.generation++` needed after voltage-config save.
+- No new backend APIs needed for Slices B–D.
+
+**Decisions needed before Slice B:**
+- D1: Inline expansion (Option A, recommended) vs. separate page (Option B)?
+- D2: Scoped `wwRdEditState` for Recording Details editor (recommended to avoid modal conflicts)?
+- D3: "Configure" link from Waveform → Recording Details? (recommended: defer to RD-2)
+- D4: Auto-expand Recording Details row after upload? (recommended: defer to Slice D)
+
+**Proposed slice plan:** Slice B (layout skeleton) → Slice C (read-only group panel + conflict warning)
+→ Slice D (editing integration + PU cache invalidation) → Slice E (regression tests).
+
+---
 
 ## Independent product direction and cleanup handoff
 
