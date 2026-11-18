@@ -89,8 +89,9 @@ test("UAT-D2-01: default edit shows kV input; reference select inputs not visibl
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible({ timeout: 3000 });
-    // Reference selects should NOT be in the DOM (Advanced collapsed — not rendered)
+    // Reference Mode dropdown must not exist — removed per DEC-214
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
+    // Base reference side select is inside Advanced (collapsed — not rendered)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).not.toBeVisible();
 });
 
@@ -165,6 +166,7 @@ test("UAT-D2-05: Advanced reference settings section is collapsed by default", a
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toBeVisible({ timeout: 3000 });
     // Advanced content is not rendered until opened
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).not.toBeVisible();
+    // Reference Mode dropdown removed; side select inside Advanced (not rendered)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).not.toBeVisible();
 });
@@ -178,14 +180,17 @@ test("UAT-D2-06: clicking Advanced toggle expands and shows reference selects", 
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toBeVisible({ timeout: 3000 });
-    // Collapsed: selects not visible
+    // Collapsed: Reference Mode dropdown absent, side select not rendered
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).not.toBeVisible();
     // Click toggle to expand
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    // Now reference mode and side selects should appear
+    // Advanced content appears with Correct voltage reference toggle and base reference side
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toBeVisible();
+    // Reference Mode dropdown still absent (removed per DEC-214)
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
 });
 
 // ---- UAT-D2-07: Advanced auto-opens when existing config has manual reference
@@ -203,10 +208,12 @@ test("UAT-D2-07: Advanced section auto-opens when group has manual reference_mod
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     // Advanced should already be expanded — no toggle click needed
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible();
-    // Reference mode select should be pre-selected to "manual"
-    const selectedMode = await page.locator("#wwRdDetailsBody #wwRdVltRefMode").inputValue();
-    expect(selectedMode).toBe("manual");
+    // Reference Mode dropdown is gone; "Correct voltage reference" section auto-opens for manual groups
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible();
+    // Override select pre-populated with the existing manual override value
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
+    const selectedOverride = await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").inputValue();
+    expect(selectedOverride).toBe("line_to_ground");
 });
 
 // ---- UAT-D2-08: Apply preserves reference_mode from draft -------------------

@@ -1075,6 +1075,15 @@
             margin-top: 4px;
             margin-bottom: 4px;
         }
+        .ww-rd-correct-ref-toggle { margin-top: 6px; }
+        .ww-rd-correct-ref-content { padding: 8px 0 4px 0; }
+        .ww-rd-link-btn {
+            font-size: var(--font-size-xs, 0.72rem);
+            color: var(--text-dim);
+            background: none; border: none; cursor: pointer;
+            padding: 2px 0; text-decoration: underline;
+        }
+        .ww-rd-link-btn:hover { color: var(--text); }
         /* Property-level provenance tags (D2 refinement) */
         .ww-rd-provenance { font-size: var(--font-size-xs, 0.72rem); display: block; margin-top: 2px; }
         .ww-rd-provenance--auto { color: var(--text-dim); }
@@ -37180,9 +37189,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (ed) {
                     // Edit mode
                     const isManual = ed.draftRefMode === "manual";
-                    const refModeOptions =
-                        '<option value="auto"' + (ed.draftRefMode === "auto" ? ' selected' : '') + '>Auto-detected</option>' +
-                        '<option value="manual"' + (ed.draftRefMode === "manual" ? ' selected' : '') + '>Manual override</option>';
                     const overrideOptions =
                         '<option value="line_to_ground"' + (ed.draftRefOverride === "line_to_ground" ? ' selected' : '') + '>Line-to-ground</option>' +
                         '<option value="line_to_line"' + (ed.draftRefOverride === "line_to_line" ? ' selected' : '') + '>Line-to-line</option>';
@@ -37235,13 +37241,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Advanced section (shown only when advancedOpen)
                     if (advOpen) {
                         configHtml += '<div class="ww-rd-advanced-content" id="wwRdVltAdvancedContent">';
-                        configHtml += '<div class="ww-rd-field-grid">';
-                        configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefMode">Reference mode</label>' +
-                            '<select class="ww-rd-edit-select" id="wwRdVltRefMode">' + refModeOptions + '</select></div>';
-                        if (isManual) {
-                            configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefOverride">Voltage reference</label>' +
-                                '<select class="ww-rd-edit-select" id="wwRdVltRefOverride">' + overrideOptions + '</select></div>';
+                        // "Correct voltage reference" sub-toggle
+                        const correctRefOpen = !!ed.correctRefOpen;
+                        const correctArrow = correctRefOpen ? "▼" : "►";
+                        configHtml += '<button class="ww-rd-advanced-toggle ww-rd-correct-ref-toggle" id="wwRdVltCorrectRefToggle" type="button">' + correctArrow + ' Correct voltage reference</button>';
+                        if (correctRefOpen) {
+                            configHtml += '<div class="ww-rd-correct-ref-content">';
+                            configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefOverride">Voltage reference</label>';
+                            configHtml += '<select class="ww-rd-edit-select" id="wwRdVltRefOverride">';
+                            if (!isManual) configHtml += '<option value="">— Select —</option>';
+                            configHtml += '<option value="line_to_ground"' + (ed.draftRefOverride === "line_to_ground" ? ' selected' : '') + '>Line-to-ground (L-N)</option>';
+                            configHtml += '<option value="line_to_line"' + (ed.draftRefOverride === "line_to_line" ? ' selected' : '') + '>Line-to-line (L-L)</option>';
+                            configHtml += '</select>';
+                            configHtml += '<div class="ww-rd-field-sub">Override the auto-detected reference. This sets a manual correction.</div>';
+                            configHtml += '</div>';
+                            if (vc && vc.reference_mode === "manual") {
+                                configHtml += '<div class="ww-rd-field">' +
+                                    '<button class="ww-rd-link-btn" id="wwRdVltClearRefOverride" type="button">Clear reference override</button>' +
+                                    '<div class="ww-rd-field-sub">Restores automatic detection. The result may be unresolved if the engine cannot determine L-L or L-N.</div>' +
+                                    '</div>';
+                            }
+                            configHtml += '</div>'; // .ww-rd-correct-ref-content
                         }
+                        configHtml += '<div class="ww-rd-field-grid">';
                         configHtml += '<div class="ww-rd-field ww-rd-field-full"><label class="ww-rd-field-label" for="wwRdVltRefSide">Base reference side</label>' +
                             '<select class="ww-rd-edit-select" id="wwRdVltRefSide">' + sideOptions + '</select>' +
                             '<div class="ww-rd-field-sub">Controls which voltage level is used as the PU denominator. Does not modify waveform calibration.</div></div>';
@@ -61906,9 +61928,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRdState.voltageEdit = {
                     draftKv: vc && vc.nominal_voltage_ll_kv != null ? String(vc.nominal_voltage_ll_kv) : "",
                     draftRefMode: (vc && vc.reference_mode) || "auto",
-                    draftRefOverride: (vc && vc.reference_override) || "line_to_ground",
+                    draftRefOverride: (vc && vc.reference_override) || null,
                     draftRefSide: (vc && vc.base_reference_side) || "unknown",
                     advancedOpen: !!(vc && vc.reference_mode && vc.reference_mode !== "auto"),
+                    correctRefOpen: !!(vc && vc.reference_mode === "manual"),
                     pending: false,
                     error: null,
                 };
@@ -61937,6 +61960,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 return;
             }
+            if (btn.id === "wwRdVltCorrectRefToggle") {
+                const ev = wwRdState.voltageEdit;
+                if (ev) {
+                    wwRdState.voltageEdit = Object.assign({}, ev, { correctRefOpen: !ev.correctRefOpen });
+                    wwRdRenderDetails();
+                }
+                return;
+            }
+            if (btn.id === "wwRdVltClearRefOverride") {
+                const ev = wwRdState.voltageEdit;
+                if (ev) {
+                    wwRdState.voltageEdit = Object.assign({}, ev, { draftRefMode: "auto", draftRefOverride: null, correctRefOpen: false });
+                    wwRdRenderDetails();
+                }
+                return;
+            }
         });
         // D2: live-sync draft state from edit form inputs (event delegation).
         document.getElementById("wwRdDetailsBody").addEventListener("input", (e) => {
@@ -61950,10 +61989,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwRdState.voltageEdit.draftRefOverride = e.target.value;
                 }
                 wwRdRenderDetails();
-            } else if (id === "wwRdVltRefMode") {
-                wwRdState.voltageEdit.draftRefMode = e.target.value;
-                wwRdRenderDetails(); // re-render to show/hide override row
-            } else if (id === "wwRdVltRefOverride") wwRdState.voltageEdit.draftRefOverride = e.target.value;
+            } else if (id === "wwRdVltRefOverride") {
+                if (e.target.value) {
+                    wwRdState.voltageEdit.draftRefMode = "manual";
+                    wwRdState.voltageEdit.draftRefOverride = e.target.value;
+                }
+            }
             else if (id === "wwRdVltRefSide") wwRdState.voltageEdit.draftRefSide = e.target.value;
         });
         // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.

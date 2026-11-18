@@ -279,7 +279,9 @@ test("C4-02e: equipment_rating current group shows Derived rated current label",
     expect(labels.some(l => l.includes("Derived rated current"))).toBeTruthy();
 });
 
-test("C4-02f: voltage group still shows Nominal voltage, Reference, Configuration source, PU availability", async ({ page }) => {
+// Updated: "Configuration source" standalone field removed in D2 refinement (628c8d9).
+// Now replaced by property-level provenance labels per DEC-214.
+test("C4-02f: voltage group shows Nominal voltage, Voltage reference, property-level provenance, PU availability", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -295,7 +297,10 @@ test("C4-02f: voltage group still shows Nominal voltage, Reference, Configuratio
             const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
             expect(labels.some(l => l.includes("Nominal voltage"))).toBeTruthy();
             expect(labels.some(l => l.includes("Voltage reference"))).toBeTruthy();
-            expect(labels.some(l => l.includes("Configuration source"))).toBeTruthy();
+            // "Configuration source" standalone field removed — verify it is gone
+            expect(labels.some(l => l.includes("Configuration source"))).toBeFalsy();
+            // Property-level provenance present for nominal voltage
+            await expect(page.locator("#wwRdDetailsBody #wwRdNomKvProvenance")).toBeVisible();
             // PU availability section present (voltage groups only)
             const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
             expect(headings.some(h => h.includes("Per-unit availability"))).toBeTruthy();

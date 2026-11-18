@@ -114,9 +114,10 @@ test("D2-02: Edit button opens inline edit form with kV input; reference selecto
     // Apply and Cancel buttons present
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageCancelBtn")).toBeVisible();
-    // Reference selects are in the Advanced section — open it first
+    // Advanced section — open it first to verify its contents
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible({ timeout: 3000 });
+    // No Reference Mode dropdown; "Correct voltage reference" toggle and base reference side present
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toBeVisible();
 });
 
@@ -135,23 +136,29 @@ test("D2-03: Cancel button restores read-only view with Edit button", async ({ p
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).not.toBeVisible();
 });
 
-// ---- D2-04: Manual ref mode shows override selector -------------------------
+// ---- D2-04: "Correct voltage reference" reveals override select (no Auto option) ----
+// Updated: Reference Mode dropdown removed per DEC-214. Now uses "Correct voltage
+// reference" toggle inside Advanced to reveal an L-L/L-N select without an Auto option.
 
-test("D2-04: selecting manual ref mode reveals the reference-type dropdown (in Advanced section)", async ({ page }) => {
+test("D2-04: expanding Correct voltage reference reveals override select without Auto option", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {});
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    // Open Advanced section to access reference mode selector
+    // Open Advanced section
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible({ timeout: 3000 });
-    // Auto mode: override row should NOT be visible
-    await page.locator("#wwRdDetailsBody #wwRdVltRefMode").selectOption("auto");
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible({ timeout: 3000 });
+    // Override select NOT yet visible (Correct ref section collapsed)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).not.toBeVisible();
-    // Switch to manual: override row appears
-    await page.locator("#wwRdDetailsBody #wwRdVltRefMode").selectOption("manual");
+    // Click "Correct voltage reference" to expand
+    await page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
+    // Select has L-L and L-N options but NO "Auto" option
+    const options = await page.locator("#wwRdDetailsBody #wwRdVltRefOverride option").allTextContents();
+    expect(options.some(o => /line.to.ground|l.n/i.test(o))).toBe(true);
+    expect(options.some(o => /line.to.line|l.l/i.test(o))).toBe(true);
+    expect(options.some(o => /auto/i.test(o))).toBe(false);
 });
 
 // ---- D2-05: Apply sends PUT with correct body --------------------------------
@@ -181,11 +188,7 @@ test("D2-05: Apply sends PUT with nominal_voltage_ll_kv and reference fields", a
     await injectAndSelectVoltageGroup(page, {});
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("275");
-    // Open Advanced section to interact with reference mode selector
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible({ timeout: 3000 });
-    await page.locator("#wwRdDetailsBody #wwRdVltRefMode").selectOption("auto");
-    // Intercept the PUT; use page.evaluate to have access to group
+    // No Reference Mode dropdown; just Apply with kV — reference_mode stays "auto"
     await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
     // Wait for the edit form to disappear (Apply succeeded or failed)
     await page.waitForTimeout(1500);
