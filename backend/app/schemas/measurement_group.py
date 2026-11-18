@@ -142,9 +142,10 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     """PUT body for a Voltage group's own configuration. `nominal_voltage_ll_kv`
     is the familiar nominal system LINE-TO-LINE voltage -- the engineer
     never enters a phase-derived number (Slice 3). Omitting it leaves
-    the group's existing base value untouched (there is no "clear"
-    operation, matching `set_voltage_base()`'s own always-required-value
-    contract). `reference_mode="manual"` requires `reference_override`;
+    the group's existing base value untouched. `clear_nominal_voltage=True`
+    clears the manual kV (sets base_authority to needs_review and re-runs
+    auto-detection); must not be combined with nominal_voltage_ll_kv.
+    `reference_mode="manual"` requires `reference_override`;
     `reference_mode="auto"` (default) always returns the group to
     live auto-detection, clearing any previous override.
     `base_reference_side` declares whether the configured nominal voltage
@@ -156,6 +157,10 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     reference_override: VoltageReferenceValue | None = None
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # D2: revert-to-auto flag. Clears nominal_voltage_ll_kv, sets
+    # base_authority=needs_review; must not be combined with nominal_voltage_ll_kv.
+    # secondary_voltage_ll_v is preserved (independent metadata, Gate 1).
+    clear_nominal_voltage: bool = False
     # D1: Voltage Transformer instrument-transformer configuration.
     # Partial pair (primary without secondary or vice versa) is 422.
     # clear_vt=True removes any existing VT configuration; must not

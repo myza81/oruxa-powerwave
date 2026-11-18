@@ -419,13 +419,15 @@ def put_voltage_config(
             vt_secondary_v=body.vt_secondary_v,
             vt_provenance_note=body.vt_provenance_note,
             clear_vt=body.clear_vt,
+            clear_nominal_voltage=body.clear_nominal_voltage,
             **kw,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
-    # RD-0B: re-evaluate conflict after a nominal kV change. update_voltage_configuration()
-    # cleared the flag; this call re-detects and re-flags if the new kV is still incompatible.
-    if body.nominal_voltage_ll_kv is not None:
+    # RD-0B / D2: re-evaluate conflict after a nominal kV change or clear.
+    # update_voltage_configuration() cleared the flag; this call re-detects
+    # and re-flags if the new kV (or lack thereof) is still incompatible.
+    if body.nominal_voltage_ll_kv is not None or body.clear_nominal_voltage:
         reconfigure_auto_base_after_membership_change(
             workspace_id=workspace_id, source_id=source_id,
             measurement_group_id=measurement_group_id,

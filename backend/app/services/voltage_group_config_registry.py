@@ -91,6 +91,7 @@ class VoltageGroupConfigRegistry:
     def update_fields(
         self, workspace_id: str, measurement_group_id: str, *,
         nominal_voltage_ll_kv: float | None = None,
+        update_nominal: bool = False,
         reference_mode: str | None = None,
         reference_override: str | None = None,
         base_reference_side: str | None = None,
@@ -111,6 +112,8 @@ class VoltageGroupConfigRegistry:
         Merge omitted fields under the existing lock, so concurrent reference
         and nominal-base edits cannot overwrite each other's accepted fields.
         A supplied reference mode replaces the mode/override pair together.
+        `update_nominal=True` applies `nominal_voltage_ll_kv` even when None
+        (clears the stored kV); False (default) only sets when non-None.
         `update_secondary=True` applies `secondary_voltage_ll_v` (None clears it);
         False (default) preserves the existing secondary_voltage_ll_v.
         `update_conflict=True` applies `manual_conflict_detected` and
@@ -125,7 +128,7 @@ class VoltageGroupConfigRegistry:
                 measurement_group_id=measurement_group_id, workspace_id=workspace_id,
                 nominal_voltage_ll_kv=None,
             )
-            if nominal_voltage_ll_kv is not None:
+            if nominal_voltage_ll_kv is not None or update_nominal:
                 candidate.nominal_voltage_ll_kv = nominal_voltage_ll_kv
             if reference_mode is not None:
                 candidate.reference_mode = reference_mode
