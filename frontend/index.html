@@ -909,8 +909,8 @@
             line-height: 1.5;
         }
         .ww-rd-conflict-banner {
-            background: color-mix(in srgb, var(--warn) 12%, transparent);
-            border-left: 3px solid var(--warn);
+            background: color-mix(in srgb, var(--error) 12%, transparent);
+            border-left: 3px solid var(--error);
             padding: 8px 14px;
             color: var(--text);
             font-size: 0.75rem;
@@ -918,7 +918,7 @@
         }
         .ww-rd-conflict-banner-title {
             font-weight: 600;
-            color: var(--warn);
+            color: var(--error);
             margin-bottom: 3px;
             font-size: 0.75rem;
         }
@@ -1103,6 +1103,12 @@
         .ww-rd-pu-conflict { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
         .ww-rd-pu-missing { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text-dim); }
         .ww-rd-pu-needs-review { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); opacity: 0.85; }
+        /* Severity modifier classes — added to .ww-rd-pu-status-line and other elements */
+        .ww-rd-status--ok     { color: var(--ok); }
+        .ww-rd-status--warn   { color: var(--warn); }
+        .ww-rd-status--error  { color: var(--error); }
+        .ww-rd-status--neutral { color: var(--text-dim); }
+        .ww-rd-pu-word--error { color: var(--error); }
         /* Engineering evidence */
         details.ww-rd-evidence { }
         details.ww-rd-evidence > summary {
@@ -36874,7 +36880,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
-        // Returns {icon, word, wordClass, reason} for PU availability display (Slice C-3).
+        // Returns {icon, word, wordClass, severity, reason} for PU availability display (Slice C-3).
+        // severity: "ok" | "warn" | "error" | "neutral" — used to add .ww-rd-status--* to container.
         function wwRdPuEligibilityState(g) {
             const st = g.pu_status;
             const pur = g.pu_reason;
@@ -36884,58 +36891,71 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 || null;
             const nomKv = g.voltage_config && g.voltage_config.nominal_voltage_ll_kv;
             if (st === "not_applicable") {
-                return { icon: "ⓘ", word: "Not applicable", wordClass: "ww-rd-pu-word--muted", reason: "" };
+                return { icon: "—", word: "Not applicable", wordClass: "ww-rd-pu-word--muted", severity: "neutral", reason: "" };
             }
             if (st === "configured") {
-                return { icon: "✓", word: "Available", wordClass: "ww-rd-pu-word--eligible", reason: "" };
+                // legacy_manual: base was set by old code path, treat as review-required even when configured
+                if (baseAuthority === "legacy_manual") {
+                    return { icon: "⚠", word: "Review required", wordClass: "ww-rd-pu-word--review", severity: "warn",
+                        reason: "The voltage base was set manually using a legacy method. Review and confirm this configuration." };
+                }
+                return { icon: "✓", word: "Available", wordClass: "ww-rd-pu-word--eligible", severity: "ok", reason: "" };
             }
             if (pur === "manual_conflict_detected" || conflict) {
-                return { icon: "⚠", word: "Blocked", wordClass: "ww-rd-pu-word--blocked",
+                return { icon: "✗", word: "Blocked", wordClass: "ww-rd-pu-word--error", severity: "error",
                     reason: "The manual voltage base conflicts with channel evidence. Per-unit calculations are blocked until the conflict is resolved." };
             }
             if (pur === "voltage_base_not_configured") {
-                return { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted",
+                return { icon: "—", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", severity: "neutral",
                     reason: "No voltage base has been configured for this group." };
             }
             if (pur === "group_not_confirmed") {
-                return { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted",
+                return { icon: "—", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", severity: "neutral",
                     reason: "The measurement group has not been confirmed. Review the group configuration." };
             }
             if (pur === "voltage_reference_undetermined") {
-                return { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted",
+                return { icon: "—", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", severity: "neutral",
                     reason: "The voltage reference (line-to-line or line-to-ground) could not be determined from the recording." };
             }
             if (pur === "base_invalidated") {
                 if (baseAuthority === "needs_review") {
                     if (nomKv == null) {
-                        return { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted",
-                            reason: "The nominal voltage could not be resolved automatically. Manual configuration is required." };
+                        return { icon: "⚠", word: "Configuration required", wordClass: "ww-rd-pu-word--blocked", severity: "warn",
+                            reason: "Nominal voltage has not been set. Enter a kV value to enable PU calculations for this group." };
                     }
-                    return { icon: "ⓘ", word: "Review required", wordClass: "ww-rd-pu-word--review",
+                    return { icon: "⚠", word: "Review required", wordClass: "ww-rd-pu-word--review", severity: "warn",
                         reason: "The voltage base requires review before per-unit calculations are available." };
                 }
                 if (baseAuthority === "unavailable") {
-                    return { icon: "⚠", word: "Unavailable", wordClass: "ww-rd-pu-word--blocked",
-                        reason: "The voltage base has been invalidated. Reconfigure to restore per-unit availability." };
+                    return { icon: "—", word: "Not applicable", wordClass: "ww-rd-pu-word--muted", severity: "neutral", reason: "" };
                 }
                 return nomKv == null
-                    ? { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted",
+                    ? { icon: "—", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", severity: "neutral",
                         reason: "The nominal voltage could not be resolved automatically. Manual configuration is required." }
-                    : { icon: "ⓘ", word: "Review required", wordClass: "ww-rd-pu-word--review",
+                    : { icon: "⚠", word: "Review required", wordClass: "ww-rd-pu-word--review", severity: "warn",
                         reason: "The voltage base configuration requires review." };
             }
             if (pur === "secondary_equivalent_not_configured") {
-                return { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted",
+                return { icon: "—", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", severity: "neutral",
                     reason: "A secondary equivalent calculation is required before per-unit values are available." };
             }
-            return { icon: "ⓘ", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", reason: "" };
+            // Fallback: check base_authority for needs_review / legacy_manual without a specific pur
+            if (baseAuthority === "needs_review") {
+                return { icon: "⚠", word: "Configuration required", wordClass: "ww-rd-pu-word--blocked", severity: "warn",
+                    reason: "Nominal voltage has not been set. Enter a kV value to enable PU calculations for this group." };
+            }
+            if (baseAuthority === "legacy_manual") {
+                return { icon: "⚠", word: "Review required", wordClass: "ww-rd-pu-word--review", severity: "warn",
+                    reason: "The voltage base was set manually using a legacy method. Review and confirm this configuration." };
+            }
+            return { icon: "—", word: "Unavailable", wordClass: "ww-rd-pu-word--muted", severity: "neutral", reason: "" };
         }
 
         function wwRdPuSectionHtml(g) {
             const s = wwRdPuEligibilityState(g);
             let html = '<div class="ww-rd-section">';
             html += '<div class="ww-rd-section-heading">Per-unit availability</div>';
-            html += '<div class="ww-rd-pu-status-line">';
+            html += '<div class="ww-rd-pu-status-line ww-rd-status--' + s.severity + '">';
             html += '<span class="ww-rd-pu-icon" aria-hidden="true">' + s.icon + '</span>';
             html += '<span class="' + s.wordClass + '">' + escapeHtml(s.word) + '</span>';
             html += '</div>';
@@ -37071,24 +37091,42 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
-        // VT/CT sections — CT/VT ratios not in measurement groups schema; shown as unavailable.
+        // VT/CT sections — neutral display; editing deferred to D4.
         // Voltage Groups show VT only; Current Groups show CT only.
-        function wwRdVtSectionHtml() {
+        function wwRdVtSectionHtml(g) {
+            const vc = g && g.voltage_config;
+            const vtPrimary = vc && vc.vt_primary_v;
+            const vtSecondary = vc && vc.vt_secondary_v;
+            let ratioContent;
+            if (vtPrimary != null && vtSecondary != null) {
+                ratioContent = '<div class="ww-rd-field-value">' + vtPrimary + ' / ' + vtSecondary + ' V</div>';
+            } else {
+                ratioContent = '<div class="ww-rd-field-value ww-rd-status--neutral">— Not configured</div>';
+            }
             return '<div class="ww-rd-section">' +
                 '<div class="ww-rd-section-heading">Voltage Transformer (VT)</div>' +
                 '<div class="ww-rd-field">' +
                 '<div class="ww-rd-field-label">VT ratio</div>' +
-                '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not available from recording metadata</div>' +
+                ratioContent +
                 '</div>' +
                 '</div>';
         }
 
-        function wwRdCtSectionHtml() {
+        function wwRdCtSectionHtml(g) {
+            const cc = g && g.current_config;
+            const ctPrimary = cc && cc.ct_primary_a;
+            const ctSecondary = cc && cc.ct_secondary_a;
+            let ratioContent;
+            if (ctPrimary != null && ctSecondary != null) {
+                ratioContent = '<div class="ww-rd-field-value">' + ctPrimary + ' / ' + ctSecondary + ' A</div>';
+            } else {
+                ratioContent = '<div class="ww-rd-field-value ww-rd-status--neutral">— Not configured</div>';
+            }
             return '<div class="ww-rd-section">' +
                 '<div class="ww-rd-section-heading">Current Transformer (CT)</div>' +
                 '<div class="ww-rd-field">' +
                 '<div class="ww-rd-field-label">CT ratio</div>' +
-                '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not available from recording metadata</div>' +
+                ratioContent +
                 '</div>' +
                 '</div>';
         }
@@ -37122,7 +37160,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : "The manual voltage base conflicts with channel evidence. PU calculations are blocked.";
                 conflictHtml =
                     '<div class="ww-rd-conflict-banner">' +
-                    '<div class="ww-rd-conflict-banner-title">⚠ Voltage Base Conflict Detected</div>' +
+                    '<div class="ww-rd-conflict-banner-title ww-rd-status--error">✗ Voltage Base Conflict Detected</div>' +
                     '<div class="ww-rd-conflict-banner-detail">' + escapeHtml(detail) + '</div>' +
                     '</div>';
             }
@@ -37266,7 +37304,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const puHtml = (kind === "voltage") ? wwRdPuSectionHtml(g) : "";
 
             // Instrument transformer section — group-type specific, read-only
-            const transformerHtml = kind === "voltage" ? wwRdVtSectionHtml() : wwRdCtSectionHtml();
+            const transformerHtml = kind === "voltage" ? wwRdVtSectionHtml(g) : wwRdCtSectionHtml(g);
 
             // Engineering Evidence section
             const evidenceHtml = wwRdEvidenceHtml(g);

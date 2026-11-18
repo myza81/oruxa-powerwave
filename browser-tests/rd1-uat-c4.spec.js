@@ -378,7 +378,7 @@ test("C4-03d: Current Group panel does NOT show 'Voltage Transformer'", async ({
     expect(bodyText).not.toContain("Voltage Transformer");
 });
 
-test("C4-03e: VT section shows 'Not available from recording metadata'", async ({ page }) => {
+test("C4-03e: VT section shows neutral 'Not configured' when VT ratio is absent", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -391,7 +391,16 @@ test("C4-03e: VT section shows 'Not available from recording metadata'", async (
         if (badge.trim() === "V") {
             await groups.nth(i).click();
             await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
-            await expect(page.locator("#wwRdDetailsBody")).toContainText("Not available from recording metadata");
+            // VT ratio field shows neutral "Not configured" text (not warn/error)
+            await expect(page.locator("#wwRdDetailsBody")).toContainText("Not configured");
+            // The VT ratio value must carry ww-rd-status--neutral (not warn or error)
+            const vtSection = page.locator("#wwRdDetailsBody .ww-rd-section:has(.ww-rd-section-heading:has-text('Voltage Transformer'))");
+            const vtValue = vtSection.locator(".ww-rd-field-value");
+            if (await vtValue.count() > 0) {
+                const cls = await vtValue.first().getAttribute("class") || "";
+                expect(cls).not.toMatch(/ww-rd-status--warn/);
+                expect(cls).not.toMatch(/ww-rd-status--error/);
+            }
             return;
         }
     }

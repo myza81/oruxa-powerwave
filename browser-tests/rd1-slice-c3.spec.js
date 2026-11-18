@@ -149,7 +149,7 @@ test("C3-05: Per-unit availability section present for voltage group with status
     await expect(statusLine).toBeVisible();
     const statusText = await statusLine.textContent();
     // Contains one of the known status words
-    const knownWords = ["Available", "Unavailable", "Blocked", "Review required", "Not applicable"];
+    const knownWords = ["Available", "Unavailable", "Blocked", "Review required", "Not applicable", "Configuration required"];
     expect(knownWords.some(w => statusText.includes(w))).toBeTruthy();
 });
 
