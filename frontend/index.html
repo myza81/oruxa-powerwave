@@ -36878,33 +36878,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (vc.secondary_voltage_ll_v != null) {
                     rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Secondary voltage (L‑L)</span><span class="ww-rd-evidence-val">' + vc.secondary_voltage_ll_v + ' V</span></div>';
                 }
-            } else if (kind === "current" && g.current_config) {
+            } else if (kind === "current") {
                 const cc = g.current_config;
-                if (cc.method && cc.method !== "none") {
-                    const methodLabel = cc.method === "equipment_rating" ? "Equipment rating"
-                        : cc.method === "manual" ? "Manual"
-                        : escapeHtml(cc.method);
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Method</span><span class="ww-rd-evidence-val">' + methodLabel + '</span></div>';
-                }
-                if (cc.equipment_rating_mva != null) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Equipment rating</span><span class="ww-rd-evidence-val">' + cc.equipment_rating_mva + ' MVA</span></div>';
-                }
-                if (cc.manual_voltage_base_kv != null) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Manual V base</span><span class="ww-rd-evidence-val">' + cc.manual_voltage_base_kv + ' kV</span></div>';
-                }
-                if (cc.applicable_voltage_ll_kv != null) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Applicable V base</span><span class="ww-rd-evidence-val">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</span></div>';
-                }
-                if (cc.linked_voltage_group_id) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Linked V group</span><span class="ww-rd-evidence-val">' + escapeHtml(cc.linked_voltage_group_id) + '</span></div>';
-                }
-                if (cc.base_reference_side && cc.base_reference_side !== "unknown") {
-                    const side = cc.base_reference_side === "primary" ? "Primary" : "Secondary";
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference side</span><span class="ww-rd-evidence-val">' + escapeHtml(side) + '</span></div>';
+                const ccMethod = cc ? cc.method : "none";
+                const methodLabel = ccMethod === "equipment_rating" ? "Equipment rating"
+                    : ccMethod === "manual" ? "Manual"
+                    : ccMethod === "none" ? "None"
+                    : escapeHtml(ccMethod);
+                rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Method</span><span class="ww-rd-evidence-val">' + methodLabel + '</span></div>';
+                if (cc) {
+                    if (cc.manual_ibase_ka != null) {
+                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Manual current base</span><span class="ww-rd-evidence-val">' + cc.manual_ibase_ka.toFixed(4) + ' kA</span></div>';
+                    }
+                    if (cc.manual_voltage_base_kv != null) {
+                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Manual V base</span><span class="ww-rd-evidence-val">' + cc.manual_voltage_base_kv + ' kV</span></div>';
+                    }
+                    if (cc.applicable_voltage_ll_kv != null) {
+                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Applicable V base</span><span class="ww-rd-evidence-val">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</span></div>';
+                    }
+                    if (cc.linked_voltage_group_id) {
+                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Linked V group</span><span class="ww-rd-evidence-val">' + escapeHtml(cc.linked_voltage_group_id) + '</span></div>';
+                    }
+                    if (cc.base_reference_side && cc.base_reference_side !== "unknown") {
+                        const side = cc.base_reference_side === "primary" ? "Primary" : "Secondary";
+                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference side</span><span class="ww-rd-evidence-val">' + escapeHtml(side) + '</span></div>';
+                    }
                 }
             }
-            // Instrument transformers note (CT/VT not in measurement groups schema)
-            rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Instrument transformers</span><span class="ww-rd-evidence-val ww-rd-not-configured">Not available from recording metadata</span></div>';
             const body = rows.length > 0
                 ? rows
                 : '<p style="margin:0;font-size:0.72rem;color:var(--text-dim)">No detailed evidence available from this group’s current configuration.</p>';
@@ -36913,70 +36913,81 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwRdCurrentConfigHtml(g) {
             const cc = g.current_config;
-            if (!cc) {
-                return '<div class="ww-rd-section"><p class="ww-rd-not-configured">No current configuration available.</p></div>';
-            }
+            // All current groups show Equipment Rating section regardless of method.
             let html = '<div class="ww-rd-section">';
-            html += '<div class="ww-rd-section-heading">Current Group<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
-            if (cc.method === "equipment_rating") {
-                html += '<div class="ww-rd-field-grid">';
-                // Left: Equipment capacity
-                html += '<div class="ww-rd-field">';
-                html += '<div class="ww-rd-field-label">Equipment capacity</div>';
-                if (cc.equipment_rating_mva != null) {
-                    html += '<div class="ww-rd-field-value">' + cc.equipment_rating_mva + ' MVA</div>';
-                } else {
-                    html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not configured</div>';
-                }
-                html += '</div>';
-                // Right: Derived rated current
-                html += '<div class="ww-rd-field">';
-                html += '<div class="ww-rd-field-label">Derived rated current</div>';
-                if (cc.resolved_ibase_ka != null) {
-                    html += '<div class="ww-rd-field-value">' + cc.resolved_ibase_ka.toFixed(4) + ' kA</div>';
-                    html += '<div class="ww-rd-field-sub">I&#8336; = MVA / (&#8730;3 &times; kV<sub>LL</sub>)</div>';
-                } else {
-                    html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
-                    html += '<div class="ww-rd-field-sub">Requires equipment capacity and linked voltage group</div>';
-                }
-                html += '</div>';
-                html += '</div>'; // .ww-rd-field-grid
-                // Linked voltage group — full width, below grid
-                html += '<div class="ww-rd-field ww-rd-field-full" style="margin-top:6px">';
-                html += '<div class="ww-rd-field-label">Linked voltage group</div>';
-                if (cc.linked_voltage_group_id) {
-                    const sourceGroups = ww.measurementGroups.get(g.source_id) || [];
-                    const linked = sourceGroups.find(function(grp) { return grp.id === cc.linked_voltage_group_id; });
-                    const linkedName = linked ? linked.display_name : cc.linked_voltage_group_id;
-                    html += '<div class="ww-rd-field-value">' + escapeHtml(linkedName) + '</div>';
-                    if (cc.applicable_voltage_ll_kv != null) {
-                        html += '<div class="ww-rd-field-sub">' + cc.applicable_voltage_ll_kv + ' kV (L&#8209;L)</div>';
-                    }
-                } else {
-                    html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not linked</div>';
-                }
-                html += '</div>';
-            } else if (cc.method === "manual") {
-                html += '<div class="ww-rd-field-grid">';
-                html += '<div class="ww-rd-field ww-rd-field-full">';
-                html += '<div class="ww-rd-field-label">Current base (manual)</div>';
-                if (cc.manual_ibase_ka != null) {
-                    html += '<div class="ww-rd-field-value">' + cc.manual_ibase_ka.toFixed(4) + ' kA</div>';
-                } else {
-                    html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not configured</div>';
-                }
-                html += '</div>';
-                html += '<div class="ww-rd-field ww-rd-field-full">';
-                html += '<div class="ww-rd-field-label">Configuration source</div>';
-                html += '<div class="ww-rd-field-value">Manual — engineer configured</div>';
-                html += '</div>';
-                html += '</div>'; // .ww-rd-field-grid
+            html += '<div class="ww-rd-section-heading">Equipment Rating<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
+            html += '<div class="ww-rd-field-grid">';
+
+            // Left: Equipment capacity
+            html += '<div class="ww-rd-field">';
+            html += '<div class="ww-rd-field-label">Equipment capacity</div>';
+            if (cc && cc.equipment_rating_mva != null) {
+                html += '<div class="ww-rd-field-value">' + cc.equipment_rating_mva + ' MVA</div>';
             } else {
-                // method = "none" — per-unit normalisation not configured
-                html += '<p class="ww-rd-field-value" style="font-size:0.82rem;color:var(--text-dim);margin:4px 0 2px">Per-unit normalisation not configured for this group.</p>';
+                html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not specified</div>';
             }
+            html += '</div>';
+
+            // Right: Linked voltage group
+            html += '<div class="ww-rd-field">';
+            html += '<div class="ww-rd-field-label">Associated voltage group</div>';
+            if (cc && cc.linked_voltage_group_id) {
+                const sourceGroups = ww.measurementGroups.get(g.source_id) || [];
+                const linked = sourceGroups.find(function(grp) { return grp.id === cc.linked_voltage_group_id; });
+                const linkedName = linked ? linked.display_name : cc.linked_voltage_group_id;
+                html += '<div class="ww-rd-field-value">' + escapeHtml(linkedName) + '</div>';
+                if (cc.applicable_voltage_ll_kv != null) {
+                    html += '<div class="ww-rd-field-sub">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</div>';
+                } else {
+                    html += '<div class="ww-rd-field-sub">kV not resolved</div>';
+                }
+            } else {
+                html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">—</div>';
+            }
+            html += '</div>';
+
+            // Full-width: Derived rated current
+            // Only shown as "derived" when method=equipment_rating AND resolved_ibase_ka comes from MVA/kV calc.
+            // For method=manual, resolved_ibase_ka carries the manual value — must not be shown as derived.
+            html += '<div class="ww-rd-field ww-rd-field-full">';
+            html += '<div class="ww-rd-field-label">Derived rated current</div>';
+            const method = cc ? cc.method : "none";
+            if (method === "equipment_rating" && cc.resolved_ibase_ka != null) {
+                html += '<div class="ww-rd-field-value">' + cc.resolved_ibase_ka.toFixed(4) + ' kA</div>';
+                html += '<div class="ww-rd-field-sub">I = MVA / (√3 × kV<sub>LL</sub>)</div>';
+            } else if (method === "manual") {
+                html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not derived from equipment rating</div>';
+                html += '<div class="ww-rd-field-sub">Manual configuration — see Engineering Evidence</div>';
+            } else {
+                html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">—</div>';
+            }
+            html += '</div>';
+
+            html += '</div>'; // .ww-rd-field-grid
             html += '</div>'; // .ww-rd-section
             return html;
+        }
+
+        // VT/CT sections — CT/VT ratios not in measurement groups schema; shown as unavailable.
+        // Voltage Groups show VT only; Current Groups show CT only.
+        function wwRdVtSectionHtml() {
+            return '<div class="ww-rd-section">' +
+                '<div class="ww-rd-section-heading">Voltage Transformer (VT)</div>' +
+                '<div class="ww-rd-field">' +
+                '<div class="ww-rd-field-label">VT ratio</div>' +
+                '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not available from recording metadata</div>' +
+                '</div>' +
+                '</div>';
+        }
+
+        function wwRdCtSectionHtml() {
+            return '<div class="ww-rd-section">' +
+                '<div class="ww-rd-section-heading">Current Transformer (CT)</div>' +
+                '<div class="ww-rd-field">' +
+                '<div class="ww-rd-field-label">CT ratio</div>' +
+                '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not available from recording metadata</div>' +
+                '</div>' +
+                '</div>';
         }
 
         function wwRdBuildDetailsHtml(g) {
@@ -36990,7 +37001,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const names = channelRefs.map(function(r) { return escapeHtml(r.channel_name); });
                 const shown = names.slice(0, 5);
                 const extra = channelCount > 5 ? " · and " + (channelCount - 5) + " more" : "";
-                channelsText = channelCount + " channel" + (channelCount === 1 ? "" : "s") + ": " + shown.join(" · ") + extra;
+                channelsText = shown.join(" · ") + extra;
             }
 
             // Header section: group name + dot-separated channel list (no type badge)
@@ -37080,10 +37091,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Per-unit availability section — voltage groups only (current groups use Calculated Channels)
             const puHtml = (kind === "voltage") ? wwRdPuSectionHtml(g) : "";
 
-            // Engineering Evidence section (includes instrument transformers note)
+            // Instrument transformer section — group-type specific, read-only
+            const transformerHtml = kind === "voltage" ? wwRdVtSectionHtml() : wwRdCtSectionHtml();
+
+            // Engineering Evidence section
             const evidenceHtml = wwRdEvidenceHtml(g);
 
-            return headerHtml + conflictHtml + configHtml + puHtml + evidenceHtml;
+            return headerHtml + conflictHtml + configHtml + puHtml + transformerHtml + evidenceHtml;
         }
 
         // UAT-B-07: apply panel visibility for narrow layout. At wider

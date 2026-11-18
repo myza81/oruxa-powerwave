@@ -53,7 +53,7 @@ async function selectGroupByKind(page, kind) {
 
 // ---- Tests ------------------------------------------------------------------
 
-test("C3-01: group name visible and channels as dot-separated list with count prefix", async ({ page }) => {
+test("C3-01: group name visible and channels as dot-separated list (no count prefix)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -62,12 +62,13 @@ test("C3-01: group name visible and channels as dot-separated list with count pr
 
     // Group name present
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name").first()).toBeVisible();
-    // Channel list present and uses · separator with count prefix
+    // Channel list present, uses · separator, NO "N channels:" count prefix
     const ch = page.locator("#wwRdDetailsBody .ww-rd-details-channels").first();
     await expect(ch).toBeVisible();
     const chText = await ch.textContent();
-    // Should use "N channels: Ch1 · Ch2" or "No channels assigned"
-    expect(chText.includes("·") || chText.includes("No channels assigned") || /\d+ channel/.test(chText)).toBeTruthy();
+    expect(chText.includes("·") || chText.includes("No channels assigned")).toBeTruthy();
+    // UAT-C4-01: must NOT contain the "channels:" prefix
+    expect(chText).not.toMatch(/\d+\s+channel/i);
 });
 
 test("C3-02: voltage group shows Nominal voltage (L-L) label and Not resolved or value", async ({ page }) => {
@@ -278,26 +279,32 @@ test("C3-07: Conflict group shows Blocked (not full sentence as status word)", a
     expect(statusText).not.toContain("conflicts with");
 });
 
-test("C3-08: No standalone CT/VT section; Instrument transformers in Engineering Evidence", async ({ page }) => {
+test("C3-08: Voltage group has VT section in main panel (not CT/VT combined)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
-    await selectFirstGroup(page);
 
-    // No standalone CT/VT section heading
-    const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
-    const hasCTVTSection = headings.some(h => /^CT\s*\/\s*VT$/i.test(h.trim()));
-    expect(hasCTVTSection).toBeFalsy();
-
-    // Instrument transformers note exists inside Engineering Evidence
-    const evidenceDetails = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
-    await evidenceDetails.locator("summary").click(); // open it
-    await expect(evidenceDetails.locator(".ww-rd-evidence-body")).toBeVisible({ timeout: 3000 });
-    await expect(evidenceDetails).toContainText("Instrument transformers");
+    // Select a voltage group
+    const groups = page.locator("#wwRdGroupsBody .ww-rd-group-item");
+    const count = await groups.count();
+    for (let i = 0; i < count; i++) {
+        const badge = await groups.nth(i).locator(".ww-rd-group-badge").textContent().catch(() => "");
+        if (badge.trim() === "V") {
+            await groups.nth(i).click();
+            await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
+            const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
+            // VT section present for voltage groups
+            expect(headings.some(h => h.includes("Voltage Transformer"))).toBeTruthy();
+            // No CT section in voltage group
+            expect(headings.some(h => h.includes("Current Transformer"))).toBeFalsy();
+            return;
+        }
+    }
+    test.skip(true, "No voltage group found in test recording");
 });
 
-test("C3-09: Current group shows Current Group section heading (new equipment-capacity design)", async ({ page }) => {
+test("C3-09: Current group shows Equipment Rating section heading", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -306,10 +313,12 @@ test("C3-09: Current group shows Current Group section heading (new equipment-ca
     await selectGroupByKind(page, "current");
 
     const details = page.locator("#wwRdDetailsBody");
-    // Section heading is "Current Group" for all current group methods
-    await expect(details).toContainText("Current Group");
+    // Section heading is now "Equipment Rating" for all current group methods
+    await expect(details).toContainText("Equipment Rating");
     // Per-unit availability section must NOT appear (current groups use Calculated Channels)
     await expect(details.locator(".ww-rd-pu-status-line")).not.toBeVisible();
+    // CT section present for current groups
+    await expect(details).toContainText("Current Transformer (CT)");
 });
 
 test("C3-10: dark theme renders group details without layout breakage", async ({ page }) => {
