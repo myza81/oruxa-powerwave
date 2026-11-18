@@ -993,6 +993,51 @@
         .ww-rd-evidence-val { color: var(--text); }
         .ww-rd-section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 10px 0; }
 
+        /* Slice C-1: panel headers that contain a title + action link */
+        .ww-rd-details-panel-header,
+        .ww-rd-groups-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        /* Slice C-1: narrow-only elements hidden at ≥693px */
+        @media (min-width: 693px) {
+            .ww-rd-narrow-only { display: none !important; }
+        }
+        @media (max-width: 692px) {
+            .ww-rd-narrow-only { display: inline-block !important; }
+        }
+        .ww-rd-back-to-info-btn {
+            background: none;
+            border: none;
+            padding: 2px 0;
+            font-size: 0.72rem;
+            color: var(--accent);
+            cursor: pointer;
+            white-space: nowrap;
+            flex: none;
+        }
+        .ww-rd-back-to-info-btn:hover { text-decoration: underline; }
+        /* "View Groups" link at bottom of Recording Info panel */
+        .ww-rd-info-groups-link { margin-top: 16px; }
+        .ww-rd-info-view-groups-btn {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 0.75rem;
+            color: var(--accent);
+            cursor: pointer;
+        }
+        .ww-rd-info-view-groups-btn:hover { text-decoration: underline; }
+        /* Filename display in Recording Info */
+        .ww-rd-info-filename {
+            font-family: monospace;
+            font-size: 0.72rem;
+            color: var(--text);
+            word-break: break-all;
+        }
+
         .recordings-header {
             display: flex;
             align-items: center;
@@ -15065,12 +15110,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         </div>
                     </div>
 
-                    <!-- Panel 2: Group Summary (Slice C will fill this) -->
+                    <!-- Panel 2: Measurement Groups -->
                     <div class="ww-rd-panel ww-rd-panel--groups" id="wwRdGroupsPanel">
                         <!-- UAT-B-07: visible only in narrow layout (≤692px viewport) -->
                         <button type="button" class="ww-rd-back-btn" id="rdBackToRecordings">← Recordings</button>
-                        <div class="ww-rd-panel-header">
+                        <div class="ww-rd-panel-header ww-rd-groups-panel-header">
                             <h2 class="ww-rd-panel-title">Measurement Groups</h2>
+                            <!-- Slice C-1: narrow-mode shortcut to Recording Info panel.
+                                 Hidden in wide/medium where Panel 3 is always visible. -->
+                            <button type="button" class="ww-rd-back-to-info-btn ww-rd-narrow-only" id="rdViewRecordingInfoBtn" hidden>
+                                Recording Info →
+                            </button>
                         </div>
                         <div class="ww-rd-filter-row" id="wwRdGroupKindFilter" role="group"
                             aria-label="Filter groups by kind">
@@ -15086,15 +15136,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         </div>
                     </div>
 
-                    <!-- Panel 3: Details / Edit (Slice C/D) -->
+                    <!-- Panel 3: Recording Info / Group Details (Slice C-1) -->
                     <div class="ww-rd-panel ww-rd-panel--details" id="wwRdDetailsPanel">
-                        <!-- UAT-B-07: visible only in narrow layout (≤692px viewport) -->
+                        <!-- UAT-B-07: back to groups (narrow layout only) -->
                         <button type="button" class="ww-rd-back-btn" id="rdBackToGroups">← Groups</button>
-                        <div class="ww-rd-panel-header">
-                            <h2 class="ww-rd-panel-title">Group Details</h2>
+                        <div class="ww-rd-panel-header ww-rd-details-panel-header">
+                            <h2 class="ww-rd-panel-title" id="wwRdDetailsPanelTitle">Recording Info</h2>
+                            <!-- Slice C-1: shown only when viewing Group Details -->
+                            <button type="button" class="ww-rd-back-to-info-btn" id="rdBackToRecordingInfo" hidden>
+                                ← Recording Info
+                            </button>
                         </div>
                         <div class="ww-rd-details-body" id="wwRdDetailsBody">
-                            <p class="ww-rd-placeholder">Select a group to view details.</p>
+                            <p class="ww-rd-placeholder">Select a recording to view information.</p>
                         </div>
                     </div>
 
@@ -17761,6 +17815,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         !wwRdState.sources.find((s) => s.source_id === wwRdState.selectedSourceId)) {
                     wwRdState.selectedSourceId = null;
                     wwRdState.selectedGroupId = null;
+                    wwRdState.detailsView = "recording"; // Slice C-1: reset view on removal
                 }
                 if (!document.getElementById("pageRecordingDetails").hidden) {
                     wwRdRenderBrowser();
@@ -36343,6 +36398,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             groupsLoading: false,    // bool — prevent double-fetch
             groupKindFilter: "all",  // "all"|"voltage"|"current"
             narrowPanel: "recordings", // "recordings"|"groups"|"details" — narrow-layout only
+            detailsView: "recording", // "recording"|"group" — what Column 3 shows (Slice C-1)
         };
 
         // ------------------------------------------------------------------
@@ -36435,24 +36491,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwRdSelectSource(sourceId) {
             wwRdState.selectedSourceId = sourceId;
             wwRdState.selectedGroupId = null;
-            // UAT-B-07: in narrow layout, advance to the groups panel.
+            wwRdState.detailsView = "recording"; // Slice C-1: show Recording Info on selection
+            // UAT-B-07/Slice C-1: in narrow layout, advance to the groups panel.
+            // Recording Info is accessible via the "Recording Info" link in the
+            // groups panel header area, or by tapping "← Groups" after going
+            // deeper and then navigating to the details panel.
             if (window.matchMedia("(max-width: 692px)").matches) {
                 wwRdState.narrowPanel = "groups";
                 wwRdApplyNarrowLayout();
             }
             wwRdRenderBrowser();      // update selection highlight
             wwRdRenderGroups();       // show loading state immediately
+            wwRdRenderDetails();      // pre-render Recording Info (shown when user taps "Recording Info")
             if (!sourceId) return;
             wwRdState.groupsLoading = true;
             await wwFetchMeasurementGroupsForSource(sourceId);
             wwRdState.groupsLoading = false;
             wwRdRenderGroups();       // render fetched groups
-            wwRdRenderDetails();      // reset details panel
+            // Don't overwrite details here: user may have already selected a group
         }
 
         function wwRdRenderGroups() {
             const body = document.getElementById("wwRdGroupsBody");
             if (!body) return;
+            // Slice C-1: show/hide the "Recording Info →" narrow-mode shortcut
+            const infoBtn = document.getElementById("rdViewRecordingInfoBtn");
+            if (infoBtn) infoBtn.hidden = !wwRdState.selectedSourceId;
             if (!wwRdState.selectedSourceId) {
                 body.innerHTML = '<p class="ww-rd-placeholder">Select a recording to view groups.</p>';
                 return;
@@ -36493,6 +36557,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdRenderDetails() {
             const body = document.getElementById("wwRdDetailsBody");
             if (!body) return;
+            // Slice C-1: update the panel title to match the view
+            const titleEl = document.getElementById("wwRdDetailsPanelTitle");
+            if (titleEl) {
+                titleEl.textContent = wwRdState.detailsView === "recording"
+                    ? "Recording Info" : "Group Details";
+            }
+            // Show/hide the "← Recording Info" back link
+            const backLink = document.getElementById("rdBackToRecordingInfo");
+            if (backLink) {
+                backLink.hidden = wwRdState.detailsView !== "group" || !wwRdState.selectedSourceId;
+            }
+            if (wwRdState.detailsView === "recording") {
+                if (!wwRdState.selectedSourceId) {
+                    body.innerHTML = '<p class="ww-rd-placeholder">Select a recording to view information.</p>';
+                    return;
+                }
+                const sources = wwRdState.sources || [];
+                const s = sources.find(function(x) { return x.source_id === wwRdState.selectedSourceId; });
+                body.innerHTML = s
+                    ? wwRdBuildRecordingInfoHtml(s)
+                    : '<p class="ww-rd-placeholder">Recording not found.</p>';
+                return;
+            }
+            // detailsView === "group"
             if (!wwRdState.selectedGroupId || !wwRdState.selectedSourceId) {
                 body.innerHTML = '<p class="ww-rd-placeholder">Select a group to view details.</p>';
                 return;
@@ -36504,6 +36592,96 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             body.innerHTML = wwRdBuildDetailsHtml(g);
+        }
+
+        // Slice C-1: build Recording Information HTML from a SourceSummaryOut.
+        // Uses only fields verified present in backend/app/schemas/source.py.
+        function wwRdBuildRecordingInfoHtml(s) {
+            function row(label, value, isCode) {
+                const valClass = "ww-rd-config-value" + ((!value || value === "—") ? " ww-rd-not-configured" : "");
+                const valHtml = isCode
+                    ? '<code class="ww-rd-info-filename">' + escapeHtml(value || "—") + '</code>'
+                    : '<span class="' + valClass + '">' + escapeHtml(value || "—") + '</span>';
+                return '<span class="ww-rd-config-label">' + escapeHtml(label) + '</span>' + valHtml;
+            }
+
+            // --- Display name and original filename(s) ---
+            const displayName = recordingDisplayName(s);
+            const origFiles = (s.original_filenames || []);
+            // For COMTRADE: list .cfg filename; for single-file: list that filename.
+            const cfgFile = origFiles.find(function(f) { return /\.cfg$/i.test(f); });
+            const origFileDisplay = cfgFile || origFiles[0] || null;
+            // Note if display name equals original file (then omit redundant original)
+            const showOrig = origFileDisplay && origFileDisplay !== displayName;
+
+            // --- Timing ---
+            const startTimeDisplay = formatRecordingStartTime(s);
+            const triggerTimeDisplay = wwFormatSourceTimestamp(s, "trigger_time");
+
+            // --- Duration ---
+            const duration = typeof s.duration_seconds === "number"
+                ? formatRecordingDuration(s.duration_seconds)
+                : "—";
+
+            // --- Sampling rates ---
+            const ratesDisplay = formatSamplingRates(s.sampling_rates);
+
+            // --- File size ---
+            const fileSizeDisplay = typeof s.file_size_bytes === "number"
+                ? formatFileSize(s.file_size_bytes)
+                : "—";
+            // For COMTRADE, file_size_bytes is cfg+dat combined (see SourceSummaryOut docstring)
+            const fileSizeLabel = s.provider_type && s.provider_type.toUpperCase() === "COMTRADE"
+                ? "File size (cfg+dat)" : "File size";
+
+            // --- Format ---
+            const fmtLabel = recordingFormatLabel(s);
+
+            // --- Nominal frequency ---
+            const nomFreq = typeof s.nominal_frequency === "number"
+                ? s.nominal_frequency + " Hz" : "—";
+
+            // --- Channels ---
+            const chCount = (s.analog_channel_count || 0) + " analog / " + (s.digital_channel_count || 0) + " digital";
+
+            // --- Station ---
+            const station = (s.station_name && s.station_name.trim()) ? s.station_name : null;
+
+            // --- Recorder ---
+            const recorder = (s.recorder_name && s.recorder_name.trim()) ? s.recorder_name : null;
+
+            let html = '<div class="ww-rd-details-section">';
+            html += '<div class="ww-rd-details-group-header">';
+            html += '<span class="ww-rd-details-group-name" title="' + escapeHtml(displayName) + '">' + escapeHtml(displayName) + '</span>';
+            html += '<span class="ww-rd-group-badge">' + escapeHtml(fmtLabel) + '</span>';
+            html += '</div>';
+            html += '</div>';
+
+            html += '<div class="ww-rd-details-section">';
+            html += '<div class="ww-rd-config-table">';
+            if (station) html += row("Station", station);
+            if (recorder) html += row("Recorder", recorder);
+            if (showOrig) html += row("Original file", origFileDisplay, true);
+            html += row("Format", fmtLabel);
+            html += row(fileSizeLabel, fileSizeDisplay);
+            html += row("Start time", startTimeDisplay || "—");
+            if (triggerTimeDisplay && triggerTimeDisplay !== startTimeDisplay) {
+                html += row("Trigger time", triggerTimeDisplay);
+            }
+            html += row("Duration", duration);
+            html += row("Sample rate", ratesDisplay);
+            html += row("Nominal frequency", nomFreq);
+            html += row("Channels", chCount);
+            html += '</div>';
+            html += '</div>';
+
+            // "View Groups" link — only useful in narrow layout (wide/medium always show groups panel)
+            html += '<div class="ww-rd-info-groups-link">' +
+                '<button type="button" class="ww-rd-info-view-groups-btn" id="rdViewGroupsBtn">' +
+                'View Measurement Groups' +
+                '</button></div>';
+
+            return html;
         }
 
         function wwRdPuEligibilityHtml(g) {
@@ -61059,6 +61237,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const item = e.target.closest(".ww-rd-group-item[data-group-id]");
             if (item) {
                 wwRdState.selectedGroupId = item.dataset.groupId;
+                wwRdState.detailsView = "group"; // Slice C-1
                 // UAT-B-07: in narrow layout, advance to the details panel.
                 if (window.matchMedia("(max-width: 692px)").matches) {
                     wwRdState.narrowPanel = "details";
@@ -61074,6 +61253,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (item) {
                     e.preventDefault();
                     wwRdState.selectedGroupId = item.dataset.groupId;
+                    wwRdState.detailsView = "group"; // Slice C-1
                     // UAT-B-07: in narrow layout, advance to the details panel.
                     if (window.matchMedia("(max-width: 692px)").matches) {
                         wwRdState.narrowPanel = "details";
@@ -61089,6 +61269,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!btn) return;
             wwRdState.groupKindFilter = btn.dataset.kind;
             wwRdState.selectedGroupId = null;
+            // Slice C-1: changing the filter clears the group, return to Recording Info
+            if (wwRdState.selectedSourceId) wwRdState.detailsView = "recording";
             document.querySelectorAll("#wwRdGroupKindFilter .ww-rd-filter-btn").forEach((b) => {
                 b.setAttribute("aria-pressed", String(b.dataset.kind === wwRdState.groupKindFilter));
             });
@@ -61106,6 +61288,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("rdBackToGroups").addEventListener("click", () => {
             wwRdState.narrowPanel = "groups";
             wwRdApplyNarrowLayout();
+        });
+        // Slice C-1: "← Recording Info" button in details panel header.
+        document.getElementById("rdBackToRecordingInfo").addEventListener("click", () => {
+            wwRdState.detailsView = "recording";
+            wwRdRenderDetails();
+        });
+        // Slice C-1: "Recording Info →" button in groups panel header (narrow only).
+        document.getElementById("rdViewRecordingInfoBtn").addEventListener("click", () => {
+            wwRdState.detailsView = "recording";
+            if (window.matchMedia("(max-width: 692px)").matches) {
+                wwRdState.narrowPanel = "details";
+                wwRdApplyNarrowLayout();
+            }
+            wwRdRenderDetails();
+        });
+        // Slice C-1: "View Measurement Groups" button in Recording Info panel.
+        // This button is rendered dynamically inside wwRdDetailsBody, so use
+        // event delegation on the details body.
+        document.getElementById("wwRdDetailsBody").addEventListener("click", (e) => {
+            if (e.target.id === "rdViewGroupsBtn") {
+                if (window.matchMedia("(max-width: 692px)").matches) {
+                    // In narrow mode, navigate to the groups panel.
+                    wwRdState.narrowPanel = "groups";
+                    wwRdApplyNarrowLayout();
+                }
+                // No-op in wide/medium: groups panel is always visible.
+            }
         });
         // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.
         window.matchMedia("(max-width: 692px)").addEventListener("change", wwRdApplyNarrowLayout);

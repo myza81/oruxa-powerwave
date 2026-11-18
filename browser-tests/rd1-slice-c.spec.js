@@ -251,7 +251,7 @@ test("RD-1 C-08: group switching — details update to new group", async ({ page
     expect(firstName).not.toBe(secondName);
 });
 
-test("RD-1 C-09: selecting a recording clears the details panel", async ({ page }) => {
+test("RD-1 C-09: selecting a recording switches details panel to Recording Info", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -260,14 +260,15 @@ test("RD-1 C-09: selecting a recording clears the details panel", async ({ page 
     const rows = page.locator("#wwRdGroupsBody .ww-rd-group-item");
     await expect(rows.first()).toBeVisible({ timeout: 5000 });
     await rows.first().click();
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
+    // Now in Group Details view
+    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details", { timeout: 5000 });
 
     // Now select the same recording again (re-click it in the browser panel)
     const recItem = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     await recItem.click();
-    // After selecting a source, selectedGroupId is cleared and details shows placeholder
-    // (groups reload, but group selection is lost)
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).toBeVisible({ timeout: 5000 });
+    // Slice C-1: selecting a recording resets details to Recording Info (not a placeholder)
+    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info", { timeout: 5000 });
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("COMTRADE");
 });
 
 test("RD-1 C-10: details panel renders without layout breakage in dark theme", async ({ page }) => {
