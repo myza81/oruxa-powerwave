@@ -94,7 +94,7 @@ test("D2-01: Edit button present in Voltage Base Configuration heading", async (
 
 // ---- D2-02: Edit button opens the edit form with pre-filled values -----------
 
-test("D2-02: Edit button opens inline edit form with kV input and reference selectors", async ({ page }) => {
+test("D2-02: Edit button opens inline edit form with kV input; reference selectors in Advanced section", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -105,16 +105,18 @@ test("D2-02: Edit button opens inline edit form with kV input and reference sele
         base_reference_side: "primary",
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    // Form should appear
+    // Form should appear with kV input
     await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toBeVisible();
     // kV pre-filled
     const kv = await page.locator("#wwRdDetailsBody #wwRdVltKv").inputValue();
     expect(kv).toBe("132");
     // Apply and Cancel buttons present
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageCancelBtn")).toBeVisible();
+    // Reference selects are in the Advanced section — open it first
+    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toBeVisible();
 });
 
 // ---- D2-03: Cancel restores read mode ----------------------------------------
@@ -134,12 +136,14 @@ test("D2-03: Cancel button restores read-only view with Edit button", async ({ p
 
 // ---- D2-04: Manual ref mode shows override selector -------------------------
 
-test("D2-04: selecting manual ref mode reveals the reference-type dropdown", async ({ page }) => {
+test("D2-04: selecting manual ref mode reveals the reference-type dropdown (in Advanced section)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {});
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
+    // Open Advanced section to access reference mode selector
+    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible({ timeout: 3000 });
     // Auto mode: override row should NOT be visible
     await page.locator("#wwRdDetailsBody #wwRdVltRefMode").selectOption("auto");
@@ -176,6 +180,9 @@ test("D2-05: Apply sends PUT with nominal_voltage_ll_kv and reference fields", a
     await injectAndSelectVoltageGroup(page, {});
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("275");
+    // Open Advanced section to interact with reference mode selector
+    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).toBeVisible({ timeout: 3000 });
     await page.locator("#wwRdDetailsBody #wwRdVltRefMode").selectOption("auto");
     // Intercept the PUT; use page.evaluate to have access to group
     await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
@@ -292,12 +299,14 @@ test("D2-09: Voltage Base Configuration heading shows the Edit button, not the r
 
 // ---- D2-10: Base reference side selector present in edit form ----------------
 
-test("D2-10: edit form includes base reference side selector with Unknown/Primary/Secondary options", async ({ page }) => {
+test("D2-10: Advanced section includes base reference side selector with Unknown/Primary/Secondary options", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { base_reference_side: "primary" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
+    // Open Advanced section to access base reference side selector
+    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
     const sel = page.locator("#wwRdDetailsBody #wwRdVltRefSide");
     await expect(sel).toBeVisible({ timeout: 3000 });
     const options = await sel.locator("option").allTextContents();

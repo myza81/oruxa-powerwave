@@ -1051,6 +1051,30 @@
             color: var(--text-dim);
             margin-top: 1px;
         }
+        .ww-rd-field-sub--manual {
+            font-size: 0.68rem;
+            color: var(--warn);
+            margin-top: 1px;
+        }
+        .ww-rd-advanced-toggle {
+            font-size: var(--font-size-xs, 0.72rem);
+            color: var(--text-dim);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 2px;
+        }
+        .ww-rd-advanced-toggle:hover { color: var(--text); }
+        .ww-rd-advanced-content {
+            padding-top: 8px;
+            border-top: 1px solid var(--panel-border);
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }
         /* PU availability section */
         .ww-rd-pu-status-line {
             display: flex;
@@ -37111,7 +37135,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (ed) {
                     // Edit mode
                     const isManual = ed.draftRefMode === "manual";
-                    const hasKv = ed.draftKv !== "" && ed.draftKv !== null && ed.draftKv !== undefined;
                     const refModeOptions =
                         '<option value="auto"' + (ed.draftRefMode === "auto" ? ' selected' : '') + '>Auto-detected</option>' +
                         '<option value="manual"' + (ed.draftRefMode === "manual" ? ' selected' : '') + '>Manual override</option>';
@@ -37123,21 +37146,50 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<option value="primary"' + (ed.draftRefSide === "primary" ? ' selected' : '') + '>Primary</option>' +
                         '<option value="secondary"' + (ed.draftRefSide === "secondary" ? ' selected' : '') + '>Secondary</option>';
                     const canRevert = vc && vc.base_authority === "manual" && vc.nominal_voltage_ll_kv != null;
+                    // Read-only reference display (reflects current draft state)
+                    const refDisplayValue = isManual
+                        ? (ed.draftRefOverride === "line_to_line" ? "Line-to-line" : "Line-to-ground")
+                        : (vc && vc.effective_reference === "line_to_line" ? "Line-to-line"
+                            : vc && vc.effective_reference === "line_to_ground" ? "Line-to-ground"
+                            : "Undetermined");
+                    const advOpen = !!ed.advancedOpen;
+                    const advArrow = advOpen ? "▼" : "►";
                     configHtml = '<div class="ww-rd-section">';
                     configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration</div>';
                     configHtml += '<div class="ww-rd-field-grid">';
+                    // Primary field: nominal kV (editable)
                     configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltKv">Nominal voltage (L‑L) kV</label>' +
                         '<input class="ww-rd-edit-input" id="wwRdVltKv" type="number" min="0.001" step="any" placeholder="e.g. 275"' +
                         ' value="' + escapeHtml(ed.draftKv || "") + '"></div>';
-                    configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefMode">Voltage reference</label>' +
-                        '<select class="ww-rd-edit-select" id="wwRdVltRefMode">' + refModeOptions + '</select></div>';
+                    // Read-only reference display with provenance label
+                    configHtml += '<div class="ww-rd-field"><div class="ww-rd-field-label">Voltage reference</div>' +
+                        '<div class="ww-rd-field-value" id="wwRdVltRefDisplay">' + escapeHtml(refDisplayValue) + '</div>';
                     if (isManual) {
-                        configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefOverride">Reference type</label>' +
-                            '<select class="ww-rd-edit-select" id="wwRdVltRefOverride">' + overrideOptions + '</select></div>';
+                        configHtml += '<div class="ww-rd-field-sub ww-rd-field-sub--manual" id="wwRdVltRefProvenance">Manual</div>';
+                    } else {
+                        configHtml += '<div class="ww-rd-field-sub" id="wwRdVltRefProvenance">Auto-detected</div>';
                     }
-                    configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefSide">Base reference side</label>' +
-                        '<select class="ww-rd-edit-select" id="wwRdVltRefSide">' + sideOptions + '</select></div>';
                     configHtml += '</div>';
+                    configHtml += '</div>'; // .ww-rd-field-grid
+                    // Advanced reference settings toggle
+                    configHtml += '<button class="ww-rd-advanced-toggle" id="wwRdVltAdvancedToggle" type="button">' +
+                        advArrow + ' Advanced reference settings</button>';
+                    // Advanced section (shown only when advancedOpen)
+                    if (advOpen) {
+                        configHtml += '<div class="ww-rd-advanced-content" id="wwRdVltAdvancedContent">';
+                        configHtml += '<div class="ww-rd-field-grid">';
+                        configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefMode">Reference mode</label>' +
+                            '<select class="ww-rd-edit-select" id="wwRdVltRefMode">' + refModeOptions + '</select></div>';
+                        if (isManual) {
+                            configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefOverride">Voltage reference</label>' +
+                                '<select class="ww-rd-edit-select" id="wwRdVltRefOverride">' + overrideOptions + '</select></div>';
+                        }
+                        configHtml += '<div class="ww-rd-field ww-rd-field-full"><label class="ww-rd-field-label" for="wwRdVltRefSide">Base reference side</label>' +
+                            '<select class="ww-rd-edit-select" id="wwRdVltRefSide">' + sideOptions + '</select>' +
+                            '<div class="ww-rd-field-sub">Controls which voltage level is used as the PU denominator. Does not modify waveform calibration.</div></div>';
+                        configHtml += '</div>'; // .ww-rd-field-grid
+                        configHtml += '</div>'; // .ww-rd-advanced-content
+                    }
                     configHtml += '<div class="ww-rd-edit-actions">';
                     configHtml += '<button class="ww-rd-apply-btn" id="wwRdVoltageApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying…' : 'Apply') + '</button>';
                     configHtml += '<button class="ww-rd-cancel-btn" id="wwRdVoltageCancelBtn">Cancel</button>';
@@ -61788,6 +61840,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     draftRefMode: (vc && vc.reference_mode) || "auto",
                     draftRefOverride: (vc && vc.reference_override) || "line_to_ground",
                     draftRefSide: (vc && vc.base_reference_side) || "unknown",
+                    advancedOpen: !!(vc && vc.reference_mode && vc.reference_mode !== "auto"),
                     pending: false,
                     error: null,
                 };
@@ -61804,7 +61857,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             if (btn.id === "wwRdVoltageRevertBtn") {
+                if (!window.confirm("Revert to auto-detected voltage base? The manually entered kV value will be cleared.")) return;
                 wwRdVoltageRevert();
+                return;
+            }
+            if (btn.id === "wwRdVltAdvancedToggle") {
+                const ev = wwRdState.voltageEdit;
+                if (ev) {
+                    wwRdState.voltageEdit = Object.assign({}, ev, { advancedOpen: !ev.advancedOpen });
+                    wwRdRenderDetails();
+                }
                 return;
             }
         });
