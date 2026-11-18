@@ -34,6 +34,7 @@ async function selectFirstRecording(page) {
 }
 
 function makeMockVoltageGroup(overrides) {
+    const { voltage_config: vcOverrides, ...topOverrides } = overrides;
     return Object.assign({
         id: "mock-vg-uat-" + Math.random().toString(36).slice(2),
         display_name: overrides.display_name || "MOCK_VG_UAT",
@@ -55,8 +56,8 @@ function makeMockVoltageGroup(overrides) {
             effective_reference: "line_to_ground",
             detection_reason: null,
             evidence_names: [],
-        }, overrides.voltage_config || {})
-    }, overrides);
+        }, vcOverrides || {}),
+    }, topOverrides);
 }
 
 async function injectAndSelectVoltageGroup(page, voltageConfigOverrides, displayName) {
@@ -280,9 +281,9 @@ test("UAT-D2-09: Cancel returns to read-only mode; no PUT sent", async ({ page }
     expect(putSent).toBe(false);
 });
 
-// ---- UAT-D2-10: Revert confirmation preserved -------------------------------
+// ---- UAT-D2-10: Revert confirmation preserved — now in Advanced section ------
 
-test("UAT-D2-10: Revert button still triggers confirmation before sending PUT", async ({ page }) => {
+test("UAT-D2-10: Clear manual nominal voltage button in Advanced section triggers confirmation", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -297,9 +298,14 @@ test("UAT-D2-10: Revert button still triggers confirmation before sending PUT", 
         nominal_voltage_ll_kv: 275.0,
         base_authority: "manual",
         reference_mode: "auto",
+        effective_reference: "line_to_ground",
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
+    // Revert button is now inside Advanced section — open it first
+    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toHaveText("Clear manual nominal voltage");
 
     // Set up dialog handler to dismiss
     page.once("dialog", dialog => dialog.dismiss());

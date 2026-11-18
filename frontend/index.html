@@ -1075,6 +1075,13 @@
             margin-top: 4px;
             margin-bottom: 4px;
         }
+        /* Property-level provenance tags (D2 refinement) */
+        .ww-rd-provenance { font-size: var(--font-size-xs, 0.72rem); display: block; margin-top: 2px; }
+        .ww-rd-provenance--auto { color: var(--text-dim); }
+        .ww-rd-provenance--manual { color: var(--text-dim); }
+        .ww-rd-provenance--warn { color: var(--warn); }
+        .ww-rd-provenance--unresolved { color: var(--warn); }
+        .ww-rd-ref-unresolved-note { font-size: var(--font-size-xs, 0.72rem); color: var(--warn); display: block; margin-top: 2px; }
         /* PU availability section */
         .ww-rd-pu-status-line {
             display: flex;
@@ -37183,13 +37190,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<option value="unknown"' + (ed.draftRefSide === "unknown" ? ' selected' : '') + '>Unknown</option>' +
                         '<option value="primary"' + (ed.draftRefSide === "primary" ? ' selected' : '') + '>Primary</option>' +
                         '<option value="secondary"' + (ed.draftRefSide === "secondary" ? ' selected' : '') + '>Secondary</option>';
-                    const canRevert = vc && vc.base_authority === "manual" && vc.nominal_voltage_ll_kv != null;
+                    const canRevert = vc && (vc.base_authority === "manual" || vc.base_authority === "legacy_manual") && vc.nominal_voltage_ll_kv != null;
                     // Read-only reference display (reflects current draft state)
+                    const refIsUnresolved = !isManual && !(vc && vc.effective_reference);
                     const refDisplayValue = isManual
                         ? (ed.draftRefOverride === "line_to_line" ? "Line-to-line" : "Line-to-ground")
                         : (vc && vc.effective_reference === "line_to_line" ? "Line-to-line"
                             : vc && vc.effective_reference === "line_to_ground" ? "Line-to-ground"
-                            : "Undetermined");
+                            : "Not resolved");
                     const advOpen = !!ed.advancedOpen;
                     const advArrow = advOpen ? "▼" : "►";
                     configHtml = '<div class="ww-rd-section">';
@@ -37199,15 +37207,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltKv">Nominal voltage (L‑L) kV</label>' +
                         '<input class="ww-rd-edit-input" id="wwRdVltKv" type="number" min="0.001" step="any" placeholder="e.g. 275"' +
                         ' value="' + escapeHtml(ed.draftKv || "") + '"></div>';
-                    // Read-only reference display with provenance label
-                    configHtml += '<div class="ww-rd-field"><div class="ww-rd-field-label">Voltage reference</div>' +
-                        '<div class="ww-rd-field-value" id="wwRdVltRefDisplay">' + escapeHtml(refDisplayValue) + '</div>';
-                    if (isManual) {
-                        configHtml += '<div class="ww-rd-field-sub ww-rd-field-sub--manual" id="wwRdVltRefProvenance">Manual</div>';
+                    // Voltage reference — inline selector when unresolved, read-only display otherwise
+                    if (refIsUnresolved) {
+                        const inlineVal = ed.draftRefOverride || "";
+                        configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefInline">Voltage reference</label>';
+                        configHtml += '<select class="ww-rd-edit-select" id="wwRdVltRefInline">';
+                        configHtml += '<option value="">— Select —</option>';
+                        configHtml += '<option value="line_to_ground"' + (inlineVal === "line_to_ground" ? ' selected' : '') + '>Line-to-ground (L-N)</option>';
+                        configHtml += '<option value="line_to_line"' + (inlineVal === "line_to_line" ? ' selected' : '') + '>Line-to-line (L-L)</option>';
+                        configHtml += '</select>';
+                        configHtml += '<div class="ww-rd-ref-unresolved-note">Not resolved — select the recorded channel type</div>';
+                        configHtml += '</div>';
                     } else {
-                        configHtml += '<div class="ww-rd-field-sub" id="wwRdVltRefProvenance">Auto-detected</div>';
+                        configHtml += '<div class="ww-rd-field"><div class="ww-rd-field-label">Voltage reference</div>' +
+                            '<div class="ww-rd-field-value" id="wwRdVltRefDisplay">' + escapeHtml(refDisplayValue) + '</div>';
+                        if (isManual) {
+                            configHtml += '<div class="ww-rd-field-sub ww-rd-field-sub--manual" id="wwRdVltRefProvenance">Manual</div>';
+                        } else {
+                            configHtml += '<div class="ww-rd-field-sub" id="wwRdVltRefProvenance">Auto-detected</div>';
+                        }
+                        configHtml += '</div>';
                     }
-                    configHtml += '</div>';
                     configHtml += '</div>'; // .ww-rd-field-grid
                     // Advanced reference settings toggle
                     configHtml += '<button class="ww-rd-advanced-toggle" id="wwRdVltAdvancedToggle" type="button">' +
@@ -37225,15 +37245,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         configHtml += '<div class="ww-rd-field ww-rd-field-full"><label class="ww-rd-field-label" for="wwRdVltRefSide">Base reference side</label>' +
                             '<select class="ww-rd-edit-select" id="wwRdVltRefSide">' + sideOptions + '</select>' +
                             '<div class="ww-rd-field-sub">Controls which voltage level is used as the PU denominator. Does not modify waveform calibration.</div></div>';
+                        if (canRevert) {
+                            configHtml += '<div class="ww-rd-field ww-rd-field-full">' +
+                                '<button class="ww-rd-revert-btn" id="wwRdVoltageRevertBtn">Clear manual nominal voltage</button>' +
+                                '<div class="ww-rd-field-sub">Clears the manually entered kV and re-runs automatic resolution. If the recording lacks sufficient information, nominal voltage will become unresolved.</div>' +
+                                '</div>';
+                        }
                         configHtml += '</div>'; // .ww-rd-field-grid
                         configHtml += '</div>'; // .ww-rd-advanced-content
                     }
                     configHtml += '<div class="ww-rd-edit-actions">';
                     configHtml += '<button class="ww-rd-apply-btn" id="wwRdVoltageApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying…' : 'Apply') + '</button>';
                     configHtml += '<button class="ww-rd-cancel-btn" id="wwRdVoltageCancelBtn">Cancel</button>';
-                    if (canRevert) {
-                        configHtml += '<button class="ww-rd-revert-btn" id="wwRdVoltageRevertBtn">Revert to auto-detected</button>';
-                    }
                     configHtml += '</div>';
                     if (ed.error) {
                         configHtml += '<div class="ww-rd-edit-error">' + escapeHtml(ed.error) + '</div>';
@@ -37243,30 +37266,38 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Read mode
                     const nomKv = vc && vc.nominal_voltage_ll_kv != null ? vc.nominal_voltage_ll_kv + " kV (L‑L)" : null;
                     const auth = vc && vc.base_authority;
-                    let authorityLabel;
-                    if (!vc) {
-                        authorityLabel = "Not configured";
-                    } else if (vc.manual_conflict_detected) {
-                        authorityLabel = "Manual — engineer configured";
-                    } else if (auth === "auto_resolved") {
-                        authorityLabel = "Auto-resolved";
-                    } else if (auth === "manual") {
-                        authorityLabel = "Manual — engineer configured";
-                    } else if (auth === "legacy_manual") {
-                        authorityLabel = "Legacy manual";
-                    } else if (auth === "needs_review") {
-                        authorityLabel = "Review required";
-                    } else if (auth === "unavailable") {
-                        authorityLabel = "Not configured";
-                    } else {
-                        authorityLabel = auth ? escapeHtml(auth) : "Not configured";
-                    }
                     const effRef = vc && vc.effective_reference
                         ? (vc.effective_reference === "line_to_line" ? "Line-to-line" : "Line-to-ground")
-                        : (vc ? "Undetermined" : null);
-                    const refSub = !vc ? null
-                        : vc.reference_mode === "manual" ? "Manually set"
-                        : (vc.reference_mode ? "Auto-detected" : null);
+                        : (vc ? "Not resolved" : null);
+
+                    // Property-level provenance for nominal voltage
+                    let nomProvClass, nomProvText;
+                    if (!vc) {
+                        nomProvClass = "ww-rd-provenance--auto"; nomProvText = "Not configured";
+                    } else if (auth === "auto_resolved") {
+                        nomProvClass = "ww-rd-provenance--auto"; nomProvText = "Auto-resolved";
+                    } else if (auth === "manual") {
+                        nomProvClass = "ww-rd-provenance--manual"; nomProvText = "Manual";
+                    } else if (auth === "legacy_manual") {
+                        nomProvClass = "ww-rd-provenance--warn"; nomProvText = "Review required";
+                    } else if (auth === "needs_review") {
+                        nomProvClass = "ww-rd-provenance--unresolved"; nomProvText = "Not resolved";
+                    } else if (auth === "unavailable") {
+                        nomProvClass = "ww-rd-provenance--auto"; nomProvText = "Not resolved";
+                    } else {
+                        nomProvClass = "ww-rd-provenance--auto"; nomProvText = auth || "Not configured";
+                    }
+                    // Voltage reference provenance
+                    let refProvClass, refProvText;
+                    if (!vc) {
+                        refProvClass = null; refProvText = null;
+                    } else if (vc.reference_mode === "manual") {
+                        refProvClass = "ww-rd-provenance--manual"; refProvText = "Manual";
+                    } else if (vc.effective_reference) {
+                        refProvClass = "ww-rd-provenance--auto"; refProvText = "Auto-detected";
+                    } else {
+                        refProvClass = "ww-rd-provenance--unresolved"; refProvText = "Not resolved";
+                    }
 
                     configHtml = '<div class="ww-rd-section">';
                     configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration' +
@@ -37279,19 +37310,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     } else {
                         configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
                     }
+                    configHtml += '<div class="ww-rd-provenance ' + nomProvClass + '" id="wwRdNomKvProvenance">' + escapeHtml(nomProvText) + '</div>';
                     configHtml += '</div>';
                     configHtml += '<div class="ww-rd-field">';
                     configHtml += '<div class="ww-rd-field-label">Voltage reference</div>';
                     if (effRef) {
                         configHtml += '<div class="ww-rd-field-value">' + escapeHtml(effRef) + '</div>';
-                        if (refSub) configHtml += '<div class="ww-rd-field-sub">' + escapeHtml(refSub) + '</div>';
                     } else {
-                        configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Undetermined</div>';
+                        configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
                     }
-                    configHtml += '</div>';
-                    configHtml += '<div class="ww-rd-field ww-rd-field-full">';
-                    configHtml += '<div class="ww-rd-field-label">Configuration source</div>';
-                    configHtml += '<div class="ww-rd-field-value">' + escapeHtml(authorityLabel) + '</div>';
+                    if (refProvClass && refProvText) {
+                        configHtml += '<div class="ww-rd-provenance ' + refProvClass + '">' + escapeHtml(refProvText) + '</div>';
+                    }
                     configHtml += '</div>';
                     configHtml += '</div>'; // .ww-rd-field-grid
                     configHtml += '</div>'; // .ww-rd-section
@@ -61895,7 +61925,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             if (btn.id === "wwRdVoltageRevertBtn") {
-                if (!window.confirm("Revert to auto-detected voltage base? The manually entered kV value will be cleared.")) return;
+                if (!window.confirm("Clearing the manual nominal voltage will attempt automatic resolution. If the recording does not contain sufficient information, the nominal voltage will become unresolved.")) return;
                 wwRdVoltageRevert();
                 return;
             }
@@ -61913,7 +61943,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!wwRdState.voltageEdit) return;
             const id = e.target.id;
             if (id === "wwRdVltKv") wwRdState.voltageEdit.draftKv = e.target.value;
-            else if (id === "wwRdVltRefMode") {
+            else if (id === "wwRdVltRefInline") {
+                // Inline unresolved-reference selector — selecting a value establishes a manual override
+                if (e.target.value) {
+                    wwRdState.voltageEdit.draftRefMode = "manual";
+                    wwRdState.voltageEdit.draftRefOverride = e.target.value;
+                }
+                wwRdRenderDetails();
+            } else if (id === "wwRdVltRefMode") {
                 wwRdState.voltageEdit.draftRefMode = e.target.value;
                 wwRdRenderDetails(); // re-render to show/hide override row
             } else if (id === "wwRdVltRefOverride") wwRdState.voltageEdit.draftRefOverride = e.target.value;

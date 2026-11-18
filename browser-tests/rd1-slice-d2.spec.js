@@ -34,6 +34,7 @@ async function selectFirstRecording(page) {
 }
 
 function makeMockVoltageGroup(overrides) {
+    const { voltage_config: vcOverrides, ...topOverrides } = overrides;
     return Object.assign({
         id: "mock-vg-" + Math.random().toString(36).slice(2),
         display_name: overrides.display_name || "MOCK_VG",
@@ -55,8 +56,8 @@ function makeMockVoltageGroup(overrides) {
             effective_reference: "line_to_ground",
             detection_reason: null,
             evidence_names: [],
-        }, overrides.voltage_config || {})
-    }, overrides);
+        }, vcOverrides || {}),
+    }, topOverrides);
 }
 
 async function injectAndSelectVoltageGroup(page, voltageConfigOverrides, displayName) {
@@ -210,19 +211,24 @@ test("D2-06: Revert button only shown when group has manual authority and a kV v
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).not.toBeVisible();
 });
 
-test("D2-06b: Revert button shown when group has manual authority with kV set", async ({ page }) => {
+test("D2-06b: Revert button shown inside Advanced section when group has manual authority with kV set", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
-    // Group with manual authority and kV set — Revert button expected
+    // Group with manual authority and kV set — Revert button expected inside Advanced
     await injectAndSelectVoltageGroup(page, {
         nominal_voltage_ll_kv: 275.0,
         base_authority: "manual",
         reference_mode: "auto",
+        effective_reference: "line_to_ground",
     }, "MOCK_MANUAL_GROUP");
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible({ timeout: 3000 });
+    // Revert button is inside Advanced section — open it first
+    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toHaveText("Clear manual nominal voltage");
 });
 
 // ---- D2-07: Switching groups discards in-progress edit ----------------------

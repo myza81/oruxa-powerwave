@@ -119,17 +119,20 @@ test("C3-03: two-column grid has Voltage reference label alongside Nominal volta
     test.skip(true, "No voltage group found");
 });
 
-test("C3-04: Configuration source field present in Voltage Base Configuration section", async ({ page }) => {
+test("C3-04: Voltage Base Configuration shows provenance labels (D2: Configuration source replaced by per-property provenance)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
-    // Use voltage group specifically — Configuration source is a voltage-group field
+    // Use voltage group specifically
     await selectGroupByKind(page, "voltage");
 
-    const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
-    const hasConfigSrc = labels.some(l => l.includes("Configuration source"));
-    expect(hasConfigSrc).toBeTruthy();
+    // D2 refinement: standalone "Configuration source" field is gone;
+    // per-property provenance labels appear instead (e.g. Auto-resolved, Auto-detected, etc.)
+    const bodyText = await page.locator("#wwRdDetailsBody").textContent();
+    expect(bodyText).not.toMatch(/Configuration source/);
+    // Provenance label present for nominal voltage
+    await expect(page.locator("#wwRdDetailsBody #wwRdNomKvProvenance")).toBeVisible({ timeout: 5000 });
 });
 
 test("C3-05: Per-unit availability section present for voltage group with status word and reason paragraph", async ({ page }) => {
