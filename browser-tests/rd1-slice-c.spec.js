@@ -85,12 +85,12 @@ test("RD-1 C-02: current group details — Current Base Configuration section is
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // Current Base Configuration section must be present (not Voltage Base)
-    await expect(page.locator("#wwRdDetailsBody")).toContainText("Current Base Configuration");
+    // Current Group section must be present (Slice C-3 redesign: renamed from "Current Base Configuration")
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("Current Group");
     // Must NOT show Voltage Base section for a current group
-    const titles = page.locator("#wwRdDetailsBody .ww-rd-details-section-title");
-    const allTitles = await titles.allTextContents();
-    const hasVoltageSection = allTitles.some((t) => t.toLowerCase().includes("voltage base configuration"));
+    const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
+    const allHeadings = await headings.allTextContents();
+    const hasVoltageSection = allHeadings.some((t) => t.toLowerCase().includes("voltage base configuration"));
     expect(hasVoltageSection).toBe(false);
 });
 

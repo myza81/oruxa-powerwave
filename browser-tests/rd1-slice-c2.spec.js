@@ -98,7 +98,7 @@ test("RD-1 C2-04: voltage group Detection reason is in Engineering Evidence, not
     await expect(evidence).toContainText("Detection reason");
 });
 
-test("RD-1 C2-05: current group main view shows Current base, Configuration, PU availability", async ({ page }) => {
+test("RD-1 C2-05: current group main view shows equipment-capacity design (no PU section)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -106,10 +106,12 @@ test("RD-1 C2-05: current group main view shows Current base, Configuration, PU 
     await selectGroupByKind(page, "current");
 
     const details = page.locator("#wwRdDetailsBody");
-    await expect(details).toContainText("Current Base Configuration");
-    await expect(details).toContainText("Current base");
-    await expect(details).toContainText("Configuration");
-    await expect(details).toContainText("Per-unit availability");
+    // Section heading is now "Current Group" (not "Current Base Configuration")
+    await expect(details).toContainText("Current Group");
+    // Per-unit availability section must NOT appear for current groups
+    await expect(details.locator(".ww-rd-pu-status-line")).not.toBeVisible();
+    // Engineering Evidence section is still present
+    await expect(details.locator("details.ww-rd-evidence")).toBeVisible();
 });
 
 test("RD-1 C2-06: current group Engineering Evidence section is present", async ({ page }) => {
@@ -124,19 +126,19 @@ test("RD-1 C2-06: current group Engineering Evidence section is present", async 
     await expect(details.locator("details.ww-rd-evidence summary")).toContainText("Engineering Evidence");
 });
 
-test("RD-1 C2-07: PU availability pill is present in both voltage and current group views", async ({ page }) => {
+test("RD-1 C2-07: PU status line shown for voltage group; absent for current group", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
 
-    // Voltage group
+    // Voltage group: PU status line must be present
     await selectGroupByKind(page, "voltage");
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 
-    // Current group
+    // Current group: no PU status line (current groups use Calculated Channels for PU)
     await selectGroupByKind(page, "current");
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
 });
 
 test("RD-1 C2-08: CT/VT section shows 'Not available from recording metadata' (not 'Not configured')", async ({ page }) => {
