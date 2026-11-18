@@ -100,6 +100,11 @@ class VoltageGroupConfigRegistry:
         manual_conflict_detected: bool | None = None,
         manual_conflict_detail: str | None = None,
         update_conflict: bool = False,
+        vt_primary_v: float | None = None,
+        vt_secondary_v: float | None = None,
+        vt_authority: str | None = None,
+        vt_provenance_note: str | None = None,
+        update_vt: bool = False,
     ) -> VoltageBaseConfiguration:
         """Publish service-validated fields as one configuration replacement.
 
@@ -110,6 +115,7 @@ class VoltageGroupConfigRegistry:
         False (default) preserves the existing secondary_voltage_ll_v.
         `update_conflict=True` applies `manual_conflict_detected` and
         `manual_conflict_detail` (False/None clears the flag); False preserves them.
+        `update_vt=True` applies the four VT fields; False preserves existing VT.
         All copies (including the return value) are prepared before publication.
         """
         with self._lock:
@@ -133,6 +139,11 @@ class VoltageGroupConfigRegistry:
             if update_conflict:
                 candidate.manual_conflict_detected = bool(manual_conflict_detected)
                 candidate.manual_conflict_detail = manual_conflict_detail
+            if update_vt:
+                candidate.vt_primary_v = vt_primary_v
+                candidate.vt_secondary_v = vt_secondary_v
+                candidate.vt_authority = vt_authority if vt_authority is not None else "not_configured"
+                candidate.vt_provenance_note = vt_provenance_note
             result = _copy_config(candidate)
             self._configs[key] = candidate
             return result

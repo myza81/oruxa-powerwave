@@ -160,6 +160,19 @@ class CurrentBaseConfiguration:
     manual_ibase_ka: float | None = None
     base_reference_side: ReferenceSide = "unknown"
     base_authority: BaseAuthorityState = BASE_AUTHORITY_LEGACY
+    # D1: Current Transformer (CT) instrument-transformer metadata.
+    # Owned by Current Measurement Groups; Voltage groups own VT (see VoltageBaseConfiguration).
+    # ct_authority: "not_configured" | "recording_metadata" | "manual"
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_authority: str = "not_configured"
+    ct_provenance_note: str | None = None
+
+    @property
+    def ct_ratio(self) -> float | None:
+        if self.ct_primary_a and self.ct_secondary_a and self.ct_secondary_a > 0:
+            return self.ct_primary_a / self.ct_secondary_a
+        return None
 
 
 def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll_kv: float) -> float | None:

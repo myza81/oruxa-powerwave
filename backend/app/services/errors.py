@@ -651,6 +651,18 @@ class InvalidLinkedVoltageGroupError(ImportServiceError):
     code = "invalid_linked_voltage_group"
 
 
+class InvalidInstrumentTransformerValueError(ImportServiceError):
+    """A submitted VT or CT instrument-transformer value is invalid.
+
+    Raised for: a partial pair (primary supplied without secondary or
+    vice versa, which is never persisted); a non-finite or non-positive
+    primary/secondary value; or combining `clear_vt`/`clear_ct` with an
+    explicit value pair.  422 Unprocessable Entity at the API layer,
+    matching the owner's D1 partial-pair contract (OQ-1)."""
+
+    code = "invalid_instrument_transformer_value"
+
+
 # ---- Slice 1 of waveform time synchronization: manual per-source
 # alignment offsets (app.domain.synchronization,
 # app.services.synchronization_registry/_service). ----

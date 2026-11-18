@@ -168,6 +168,22 @@ class VoltageBaseConfiguration:
     # compatible kV or when detection is insufficient/ambiguous.
     manual_conflict_detected: bool = False
     manual_conflict_detail: str | None = None
+    # D1: Voltage Transformer (VT) instrument-transformer metadata.
+    # Owned by Voltage Measurement Groups; Current groups own CT (see CurrentBaseConfiguration).
+    # Both primary and secondary are L-L Volts (consistent with InstrumentTransformers convention).
+    # A complete pair requires both values to be set; a partial pair is never persisted.
+    # vt_ratio is derived on demand (primary / secondary), never stored.
+    # vt_authority: "not_configured" | "recording_metadata" | "manual"
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_authority: str = "not_configured"
+    vt_provenance_note: str | None = None
+
+    @property
+    def vt_ratio(self) -> float | None:
+        if self.vt_primary_v and self.vt_secondary_v and self.vt_secondary_v > 0:
+            return self.vt_primary_v / self.vt_secondary_v
+        return None
 
 
 def resolve_effective_voltage_reference_for_group(

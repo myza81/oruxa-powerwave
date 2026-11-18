@@ -48,6 +48,7 @@ from app.services.errors import (
     AmbiguousCurrentVoltageSourceError,
     CurrentConfigurationNotApplicableError,
     InvalidEquipmentRatingValueError,
+    InvalidInstrumentTransformerValueError,
     InvalidLinkedVoltageGroupError,
     InvalidManualCurrentBaseValueError,
     InvalidManualVoltageBaseValueError,
@@ -247,6 +248,73 @@ def set_current_base_none(
     config.base_authority = BASE_AUTHORITY_MANUAL
     current_config_registry.upsert(config)
     return config
+
+
+def update_current_ct_config(
+    *,
+    workspace_id: str,
+    measurement_group_id: str,
+    group_registry: MeasurementGroupRegistry,
+    current_config_registry: CurrentGroupConfigRegistry,
+    ct_primary_a: float | None = None,
+    ct_secondary_a: float | None = None,
+    ct_provenance_note: str | None = None,
+    clear_ct: bool = False,
+) -> CurrentBaseConfiguration:
+    """Update only the CT instrument-transformer fields on an existing
+    Current group configuration.  The base method (equipment_rating/
+    manual/none) is never touched by this function.
+
+    clear_ct=True removes any existing CT configuration; must not be
+    combined with ct_primary_a or ct_secondary_a (422).  A partial pair
+    (one value without the other) is always rejected (422).  Both values
+    must be finite and positive when supplied.
+    """
+    import math as _math
+    _get_current_group(workspace_id, measurement_group_id, group_registry=group_registry)
+    ct_pair_given = ct_primary_a is not None or ct_secondary_a is not None
+    ct_pair_complete = ct_primary_a is not None and ct_secondary_a is not None
+    if clear_ct and ct_pair_given:
+        raise InvalidInstrumentTransformerValueError(
+            "clear_ct=True must not be combined with ct_primary_a or ct_secondary_a."
+        )
+    if ct_pair_given and not ct_pair_complete:
+        raise InvalidInstrumentTransformerValueError(
+            "ct_primary_a and ct_secondary_a must both be supplied or both omitted."
+        )
+    if ct_pair_complete:
+        if not (ct_primary_a is not None and _math.isfinite(ct_primary_a) and ct_primary_a > 0):
+            raise InvalidInstrumentTransformerValueError(
+                f"ct_primary_a={ct_primary_a!r} must be a finite, positive number."
+            )
+        if not (ct_secondary_a is not None and _math.isfinite(ct_secondary_a) and ct_secondary_a > 0):
+            raise InvalidInstrumentTransformerValueError(
+                f"ct_secondary_a={ct_secondary_a!r} must be a finite, positive number."
+            )
+    if not (clear_ct or ct_pair_complete):
+        # Nothing to update -- return the current config unchanged.
+        existing = current_config_registry.get(workspace_id, measurement_group_id)
+        if existing is not None:
+            return existing
+        return CurrentBaseConfiguration(measurement_group_id=measurement_group_id, workspace_id=workspace_id)
+    if clear_ct:
+        ct_primary_to_store: float | None = None
+        ct_secondary_to_store: float | None = None
+        ct_note_to_store: str | None = None
+        ct_authority_to_store = "not_configured"
+    else:
+        ct_primary_to_store = ct_primary_a
+        ct_secondary_to_store = ct_secondary_a
+        ct_note_to_store = ct_provenance_note
+        ct_authority_to_store = "manual"
+    return current_config_registry.update_fields(
+        workspace_id, measurement_group_id,
+        ct_primary_a=ct_primary_to_store,
+        ct_secondary_a=ct_secondary_to_store,
+        ct_authority=ct_authority_to_store,
+        ct_provenance_note=ct_note_to_store,
+        update_ct=True,
+    )
 
 
 def resolve_group_current_base(

@@ -73,6 +73,12 @@ class VoltageGroupConfigOut(BaseModel):
     # without inferring authority from reference_mode / detection_reason.
     # One of: "auto_resolved", "manual", "legacy_manual", "needs_review", "unavailable".
     base_authority: str = "legacy_manual"
+    # D1: Voltage Transformer (VT) instrument-transformer metadata.
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_ratio: float | None = None
+    vt_authority: str = "not_configured"
+    vt_provenance_note: str | None = None
 
 
 class CurrentGroupConfigOut(BaseModel):
@@ -91,6 +97,12 @@ class CurrentGroupConfigOut(BaseModel):
     applicable_voltage_ll_kv: float | None
     # Slice C-2: authoritative base authority for current groups.
     base_authority: str = "legacy_manual"
+    # D1: Current Transformer (CT) instrument-transformer metadata.
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_ratio: float | None = None
+    ct_authority: str = "not_configured"
+    ct_provenance_note: str | None = None
 
 
 class MeasurementGroupOut(BaseModel):
@@ -144,6 +156,14 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     reference_override: VoltageReferenceValue | None = None
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # D1: Voltage Transformer instrument-transformer configuration.
+    # Partial pair (primary without secondary or vice versa) is 422.
+    # clear_vt=True removes any existing VT configuration; must not
+    # be combined with vt_primary_v or vt_secondary_v.
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_provenance_note: str | None = None
+    clear_vt: bool = False
 
 
 class CurrentGroupConfigUpdateRequest(BaseModel):
@@ -161,6 +181,14 @@ class CurrentGroupConfigUpdateRequest(BaseModel):
     linked_voltage_group_id: str | None = None
     manual_voltage_base_kv: PerUnitBaseNumber | None = None
     manual_ibase_ka: PerUnitBaseNumber | None = None
+    # D1: Current Transformer instrument-transformer configuration.
+    # Partial pair (primary without secondary or vice versa) is 422.
+    # clear_ct=True removes any existing CT configuration; must not
+    # be combined with ct_primary_a or ct_secondary_a.
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_provenance_note: str | None = None
+    clear_ct: bool = False
 
 
 class SuggestGroupsRequest(BaseModel):

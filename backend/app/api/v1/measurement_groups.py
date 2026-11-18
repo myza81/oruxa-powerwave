@@ -45,6 +45,7 @@ from app.services.current_group_config_service import (
     set_current_base_equipment_rating,
     set_current_base_manual,
     set_current_base_none,
+    update_current_ct_config,
 )
 from app.services.errors import ImportServiceError, SourceNotFoundError
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -90,6 +91,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "ambiguous_current_voltage_source": status.HTTP_400_BAD_REQUEST,
     "missing_current_voltage_source": status.HTTP_400_BAD_REQUEST,
     "invalid_linked_voltage_group": status.HTTP_400_BAD_REQUEST,
+    "invalid_instrument_transformer_value": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -171,6 +173,11 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             manual_conflict_detected=view.voltage_config.manual_conflict_detected,
             manual_conflict_detail=view.voltage_config.manual_conflict_detail,
             base_authority=view.voltage_config.base_authority,
+            vt_primary_v=view.voltage_config.vt_primary_v,
+            vt_secondary_v=view.voltage_config.vt_secondary_v,
+            vt_ratio=view.voltage_config.vt_ratio,
+            vt_authority=view.voltage_config.vt_authority,
+            vt_provenance_note=view.voltage_config.vt_provenance_note,
         )
         if view.voltage_config is not None
         else None
@@ -186,6 +193,11 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             resolved_ibase_ka=view.current_config.resolved_ibase_ka,
             applicable_voltage_ll_kv=view.current_config.applicable_voltage_ll_kv,
             base_authority=view.current_config.base_authority,
+            ct_primary_a=view.current_config.ct_primary_a,
+            ct_secondary_a=view.current_config.ct_secondary_a,
+            ct_ratio=view.current_config.ct_ratio,
+            ct_authority=view.current_config.ct_authority,
+            ct_provenance_note=view.current_config.ct_provenance_note,
         )
         if view.current_config is not None
         else None
@@ -403,6 +415,10 @@ def put_voltage_config(
             reference_mode=body.reference_mode, reference_override=body.reference_override,
             base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            vt_primary_v=body.vt_primary_v,
+            vt_secondary_v=body.vt_secondary_v,
+            vt_provenance_note=body.vt_provenance_note,
+            clear_vt=body.clear_vt,
             **kw,
         )
     except ImportServiceError as exc:
@@ -468,6 +484,20 @@ def put_current_config(
             )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
+    # D1: apply CT fields independently of the method setter.
+    ct_requested = body.ct_primary_a is not None or body.ct_secondary_a is not None or body.clear_ct
+    if ct_requested:
+        try:
+            update_current_ct_config(
+                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                group_registry=group_registry, current_config_registry=current_config_registry,
+                ct_primary_a=body.ct_primary_a,
+                ct_secondary_a=body.ct_secondary_a,
+                ct_provenance_note=body.ct_provenance_note,
+                clear_ct=body.clear_ct,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
     group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     view = build_group_view(
         group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,

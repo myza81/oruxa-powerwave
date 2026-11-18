@@ -50,6 +50,7 @@ from app.domain.voltage_group_config import (
 )
 from app.domain.voltage_reference import VoltageReferenceDetection
 from app.services.errors import (
+    InvalidInstrumentTransformerValueError,
     InvalidVoltageBaseValueError,
     InvalidVoltageReferenceOverrideError,
     MeasurementGroupNotFoundError,
@@ -90,6 +91,10 @@ def update_voltage_configuration(
     reference_override: str | None = None,
     base_reference_side: str | None = None,
     secondary_voltage_ll_v: object = _SECONDARY_NOT_GIVEN,
+    vt_primary_v: float | None = None,
+    vt_secondary_v: float | None = None,
+    vt_provenance_note: str | None = None,
+    clear_vt: bool = False,
 ) -> VoltageBaseConfiguration:
     """Validate the entire requested edit before one registry replacement.
 
@@ -144,6 +149,43 @@ def update_voltage_configuration(
         sec_value = None
     # Derive authority from the content of the edit — never from caller-supplied value.
     effective_authority = BASE_AUTHORITY_MANUAL if nominal_voltage_ll_kv is not None else None
+    # Validate and resolve VT update intent.
+    vt_pair_given = vt_primary_v is not None or vt_secondary_v is not None
+    vt_pair_complete = vt_primary_v is not None and vt_secondary_v is not None
+    if clear_vt and vt_pair_given:
+        raise InvalidInstrumentTransformerValueError(
+            "clear_vt=True must not be combined with vt_primary_v or vt_secondary_v."
+        )
+    if vt_pair_given and not vt_pair_complete:
+        raise InvalidInstrumentTransformerValueError(
+            "vt_primary_v and vt_secondary_v must both be supplied or both omitted."
+        )
+    if vt_pair_complete:
+        import math as _math
+        if not (vt_primary_v is not None and _math.isfinite(vt_primary_v) and vt_primary_v > 0):
+            raise InvalidInstrumentTransformerValueError(
+                f"vt_primary_v={vt_primary_v!r} must be a finite, positive number."
+            )
+        if not (vt_secondary_v is not None and _math.isfinite(vt_secondary_v) and vt_secondary_v > 0):
+            raise InvalidInstrumentTransformerValueError(
+                f"vt_secondary_v={vt_secondary_v!r} must be a finite, positive number."
+            )
+    update_vt = clear_vt or vt_pair_complete
+    if clear_vt:
+        vt_primary_to_store: float | None = None
+        vt_secondary_to_store: float | None = None
+        vt_note_to_store: str | None = None
+        vt_authority_to_store = "not_configured"
+    elif vt_pair_complete:
+        vt_primary_to_store = vt_primary_v
+        vt_secondary_to_store = vt_secondary_v
+        vt_note_to_store = vt_provenance_note
+        vt_authority_to_store = "manual"
+    else:
+        vt_primary_to_store = None
+        vt_secondary_to_store = None
+        vt_note_to_store = None
+        vt_authority_to_store = None
     # RD-0B: when the engineer sets a nominal kV, clear the manual_conflict flag
     # here as a first step.  The API layer (put_voltage_config) immediately calls
     # reconfigure_auto_base_after_membership_change() to re-evaluate the new kV
@@ -161,6 +203,11 @@ def update_voltage_configuration(
         update_conflict=clear_conflict,
         manual_conflict_detected=False,
         manual_conflict_detail=None,
+        vt_primary_v=vt_primary_to_store,
+        vt_secondary_v=vt_secondary_to_store,
+        vt_authority=vt_authority_to_store,
+        vt_provenance_note=vt_note_to_store,
+        update_vt=update_vt,
     )
 
 

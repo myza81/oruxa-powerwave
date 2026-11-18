@@ -58,6 +58,12 @@ class VoltageGroupConfigView:
     manual_conflict_detail: str | None = None
     # Slice C-2: authoritative base authority exposed to frontend.
     base_authority: str = "legacy_manual"
+    # D1: Voltage Transformer (VT) instrument-transformer metadata.
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_ratio: float | None = None
+    vt_authority: str = "not_configured"
+    vt_provenance_note: str | None = None
 
 
 @dataclass(slots=True)
@@ -72,6 +78,12 @@ class CurrentGroupConfigView:
     base_reference_side: ReferenceSide = "unknown"
     # Slice C-2: authoritative base authority exposed to frontend.
     base_authority: str = "legacy_manual"
+    # D1: Current Transformer (CT) instrument-transformer metadata.
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_ratio: float | None = None
+    ct_authority: str = "not_configured"
+    ct_provenance_note: str | None = None
 
 
 @dataclass(slots=True)
@@ -100,6 +112,11 @@ def _build_voltage_view(
         manual_conflict_detected=config.manual_conflict_detected if config is not None else False,
         manual_conflict_detail=config.manual_conflict_detail if config is not None else None,
         base_authority=config.base_authority if config is not None else "legacy_manual",
+        vt_primary_v=config.vt_primary_v if config is not None else None,
+        vt_secondary_v=config.vt_secondary_v if config is not None else None,
+        vt_ratio=config.vt_ratio if config is not None else None,
+        vt_authority=config.vt_authority if config is not None else "not_configured",
+        vt_provenance_note=config.vt_provenance_note if config is not None else None,
     )
     pu_status = "configured" if resolution.status == _VOLTAGE_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason
@@ -134,6 +151,11 @@ def _build_current_view(
         resolved_ibase_ka=resolution.ibase_ka if resolution.status == _CURRENT_STATUS_CONFIGURED else None,
         applicable_voltage_ll_kv=resolution.applicable_voltage_ll_kv if resolution.status == _CURRENT_STATUS_CONFIGURED else None,
         base_authority=config.base_authority if config is not None else "legacy_manual",
+        ct_primary_a=config.ct_primary_a if config is not None else None,
+        ct_secondary_a=config.ct_secondary_a if config is not None else None,
+        ct_ratio=config.ct_ratio if config is not None else None,
+        ct_authority=config.ct_authority if config is not None else "not_configured",
+        ct_provenance_note=config.ct_provenance_note if config is not None else None,
     )
     pu_status = "configured" if resolution.status == _CURRENT_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason

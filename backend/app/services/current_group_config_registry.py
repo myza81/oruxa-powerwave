@@ -85,6 +85,37 @@ class CurrentGroupConfigRegistry:
         with self._lock:
             self._configs[(config.workspace_id, config.measurement_group_id)] = _copy_config(config)
 
+    def update_fields(
+        self, workspace_id: str, measurement_group_id: str, *,
+        ct_primary_a: float | None = None,
+        ct_secondary_a: float | None = None,
+        ct_authority: str | None = None,
+        ct_provenance_note: str | None = None,
+        update_ct: bool = False,
+    ) -> CurrentBaseConfiguration:
+        """Publish CT-validated fields as one configuration replacement.
+
+        Merge omitted fields under the existing lock, so concurrent method
+        and CT edits cannot overwrite each other's accepted fields.
+        `update_ct=True` applies `ct_primary_a`, `ct_secondary_a`, `ct_authority`,
+        and `ct_provenance_note`; False (default) preserves the existing CT fields.
+        All copies (including the return value) are prepared before publication.
+        """
+        with self._lock:
+            key = (workspace_id, measurement_group_id)
+            previous = self._configs.get(key)
+            candidate = _copy_config(previous) if previous is not None else CurrentBaseConfiguration(
+                measurement_group_id=measurement_group_id, workspace_id=workspace_id,
+            )
+            if update_ct:
+                candidate.ct_primary_a = ct_primary_a
+                candidate.ct_secondary_a = ct_secondary_a
+                candidate.ct_authority = ct_authority if ct_authority is not None else "not_configured"
+                candidate.ct_provenance_note = ct_provenance_note
+            result = _copy_config(candidate)
+            self._configs[key] = candidate
+            return result
+
     def get(self, workspace_id: str, measurement_group_id: str) -> CurrentBaseConfiguration | None:
         """Returns a defensive COPY of the stored configuration -- the
         caller mutating the returned object has no effect on registry
