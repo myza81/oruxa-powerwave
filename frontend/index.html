@@ -635,25 +635,42 @@
             padding: 4px 10px;
         }
 
-        .ww-rd-search-row {
+        /* Two-row toolbar: search fills row 1; sort is right-aligned on row 2.
+           width:100%+block on .ww-rd-search avoids fighting the global
+           input[type="search"] { flex:1 } rule that collapses it in a flex row. */
+        .ww-rd-toolbar {
             display: flex;
-            gap: 6px;
+            flex-direction: column;
+            gap: 4px;
             padding: 8px 10px;
             flex-shrink: 0;
             border-bottom: 1px solid var(--panel-border);
         }
+        .ww-rd-toolbar-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ww-rd-toolbar-sort-row {
+            justify-content: flex-end;
+        }
+        .ww-rd-sort-label {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
         .ww-rd-search {
-            flex: 1 1 auto;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
             font-size: 0.75rem;
             padding: 4px 8px;
             background: var(--bg);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             color: var(--text);
-            min-width: 0;
             -webkit-appearance: none;
             appearance: none;
-            box-sizing: border-box;
         }
         .ww-rd-sort {
             font-size: 0.72rem;
@@ -662,7 +679,6 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             color: var(--text);
-            flex-shrink: 0;
         }
 
         .ww-rd-recording-list {
@@ -14883,15 +14899,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                 Upload New
                             </button>
                         </div>
-                        <div class="ww-rd-search-row">
-                            <input type="search" class="ww-rd-search" id="wwRdSearch"
-                                placeholder="Search recordings…" aria-label="Search recordings" autocomplete="off">
-                            <select class="ww-rd-sort" id="wwRdSort" aria-label="Sort recordings">
-                                <option value="name-asc">Name A–Z</option>
-                                <option value="name-desc">Name Z–A</option>
-                                <option value="date-desc">Newest first</option>
-                                <option value="date-asc">Oldest first</option>
-                            </select>
+                        <div class="ww-rd-toolbar">
+                            <div class="ww-rd-toolbar-row">
+                                <input type="search" class="ww-rd-search" id="wwRdSearch"
+                                    placeholder="Search recordings…" aria-label="Search recordings" autocomplete="off">
+                            </div>
+                            <div class="ww-rd-toolbar-row ww-rd-toolbar-sort-row">
+                                <label class="ww-rd-sort-label" for="wwRdSort">Sort</label>
+                                <select class="ww-rd-sort" id="wwRdSort" aria-label="Sort recordings">
+                                    <option value="name-asc">Name A–Z</option>
+                                    <option value="name-desc">Name Z–A</option>
+                                    <option value="date-desc">Newest first</option>
+                                    <option value="date-asc">Oldest first</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="ww-rd-recording-list" id="wwRdRecordingList" role="listbox"
                             aria-label="Recordings" aria-multiselectable="false">
