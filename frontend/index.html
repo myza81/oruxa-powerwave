@@ -946,6 +946,82 @@
             font-weight: 400;
             color: var(--text-dim);
         }
+        /* D2: Inline edit form */
+        .ww-rd-edit-btn {
+            font-size: 0.65rem;
+            font-weight: 500;
+            padding: 1px 7px;
+            border-radius: 3px;
+            border: 1px solid var(--panel-border);
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            line-height: 1.6;
+        }
+        .ww-rd-edit-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+        .ww-rd-edit-input, .ww-rd-edit-select {
+            font-size: 0.8rem;
+            padding: 4px 6px;
+            border-radius: 3px;
+            border: 1px solid var(--panel-border);
+            background: var(--surface);
+            color: var(--text);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .ww-rd-edit-input:focus, .ww-rd-edit-select:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+        .ww-rd-edit-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .ww-rd-apply-btn {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 3px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            cursor: pointer;
+        }
+        .ww-rd-apply-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .ww-rd-apply-btn:not(:disabled):hover { opacity: 0.88; }
+        .ww-rd-cancel-btn {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 3px;
+            border: 1px solid var(--panel-border);
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .ww-rd-cancel-btn:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+        .ww-rd-revert-btn {
+            font-size: 0.72rem;
+            padding: 2px 0;
+            border: none;
+            background: none;
+            color: var(--text-dim);
+            text-decoration: underline;
+            cursor: pointer;
+            margin-left: auto;
+        }
+        .ww-rd-revert-btn:hover { color: var(--warn); }
+        .ww-rd-edit-error {
+            margin-top: 7px;
+            font-size: 0.72rem;
+            color: var(--error, #c0392b);
+            background: color-mix(in srgb, var(--error, #c0392b) 8%, transparent);
+            border-left: 2px solid var(--error, #c0392b);
+            padding: 4px 8px;
+            border-radius: 2px;
+        }
         /* Two-column field grid */
         .ww-rd-field-grid {
             display: grid;
@@ -36491,6 +36567,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             groupKindFilter: "all",  // "all"|"voltage"|"current"
             narrowPanel: "recordings", // "recordings"|"groups"|"details" — narrow-layout only
             detailsView: "recording", // "recording"|"group" — what Column 3 shows (Slice C-1)
+            // D2: inline voltage-base edit state (null = not editing)
+            voltageEdit: null,       // null | { draftKv, draftRefMode, draftRefOverride, draftRefSide, pending, error }
         };
 
         // ------------------------------------------------------------------
@@ -36584,6 +36662,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.selectedSourceId = sourceId;
             wwRdState.selectedGroupId = null;
             wwRdState.detailsView = "recording"; // Slice C-1: show Recording Info on selection
+            wwRdState.voltageEdit = null; // D2: discard any in-progress edit on source change
             // UAT-B-07/Slice C-1: in narrow layout, advance to the groups panel.
             // Recording Info is accessible via the "Recording Info" link in the
             // groups panel header area, or by tapping "← Groups" after going
@@ -37024,66 +37103,109 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '</div>';
             }
 
-            // Base Configuration section
+            // Base Configuration section (D2: inline editing for voltage groups)
             let configHtml = "";
             if (kind === "voltage") {
                 const vc = g.voltage_config;
-                const nomKv = vc && vc.nominal_voltage_ll_kv != null ? vc.nominal_voltage_ll_kv + " kV (L‑L)" : null;
-                const auth = vc && vc.base_authority;
-                let authorityLabel;
-                if (!vc) {
-                    authorityLabel = "Not configured";
-                } else if (vc.manual_conflict_detected) {
-                    authorityLabel = "Manual — engineer configured";
-                } else if (auth === "auto_resolved") {
-                    authorityLabel = "Auto-resolved";
-                } else if (auth === "manual") {
-                    authorityLabel = "Manual — engineer configured";
-                } else if (auth === "legacy_manual") {
-                    authorityLabel = "Legacy manual";
-                } else if (auth === "needs_review") {
-                    authorityLabel = "Review required";
-                } else if (auth === "unavailable") {
-                    authorityLabel = "Not configured";
+                const ed = wwRdState.voltageEdit;
+                if (ed) {
+                    // Edit mode
+                    const isManual = ed.draftRefMode === "manual";
+                    const hasKv = ed.draftKv !== "" && ed.draftKv !== null && ed.draftKv !== undefined;
+                    const refModeOptions =
+                        '<option value="auto"' + (ed.draftRefMode === "auto" ? ' selected' : '') + '>Auto-detected</option>' +
+                        '<option value="manual"' + (ed.draftRefMode === "manual" ? ' selected' : '') + '>Manual override</option>';
+                    const overrideOptions =
+                        '<option value="line_to_ground"' + (ed.draftRefOverride === "line_to_ground" ? ' selected' : '') + '>Line-to-ground</option>' +
+                        '<option value="line_to_line"' + (ed.draftRefOverride === "line_to_line" ? ' selected' : '') + '>Line-to-line</option>';
+                    const sideOptions =
+                        '<option value="unknown"' + (ed.draftRefSide === "unknown" ? ' selected' : '') + '>Unknown</option>' +
+                        '<option value="primary"' + (ed.draftRefSide === "primary" ? ' selected' : '') + '>Primary</option>' +
+                        '<option value="secondary"' + (ed.draftRefSide === "secondary" ? ' selected' : '') + '>Secondary</option>';
+                    const canRevert = vc && vc.base_authority === "manual" && vc.nominal_voltage_ll_kv != null;
+                    configHtml = '<div class="ww-rd-section">';
+                    configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration</div>';
+                    configHtml += '<div class="ww-rd-field-grid">';
+                    configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltKv">Nominal voltage (L‑L) kV</label>' +
+                        '<input class="ww-rd-edit-input" id="wwRdVltKv" type="number" min="0.001" step="any" placeholder="e.g. 275"' +
+                        ' value="' + escapeHtml(ed.draftKv || "") + '"></div>';
+                    configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefMode">Voltage reference</label>' +
+                        '<select class="ww-rd-edit-select" id="wwRdVltRefMode">' + refModeOptions + '</select></div>';
+                    if (isManual) {
+                        configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefOverride">Reference type</label>' +
+                            '<select class="ww-rd-edit-select" id="wwRdVltRefOverride">' + overrideOptions + '</select></div>';
+                    }
+                    configHtml += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdVltRefSide">Base reference side</label>' +
+                        '<select class="ww-rd-edit-select" id="wwRdVltRefSide">' + sideOptions + '</select></div>';
+                    configHtml += '</div>';
+                    configHtml += '<div class="ww-rd-edit-actions">';
+                    configHtml += '<button class="ww-rd-apply-btn" id="wwRdVoltageApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying…' : 'Apply') + '</button>';
+                    configHtml += '<button class="ww-rd-cancel-btn" id="wwRdVoltageCancelBtn">Cancel</button>';
+                    if (canRevert) {
+                        configHtml += '<button class="ww-rd-revert-btn" id="wwRdVoltageRevertBtn">Revert to auto-detected</button>';
+                    }
+                    configHtml += '</div>';
+                    if (ed.error) {
+                        configHtml += '<div class="ww-rd-edit-error">' + escapeHtml(ed.error) + '</div>';
+                    }
+                    configHtml += '</div>';
                 } else {
-                    authorityLabel = auth ? escapeHtml(auth) : "Not configured";
-                }
-                const effRef = vc && vc.effective_reference
-                    ? (vc.effective_reference === "line_to_line" ? "Line-to-line" : "Line-to-ground")
-                    : (vc ? "Undetermined" : null);
-                const refSub = !vc ? null
-                    : vc.reference_mode === "manual" ? "Manually set"
-                    : (vc.reference_mode ? "Auto-detected" : null);
+                    // Read mode
+                    const nomKv = vc && vc.nominal_voltage_ll_kv != null ? vc.nominal_voltage_ll_kv + " kV (L‑L)" : null;
+                    const auth = vc && vc.base_authority;
+                    let authorityLabel;
+                    if (!vc) {
+                        authorityLabel = "Not configured";
+                    } else if (vc.manual_conflict_detected) {
+                        authorityLabel = "Manual — engineer configured";
+                    } else if (auth === "auto_resolved") {
+                        authorityLabel = "Auto-resolved";
+                    } else if (auth === "manual") {
+                        authorityLabel = "Manual — engineer configured";
+                    } else if (auth === "legacy_manual") {
+                        authorityLabel = "Legacy manual";
+                    } else if (auth === "needs_review") {
+                        authorityLabel = "Review required";
+                    } else if (auth === "unavailable") {
+                        authorityLabel = "Not configured";
+                    } else {
+                        authorityLabel = auth ? escapeHtml(auth) : "Not configured";
+                    }
+                    const effRef = vc && vc.effective_reference
+                        ? (vc.effective_reference === "line_to_line" ? "Line-to-line" : "Line-to-ground")
+                        : (vc ? "Undetermined" : null);
+                    const refSub = !vc ? null
+                        : vc.reference_mode === "manual" ? "Manually set"
+                        : (vc.reference_mode ? "Auto-detected" : null);
 
-                configHtml = '<div class="ww-rd-section">';
-                configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
-                configHtml += '<div class="ww-rd-field-grid">';
-                // Left: Nominal voltage (L-L)
-                configHtml += '<div class="ww-rd-field">';
-                configHtml += '<div class="ww-rd-field-label">Nominal voltage (L‑L)</div>';
-                if (nomKv) {
-                    configHtml += '<div class="ww-rd-field-value">' + escapeHtml(nomKv) + '</div>';
-                } else {
-                    configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
+                    configHtml = '<div class="ww-rd-section">';
+                    configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration' +
+                        '<button class="ww-rd-edit-btn" id="wwRdVoltageEditBtn">Edit</button></div>';
+                    configHtml += '<div class="ww-rd-field-grid">';
+                    configHtml += '<div class="ww-rd-field">';
+                    configHtml += '<div class="ww-rd-field-label">Nominal voltage (L‑L)</div>';
+                    if (nomKv) {
+                        configHtml += '<div class="ww-rd-field-value">' + escapeHtml(nomKv) + '</div>';
+                    } else {
+                        configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
+                    }
+                    configHtml += '</div>';
+                    configHtml += '<div class="ww-rd-field">';
+                    configHtml += '<div class="ww-rd-field-label">Voltage reference</div>';
+                    if (effRef) {
+                        configHtml += '<div class="ww-rd-field-value">' + escapeHtml(effRef) + '</div>';
+                        if (refSub) configHtml += '<div class="ww-rd-field-sub">' + escapeHtml(refSub) + '</div>';
+                    } else {
+                        configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Undetermined</div>';
+                    }
+                    configHtml += '</div>';
+                    configHtml += '<div class="ww-rd-field ww-rd-field-full">';
+                    configHtml += '<div class="ww-rd-field-label">Configuration source</div>';
+                    configHtml += '<div class="ww-rd-field-value">' + escapeHtml(authorityLabel) + '</div>';
+                    configHtml += '</div>';
+                    configHtml += '</div>'; // .ww-rd-field-grid
+                    configHtml += '</div>'; // .ww-rd-section
                 }
-                configHtml += '</div>';
-                // Right: Voltage reference
-                configHtml += '<div class="ww-rd-field">';
-                configHtml += '<div class="ww-rd-field-label">Voltage reference</div>';
-                if (effRef) {
-                    configHtml += '<div class="ww-rd-field-value">' + escapeHtml(effRef) + '</div>';
-                    if (refSub) configHtml += '<div class="ww-rd-field-sub">' + escapeHtml(refSub) + '</div>';
-                } else {
-                    configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Undetermined</div>';
-                }
-                configHtml += '</div>';
-                // Full-width: Configuration source
-                configHtml += '<div class="ww-rd-field ww-rd-field-full">';
-                configHtml += '<div class="ww-rd-field-label">Configuration source</div>';
-                configHtml += '<div class="ww-rd-field-value">' + escapeHtml(authorityLabel) + '</div>';
-                configHtml += '</div>';
-                configHtml += '</div>'; // .ww-rd-field-grid
-                configHtml += '</div>'; // .ww-rd-section
             } else if (kind === "current") {
                 configHtml = wwRdCurrentConfigHtml(g);
             }
@@ -37098,6 +37220,113 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const evidenceHtml = wwRdEvidenceHtml(g);
 
             return headerHtml + conflictHtml + configHtml + puHtml + transformerHtml + evidenceHtml;
+        }
+
+        // D2: Apply the in-progress voltage edit to the backend.
+        // PUT body echoes reference_override and base_reference_side from draft state.
+        async function wwRdVoltageApply() {
+            const ed = wwRdState.voltageEdit;
+            if (!ed || ed.pending) return;
+            const rawKv = ed.draftKv !== "" ? parseFloat(ed.draftKv) : null;
+            if (ed.draftKv !== "" && (isNaN(rawKv) || rawKv <= 0)) {
+                wwRdState.voltageEdit = Object.assign({}, ed, { error: "Nominal voltage must be a positive number (e.g. 275 for 275 kV)." });
+                wwRdRenderDetails();
+                return;
+            }
+            wwRdState.voltageEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/voltage-config";
+            const body = {
+                reference_mode: ed.draftRefMode,
+                reference_override: ed.draftRefMode === "manual" ? ed.draftRefOverride : null,
+                base_reference_side: ed.draftRefSide,
+            };
+            if (rawKv !== null) body.nominal_voltage_ll_kv = rawKv;
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.voltageEdit = Object.assign({}, wwRdState.voltageEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.voltageEdit = Object.assign({}, wwRdState.voltageEdit, { pending: false, error: detail.message || "Could not save this group's configuration." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.voltageEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
+            if (ww.perUnitMode) {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
+        }
+
+        // D2: Revert the manual kV to auto-detected (clear_nominal_voltage=true).
+        // Preserves reference_mode, reference_override, base_reference_side (OQ-D2-1).
+        async function wwRdVoltageRevert() {
+            const ed = wwRdState.voltageEdit;
+            if (!ed || ed.pending) return;
+            wwRdState.voltageEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const groups = ww.measurementGroups.get(sourceId) || [];
+            const g = groups.find((x) => x.id === groupId);
+            const vc = g && g.voltage_config;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/voltage-config";
+            const body = {
+                clear_nominal_voltage: true,
+                reference_mode: (vc && vc.reference_mode) || "auto",
+                reference_override: (vc && vc.reference_mode === "manual") ? vc.reference_override : null,
+                base_reference_side: (vc && vc.base_reference_side) || "unknown",
+            };
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.voltageEdit = Object.assign({}, wwRdState.voltageEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.voltageEdit = Object.assign({}, wwRdState.voltageEdit, { pending: false, error: detail.message || "Could not revert this group's voltage base." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.voltageEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
+            if (ww.perUnitMode) {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
+        }
+
+        // D2: update a single group in the shared ww.measurementGroups cache.
+        function wwRdUpdateGroupInCache(sourceId, updatedGroup) {
+            const groups = ww.measurementGroups.get(sourceId) || [];
+            const idx = groups.findIndex((x) => x.id === updatedGroup.id);
+            if (idx >= 0) {
+                groups[idx] = updatedGroup;
+            } else {
+                groups.push(updatedGroup);
+            }
+            ww.measurementGroups.set(sourceId, groups);
         }
 
         // UAT-B-07: apply panel visibility for narrow layout. At wider
@@ -61466,6 +61695,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (item) {
                 wwRdState.selectedGroupId = item.dataset.groupId;
                 wwRdState.detailsView = "group"; // Slice C-1
+                wwRdState.voltageEdit = null; // D2: discard any in-progress edit on group change
                 // UAT-B-07: in narrow layout, advance to the details panel.
                 if (window.matchMedia("(max-width: 692px)").matches) {
                     wwRdState.narrowPanel = "details";
@@ -61543,6 +61773,51 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const view = tabs[next].id === "wwRdTabGroupDetails" ? "group" : "recording";
             wwRdState.detailsView = view;
             wwRdRenderDetails();
+        });
+        // D2: delegate clicks inside the details panel (dynamic content).
+        document.getElementById("wwRdDetailsBody").addEventListener("click", (e) => {
+            const btn = e.target.closest("button");
+            if (!btn) return;
+            if (btn.id === "wwRdVoltageEditBtn") {
+                // Enter edit mode — pre-fill draft from current group state
+                const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
+                const g = groups.find((x) => x.id === wwRdState.selectedGroupId);
+                const vc = g && g.voltage_config;
+                wwRdState.voltageEdit = {
+                    draftKv: vc && vc.nominal_voltage_ll_kv != null ? String(vc.nominal_voltage_ll_kv) : "",
+                    draftRefMode: (vc && vc.reference_mode) || "auto",
+                    draftRefOverride: (vc && vc.reference_override) || "line_to_ground",
+                    draftRefSide: (vc && vc.base_reference_side) || "unknown",
+                    pending: false,
+                    error: null,
+                };
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdVoltageCancelBtn") {
+                wwRdState.voltageEdit = null;
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdVoltageApplyBtn") {
+                wwRdVoltageApply();
+                return;
+            }
+            if (btn.id === "wwRdVoltageRevertBtn") {
+                wwRdVoltageRevert();
+                return;
+            }
+        });
+        // D2: live-sync draft state from edit form inputs (event delegation).
+        document.getElementById("wwRdDetailsBody").addEventListener("input", (e) => {
+            if (!wwRdState.voltageEdit) return;
+            const id = e.target.id;
+            if (id === "wwRdVltKv") wwRdState.voltageEdit.draftKv = e.target.value;
+            else if (id === "wwRdVltRefMode") {
+                wwRdState.voltageEdit.draftRefMode = e.target.value;
+                wwRdRenderDetails(); // re-render to show/hide override row
+            } else if (id === "wwRdVltRefOverride") wwRdState.voltageEdit.draftRefOverride = e.target.value;
+            else if (id === "wwRdVltRefSide") wwRdState.voltageEdit.draftRefSide = e.target.value;
         });
         // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.
         window.matchMedia("(max-width: 692px)").addEventListener("change", wwRdApplyNarrowLayout);

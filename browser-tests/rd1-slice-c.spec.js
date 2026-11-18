@@ -85,8 +85,8 @@ test("RD-1 C-02: current group details — Current Base Configuration section is
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // Current Group section must be present (Slice C-3 redesign: renamed from "Current Base Configuration")
-    await expect(page.locator("#wwRdDetailsBody")).toContainText("Current Group");
+    // Current groups show Equipment Rating section (C4 redesign: renamed from "Current Group")
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("Equipment Rating");
     // Must NOT show Voltage Base section for a current group
     const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
     const allHeadings = await headings.allTextContents();
@@ -107,10 +107,10 @@ test("RD-1 C-03: group identity header shows name and channel list", async ({ pa
 
     // Group name in header (Slice C-3: type badge removed from details header)
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name")).toBeVisible();
-    // Channel list (count + dot-separated names)
+    // Channel list visible — dot-separated names (C4-01: "N channels:" prefix removed)
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-channels")).toBeVisible();
     const channelText = await page.locator("#wwRdDetailsBody .ww-rd-details-channels").textContent();
-    expect(channelText).toMatch(/\d+ channel/);
+    expect(channelText.includes("·") || channelText.includes("No channels assigned")).toBeTruthy();
 });
 
 test("RD-1 C-04: PU eligible badge shown for configured voltage group", async ({ page }) => {
@@ -210,13 +210,13 @@ test("RD-1 C-07: instrument transformers note in Engineering Evidence (not stand
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // Slice C-3: CT/VT is no longer a standalone section — it is inside Engineering Evidence.
-    // Open the evidence section and verify the note appears.
-    const evidenceEl = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
-    await evidenceEl.locator("summary").click();
-    await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
-    await expect(evidenceEl).toContainText("Instrument transformers");
-    await expect(evidenceEl).toContainText("Not available from recording metadata");
+    // C4 amendment: CT/VT is now a standalone section in the main panel (not in Evidence).
+    // Verify the standalone transformer section is present in the main panel.
+    const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
+    const allHeadings = await headings.allTextContents();
+    const hasTransformerSection = allHeadings.some((t) =>
+        t.includes("Voltage Transformer") || t.includes("Current Transformer"));
+    expect(hasTransformerSection).toBe(true);
 });
 
 test("RD-1 C-08: group switching — details update to new group", async ({ page }) => {

@@ -106,8 +106,8 @@ test("RD-1 C2-05: current group main view shows equipment-capacity design (no PU
     await selectGroupByKind(page, "current");
 
     const details = page.locator("#wwRdDetailsBody");
-    // Section heading is now "Current Group" (not "Current Base Configuration")
-    await expect(details).toContainText("Current Group");
+    // Section heading is now "Equipment Rating" (C4 redesign from "Current Group")
+    await expect(details).toContainText("Equipment Rating");
     // Per-unit availability section must NOT appear for current groups
     await expect(details.locator(".ww-rd-pu-status-line")).not.toBeVisible();
     // Engineering Evidence section is still present
@@ -148,13 +148,15 @@ test("RD-1 C2-08: CT/VT section shows 'Not available from recording metadata' (n
     await selectFirstRecording(page);
     await selectGroupByKind(page, "voltage");
 
-    // CT/VT is now Instrument transformers inside Engineering Evidence (Slice C-3)
-    const evidenceEl = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
-    await evidenceEl.locator("summary").click();
-    await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
-    await expect(evidenceEl).toContainText("Instrument transformers");
-    await expect(evidenceEl).toContainText("Not available from recording metadata");
-    await expect(evidenceEl).not.toContainText("Not configured");
+    // C4 amendment: CT/VT is a standalone section in main panel (not in Evidence).
+    // The standalone VT section shows "Not available from recording metadata".
+    const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
+    const allH = await headings.allTextContents();
+    const hasTransformerSection = allH.some((t) =>
+        t.includes("Voltage Transformer") || t.includes("Current Transformer"));
+    expect(hasTransformerSection).toBe(true);
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("Not available from recording metadata");
+    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Not configured");
 });
 
 test("RD-1 C2-09: conflict banner is preserved when manual_conflict_detected", async ({ page }) => {

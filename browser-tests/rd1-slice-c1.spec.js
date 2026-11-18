@@ -249,8 +249,9 @@ test("RD-1 C1-10: Slice C group details remain intact after Slice C-1 changes", 
     // Slice C group details must still work
     await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
     const detailsText = await page.locator("#wwRdDetailsBody").textContent();
+    // Post-C4: voltage groups → "Voltage Base Configuration", current groups → "Equipment Rating"
     const hasConfig = detailsText.includes("Voltage Base Configuration") ||
-        detailsText.includes("Current Base Configuration");
+        detailsText.includes("Equipment Rating");
     expect(hasConfig).toBe(true);
 
     // Engineering Evidence toggle must be present
@@ -259,8 +260,10 @@ test("RD-1 C1-10: Slice C group details remain intact after Slice C-1 changes", 
     // PU availability status line must be present (Slice C-3: replaces pill)
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
 
-    // Instrument transformers note in Engineering Evidence (Slice C-3: replaces standalone CT/VT)
-    const evidence = page.locator("#wwRdDetailsBody details.ww-rd-evidence").first();
-    await evidence.locator("summary").click();
-    await expect(evidence).toContainText("Instrument transformers");
+    // C4 amendment: CT/VT is a standalone section in main panel (not in Evidence).
+    const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
+    const allH = await headings.allTextContents();
+    const hasTransformerSection = allH.some((t) =>
+        t.includes("Voltage Transformer") || t.includes("Current Transformer"));
+    expect(hasTransformerSection).toBe(true);
 });
