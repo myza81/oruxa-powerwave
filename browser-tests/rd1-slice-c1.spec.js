@@ -1,4 +1,5 @@
 // RD-1 Slice C-1 — Recording Information and context-sensitive details panel tests.
+// Updated for tab-based navigation (replaces back-link navigation).
 // Tests run against a live backend+frontend (port 8000/8101 by default).
 
 const { test, expect } = require("./support/test");
@@ -41,33 +42,31 @@ async function selectFirstGroup(page) {
 
 // ---- Tests ------------------------------------------------------------------
 
-test("RD-1 C1-01: recording selection shows Recording Info in Column 3", async ({ page }) => {
+test("RD-1 C1-01: recording selection activates Recording Info tab", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
 
-    // Panel title should be "Recording Info"
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info");
+    // "Recording Info" tab must be active
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "false");
     // Details body must not show "Select a group" placeholder
     await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Select a group");
-    // "← Recording Info" back link must be hidden
-    await expect(page.locator("#rdBackToRecordingInfo")).toBeHidden();
     // Format label should be present (COMTRADE)
     await expect(page.locator("#wwRdDetailsBody")).toContainText("COMTRADE");
 });
 
-test("RD-1 C1-02: selecting a group switches Column 3 to Group Details", async ({ page }) => {
+test("RD-1 C1-02: selecting a group activates Group Details tab", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectFirstGroup(page);
 
-    // Panel title should be "Group Details"
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details");
-    // "← Recording Info" link must be visible
-    await expect(page.locator("#rdBackToRecordingInfo")).toBeVisible();
+    // "Group Details" tab must be active
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "false");
     // Engineering config section must be present (Slice C)
     const detailsText = await page.locator("#wwRdDetailsBody").textContent();
     const hasConfig = detailsText.includes("Voltage Base Configuration") ||
@@ -77,26 +76,28 @@ test("RD-1 C1-02: selecting a group switches Column 3 to Group Details", async (
     await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Sample rate");
 });
 
-test("RD-1 C1-03: clicking '← Recording Info' returns to recording metadata", async ({ page }) => {
+test("RD-1 C1-03: clicking Recording Info tab returns to recording metadata", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectFirstGroup(page);
 
-    // Confirm we are in group view
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details");
+    // Confirm Group Details tab is active
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
 
-    // Click the back link
-    await page.locator("#rdBackToRecordingInfo").click();
+    // Click the Recording Info tab
+    await page.locator("#wwRdTabRecordingInfo").click();
 
-    // Now should show Recording Info
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info");
-    await expect(page.locator("#rdBackToRecordingInfo")).toBeHidden();
+    // Now Recording Info tab must be active and show recording metadata
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "false");
     await expect(page.locator("#wwRdDetailsBody")).toContainText("COMTRADE");
+    // Engineering config must no longer be shown
+    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Voltage Base Configuration");
 });
 
-test("RD-1 C1-04: switching recordings resets Column 3 to Recording Info", async ({ page }) => {
+test("RD-1 C1-04: switching recordings resets Column 3 to Recording Info tab", async ({ page }) => {
     await page.goto("/index.html");
     // Upload two fixtures (second upload creates a second recording)
     await uploadFixture(page);
@@ -115,17 +116,16 @@ test("RD-1 C1-04: switching recordings resets Column 3 to Recording Info", async
     await expect(page.locator("#wwRdGroupsBody .ww-rd-group-item").first()).toBeVisible({ timeout: 8000 });
     await page.locator("#wwRdGroupsBody .ww-rd-group-item").first().click();
     // Should be in Group Details view
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details", { timeout: 5000 });
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
 
     // Now select second recording
     await items.nth(1).click();
     // After selecting a different recording, panel resets to Recording Info
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info", { timeout: 5000 });
-    // "← Recording Info" back link should be hidden (not in group view)
-    await expect(page.locator("#rdBackToRecordingInfo")).toBeHidden();
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "false");
 });
 
-test("RD-1 C1-05: group selection is preserved when returning to Recording Info", async ({ page }) => {
+test("RD-1 C1-05: group selection is preserved when switching to Recording Info tab", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -136,13 +136,16 @@ test("RD-1 C1-05: group selection is preserved when returning to Recording Info"
     await expect(groups.first()).toBeVisible({ timeout: 8000 });
     await groups.first().click();
     // Confirm group details shown
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details");
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
 
-    // Go back to Recording Info
-    await page.locator("#rdBackToRecordingInfo").click();
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info");
+    // Click Recording Info tab
+    await page.locator("#wwRdTabRecordingInfo").click();
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true");
 
     // The first group row should still have aria-selected="true" in the groups panel
+    await expect(groups.first()).toHaveAttribute("aria-selected", "true");
+
+    // The first group row must still be selected (aria-selected preserved)
     await expect(groups.first()).toHaveAttribute("aria-selected", "true");
 });
 
@@ -153,7 +156,7 @@ test("RD-1 C1-06: recording with absent station shows dash or omits station row 
     await selectFirstRecording(page);
 
     // Panel must be in Recording Info view and not show an error
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info");
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true");
     // Should not show any JS error message in the body
     await expect(page.locator("#wwRdDetailsBody")).not.toContainText("undefined");
     await expect(page.locator("#wwRdDetailsBody")).not.toContainText("[object");
@@ -163,7 +166,7 @@ test("RD-1 C1-06: recording with absent station shows dash or omits station row 
     await expect(page.locator("#wwRdDetailsBody")).toContainText("Sample rate");
 });
 
-test("RD-1 C1-07: narrow layout — Recording Info accessible via groups panel button", async ({ page }) => {
+test("RD-1 C1-07: narrow layout — tab switching works in details panel", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/index.html");
     await uploadFixture(page);
@@ -173,13 +176,21 @@ test("RD-1 C1-07: narrow layout — Recording Info accessible via groups panel b
     await selectFirstRecording(page);
     await expect(page.locator("#wwRdGroupsPanel")).toBeVisible({ timeout: 3000 });
 
-    // "Recording Info →" button should be visible in the groups panel header
-    await expect(page.locator("#rdViewRecordingInfoBtn")).toBeVisible({ timeout: 3000 });
+    // Select a group to navigate to the details panel
+    await expect(page.locator("#wwRdGroupsBody .ww-rd-group-item").first()).toBeVisible({ timeout: 8000 });
+    await page.locator("#wwRdGroupsBody .ww-rd-group-item").first().click();
 
-    // Clicking it should navigate to details panel showing Recording Info
-    await page.locator("#rdViewRecordingInfoBtn").click();
+    // Details panel should now be visible with Group Details tab active
     await expect(page.locator("#wwRdDetailsPanel")).not.toHaveClass(/ww-rd-narrow-hidden/);
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info");
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
+
+    // Both tabs must be visible
+    await expect(page.locator("#wwRdTabRecordingInfo")).toBeVisible();
+    await expect(page.locator("#wwRdTabGroupDetails")).toBeVisible();
+
+    // Clicking Recording Info tab must switch content
+    await page.locator("#wwRdTabRecordingInfo").click();
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#wwRdDetailsBody")).toContainText("COMTRADE");
 });
 
@@ -197,8 +208,8 @@ test("RD-1 C1-08: rapid recording switches do not leave stale recording info in 
     await items.first().click();
     await items.nth(1).click();
 
-    // The final state should be Recording Info (panel title) and not show a placeholder
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info", { timeout: 5000 });
+    // The final state should be Recording Info tab active
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
     await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Select a recording");
     await expect(page.locator("#wwRdDetailsBody")).toContainText("COMTRADE");
 });
@@ -212,7 +223,7 @@ test("RD-1 C1-09: dark theme — Recording Info panel renders without layout bre
     await navigateToRd(page);
     await selectFirstRecording(page);
 
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info");
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true");
     // No horizontal overflow on the details panel
     const panel = page.locator("#wwRdDetailsPanel");
     await expect(panel).toBeVisible();
@@ -236,7 +247,7 @@ test("RD-1 C1-10: Slice C group details remain intact after Slice C-1 changes", 
     await page.locator("#wwRdGroupsBody .ww-rd-group-item").first().click();
 
     // Slice C group details must still work
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details");
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
     const detailsText = await page.locator("#wwRdDetailsBody").textContent();
     const hasConfig = detailsText.includes("Voltage Base Configuration") ||
         detailsText.includes("Current Base Configuration");

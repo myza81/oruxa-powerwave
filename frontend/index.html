@@ -1001,35 +1001,59 @@
             justify-content: space-between;
             gap: 8px;
         }
-        /* Slice C-1: narrow-only elements hidden at ≥693px */
-        @media (min-width: 693px) {
-            .ww-rd-narrow-only { display: none !important; }
+        /* Slice C-1: underline tabs for Column 3 */
+        .ww-rd-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--panel-border);
+            flex-shrink: 0;
+            padding: 0 4px;
         }
-        @media (max-width: 692px) {
-            .ww-rd-narrow-only { display: inline-block !important; }
-        }
-        .ww-rd-back-to-info-btn {
+        .ww-rd-tab {
+            padding: 9px 12px;
+            font-size: 0.8rem;
+            font-weight: 400;
+            color: var(--text-dim);
             background: none;
             border: none;
-            padding: 2px 0;
-            font-size: 0.72rem;
-            color: var(--accent);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
             cursor: pointer;
+            transition: color 0.12s;
             white-space: nowrap;
             flex: none;
         }
-        .ww-rd-back-to-info-btn:hover { text-decoration: underline; }
-        /* "View Groups" link at bottom of Recording Info panel */
-        .ww-rd-info-groups-link { margin-top: 16px; }
-        .ww-rd-info-view-groups-btn {
-            background: none;
-            border: none;
-            padding: 0;
-            font-size: 0.75rem;
-            color: var(--accent);
-            cursor: pointer;
+        .ww-rd-tab:hover {
+            color: var(--text);
         }
-        .ww-rd-info-view-groups-btn:hover { text-decoration: underline; }
+        .ww-rd-tab[aria-selected="true"] {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            font-weight: 500;
+        }
+        .ww-rd-tab:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+            border-radius: 2px;
+        }
+        /* Slice C-1: empty state shown when Group Details tab is active with no group selected */
+        .ww-rd-empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 32px 20px;
+            text-align: center;
+            color: var(--text-dim);
+        }
+        .ww-rd-empty-state .ww-rd-empty-icon {
+            font-size: 1.8rem;
+            opacity: 0.4;
+        }
+        .ww-rd-empty-state p {
+            margin: 0;
+            font-size: 0.8rem;
+        }
         /* Filename display in Recording Info */
         .ww-rd-info-filename {
             font-family: monospace;
@@ -15116,11 +15140,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         <button type="button" class="ww-rd-back-btn" id="rdBackToRecordings">← Recordings</button>
                         <div class="ww-rd-panel-header ww-rd-groups-panel-header">
                             <h2 class="ww-rd-panel-title">Measurement Groups</h2>
-                            <!-- Slice C-1: narrow-mode shortcut to Recording Info panel.
-                                 Hidden in wide/medium where Panel 3 is always visible. -->
-                            <button type="button" class="ww-rd-back-to-info-btn ww-rd-narrow-only" id="rdViewRecordingInfoBtn" hidden>
-                                Recording Info →
-                            </button>
                         </div>
                         <div class="ww-rd-filter-row" id="wwRdGroupKindFilter" role="group"
                             aria-label="Filter groups by kind">
@@ -15140,14 +15159,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <div class="ww-rd-panel ww-rd-panel--details" id="wwRdDetailsPanel">
                         <!-- UAT-B-07: back to groups (narrow layout only) -->
                         <button type="button" class="ww-rd-back-btn" id="rdBackToGroups">← Groups</button>
-                        <div class="ww-rd-panel-header ww-rd-details-panel-header">
-                            <h2 class="ww-rd-panel-title" id="wwRdDetailsPanelTitle">Recording Info</h2>
-                            <!-- Slice C-1: shown only when viewing Group Details -->
-                            <button type="button" class="ww-rd-back-to-info-btn" id="rdBackToRecordingInfo" hidden>
-                                ← Recording Info
-                            </button>
+                        <!-- Slice C-1: persistent underline tabs replacing the old back-link navigation -->
+                        <div class="ww-rd-tabs" role="tablist" id="wwRdDetailsTabs"
+                            aria-label="Details view">
+                            <button type="button" class="ww-rd-tab" role="tab"
+                                id="wwRdTabRecordingInfo"
+                                aria-selected="true"
+                                aria-controls="wwRdDetailsBody">Recording Info</button>
+                            <button type="button" class="ww-rd-tab" role="tab"
+                                id="wwRdTabGroupDetails"
+                                aria-selected="false"
+                                aria-controls="wwRdDetailsBody">Group Details</button>
                         </div>
-                        <div class="ww-rd-details-body" id="wwRdDetailsBody">
+                        <div class="ww-rd-details-body" id="wwRdDetailsBody"
+                            role="tabpanel" aria-labelledby="wwRdTabRecordingInfo">
                             <p class="ww-rd-placeholder">Select a recording to view information.</p>
                         </div>
                     </div>
@@ -36514,9 +36539,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdRenderGroups() {
             const body = document.getElementById("wwRdGroupsBody");
             if (!body) return;
-            // Slice C-1: show/hide the "Recording Info →" narrow-mode shortcut
-            const infoBtn = document.getElementById("rdViewRecordingInfoBtn");
-            if (infoBtn) infoBtn.hidden = !wwRdState.selectedSourceId;
             if (!wwRdState.selectedSourceId) {
                 body.innerHTML = '<p class="ww-rd-placeholder">Select a recording to view groups.</p>';
                 return;
@@ -36557,18 +36579,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdRenderDetails() {
             const body = document.getElementById("wwRdDetailsBody");
             if (!body) return;
-            // Slice C-1: update the panel title to match the view
-            const titleEl = document.getElementById("wwRdDetailsPanelTitle");
-            if (titleEl) {
-                titleEl.textContent = wwRdState.detailsView === "recording"
-                    ? "Recording Info" : "Group Details";
+            // Slice C-1: sync tab aria-selected state
+            const tabRec = document.getElementById("wwRdTabRecordingInfo");
+            const tabGrp = document.getElementById("wwRdTabGroupDetails");
+            const isRecording = wwRdState.detailsView === "recording";
+            if (tabRec) {
+                tabRec.setAttribute("aria-selected", isRecording ? "true" : "false");
             }
-            // Show/hide the "← Recording Info" back link
-            const backLink = document.getElementById("rdBackToRecordingInfo");
-            if (backLink) {
-                backLink.hidden = wwRdState.detailsView !== "group" || !wwRdState.selectedSourceId;
+            if (tabGrp) {
+                tabGrp.setAttribute("aria-selected", isRecording ? "false" : "true");
             }
-            if (wwRdState.detailsView === "recording") {
+            // Update tabpanel aria-labelledby to reflect active tab
+            body.setAttribute("aria-labelledby", isRecording ? "wwRdTabRecordingInfo" : "wwRdTabGroupDetails");
+            if (isRecording) {
                 if (!wwRdState.selectedSourceId) {
                     body.innerHTML = '<p class="ww-rd-placeholder">Select a recording to view information.</p>';
                     return;
@@ -36582,7 +36605,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             // detailsView === "group"
             if (!wwRdState.selectedGroupId || !wwRdState.selectedSourceId) {
-                body.innerHTML = '<p class="ww-rd-placeholder">Select a group to view details.</p>';
+                body.innerHTML = '<div class="ww-rd-empty-state">' +
+                    '<span class="ww-rd-empty-icon" aria-hidden="true">⬡</span>' +
+                    '<p>Select a group to view its engineering configuration.</p>' +
+                    '</div>';
                 return;
             }
             const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
@@ -36674,12 +36700,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += row("Channels", chCount);
             html += '</div>';
             html += '</div>';
-
-            // "View Groups" link — only useful in narrow layout (wide/medium always show groups panel)
-            html += '<div class="ww-rd-info-groups-link">' +
-                '<button type="button" class="ww-rd-info-view-groups-btn" id="rdViewGroupsBtn">' +
-                'View Measurement Groups' +
-                '</button></div>';
 
             return html;
         }
@@ -61289,32 +61309,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.narrowPanel = "groups";
             wwRdApplyNarrowLayout();
         });
-        // Slice C-1: "← Recording Info" button in details panel header.
-        document.getElementById("rdBackToRecordingInfo").addEventListener("click", () => {
-            wwRdState.detailsView = "recording";
+        // Slice C-1: tab click handlers — activate tab without altering recording/group selection.
+        document.getElementById("wwRdDetailsTabs").addEventListener("click", (e) => {
+            const tab = e.target.closest(".ww-rd-tab[role='tab']");
+            if (!tab) return;
+            const view = tab.id === "wwRdTabGroupDetails" ? "group" : "recording";
+            if (view === wwRdState.detailsView) return; // already active
+            wwRdState.detailsView = view;
             wwRdRenderDetails();
         });
-        // Slice C-1: "Recording Info →" button in groups panel header (narrow only).
-        document.getElementById("rdViewRecordingInfoBtn").addEventListener("click", () => {
-            wwRdState.detailsView = "recording";
-            if (window.matchMedia("(max-width: 692px)").matches) {
-                wwRdState.narrowPanel = "details";
-                wwRdApplyNarrowLayout();
-            }
+        // Slice C-1: keyboard navigation for tablist (ARIA tabs pattern).
+        document.getElementById("wwRdDetailsTabs").addEventListener("keydown", (e) => {
+            const tabs = Array.from(document.querySelectorAll("#wwRdDetailsTabs .ww-rd-tab[role='tab']"));
+            const idx = tabs.indexOf(document.activeElement);
+            if (idx === -1) return;
+            let next = idx;
+            if (e.key === "ArrowRight") { next = (idx + 1) % tabs.length; }
+            else if (e.key === "ArrowLeft") { next = (idx - 1 + tabs.length) % tabs.length; }
+            else if (e.key === "Home") { next = 0; }
+            else if (e.key === "End") { next = tabs.length - 1; }
+            else { return; }
+            e.preventDefault();
+            tabs[next].focus();
+            // Activate on arrow key (standard ARIA tabs pattern for auto-activation)
+            const view = tabs[next].id === "wwRdTabGroupDetails" ? "group" : "recording";
+            wwRdState.detailsView = view;
             wwRdRenderDetails();
-        });
-        // Slice C-1: "View Measurement Groups" button in Recording Info panel.
-        // This button is rendered dynamically inside wwRdDetailsBody, so use
-        // event delegation on the details body.
-        document.getElementById("wwRdDetailsBody").addEventListener("click", (e) => {
-            if (e.target.id === "rdViewGroupsBtn") {
-                if (window.matchMedia("(max-width: 692px)").matches) {
-                    // In narrow mode, navigate to the groups panel.
-                    wwRdState.narrowPanel = "groups";
-                    wwRdApplyNarrowLayout();
-                }
-                // No-op in wide/medium: groups panel is always visible.
-            }
         });
         // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.
         window.matchMedia("(max-width: 692px)").addEventListener("change", wwRdApplyNarrowLayout);

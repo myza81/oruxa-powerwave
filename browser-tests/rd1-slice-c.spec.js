@@ -260,14 +260,14 @@ test("RD-1 C-09: selecting a recording switches details panel to Recording Info"
     const rows = page.locator("#wwRdGroupsBody .ww-rd-group-item");
     await expect(rows.first()).toBeVisible({ timeout: 5000 });
     await rows.first().click();
-    // Now in Group Details view
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Group Details", { timeout: 5000 });
+    // Now in Group Details view (Group Details tab active)
+    await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
 
     // Now select the same recording again (re-click it in the browser panel)
     const recItem = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     await recItem.click();
-    // Slice C-1: selecting a recording resets details to Recording Info (not a placeholder)
-    await expect(page.locator("#wwRdDetailsPanelTitle")).toHaveText("Recording Info", { timeout: 5000 });
+    // Slice C-1 (tabs): selecting a recording activates the Recording Info tab
+    await expect(page.locator("#wwRdTabRecordingInfo")).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
     await expect(page.locator("#wwRdDetailsBody")).toContainText("COMTRADE");
 });
 
