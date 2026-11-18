@@ -56,6 +56,8 @@ class VoltageGroupConfigView:
     # RD-0B Option A: manual-base conflict flag surfaced from VoltageBaseConfiguration.
     manual_conflict_detected: bool = False
     manual_conflict_detail: str | None = None
+    # Slice C-2: authoritative base authority exposed to frontend.
+    base_authority: str = "legacy_manual"
 
 
 @dataclass(slots=True)
@@ -68,6 +70,8 @@ class CurrentGroupConfigView:
     resolved_ibase_ka: float | None
     applicable_voltage_ll_kv: float | None
     base_reference_side: ReferenceSide = "unknown"
+    # Slice C-2: authoritative base authority exposed to frontend.
+    base_authority: str = "legacy_manual"
 
 
 @dataclass(slots=True)
@@ -95,6 +99,7 @@ def _build_voltage_view(
         secondary_voltage_ll_v=config.secondary_voltage_ll_v if config is not None else None,
         manual_conflict_detected=config.manual_conflict_detected if config is not None else False,
         manual_conflict_detail=config.manual_conflict_detail if config is not None else None,
+        base_authority=config.base_authority if config is not None else "legacy_manual",
     )
     pu_status = "configured" if resolution.status == _VOLTAGE_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason
@@ -128,6 +133,7 @@ def _build_current_view(
         manual_ibase_ka=config.manual_ibase_ka if config is not None else None,
         resolved_ibase_ka=resolution.ibase_ka if resolution.status == _CURRENT_STATUS_CONFIGURED else None,
         applicable_voltage_ll_kv=resolution.applicable_voltage_ll_kv if resolution.status == _CURRENT_STATUS_CONFIGURED else None,
+        base_authority=config.base_authority if config is not None else "legacy_manual",
     )
     pu_status = "configured" if resolution.status == _CURRENT_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason

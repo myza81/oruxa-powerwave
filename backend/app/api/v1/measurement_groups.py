@@ -170,6 +170,7 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             secondary_voltage_ll_v=view.voltage_config.secondary_voltage_ll_v,
             manual_conflict_detected=view.voltage_config.manual_conflict_detected,
             manual_conflict_detail=view.voltage_config.manual_conflict_detail,
+            base_authority=view.voltage_config.base_authority,
         )
         if view.voltage_config is not None
         else None
@@ -184,6 +185,7 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             manual_ibase_ka=view.current_config.manual_ibase_ka,
             resolved_ibase_ka=view.current_config.resolved_ibase_ka,
             applicable_voltage_ll_kv=view.current_config.applicable_voltage_ll_kv,
+            base_authority=view.current_config.base_authority,
         )
         if view.current_config is not None
         else None

@@ -68,6 +68,11 @@ class VoltageGroupConfigOut(BaseModel):
     # PU is blocked while True.  False is the safe, no-conflict default.
     manual_conflict_detected: bool = False
     manual_conflict_detail: str | None = None
+    # Slice C-2: authoritative base authority state from the domain model.
+    # Exposed so the frontend can distinguish needs_review from unavailable
+    # without inferring authority from reference_mode / detection_reason.
+    # One of: "auto_resolved", "manual", "legacy_manual", "needs_review", "unavailable".
+    base_authority: str = "legacy_manual"
 
 
 class CurrentGroupConfigOut(BaseModel):
@@ -84,6 +89,8 @@ class CurrentGroupConfigOut(BaseModel):
     manual_ibase_ka: float | None
     resolved_ibase_ka: float | None
     applicable_voltage_ll_kv: float | None
+    # Slice C-2: authoritative base authority for current groups.
+    base_authority: str = "legacy_manual"
 
 
 class MeasurementGroupOut(BaseModel):
