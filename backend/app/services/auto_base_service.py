@@ -51,6 +51,7 @@ from app.domain.base_authority import (
     BASE_AUTHORITY_LEGACY,
     BASE_AUTHORITY_MANUAL,
     BASE_AUTHORITY_NEEDS_REVIEW,
+    is_engineer_approved,
 )
 from app.domain.measurement_group import KIND_VOLTAGE
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -307,3 +308,189 @@ def _best_candidate_kv(candidates) -> float:
     """Return the highest-confidence candidate's kV value."""
     _priority = {"high": 0, "medium": 1, "low": 2}
     return min(candidates, key=lambda c: _priority.get(c.confidence, 99)).value_kv
+
+
+_KV_CONFLICT_TOLERANCE = 0.05  # 5 % relative — same threshold as primary_nominal_consistent
+
+
+def _detect_primary_kv_for_group(group, channel_map: dict) -> float | None:
+    """Run the voltage-evidence pipeline on `group`'s current channel membership
+    and return the best primary nominal kV, or None when evidence is insufficient
+    or ambiguous.  Pure read — never writes to any registry."""
+    metadata_list: list[ChannelAutoMetadata] = []
+    for ref in group.channel_refs:
+        if ref.kind != "source":
+            continue
+        ch = channel_map.get(ref.channel_name)
+        if ch is None:
+            continue
+        metadata_list.append(ChannelAutoMetadata(
+            name=ch.name,
+            engineering_type=(ch.engineering_type or "").lower() or None,
+            unit=ch.unit,
+            measurement_side=ch.measurement_side,
+            primary_ratio=ch.primary_ratio,
+            secondary_ratio=ch.secondary_ratio,
+        ))
+    if not metadata_list:
+        return None
+    evidence = resolve_voltage_group_evidence(metadata_list, group_name=group.display_name)
+    if evidence.sufficient_for_auto_nominal and evidence.primary_nominal_candidates:
+        return _best_candidate_kv(evidence.primary_nominal_candidates)
+    return None
+
+
+def _kv_conflict(manual_kv: float, detected_kv: float) -> bool:
+    """True when two kV values differ by more than the conflict tolerance."""
+    if manual_kv <= 0 or detected_kv <= 0:
+        return True
+    relative = abs(manual_kv - detected_kv) / max(manual_kv, detected_kv)
+    return relative > _KV_CONFLICT_TOLERANCE
+
+
+def reconfigure_auto_base_after_membership_change(
+    *,
+    workspace_id: str,
+    source_id: str,
+    measurement_group_id: str,
+    source_registry: WorkspaceRegistry,
+    group_registry: MeasurementGroupRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry,
+) -> VoltageGroupAutoResult | None:
+    """Re-evaluate the voltage base for one group after its channel membership changed.
+
+    Called from ``update_group()`` whenever ``channel_refs`` is replaced.
+
+    **auto_resolved bases** are fully reconfigured: new evidence resolves a
+    (possibly different) kV with ``auto_resolved`` authority, or insufficient
+    evidence demotes to ``needs_review`` (PU eligibility removed).
+
+    **manual / legacy_manual bases** are NEVER overwritten (C4).  Instead,
+    detection runs as a compatibility check:
+
+    - Detected kV differs from manual kV (> 5 % tolerance) →
+      ``manual_conflict_detected=True`` flag written; PU blocked; engineer
+      retains their value for review/correction (RD-0B Option A).
+    - Detected kV matches manual kV → flag cleared; base remains in force.
+    - Detection insufficient or ambiguous → flag cleared; base remains in force.
+      Insufficient evidence alone does NOT invalidate a manual base.
+
+    ``needs_review`` / ``unavailable`` authority: no action (no auto_resolved
+    stale base, no manual base to compare).  Current groups are ignored (C3).
+
+    Never raises (C6).  Returns the ``VoltageGroupAutoResult`` for the group,
+    or ``None`` when no action was taken.
+    """
+    try:
+        group = group_registry.get(workspace_id, measurement_group_id)
+        if group is None or group.kind != KIND_VOLTAGE:
+            return None
+
+        existing = voltage_config_registry.get(workspace_id, measurement_group_id)
+        if existing is None:
+            return None  # nothing stale to invalidate
+
+        # --- Manual / legacy-manual branch (RD-0B Option A) ---
+        if is_engineer_approved(existing.base_authority):
+            active = source_registry.get(workspace_id, source_id)
+            if active is None:
+                # Source missing; cannot evaluate compatibility — clear any stale
+                # conflict flag conservatively rather than leaving a stale True.
+                voltage_config_registry.update_fields(
+                    workspace_id, measurement_group_id,
+                    update_conflict=True, manual_conflict_detected=False, manual_conflict_detail=None,
+                )
+                return None
+
+            channel_map = {ch.name: ch for ch in active.metadata.analog_channels}
+            detected_kv = _detect_primary_kv_for_group(group, channel_map)
+
+            if detected_kv is not None and existing.nominal_voltage_ll_kv is not None:
+                if _kv_conflict(existing.nominal_voltage_ll_kv, detected_kv):
+                    # Confirmed incompatibility: flag without overwriting the manual value.
+                    detail = (
+                        f"detected_{detected_kv:.4g}kv_conflicts_with_manual_"
+                        f"{existing.nominal_voltage_ll_kv:.4g}kv"
+                    )
+                    voltage_config_registry.update_fields(
+                        workspace_id, measurement_group_id,
+                        update_conflict=True, manual_conflict_detected=True,
+                        manual_conflict_detail=detail,
+                    )
+                    return VoltageGroupAutoResult(
+                        group_id=measurement_group_id,
+                        action="manual_conflict_flagged",
+                        reason=detail,
+                    )
+                else:
+                    # Compatible evidence — clear any stale flag.
+                    voltage_config_registry.update_fields(
+                        workspace_id, measurement_group_id,
+                        update_conflict=True, manual_conflict_detected=False, manual_conflict_detail=None,
+                    )
+                    return VoltageGroupAutoResult(
+                        group_id=measurement_group_id,
+                        action="manual_compatible",
+                        reason=f"detected_{detected_kv:.4g}kv_matches_manual",
+                    )
+            else:
+                # Insufficient or ambiguous evidence — clear any stale flag; do NOT block.
+                voltage_config_registry.update_fields(
+                    workspace_id, measurement_group_id,
+                    update_conflict=True, manual_conflict_detected=False, manual_conflict_detail=None,
+                )
+                return None  # manual base remains in force, no conflict
+
+        # --- auto_resolved branch ---
+        if existing.base_authority != BASE_AUTHORITY_AUTO:
+            return None  # needs_review / unavailable: no action
+
+        active = source_registry.get(workspace_id, source_id)
+        if active is None:
+            # Source missing — cannot re-evaluate; demote to needs_review to
+            # prevent a stale auto_resolved base from remaining authoritative.
+            voltage_config_registry.update_fields(
+                workspace_id, measurement_group_id,
+                base_authority=BASE_AUTHORITY_NEEDS_REVIEW,
+            )
+            return VoltageGroupAutoResult(
+                group_id=measurement_group_id,
+                action="needs_review",
+                reason="source_not_found_during_reconfiguration",
+            )
+
+        channel_map = {ch.name: ch for ch in active.metadata.analog_channels}
+        return _configure_voltage_group(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            group=group,
+            channel_map=channel_map,
+            voltage_config_registry=voltage_config_registry,
+        )
+
+    except Exception:
+        logger.exception(
+            "Auto-base reconfiguration failed for group %s workspace %s source %s",
+            measurement_group_id, workspace_id, source_id,
+        )
+        # Demote to needs_review: stale auto_resolved must not remain authoritative.
+        # NOTE (Q2 atomicity): membership is already written at this point.  If this
+        # fallback update_fields also raises (double-failure — only possible under
+        # extreme in-memory corruption, not plausible in normal operation), the
+        # exception is swallowed below and stale auto_resolved authority may remain.
+        # Acceptable under the current in-memory architecture (C6).
+        try:
+            voltage_config_registry.update_fields(
+                workspace_id, measurement_group_id,
+                base_authority=BASE_AUTHORITY_NEEDS_REVIEW,
+            )
+        except Exception:
+            logger.exception(
+                "Auto-base reconfiguration: fallback needs_review write also failed for group %s",
+                measurement_group_id,
+            )
+        return VoltageGroupAutoResult(
+            group_id=measurement_group_id,
+            action="needs_review",
+            reason="reconfiguration_error",
+        )

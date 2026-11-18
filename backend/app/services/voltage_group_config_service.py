@@ -144,6 +144,12 @@ def update_voltage_configuration(
         sec_value = None
     # Derive authority from the content of the edit — never from caller-supplied value.
     effective_authority = BASE_AUTHORITY_MANUAL if nominal_voltage_ll_kv is not None else None
+    # RD-0B: when the engineer sets a nominal kV, clear the manual_conflict flag
+    # here as a first step.  The API layer (put_voltage_config) immediately calls
+    # reconfigure_auto_base_after_membership_change() to re-evaluate the new kV
+    # against current channel evidence and re-flag if still incompatible.
+    # Clearing here without that re-evaluation does NOT establish engineer confirmation.
+    clear_conflict = nominal_voltage_ll_kv is not None
     return voltage_config_registry.update_fields(
         workspace_id, measurement_group_id, nominal_voltage_ll_kv=nominal_voltage_ll_kv,
         reference_mode=reference_mode,
@@ -152,6 +158,9 @@ def update_voltage_configuration(
         base_authority=effective_authority,
         secondary_voltage_ll_v=sec_value,
         update_secondary=sec_given,
+        update_conflict=clear_conflict,
+        manual_conflict_detected=False,
+        manual_conflict_detail=None,
     )
 
 

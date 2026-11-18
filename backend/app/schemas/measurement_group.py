@@ -63,6 +63,11 @@ class VoltageGroupConfigOut(BaseModel):
     detection_reason: str
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # RD-0B Option A: manual-base conflict flag.  True when membership-change
+    # detection resolved a different voltage than the engineer's manual kV.
+    # PU is blocked while True.  False is the safe, no-conflict default.
+    manual_conflict_detected: bool = False
+    manual_conflict_detail: str | None = None
 
 
 class CurrentGroupConfigOut(BaseModel):

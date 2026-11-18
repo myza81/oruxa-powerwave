@@ -53,6 +53,9 @@ class VoltageGroupConfigView:
     detection_reason: str
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # RD-0B Option A: manual-base conflict flag surfaced from VoltageBaseConfiguration.
+    manual_conflict_detected: bool = False
+    manual_conflict_detail: str | None = None
 
 
 @dataclass(slots=True)
@@ -90,6 +93,8 @@ def _build_voltage_view(
         detection_reason=effective.reason,
         base_reference_side=config.base_reference_side if config is not None else "unknown",
         secondary_voltage_ll_v=config.secondary_voltage_ll_v if config is not None else None,
+        manual_conflict_detected=config.manual_conflict_detected if config is not None else False,
+        manual_conflict_detail=config.manual_conflict_detail if config is not None else None,
     )
     pu_status = "configured" if resolution.status == _VOLTAGE_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason

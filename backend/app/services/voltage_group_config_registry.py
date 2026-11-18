@@ -97,6 +97,9 @@ class VoltageGroupConfigRegistry:
         base_authority: str | None = None,
         secondary_voltage_ll_v: float | None = None,
         update_secondary: bool = False,
+        manual_conflict_detected: bool | None = None,
+        manual_conflict_detail: str | None = None,
+        update_conflict: bool = False,
     ) -> VoltageBaseConfiguration:
         """Publish service-validated fields as one configuration replacement.
 
@@ -105,6 +108,8 @@ class VoltageGroupConfigRegistry:
         A supplied reference mode replaces the mode/override pair together.
         `update_secondary=True` applies `secondary_voltage_ll_v` (None clears it);
         False (default) preserves the existing secondary_voltage_ll_v.
+        `update_conflict=True` applies `manual_conflict_detected` and
+        `manual_conflict_detail` (False/None clears the flag); False preserves them.
         All copies (including the return value) are prepared before publication.
         """
         with self._lock:
@@ -125,6 +130,9 @@ class VoltageGroupConfigRegistry:
                 candidate.base_authority = base_authority
             if update_secondary:
                 candidate.secondary_voltage_ll_v = secondary_voltage_ll_v
+            if update_conflict:
+                candidate.manual_conflict_detected = bool(manual_conflict_detected)
+                candidate.manual_conflict_detail = manual_conflict_detail
             result = _copy_config(candidate)
             self._configs[key] = candidate
             return result

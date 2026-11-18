@@ -159,6 +159,15 @@ class VoltageBaseConfiguration:
     # secondary configuration establishes a secondary equivalent. The live resolver
     # still uses nominal_voltage_ll_kv (primary path) until Slice 5D connects this.
     secondary_voltage_ll_v: float | None = None
+    # RD-0B Option A: manual-base compatibility tracking.
+    # True when membership-change detection resolved a DIFFERENT voltage than the
+    # engineer-entered nominal_voltage_ll_kv, indicating a confirmed incompatibility.
+    # Does NOT imply the engineer's value is wrong — only that current channel
+    # evidence contradicts it.  PU is blocked while True.  Never set for auto_resolved
+    # bases (they are reconfigured directly).  Cleared when the engineer sets a
+    # compatible kV or when detection is insufficient/ambiguous.
+    manual_conflict_detected: bool = False
+    manual_conflict_detail: str | None = None
 
 
 def resolve_effective_voltage_reference_for_group(
@@ -265,6 +274,15 @@ def resolve_voltage_base_for_group(
     if config is not None and not is_base_eligible_for_pu(config.base_authority):
         return VoltageBaseResolution(
             status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None, reason="base_invalidated"
+        )
+
+    # RD-0B Option A: manual-base conflict gate.  A manual/legacy_manual base whose
+    # channel evidence now resolves to a DIFFERENT voltage blocks PU.  The engineer's
+    # value is preserved for review/correction; it must not silently produce wrong PU.
+    if config is not None and config.manual_conflict_detected:
+        return VoltageBaseResolution(
+            status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None,
+            reason="manual_conflict_detected",
         )
 
     # Group status gate: preserved for engineer-approved authority (legacy_manual / manual).

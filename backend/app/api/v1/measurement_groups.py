@@ -56,6 +56,7 @@ from app.services.measurement_group_service import (
 )
 from app.services.measurement_group_view_service import MeasurementGroupView, build_group_view, build_group_views_for_source
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
+from app.services.auto_base_service import reconfigure_auto_base_after_membership_change
 from app.services.voltage_group_config_service import (
     update_voltage_configuration,
 )
@@ -167,6 +168,8 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             detection_reason=view.voltage_config.detection_reason,
             base_reference_side=view.voltage_config.base_reference_side,
             secondary_voltage_ll_v=view.voltage_config.secondary_voltage_ll_v,
+            manual_conflict_detected=view.voltage_config.manual_conflict_detected,
+            manual_conflict_detail=view.voltage_config.manual_conflict_detail,
         )
         if view.voltage_config is not None
         else None
@@ -294,6 +297,10 @@ def get_measurement_group(
     return _view_to_out(view)
 
 
+# RD-1 acceptance criterion: changes to effective voltage-base values or authority
+# (including manual_conflict_detected transitions) must refresh or invalidate
+# affected PU displays and dependent analysis results on the frontend.
+# Unrelated results must remain unchanged.
 @router.patch("/{measurement_group_id}", response_model=MeasurementGroupOut)
 def update_measurement_group(
     workspace_id: str,
@@ -318,6 +325,7 @@ def update_measurement_group(
             display_name=body.display_name, status=body.status,
             channel_refs=_channel_refs_from_in(body.channel_refs) if body.channel_refs is not None else None,
             source_registry=source_registry,
+            voltage_config_registry=voltage_config_registry,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -365,6 +373,7 @@ def put_voltage_config(
     source_id: str,
     measurement_group_id: str,
     body: VoltageGroupConfigUpdateRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
@@ -372,6 +381,13 @@ def put_voltage_config(
     """Validate nominal voltage and reference together, then publish once.
     Omitted/null nominal voltage preserves the existing base; default auto
     reference mode clears the override. Voltage groups only.
+
+    RD-0B safety: when a nominal_voltage_ll_kv is supplied, the manual_conflict
+    flag is cleared by update_voltage_configuration() and then immediately
+    re-evaluated against the current channel evidence by
+    reconfigure_auto_base_after_membership_change().  This ensures that
+    setting an incompatible kV (e.g. 66 kV when channels indicate 275 kV)
+    re-flags the conflict rather than silently restoring PU eligibility.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
@@ -389,6 +405,15 @@ def put_voltage_config(
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
+    # RD-0B: re-evaluate conflict after a nominal kV change. update_voltage_configuration()
+    # cleared the flag; this call re-detects and re-flags if the new kV is still incompatible.
+    if body.nominal_voltage_ll_kv is not None:
+        reconfigure_auto_base_after_membership_change(
+            workspace_id=workspace_id, source_id=source_id,
+            measurement_group_id=measurement_group_id,
+            source_registry=source_registry, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry,
+        )
     group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     view = build_group_view(
         group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
