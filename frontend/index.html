@@ -892,6 +892,107 @@
             margin-top: 32px;
         }
 
+        /* RD-1 Slice C: Group Details panel */
+        .ww-rd-details-section { margin-bottom: 14px; }
+        .ww-rd-details-section-title {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            margin: 0 0 6px;
+        }
+        .ww-rd-details-group-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .ww-rd-details-group-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ww-rd-details-channels {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin: 0 0 12px;
+            line-height: 1.4;
+        }
+        .ww-rd-conflict-banner {
+            background: color-mix(in srgb, var(--warn) 12%, transparent);
+            border-left: 3px solid var(--warn);
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: var(--text);
+            margin-bottom: 12px;
+            font-size: 0.75rem;
+        }
+        .ww-rd-conflict-banner-title {
+            font-weight: 600;
+            color: var(--warn);
+            margin-bottom: 3px;
+            font-size: 0.75rem;
+        }
+        .ww-rd-conflict-banner-detail {
+            color: var(--text-dim);
+            font-size: 0.72rem;
+        }
+        .ww-rd-config-table {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 10px;
+            font-size: 0.75rem;
+            margin-bottom: 4px;
+        }
+        .ww-rd-config-label { color: var(--text-dim); white-space: nowrap; }
+        .ww-rd-config-value { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .ww-rd-not-configured { color: var(--text-dim); font-style: italic; }
+        .ww-rd-pu-pill {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 10px;
+            vertical-align: middle;
+        }
+        .ww-rd-pu-eligible { background: var(--ok-wash); color: var(--ok); }
+        .ww-rd-pu-conflict { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+        .ww-rd-pu-missing { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text-dim); }
+        details.ww-rd-evidence { margin-bottom: 12px; }
+        details.ww-rd-evidence > summary {
+            cursor: pointer;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            user-select: none;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        details.ww-rd-evidence > summary::marker,
+        details.ww-rd-evidence > summary::-webkit-details-marker { display: none; }
+        details.ww-rd-evidence > summary::before {
+            content: "▶";
+            font-size: 0.6rem;
+            transition: transform 0.15s;
+            display: inline-block;
+        }
+        details.ww-rd-evidence[open] > summary::before { transform: rotate(90deg); }
+        .ww-rd-evidence-body {
+            margin-top: 8px;
+            font-size: 0.72rem;
+            padding-left: 12px;
+        }
+        .ww-rd-evidence-row { display: flex; gap: 8px; margin-bottom: 3px; }
+        .ww-rd-evidence-key { flex: none; color: var(--text-dim); min-width: 110px; }
+        .ww-rd-evidence-val { color: var(--text); }
+        .ww-rd-section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 10px 0; }
+
         .recordings-header {
             display: flex;
             align-items: center;
@@ -36392,12 +36493,205 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdRenderDetails() {
             const body = document.getElementById("wwRdDetailsBody");
             if (!body) return;
-            if (!wwRdState.selectedGroupId) {
+            if (!wwRdState.selectedGroupId || !wwRdState.selectedSourceId) {
                 body.innerHTML = '<p class="ww-rd-placeholder">Select a group to view details.</p>';
                 return;
             }
-            // Slice C will replace this stub with the full read-only details panel.
-            body.innerHTML = '<p class="ww-rd-placeholder">Details coming in Slice C.</p>';
+            const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
+            const g = groups.find(function(x) { return x.id === wwRdState.selectedGroupId; });
+            if (!g) {
+                body.innerHTML = '<p class="ww-rd-placeholder">Group not found.</p>';
+                return;
+            }
+            body.innerHTML = wwRdBuildDetailsHtml(g);
+        }
+
+        function wwRdPuEligibilityHtml(g) {
+            const st = g.pu_status;
+            const reason = g.pu_reason;
+            const conflict = g.voltage_config && g.voltage_config.manual_conflict_detected;
+            if (st === "not_applicable") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Not applicable</span>';
+            }
+            if (st === "configured") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-eligible">Eligible</span>';
+            }
+            // base_required — distinguish by reason or conflict flag
+            if (reason === "manual_conflict_detected" || conflict) {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-conflict">Blocked — conflict</span>';
+            }
+            if (reason === "voltage_base_not_configured") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">No base configured</span>';
+            }
+            if (reason === "group_not_confirmed") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Group not confirmed</span>';
+            }
+            if (reason === "voltage_reference_undetermined") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Reference undetermined</span>';
+            }
+            if (reason === "base_invalidated") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Base invalidated</span>';
+            }
+            if (reason === "secondary_equivalent_not_configured") {
+                return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Secondary equivalent required</span>';
+            }
+            return '<span class="ww-rd-pu-pill ww-rd-pu-missing">Not eligible</span>';
+        }
+
+        function wwRdEvidenceHtml(g) {
+            const kind = g.kind;
+            let rows = "";
+            if (kind === "voltage" && g.voltage_config) {
+                const vc = g.voltage_config;
+                if (vc.detection_reason) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Detection reason</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.detection_reason) + '</span></div>';
+                }
+                if (vc.evidence_names && vc.evidence_names.length > 0) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Evidence channels</span><span class="ww-rd-evidence-val">' + vc.evidence_names.map(escapeHtml).join(", ") + '</span></div>';
+                }
+                if (vc.reference_mode) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference mode</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.reference_mode) + '</span></div>';
+                }
+                if (vc.reference_override) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference override</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.reference_override.replace(/_/g, "-")) + '</span></div>';
+                }
+            } else if (kind === "current" && g.current_config) {
+                const cc = g.current_config;
+                if (cc.linked_voltage_group_id) {
+                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Linked V group</span><span class="ww-rd-evidence-val">' + escapeHtml(cc.linked_voltage_group_id) + '</span></div>';
+                }
+            }
+            const body = rows.length > 0
+                ? rows
+                : '<p style="margin:0;font-size:0.72rem;color:var(--text-dim)">No detailed evidence available from this group’s current configuration.</p>';
+            return '<details class="ww-rd-evidence"><summary>Engineering Evidence</summary><div class="ww-rd-evidence-body">' + body + '</div></details>';
+        }
+
+        function wwRdCurrentConfigHtml(g) {
+            const cc = g.current_config;
+            if (!cc) {
+                return '<div class="ww-rd-details-section"><p class="ww-rd-details-section-title">Current Base Configuration</p><p class="ww-rd-config-value ww-rd-not-configured">No configuration available.</p></div>';
+            }
+            const methodLabel = cc.method === "equipment_rating" ? "Equipment rating"
+                : cc.method === "manual" ? "Manual"
+                : "None";
+            let rows = '<span class="ww-rd-config-label">Method</span><span class="ww-rd-config-value">' + escapeHtml(methodLabel) + '</span>';
+            if (cc.equipment_rating_mva != null) {
+                rows += '<span class="ww-rd-config-label">Equipment rating</span><span class="ww-rd-config-value">' + cc.equipment_rating_mva + ' MVA</span>';
+            }
+            if (cc.applicable_voltage_ll_kv != null) {
+                rows += '<span class="ww-rd-config-label">Applicable V base</span><span class="ww-rd-config-value">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</span>';
+            }
+            if (cc.resolved_ibase_ka != null) {
+                rows += '<span class="ww-rd-config-label">Resolved I base</span><span class="ww-rd-config-value">' + cc.resolved_ibase_ka.toFixed(4) + ' kA</span>';
+            }
+            if (cc.manual_ibase_ka != null) {
+                rows += '<span class="ww-rd-config-label">Manual I base</span><span class="ww-rd-config-value">' + cc.manual_ibase_ka.toFixed(4) + ' kA</span>';
+            }
+            if (cc.manual_voltage_base_kv != null) {
+                rows += '<span class="ww-rd-config-label">Manual V base</span><span class="ww-rd-config-value">' + cc.manual_voltage_base_kv + ' kV</span>';
+            }
+            if (cc.base_reference_side && cc.base_reference_side !== "unknown") {
+                const side = cc.base_reference_side === "primary" ? "Primary" : "Secondary";
+                rows += '<span class="ww-rd-config-label">Reference side</span><span class="ww-rd-config-value">' + escapeHtml(side) + '</span>';
+            }
+            rows += '<span class="ww-rd-config-label">PU eligibility</span><span class="ww-rd-config-value">' + wwRdPuEligibilityHtml(g) + '</span>';
+            return '<div class="ww-rd-details-section"><p class="ww-rd-details-section-title">Current Base Configuration</p><div class="ww-rd-config-table">' + rows + '</div></div>';
+        }
+
+        function wwRdBuildDetailsHtml(g) {
+            const kind = g.kind;
+            const badge = kind === "voltage" ? "V" : kind === "current" ? "I" : escapeHtml(kind.charAt(0).toUpperCase());
+            const channelRefs = g.channel_refs || [];
+            const channelCount = channelRefs.length;
+            let channelsText;
+            if (channelCount === 0) {
+                channelsText = "No channels assigned";
+            } else {
+                const names = channelRefs.map(function(r) { return escapeHtml(r.channel_name); });
+                const shown = names.slice(0, 5);
+                const extra = channelCount > 5 ? " and " + (channelCount - 5) + " more" : "";
+                channelsText = channelCount + " channel" + (channelCount === 1 ? "" : "s") + ": " + shown.join(", ") + extra;
+            }
+            const headerHtml =
+                '<div class="ww-rd-details-section">' +
+                '<div class="ww-rd-details-group-header">' +
+                '<span class="ww-rd-details-group-name" title="' + escapeHtml(g.display_name) + '">' + escapeHtml(g.display_name) + '</span>' +
+                '<span class="ww-rd-group-badge">' + badge + '</span>' +
+                '</div>' +
+                '<p class="ww-rd-details-channels">' + channelsText + '</p>' +
+                '</div>';
+
+            // Conflict banner: voltage groups only, only when manual_conflict_detected
+            let conflictHtml = "";
+            if (kind === "voltage" && g.voltage_config && g.voltage_config.manual_conflict_detected) {
+                const detail = (g.voltage_config.manual_conflict_detail && g.voltage_config.manual_conflict_detail.trim())
+                    ? g.voltage_config.manual_conflict_detail
+                    : "The manual voltage base conflicts with channel evidence. PU calculations are blocked.";
+                conflictHtml =
+                    '<div class="ww-rd-conflict-banner">' +
+                    '<div class="ww-rd-conflict-banner-title">⚠ Voltage Base Conflict Detected</div>' +
+                    '<div class="ww-rd-conflict-banner-detail">' + escapeHtml(detail) + '</div>' +
+                    '</div>';
+            }
+
+            // Voltage / Current base configuration
+            let configHtml = "";
+            if (kind === "voltage") {
+                const vc = g.voltage_config;
+                const nomKv = vc && vc.nominal_voltage_ll_kv != null
+                    ? vc.nominal_voltage_ll_kv + " kV (L‑L)"
+                    : "—";
+                // Authority: derived — base_authority is not exposed on the wire schema
+                let authorityLabel;
+                if (!vc || vc.nominal_voltage_ll_kv == null) {
+                    authorityLabel = "Not configured";
+                } else if (vc.manual_conflict_detected) {
+                    authorityLabel = "Manual (conflict — see warning above)";
+                } else if (vc.detection_reason === "manual_override") {
+                    authorityLabel = "Manual reference override";
+                } else {
+                    authorityLabel = "Configured";
+                }
+                const effRef = vc && vc.effective_reference
+                    ? (vc.effective_reference === "line_to_line" ? "Line-to-line" : "Line-to-ground")
+                    : (vc ? "Undetermined" : "—");
+                const refMode = vc && vc.reference_mode === "manual" ? "manual override" : "auto-detected";
+                let cfgRows =
+                    '<span class="ww-rd-config-label">Effective base</span><span class="ww-rd-config-value">' + escapeHtml(nomKv) + '</span>' +
+                    '<span class="ww-rd-config-label">Authority</span><span class="ww-rd-config-value">' + escapeHtml(authorityLabel) + '</span>' +
+                    '<span class="ww-rd-config-label">Reference</span><span class="ww-rd-config-value">' + escapeHtml(effRef) + ' (' + escapeHtml(refMode) + ')</span>';
+                if (vc && vc.base_reference_side && vc.base_reference_side !== "unknown") {
+                    const side = vc.base_reference_side === "primary" ? "Primary" : "Secondary";
+                    cfgRows += '<span class="ww-rd-config-label">Reference side</span><span class="ww-rd-config-value">' + escapeHtml(side) + '</span>';
+                }
+                if (vc && vc.secondary_voltage_ll_v != null) {
+                    cfgRows += '<span class="ww-rd-config-label">Secondary L‑L</span><span class="ww-rd-config-value">' + vc.secondary_voltage_ll_v + ' V</span>';
+                }
+                cfgRows += '<span class="ww-rd-config-label">PU eligibility</span><span class="ww-rd-config-value">' + wwRdPuEligibilityHtml(g) + '</span>';
+                configHtml =
+                    '<div class="ww-rd-details-section">' +
+                    '<p class="ww-rd-details-section-title">Voltage Base Configuration</p>' +
+                    '<div class="ww-rd-config-table">' + cfgRows + '</div>' +
+                    '</div>';
+            } else if (kind === "current") {
+                configHtml = wwRdCurrentConfigHtml(g);
+            }
+
+            const evidenceHtml = wwRdEvidenceHtml(g);
+
+            // CT/VT: not in measurement groups schema — always "Not configured"
+            const ctVtHtml =
+                '<div class="ww-rd-details-section">' +
+                '<hr class="ww-rd-section-divider">' +
+                '<p class="ww-rd-details-section-title">CT / VT</p>' +
+                '<div class="ww-rd-config-table">' +
+                '<span class="ww-rd-config-label">VT ratio</span><span class="ww-rd-config-value ww-rd-not-configured">Not configured</span>' +
+                '<span class="ww-rd-config-label">CT ratio</span><span class="ww-rd-config-value ww-rd-not-configured">Not configured</span>' +
+                '</div>' +
+                '</div>';
+
+            return headerHtml + conflictHtml + configHtml + evidenceHtml + ctVtHtml;
         }
 
         // UAT-B-07: apply panel visibility for narrow layout. At wider
