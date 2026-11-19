@@ -1,7 +1,7 @@
-// RD-1 Slice D4-suggest — non-persisted VT suggestions from nominal voltage.
-// Verifies the 3-state VT section (Suggested / Configured / Not-configured),
-// editor prefill from suggestions, Apply saving as manual, and live ratio
-// display in the editor using the "X kV / Y V" format.
+// RD-1 Slice D4-effective — automatic VT authority hierarchy.
+// Verifies the 2-state VT section (effective / not-configured), authority-based
+// display, editor prefill from vt_effective_*, Apply saving as manual, and live
+// ratio display in the editor using the "X kV / Y V" format.
 
 const { test, expect } = require("./support/test");
 const path = require("path");
@@ -27,10 +27,10 @@ async function uploadFixture(page) {
 
 function makeMockVoltageGroup(id, voltageConfigOverrides, sourceId) {
     return {
-        id: id || "mock-vg-suggest",
+        id: id || "mock-vg-eff",
         workspace_id: "ws-test",
         source_id: sourceId || "src-test",
-        display_name: "MOCK VG SUGGEST",
+        display_name: "MOCK VG EFF",
         kind: "voltage",
         status: "confirmed",
         channel_refs: [{ channel_name: "VA" }],
@@ -54,9 +54,10 @@ function makeMockVoltageGroup(id, voltageConfigOverrides, sourceId) {
             vt_ratio: null,
             vt_authority: "not_configured",
             vt_provenance_note: null,
-            vt_suggested_primary_v: 275000,
-            vt_suggested_secondary_v: 110,
-            vt_suggested_ratio: 275000 / 110,
+            // D4-effective: auto_nominal derived from nominal voltage
+            vt_effective_primary_v: 275000,
+            vt_effective_secondary_v: 110,
+            vt_effective_authority: "auto_nominal",
         }, voltageConfigOverrides || {}),
     };
 }
@@ -66,14 +67,14 @@ async function injectAndSelectVoltageGroup(page, voltageConfigOverrides) {
         const response = await route.fetch();
         const groups = await response.json();
         const sourceId = groups.length > 0 ? groups[0].source_id : "src-test";
-        const mockGroup = makeMockVoltageGroup("mock-vg-suggest", voltageConfigOverrides, sourceId);
+        const mockGroup = makeMockVoltageGroup("mock-vg-eff", voltageConfigOverrides, sourceId);
         await route.fulfill({ json: [...groups, mockGroup] });
     });
     const item = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     await expect(item).toBeVisible({ timeout: 8000 });
     await item.click();
     await expect(page.locator("#wwRdGroupsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 8000 });
-    const mockItem = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK VG SUGGEST" });
+    const mockItem = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK VG EFF" });
     await expect(mockItem).toBeVisible({ timeout: 10000 });
     await mockItem.click();
     const tabGrp = page.locator("#wwRdTabGroupDetails");
@@ -81,31 +82,44 @@ async function injectAndSelectVoltageGroup(page, voltageConfigOverrides) {
     await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 }
 
-// ---- VS-01: "Suggested" label shown when nominal kV known, VT not configured -
+// ---- VE-01: auto_nominal VT shown immediately when nominal kV known ---------
 
-test("VS-01: Suggested label is shown when VT not configured but nominal kV is known", async ({ page }) => {
+test("VE-01: auto_nominal VT values are shown immediately when nominal kV is known", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {});
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
-    await expect(section).toContainText("Suggested");
-});
-
-// ---- VS-02: Suggested section shows 275 kV primary ---------------------------
-
-test("VS-02: Suggested state shows 275 kV primary value", async ({ page }) => {
-    await page.goto("/index.html");
-    await uploadFixture(page);
-    await navigateToRd(page);
-    await injectAndSelectVoltageGroup(page, {});
-    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
+    await expect(section).toBeVisible({ timeout: 5000 });
+    await expect(section).not.toContainText("Not configured");
     await expect(section).toContainText("275");
 });
 
-// ---- VS-03: Suggested section shows ratio as "275 kV / 110 V" ----------------
+// ---- VE-02: auto_nominal shows "Based on nominal voltage" note ---------------
 
-test("VS-03: Suggested state shows ratio as '275 kV / 110 V' (not colon notation)", async ({ page }) => {
+test("VE-02: auto_nominal state shows 'Based on nominal voltage' note", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadFixture(page);
+    await navigateToRd(page);
+    await injectAndSelectVoltageGroup(page, {});
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
+    await expect(section).toContainText("Based on nominal voltage");
+});
+
+// ---- VE-03: auto_nominal shows "Suggested" label is NOT present -------------
+
+test("VE-03: auto_nominal state does NOT show a 'Suggested' label", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadFixture(page);
+    await navigateToRd(page);
+    await injectAndSelectVoltageGroup(page, {});
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
+    await expect(section).not.toContainText("Suggested");
+});
+
+// ---- VE-04: auto_nominal shows ratio as "275 kV / 110 V" --------------------
+
+test("VE-04: auto_nominal state shows ratio as '275 kV / 110 V' (not colon notation)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -113,13 +127,12 @@ test("VS-03: Suggested state shows ratio as '275 kV / 110 V' (not colon notation
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
     await expect(section).toContainText("275 kV");
     await expect(section).toContainText("110");
-    // Must not show colon-ratio format
     await expect(section).not.toContainText("2500:1");
 });
 
-// ---- VS-04: Edit prefills from suggestion (275 kV, 110 V) --------------------
+// ---- VE-05: Edit prefills from auto_nominal effective values -----------------
 
-test("VS-04: Edit button prefills primary kV and secondary V from suggestion", async ({ page }) => {
+test("VE-05: Edit button prefills primary kV and secondary V from auto_nominal effective values", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -132,9 +145,71 @@ test("VS-04: Edit button prefills primary kV and secondary V from suggestion", a
     expect(parseFloat(secondaryVal)).toBeCloseTo(110, 1);
 });
 
-// ---- VS-05: Apply saves as manual, "Suggested" label disappears --------------
+// ---- VE-06: manual VT shown without "Based on nominal voltage" note ---------
 
-test("VS-05: applying suggestion saves as manual and removes Suggested label", async ({ page }) => {
+test("VE-06: manual VT shows values and no 'Based on nominal voltage' note", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadFixture(page);
+    await navigateToRd(page);
+    await injectAndSelectVoltageGroup(page, {
+        vt_primary_v: 275000,
+        vt_secondary_v: 110,
+        vt_ratio: 275000 / 110,
+        vt_authority: "manual",
+        vt_effective_primary_v: 275000,
+        vt_effective_secondary_v: 110,
+        vt_effective_authority: "manual",
+    });
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
+    await expect(section).toContainText("275");
+    await expect(section).not.toContainText("Based on nominal voltage");
+    await expect(section).not.toContainText("Not configured");
+});
+
+// ---- VE-07: Edit prefills from manual effective values ----------------------
+
+test("VE-07: Edit prefills from manual effective values (vt_effective_primary_v / secondary_v)", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadFixture(page);
+    await navigateToRd(page);
+    await injectAndSelectVoltageGroup(page, {
+        vt_primary_v: 132000,
+        vt_secondary_v: 100,
+        vt_ratio: 1320,
+        vt_authority: "manual",
+        vt_effective_primary_v: 132000,
+        vt_effective_secondary_v: 100,
+        vt_effective_authority: "manual",
+    });
+    await page.locator("#wwRdDetailsBody #wwRdVtEditBtn").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVtPrimaryKv")).toBeVisible({ timeout: 3000 });
+    const primaryVal = await page.locator("#wwRdDetailsBody #wwRdVtPrimaryKv").inputValue();
+    expect(parseFloat(primaryVal)).toBeCloseTo(132, 1);
+    const secondaryVal = await page.locator("#wwRdDetailsBody #wwRdVtSecondaryV").inputValue();
+    expect(parseFloat(secondaryVal)).toBeCloseTo(100, 1);
+});
+
+// ---- VE-08: unresolved nominal → "Not configured" ---------------------------
+
+test("VE-08: unresolved nominal (no effective values) shows 'Not configured'", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadFixture(page);
+    await navigateToRd(page);
+    await injectAndSelectVoltageGroup(page, {
+        nominal_voltage_ll_kv: null,
+        base_authority: "needs_review",
+        vt_effective_primary_v: null,
+        vt_effective_secondary_v: null,
+        vt_effective_authority: "not_configured",
+    });
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
+    await expect(section).toContainText("Not configured");
+    await expect(section).not.toContainText("Based on nominal voltage");
+});
+
+// ---- VE-09: Apply saves as manual — no note shown after save ----------------
+
+test("VE-09: applying VT saves as manual and 'Based on nominal voltage' note disappears", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -144,14 +219,14 @@ test("VS-05: applying suggestion saves as manual and removes Suggested label", a
             await route.fulfill({
                 status: 200,
                 contentType: "application/json",
-                body: JSON.stringify(makeMockVoltageGroup("mock-vg-suggest", {
+                body: JSON.stringify(makeMockVoltageGroup("mock-vg-eff", {
                     vt_primary_v: 275000,
                     vt_secondary_v: 110,
                     vt_ratio: 275000 / 110,
                     vt_authority: "manual",
-                    vt_suggested_primary_v: null,
-                    vt_suggested_secondary_v: null,
-                    vt_suggested_ratio: null,
+                    vt_effective_primary_v: 275000,
+                    vt_effective_secondary_v: 110,
+                    vt_effective_authority: "manual",
                 })),
             });
         } else {
@@ -167,51 +242,43 @@ test("VS-05: applying suggestion saves as manual and removes Suggested label", a
     await expect(page.locator("#wwRdDetailsBody #wwRdVtEditBtn")).toBeVisible({ timeout: 5000 });
 
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
-    await expect(section).not.toContainText("Suggested");
+    await expect(section).not.toContainText("Based on nominal voltage");
     await expect(section).toContainText("275");
 });
 
-// ---- VS-06: Configured VT (275 kV / 100 V) → no "Suggested" label ----------
+// ---- VE-10: Remove button only appears in edit when vt_authority=manual -----
 
-test("VS-06: existing configured VT shows no Suggested label", async ({ page }) => {
+test("VE-10: 'Remove VT configuration' button appears in edit mode only when vt_authority is manual", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {
         vt_primary_v: 275000,
-        vt_secondary_v: 100,
-        vt_ratio: 2750,
+        vt_secondary_v: 110,
+        vt_ratio: 275000 / 110,
         vt_authority: "manual",
-        vt_suggested_primary_v: null,
-        vt_suggested_secondary_v: null,
-        vt_suggested_ratio: null,
+        vt_effective_primary_v: 275000,
+        vt_effective_secondary_v: 110,
+        vt_effective_authority: "manual",
     });
-    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
-    await expect(section).not.toContainText("Suggested");
-    await expect(section).toContainText("100");  // secondary V shown
+    await page.locator("#wwRdDetailsBody #wwRdVtEditBtn").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVtRemoveBtn")).toBeVisible({ timeout: 3000 });
 });
 
-// ---- VS-07: Unresolved nominal → "Not configured" (no suggestion) -----------
+// ---- VE-11: Remove button absent in edit when authority is auto_nominal -----
 
-test("VS-07: unresolved nominal shows Not configured with no Suggested label", async ({ page }) => {
+test("VE-11: 'Remove VT configuration' button is absent in edit mode when authority is auto_nominal", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
-    await injectAndSelectVoltageGroup(page, {
-        nominal_voltage_ll_kv: null,
-        base_authority: "needs_review",
-        vt_suggested_primary_v: null,
-        vt_suggested_secondary_v: null,
-        vt_suggested_ratio: null,
-    });
-    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
-    await expect(section).toContainText("Not configured");
-    await expect(section).not.toContainText("Suggested");
+    await injectAndSelectVoltageGroup(page, {});  // auto_nominal, vt_authority="not_configured"
+    await page.locator("#wwRdDetailsBody #wwRdVtEditBtn").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVtRemoveBtn")).not.toBeVisible();
 });
 
-// ---- VS-08: Live ratio display in editor — "110 kV / 110 V" after typing ----
+// ---- VE-12: Live ratio display in editor — "X kV / Y V" format --------------
 
-test("VS-08: live ratio display shows 'X kV / Y V' format while editing", async ({ page }) => {
+test("VE-12: live ratio display shows 'X kV / Y V' format while editing", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -220,7 +287,6 @@ test("VS-08: live ratio display shows 'X kV / Y V' format while editing", async 
     await expect(page.locator("#wwRdDetailsBody #wwRdVtPrimaryKv")).toBeVisible({ timeout: 3000 });
     await page.locator("#wwRdDetailsBody #wwRdVtPrimaryKv").fill("110");
     await page.locator("#wwRdDetailsBody #wwRdVtSecondaryV").fill("110");
-    // Trigger input events so live ratio updates
     await page.locator("#wwRdDetailsBody #wwRdVtSecondaryV").dispatchEvent("input");
     const liveRatio = page.locator("#wwRdDetailsBody #wwRdVtLiveRatio");
     await expect(liveRatio).toBeVisible({ timeout: 3000 });

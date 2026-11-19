@@ -79,10 +79,10 @@ class VoltageGroupConfigOut(BaseModel):
     vt_ratio: float | None = None
     vt_authority: str = "not_configured"
     vt_provenance_note: str | None = None
-    # D4-suggest: non-persisted suggestion fields (None when VT already configured or nominal kV unresolved).
-    vt_suggested_primary_v: float | None = None
-    vt_suggested_secondary_v: float | None = None
-    vt_suggested_ratio: float | None = None
+    # D4-effective: computed effective VT values (authority hierarchy: manual > recording_metadata > auto_nominal > not_configured).
+    vt_effective_primary_v: float | None = None
+    vt_effective_secondary_v: float | None = None
+    vt_effective_authority: str = "not_configured"
 
 
 class CurrentGroupConfigOut(BaseModel):
