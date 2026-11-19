@@ -208,6 +208,9 @@ class CurrentGroupConfigUpdateRequest(BaseModel):
     # Partial pair (primary without secondary or vice versa) is 422.
     # clear_ct=True removes any existing CT configuration; must not
     # be combined with ct_primary_a or ct_secondary_a.
+    # D4: update_ct_only=True updates only CT fields without touching the
+    # PU current-base method (analogous to update_equipment_metadata_only).
+    update_ct_only: bool = False
     ct_primary_a: float | None = None
     ct_secondary_a: float | None = None
     ct_provenance_note: str | None = None

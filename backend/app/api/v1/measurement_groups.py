@@ -456,17 +456,37 @@ def put_current_config(
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> MeasurementGroupOut:
-    """Two dispatch paths:
+    """Three dispatch paths:
 
     1. ``update_equipment_metadata_only=True`` (D3): updates only the
        independent equipment-rating metadata fields without touching the PU
        current-base method.  ``method`` field is ignored in this path.
-    2. ``update_equipment_metadata_only=False`` (default): dispatches to
-       exactly one of Slice 4's three method setters based on ``body.method``
-       -- existing behavior completely unchanged.
+    2. ``update_ct_only=True`` (D4): updates only CT instrument-transformer
+       fields without touching the PU current-base method.
+    3. ``update_equipment_metadata_only=False, update_ct_only=False`` (default):
+       dispatches to exactly one of Slice 4's three method setters based on
+       ``body.method`` -- existing behavior completely unchanged.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+    if body.update_ct_only:
+        try:
+            update_current_ct_config(
+                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                group_registry=group_registry, current_config_registry=current_config_registry,
+                ct_primary_a=body.ct_primary_a,
+                ct_secondary_a=body.ct_secondary_a,
+                ct_provenance_note=body.ct_provenance_note,
+                clear_ct=body.clear_ct,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
+        group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+        view = build_group_view(
+            group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry,
+        )
+        return _view_to_out(view)
     if body.update_equipment_metadata_only:
         try:
             update_equipment_rating_metadata(

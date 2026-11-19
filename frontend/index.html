@@ -1077,6 +1077,7 @@
         }
         .ww-rd-correct-ref-toggle { margin-top: 6px; }
         .ww-rd-correct-ref-content { padding: 8px 0 4px 0; }
+        .ww-rd-edit-secondary-actions { margin-top: 8px; }
         .ww-rd-link-btn {
             font-size: var(--font-size-xs, 0.72rem);
             color: var(--text-dim);
@@ -18030,6 +18031,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwRdState.selectedSourceId = null;
                     wwRdState.selectedGroupId = null;
                     wwRdState.detailsView = "recording"; // Slice C-1: reset view on removal
+                    wwRdState.voltageEdit = null;
+                    wwRdState.currentEdit = null;
+                    wwRdState.vtEdit = null;
+                    wwRdState.ctEdit = null;
                 }
                 if (!document.getElementById("pageRecordingDetails").hidden) {
                     wwRdRenderBrowser();
@@ -36617,6 +36622,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             voltageEdit: null,       // null | { draftKv, draftRefMode, draftRefOverride, draftRefSide, pending, error }
             // D3: inline current equipment-rating edit state (null = not editing)
             currentEdit: null,       // null | { draftMva, draftLinkedGroupId, pending, error }
+            // D4: inline VT/CT instrument-transformer edit state (null = not editing)
+            vtEdit: null,            // null | { draftPrimaryKv, draftSecondaryV, pending, error }
+            ctEdit: null,            // null | { draftPrimaryA, draftSecondaryA, pending, error }
         };
 
         // ------------------------------------------------------------------
@@ -36712,6 +36720,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.detailsView = "recording"; // Slice C-1: show Recording Info on selection
             wwRdState.voltageEdit = null; // D2: discard any in-progress edit on source change
             wwRdState.currentEdit = null; // D3: discard any in-progress current edit on source change
+            wwRdState.vtEdit = null;      // D4: discard VT edit on source change
+            wwRdState.ctEdit = null;      // D4: discard CT edit on source change
             // UAT-B-07/Slice C-1: in narrow layout, advance to the groups panel.
             // Recording Info is accessible via the "Recording Info" link in the
             // groups panel header area, or by tapping "← Groups" after going
@@ -37141,44 +37151,160 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
-        // VT/CT sections — neutral display; editing deferred to D4.
+        // D4: VT/CT instrument-transformer sections with inline editing.
         // Voltage Groups show VT only; Current Groups show CT only.
         function wwRdVtSectionHtml(g) {
             const vc = g && g.voltage_config;
+            const ed = wwRdState.vtEdit;
+
+            if (ed) {
+                // Edit mode
+                let html = '<div class="ww-rd-section">';
+                html += '<div class="ww-rd-section-heading">Voltage Transformer (VT)</div>';
+                html += '<div class="ww-rd-field-grid">';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Primary (H side, kV L&#x2011;L)</div>';
+                html += '<input type="number" class="ww-rd-edit-input" id="wwRdVtPrimaryKv"' +
+                    ' min="0" step="any" placeholder="e.g. 275"' +
+                    ' value="' + escapeHtml(ed.draftPrimaryKv) + '"' +
+                    (ed.pending ? ' disabled' : '') + '>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Secondary (X side, V L&#x2011;L)</div>';
+                html += '<input type="number" class="ww-rd-edit-input" id="wwRdVtSecondaryV"' +
+                    ' min="0" step="any" placeholder="e.g. 110"' +
+                    ' value="' + escapeHtml(ed.draftSecondaryV) + '"' +
+                    (ed.pending ? ' disabled' : '') + '>';
+                html += '</div>';
+                html += '</div>'; // .ww-rd-field-grid
+                html += '<div class="ww-rd-edit-actions">';
+                html += '<button class="ww-rd-apply-btn" id="wwRdVtApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying\u2026' : 'Apply') + '</button>';
+                html += '<button class="ww-rd-cancel-btn" id="wwRdVtCancelBtn">Cancel</button>';
+                html += '</div>';
+                if (ed.error) {
+                    html += '<div class="ww-rd-edit-error">' + escapeHtml(ed.error) + '</div>';
+                }
+                if (vc && vc.vt_authority === 'manual') {
+                    html += '<div class="ww-rd-edit-secondary-actions">';
+                    html += '<button class="ww-rd-link-btn ww-rd-status--warn" id="wwRdVtRemoveBtn"' + (ed.pending ? ' disabled' : '') + '>Remove VT configuration</button>';
+                    html += '</div>';
+                }
+                html += '</div>'; // .ww-rd-section
+                return html;
+            }
+
+            // Read mode
             const vtPrimary = vc && vc.vt_primary_v;
             const vtSecondary = vc && vc.vt_secondary_v;
-            let ratioContent;
-            if (vtPrimary != null && vtSecondary != null) {
-                ratioContent = '<div class="ww-rd-field-value">' + vtPrimary + ' / ' + vtSecondary + ' V</div>';
+            const vtRatio = vc && vc.vt_ratio;
+            const configured = vtPrimary != null && vtSecondary != null;
+
+            let html = '<div class="ww-rd-section">';
+            html += '<div class="ww-rd-section-heading">Voltage Transformer (VT)' +
+                '<button class="ww-rd-edit-btn" id="wwRdVtEditBtn">Edit</button></div>';
+            if (!configured) {
+                html += '<div class="ww-rd-field-value ww-rd-status--neutral">\u2014 Not configured</div>';
             } else {
-                ratioContent = '<div class="ww-rd-field-value ww-rd-status--neutral">— Not configured</div>';
+                html += '<div class="ww-rd-field-grid">';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Primary (H side, L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-value">' + (vtPrimary / 1000).toPrecision(6).replace(/\\.?0+$/, '') + ' kV</div>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Secondary (X side, L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-value">' + vtSecondary + ' V</div>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Ratio</div>';
+                html += '<div class="ww-rd-field-value">' + (vtRatio != null ? Math.round(vtRatio) + '\u00a0:\u00a01' : '\u2014') + '</div>';
+                html += '</div>';
+                if (vc.vt_provenance_note) {
+                    html += '<div class="ww-rd-field">';
+                    html += '<div class="ww-rd-field-label">Source</div>';
+                    html += '<div class="ww-rd-field-value">' + escapeHtml(vc.vt_provenance_note) + '</div>';
+                    html += '</div>';
+                }
+                html += '</div>'; // .ww-rd-field-grid
             }
-            return '<div class="ww-rd-section">' +
-                '<div class="ww-rd-section-heading">Voltage Transformer (VT)</div>' +
-                '<div class="ww-rd-field">' +
-                '<div class="ww-rd-field-label">VT ratio</div>' +
-                ratioContent +
-                '</div>' +
-                '</div>';
+            html += '</div>'; // .ww-rd-section
+            return html;
         }
 
         function wwRdCtSectionHtml(g) {
             const cc = g && g.current_config;
+            const ed = wwRdState.ctEdit;
+
+            if (ed) {
+                // Edit mode
+                let html = '<div class="ww-rd-section">';
+                html += '<div class="ww-rd-section-heading">Current Transformer (CT)</div>';
+                html += '<div class="ww-rd-field-grid">';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Primary (A)</div>';
+                html += '<input type="number" class="ww-rd-edit-input" id="wwRdCtPrimaryA"' +
+                    ' min="0" step="any" placeholder="e.g. 2000"' +
+                    ' value="' + escapeHtml(ed.draftPrimaryA) + '"' +
+                    (ed.pending ? ' disabled' : '') + '>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Secondary (A)</div>';
+                html += '<input type="number" class="ww-rd-edit-input" id="wwRdCtSecondaryA"' +
+                    ' min="0" step="any" placeholder="e.g. 1 or 5"' +
+                    ' value="' + escapeHtml(ed.draftSecondaryA) + '"' +
+                    (ed.pending ? ' disabled' : '') + '>';
+                html += '</div>';
+                html += '</div>'; // .ww-rd-field-grid
+                html += '<div class="ww-rd-edit-actions">';
+                html += '<button class="ww-rd-apply-btn" id="wwRdCtApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying\u2026' : 'Apply') + '</button>';
+                html += '<button class="ww-rd-cancel-btn" id="wwRdCtCancelBtn">Cancel</button>';
+                html += '</div>';
+                if (ed.error) {
+                    html += '<div class="ww-rd-edit-error">' + escapeHtml(ed.error) + '</div>';
+                }
+                if (cc && cc.ct_authority === 'manual') {
+                    html += '<div class="ww-rd-edit-secondary-actions">';
+                    html += '<button class="ww-rd-link-btn ww-rd-status--warn" id="wwRdCtRemoveBtn"' + (ed.pending ? ' disabled' : '') + '>Remove CT configuration</button>';
+                    html += '</div>';
+                }
+                html += '</div>'; // .ww-rd-section
+                return html;
+            }
+
+            // Read mode
             const ctPrimary = cc && cc.ct_primary_a;
             const ctSecondary = cc && cc.ct_secondary_a;
-            let ratioContent;
-            if (ctPrimary != null && ctSecondary != null) {
-                ratioContent = '<div class="ww-rd-field-value">' + ctPrimary + ' / ' + ctSecondary + ' A</div>';
+            const ctRatio = cc && cc.ct_ratio;
+            const configured = ctPrimary != null && ctSecondary != null;
+
+            let html = '<div class="ww-rd-section">';
+            html += '<div class="ww-rd-section-heading">Current Transformer (CT)' +
+                '<button class="ww-rd-edit-btn" id="wwRdCtEditBtn">Edit</button></div>';
+            if (!configured) {
+                html += '<div class="ww-rd-field-value ww-rd-status--neutral">\u2014 Not configured</div>';
             } else {
-                ratioContent = '<div class="ww-rd-field-value ww-rd-status--neutral">— Not configured</div>';
+                html += '<div class="ww-rd-field-grid">';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Primary</div>';
+                html += '<div class="ww-rd-field-value">' + ctPrimary + ' A</div>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Secondary</div>';
+                html += '<div class="ww-rd-field-value">' + ctSecondary + ' A</div>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Ratio</div>';
+                html += '<div class="ww-rd-field-value">' + (ctRatio != null ? Math.round(ctRatio) + '\u00a0:\u00a01' : '\u2014') + '</div>';
+                html += '</div>';
+                if (cc.ct_provenance_note) {
+                    html += '<div class="ww-rd-field">';
+                    html += '<div class="ww-rd-field-label">Source</div>';
+                    html += '<div class="ww-rd-field-value">' + escapeHtml(cc.ct_provenance_note) + '</div>';
+                    html += '</div>';
+                }
+                html += '</div>'; // .ww-rd-field-grid
             }
-            return '<div class="ww-rd-section">' +
-                '<div class="ww-rd-section-heading">Current Transformer (CT)</div>' +
-                '<div class="ww-rd-field">' +
-                '<div class="ww-rd-field-label">CT ratio</div>' +
-                ratioContent +
-                '</div>' +
-                '</div>';
+            html += '</div>'; // .ww-rd-section
+            return html;
         }
 
         function wwRdBuildDetailsHtml(g) {
@@ -37536,7 +37662,211 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdRenderDetails();
         }
 
-        // D2: update a single group in the shared ww.measurementGroups cache.
+        // D4: Apply VT instrument-transformer configuration.
+        // PUT body always echoes reference fields to prevent silent reference reset (D2 safety).
+        async function wwRdVtApply() {
+            const ed = wwRdState.vtEdit;
+            if (!ed || ed.pending) return;
+            const rawPrimaryKv = ed.draftPrimaryKv !== "" ? parseFloat(ed.draftPrimaryKv) : null;
+            const rawSecondaryV = ed.draftSecondaryV !== "" ? parseFloat(ed.draftSecondaryV) : null;
+            // Partial pair validation
+            const primaryGiven = rawPrimaryKv != null;
+            const secondaryGiven = rawSecondaryV != null;
+            if (primaryGiven !== secondaryGiven) {
+                wwRdState.vtEdit = Object.assign({}, ed, { error: "Both primary and secondary values must be provided together." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (primaryGiven && (isNaN(rawPrimaryKv) || rawPrimaryKv <= 0)) {
+                wwRdState.vtEdit = Object.assign({}, ed, { error: "Primary voltage must be a positive number (e.g. 275 for 275 kV)." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (secondaryGiven && (isNaN(rawSecondaryV) || rawSecondaryV <= 0)) {
+                wwRdState.vtEdit = Object.assign({}, ed, { error: "Secondary voltage must be a positive number (e.g. 110 for 110 V)." });
+                wwRdRenderDetails();
+                return;
+            }
+            wwRdState.vtEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const groups = ww.measurementGroups.get(sourceId) || [];
+            const g = groups.find((x) => x.id === groupId);
+            const vc = g && g.voltage_config;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/voltage-config";
+            const body = {
+                // Echo reference fields to prevent silent reset (D2 safety requirement)
+                reference_mode: (vc && vc.reference_mode) || "auto",
+                reference_override: (vc && vc.reference_mode === "manual") ? vc.reference_override : null,
+                base_reference_side: (vc && vc.base_reference_side) || "unknown",
+            };
+            if (primaryGiven) {
+                body.vt_primary_v = rawPrimaryKv * 1000; // convert kV to V
+                body.vt_secondary_v = rawSecondaryV;
+            }
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.vtEdit = Object.assign({}, wwRdState.vtEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.vtEdit = Object.assign({}, wwRdState.vtEdit, { pending: false, error: detail.message || "Could not save VT configuration." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.vtEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
+        }
+
+        // D4: Remove manual VT configuration (clear_vt=true); echoes reference fields.
+        async function wwRdVtRemove() {
+            const ed = wwRdState.vtEdit;
+            if (!ed || ed.pending) return;
+            if (!window.confirm("Remove VT configuration? The VT ratio will be cleared.")) return;
+            wwRdState.vtEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const groups = ww.measurementGroups.get(sourceId) || [];
+            const g = groups.find((x) => x.id === groupId);
+            const vc = g && g.voltage_config;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/voltage-config";
+            const body = {
+                clear_vt: true,
+                reference_mode: (vc && vc.reference_mode) || "auto",
+                reference_override: (vc && vc.reference_mode === "manual") ? vc.reference_override : null,
+                base_reference_side: (vc && vc.base_reference_side) || "unknown",
+            };
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.vtEdit = Object.assign({}, wwRdState.vtEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.vtEdit = Object.assign({}, wwRdState.vtEdit, { pending: false, error: detail.message || "Could not remove VT configuration." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.vtEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
+        }
+
+        // D4: Apply CT instrument-transformer configuration.
+        // Uses update_ct_only=true — does not touch PU current-base method.
+        async function wwRdCtApply() {
+            const ed = wwRdState.ctEdit;
+            if (!ed || ed.pending) return;
+            const rawPrimaryA = ed.draftPrimaryA !== "" ? parseFloat(ed.draftPrimaryA) : null;
+            const rawSecondaryA = ed.draftSecondaryA !== "" ? parseFloat(ed.draftSecondaryA) : null;
+            // Partial pair validation
+            const primaryGiven = rawPrimaryA != null;
+            const secondaryGiven = rawSecondaryA != null;
+            if (primaryGiven !== secondaryGiven) {
+                wwRdState.ctEdit = Object.assign({}, ed, { error: "Both primary and secondary values must be provided together." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (primaryGiven && (isNaN(rawPrimaryA) || rawPrimaryA <= 0)) {
+                wwRdState.ctEdit = Object.assign({}, ed, { error: "Primary current must be a positive number (e.g. 2000 for 2000 A)." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (secondaryGiven && (isNaN(rawSecondaryA) || rawSecondaryA <= 0)) {
+                wwRdState.ctEdit = Object.assign({}, ed, { error: "Secondary current must be a positive number (e.g. 1 or 5)." });
+                wwRdRenderDetails();
+                return;
+            }
+            wwRdState.ctEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/current-config";
+            const body = { update_ct_only: true };
+            if (primaryGiven) {
+                body.ct_primary_a = rawPrimaryA;
+                body.ct_secondary_a = rawSecondaryA;
+            }
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.ctEdit = Object.assign({}, wwRdState.ctEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.ctEdit = Object.assign({}, wwRdState.ctEdit, { pending: false, error: detail.message || "Could not save CT configuration." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.ctEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
+        }
+
+        // D4: Remove manual CT configuration (clear_ct=true via update_ct_only path).
+        async function wwRdCtRemove() {
+            const ed = wwRdState.ctEdit;
+            if (!ed || ed.pending) return;
+            if (!window.confirm("Remove CT configuration? The CT ratio will be cleared.")) return;
+            wwRdState.ctEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/current-config";
+            const body = { update_ct_only: true, clear_ct: true };
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.ctEdit = Object.assign({}, wwRdState.ctEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.ctEdit = Object.assign({}, wwRdState.ctEdit, { pending: false, error: detail.message || "Could not remove CT configuration." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.ctEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
+        }
+
+                // D2: update a single group in the shared ww.measurementGroups cache.
         function wwRdUpdateGroupInCache(sourceId, updatedGroup) {
             const groups = ww.measurementGroups.get(sourceId) || [];
             const idx = groups.findIndex((x) => x.id === updatedGroup.id);
@@ -61916,6 +62246,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRdState.detailsView = "group"; // Slice C-1
                 wwRdState.voltageEdit = null; // D2: discard any in-progress edit on group change
                 wwRdState.currentEdit = null; // D3: discard any in-progress current edit on group change
+                wwRdState.vtEdit = null;      // D4: discard VT edit on group change
+                wwRdState.ctEdit = null;      // D4: discard CT edit on group change
                 // UAT-B-07: in narrow layout, advance to the details panel.
                 if (window.matchMedia("(max-width: 692px)").matches) {
                     wwRdState.narrowPanel = "details";
@@ -61932,6 +62264,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     e.preventDefault();
                     wwRdState.selectedGroupId = item.dataset.groupId;
                     wwRdState.detailsView = "group"; // Slice C-1
+                    wwRdState.voltageEdit = null; // D2
+                    wwRdState.currentEdit = null; // D3
+                    wwRdState.vtEdit = null;      // D4
+                    wwRdState.ctEdit = null;      // D4
                     // UAT-B-07: in narrow layout, advance to the details panel.
                     if (window.matchMedia("(max-width: 692px)").matches) {
                         wwRdState.narrowPanel = "details";
@@ -62077,8 +62413,62 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRdCurrentApply();
                 return;
             }
+            // D4: VT edit button handlers
+            if (btn.id === "wwRdVtEditBtn") {
+                const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
+                const g = groups.find((x) => x.id === wwRdState.selectedGroupId);
+                const vc = g && g.voltage_config;
+                wwRdState.vtEdit = {
+                    draftPrimaryKv: vc && vc.vt_primary_v != null ? String(vc.vt_primary_v / 1000) : "",
+                    draftSecondaryV: vc && vc.vt_secondary_v != null ? String(vc.vt_secondary_v) : "",
+                    pending: false,
+                    error: null,
+                };
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdVtCancelBtn") {
+                wwRdState.vtEdit = null;
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdVtApplyBtn") {
+                wwRdVtApply();
+                return;
+            }
+            if (btn.id === "wwRdVtRemoveBtn") {
+                wwRdVtRemove();
+                return;
+            }
+            // D4: CT edit button handlers
+            if (btn.id === "wwRdCtEditBtn") {
+                const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
+                const g = groups.find((x) => x.id === wwRdState.selectedGroupId);
+                const cc = g && g.current_config;
+                wwRdState.ctEdit = {
+                    draftPrimaryA: cc && cc.ct_primary_a != null ? String(cc.ct_primary_a) : "",
+                    draftSecondaryA: cc && cc.ct_secondary_a != null ? String(cc.ct_secondary_a) : "",
+                    pending: false,
+                    error: null,
+                };
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdCtCancelBtn") {
+                wwRdState.ctEdit = null;
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdCtApplyBtn") {
+                wwRdCtApply();
+                return;
+            }
+            if (btn.id === "wwRdCtRemoveBtn") {
+                wwRdCtRemove();
+                return;
+            }
         });
-        // D2/D3: live-sync draft state from edit form inputs (event delegation).
+        // D2/D3/D4: live-sync draft state from edit form inputs (event delegation).
         document.getElementById("wwRdDetailsBody").addEventListener("input", (e) => {
             const id = e.target.id;
             if (wwRdState.voltageEdit) {
@@ -62101,6 +62491,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // D3: sync current equipment-rating draft
                 if (id === "wwRdCurMva") wwRdState.currentEdit.draftMva = e.target.value;
                 else if (id === "wwRdCurVoltageGroup") wwRdState.currentEdit.draftLinkedGroupId = e.target.value;
+            }
+            if (wwRdState.vtEdit) {
+                // D4: sync VT draft
+                if (id === "wwRdVtPrimaryKv") wwRdState.vtEdit.draftPrimaryKv = e.target.value;
+                else if (id === "wwRdVtSecondaryV") wwRdState.vtEdit.draftSecondaryV = e.target.value;
+            }
+            if (wwRdState.ctEdit) {
+                // D4: sync CT draft
+                if (id === "wwRdCtPrimaryA") wwRdState.ctEdit.draftPrimaryA = e.target.value;
+                else if (id === "wwRdCtSecondaryA") wwRdState.ctEdit.draftSecondaryA = e.target.value;
             }
         });
         // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.
