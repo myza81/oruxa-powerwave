@@ -16,13 +16,15 @@ async function navigateToRd(page) {
 }
 
 async function uploadFixture(page) {
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    return page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const item = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
+    await expect(item).toBeVisible({ timeout: 8000 });
+    return item;
 }
 
 async function selectFirstRecording(page) {

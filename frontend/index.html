@@ -1185,6 +1185,44 @@
             outline-offset: -2px;
             border-radius: 2px;
         }
+        /* UX-3: recording-level action bar above the Recording Info / Group Details tabs */
+        .ww-rd-recording-action-bar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 5px 10px;
+            border-bottom: 1px solid var(--panel-border);
+            flex-shrink: 0;
+            gap: 8px;
+            min-height: 34px;
+        }
+        .ww-rd-view-waveform-btn {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+        }
+        /* UX-3: Time Reference section inside Recording Info */
+        .ww-rd-time-reference-body {
+            font-size: 0.8rem;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ww-rd-time-reference-body label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+        .ww-rd-time-reference-body .hint {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        /* UX-3: import PU status banner inside Recording Details browser panel */
+        .ww-rd-panel--browser .ww-import-pu-banner {
+            margin: 6px 10px 0;
+        }
         /* Slice C-1: empty state shown when Group Details tab is active with no group selected */
         .ww-rd-empty-state {
             display: flex;
@@ -10419,16 +10457,11 @@
                      accent tint/background never actually applied). The
                      inactive item has NO aria-current attribute at all
                      (not "false") -- also the ARIA APG convention. -->
-                <button type="button" class="shell-nav-item" id="mainNavRecordingsBtn" aria-current="page" title="Recordings">
-                    <span class="shell-nav-icon" data-ww-icon="PAGE_RECORDINGS"></span>
-                    <span class="shell-nav-label">Recordings</span>
-                </button>
-                <!-- RD-1 Slice B: dedicated Recording Details workspace --
-                     a first-class page (D1 decision), immediately after
-                     Recordings in the nav rail per the owner's approved
-                     position. Same shellSetCurrentPage() "hide, don't
-                     destroy" lifecycle as every other page. -->
-                <button type="button" class="shell-nav-item" id="mainNavRecordingDetailsBtn" title="Recording Details">
+                <!-- UX-3: Recording Events nav entry retired; Recording Details
+                     is now the single recording-management page and the
+                     application's default starting page (aria-current="page"
+                     was on mainNavRecordingsBtn; moved here). -->
+                <button type="button" class="shell-nav-item" id="mainNavRecordingDetailsBtn" aria-current="page" title="Recording Details">
                     <span class="shell-nav-icon" data-ww-icon="PAGE_RECORDING_DETAILS"></span>
                     <span class="shell-nav-label">Recording Details</span>
                 </button>
@@ -11702,65 +11735,11 @@
                  page that should maximize the recording list area.
                  Phase 3B-UAT4: visible by default -- Recordings is now
                  the application's fresh-entry page (section 2/3). -->
-            <section id="pageRecordings" aria-label="Recordings">
-                <div class="recordings-header">
-                    <h2>Recording Events</h2>
-                    <div class="recordings-header-actions">
-                        <!-- Phase 3B-UAT2: relocated from the Global Header
-                             (unchanged element IDs/behavior) -- Recordings
-                             is now the one workspace-management surface;
-                             see startNewWorkspace()/resetToNewWorkspace(),
-                             completely unchanged by this move. Phase
-                             3B-UAT3: reordered to sit BEFORE Upload New
-                             (secondary action first, primary action last,
-                             closest to the content it acts on) -- visual
-                             weight (.secondary vs the unclassed/primary
-                             Upload New button below) is what marks Upload
-                             New as the stronger action, not DOM order. -->
-                        <div class="shell-header-reset">
-                            <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
-                            <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
-                        </div>
-                        <button type="button" id="recordingsUploadBtn">Upload New</button>
-                    </div>
-                </div>
-
-                <div class="search-row">
-                    <input type="search" id="recordingsSearch" placeholder="Search recordings&hellip;" aria-label="Search recordings">
-                    <span id="recordingsSearchCount"></span>
-                </div>
-
-                <!-- §5 (5D-3): compact non-blocking PU status after import.
-                     Hidden by default; shown/hidden by wwShowImportPuStatus()
-                     and wwClearImportPuStatus(). Never blocks other actions. -->
-                <div id="wwImportPuStatusBanner" class="ww-import-pu-banner" hidden role="status" aria-live="polite"></div>
-
-                <!-- Phase 3A-UAT3/UAT4 containment precedent (Finding B):
-                     an intentional horizontal-scroll wrapper around the
-                     table, not a column count that assumes the Work Area
-                     is always wide. -->
-                <div class="recordings-table-wrap">
-                    <table class="recordings" id="recordingsTable">
-                        <thead>
-                            <tr>
-                                <th>Recording</th>
-                                <th>File Format</th>
-                                <th>File Size</th>
-                                <th>Status</th>
-                                <th>Start Time</th>
-                                <th>Duration</th>
-                                <th>Sampling Rate(s)</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="recordingsTableBody"></tbody>
-                    </table>
-                </div>
-                <div class="empty-state" id="recordingsEmpty" hidden>
-                    <p>No recordings loaded in this session.</p>
-                    <button type="button" id="recordingsEmptyUploadBtn">Upload New</button>
-                </div>
-            </section>
+            <!-- UX-3: Recording Events page retired. Recording Details is
+                 the single recording-management surface. The workspace-
+                 reset backend capability (resetToNewWorkspace()) is
+                 preserved; only the frontend Start New Workspace button
+                 is removed per owner direction. -->
 
             <!-- Phase 5A (DEC-047): Calculated Channels -- a sibling of
                  Workspace Row/Recordings, toggled via shellSetCurrentPage()
@@ -15263,6 +15242,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                 Upload New
                             </button>
                         </div>
+                        <!-- UX-3 (migrated from Recording Events §5D-3): compact
+                             non-blocking PU status after import. Hidden by default;
+                             shown/hidden by wwShowImportPuStatus() /
+                             wwClearImportPuStatus(). Never blocks other actions. -->
+                        <div id="wwImportPuStatusBanner" class="ww-import-pu-banner" hidden role="status" aria-live="polite"></div>
                         <div class="ww-rd-toolbar">
                             <div class="ww-rd-toolbar-row">
                                 <input type="search" class="ww-rd-search" id="wwRdSearch"
@@ -15309,6 +15293,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <div class="ww-rd-panel ww-rd-panel--details" id="wwRdDetailsPanel">
                         <!-- UAT-B-07: back to groups (narrow layout only) -->
                         <button type="button" class="ww-rd-back-btn" id="rdBackToGroups">← Groups</button>
+                        <!-- UX-3: recording-level action bar; visible for the currently
+                             selected recording regardless of which tab is active.
+                             Disabled when no recording is selected (synced by
+                             wwRdRenderDetails()). -->
+                        <div class="ww-rd-recording-action-bar" id="wwRdRecordingActionBar">
+                            <button type="button" class="secondary ww-rd-view-waveform-btn" id="wwRdViewWaveformBtn" disabled>View Waveform</button>
+                        </div>
                         <!-- Slice C-1: persistent underline tabs replacing the old back-link navigation -->
                         <div class="ww-rd-tabs" role="tablist" id="wwRdDetailsTabs"
                             aria-label="Details view">
@@ -17050,7 +17041,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // mechanism; it never touches the Waveform workspace's `ww`
             // state (see wwErOnPageEntered()).
             if (
-                page !== "waveform" && page !== "recordings" &&
+                page !== "waveform" &&
                 page !== "event-reconstruction" &&
                 page !== "calculated-channels" && page !== "data-preparation" &&
                 page !== "analysis" && page !== "compliance" &&
@@ -17060,7 +17051,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             shell.currentPage = page;
 
             document.getElementById("workspaceRow").hidden = page !== "waveform";
-            document.getElementById("pageRecordings").hidden = page !== "recordings";
             document.getElementById("pageRecordingDetails").hidden = page !== "recording-details";
             document.getElementById("pageEventReconstruction").hidden = page !== "event-reconstruction";
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
@@ -17082,7 +17072,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // highlight additionally requires activeView !== "table" --
             // see shellSetActiveView()'s own matching update.
             setShellNavCurrent("mainNavWaveformBtn", page === "waveform" && shell.activeView !== "table");
-            setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
             setShellNavCurrent("mainNavRecordingDetailsBtn", page === "recording-details");
             setShellNavCurrent("mainNavEventReconstructionBtn", page === "event-reconstruction");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
@@ -17141,12 +17130,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // the earlier (2026-09-12) Waveform page-entry resync, which
             // deliberately REDREW the green line here.
             wwHideAllPlaybackCursorOverlays();
-            if (page === "recordings") {
-                // Cheap metadata refresh (same GET .../sources call
-                // refreshSourceList() already makes) -- never waveform
-                // data, never a plot rebuild (section 32).
-                refreshAllSourceViews();
-            }
             if (page === "recording-details") {
                 wwRdOnPageEntered();
             }
@@ -17284,21 +17267,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function showWorkspaceResetError(message) {
             const el = document.getElementById("workspaceResetError");
+            if (!el) return; // UX-3: element removed with Recording Events page
             el.textContent = message;
             el.hidden = false;
         }
 
         function hideWorkspaceResetError() {
             const el = document.getElementById("workspaceResetError");
+            if (!el) return; // UX-3: element removed with Recording Events page
             el.hidden = true;
             el.textContent = "";
         }
 
         async function resetToNewWorkspace() {
             const oldWorkspaceId = currentWorkspaceId();
+            // UX-3: #newWorkspaceButton removed from frontend; guard against null.
             const button = document.getElementById("newWorkspaceButton");
             hideWorkspaceResetError();
-            button.disabled = true;
+            if (button) button.disabled = true;
             // Stop producers and transport BEFORE the backend can delete their
             // workspace. Waiting until wwClearWorkspace leaves a DELETE roundtrip
             // in which playback can request already-deleted sources.
@@ -17321,7 +17307,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 showWorkspaceResetError("Could not reach the backend. Check your connection and try again.");
                 return;
             } finally {
-                button.disabled = false;
+                if (button) button.disabled = false;
                 // A failed deletion keeps the workspace usable, with playback
                 // paused. Successful teardown renews transport in wwClearWorkspace.
                 if (!deleted && currentWorkspaceId() === oldWorkspaceId) {
@@ -17977,9 +17963,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const preparationSources = await fetchPreparationSourcesList();
             latestSourcesCount = (sources || []).length + (preparationSources || []).length;
             await wwRenderWorkspaceRecordings(sources || []);
-            const comtradeRows = (sources || []).map((s) => Object.assign({ _recordingKind: "comtrade" }, s));
-            const csvRows = (preparationSources || []).map(preparationSourceAsRecordingRow);
-            renderRecordingsTable(comtradeRows.concat(csvRows));
+            // UX-3: renderRecordingsTable() removed — Recording Events page retired.
             // RD-1: on success, populate the RD browser cache and re-render if
             // the page is active (upload/remove while open shows immediately).
             // On fetch failure (sources===null), leave cache as-is so
@@ -28791,11 +28775,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             countEl.textContent = visibleCount + " of " + rows.length;
         }
 
-        document.getElementById("recordingsSearch").addEventListener("input", (event) => {
-            applyRecordingsSearchFilter(event.target.value);
-        });
-        document.getElementById("recordingsUploadBtn").addEventListener("click", openUploadModal);
-        document.getElementById("recordingsEmptyUploadBtn").addEventListener("click", openUploadModal);
+        // UX-3: recordingsSearch / recordingsUploadBtn / recordingsEmptyUploadBtn
+        // removed with #pageRecordings. Event wiring for those elements is gone.
 
         // ------------------------------------------------------------------
         // Remove confirmation (the app's one and only modal -- section 19's
@@ -36600,7 +36581,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwRdOnPageEntered() {
             wwRdApplyNarrowLayout(); // UAT-B-07: apply panel visibility on page enter
             if (wwRdState.sources === null) {
-                await wwRdRefreshSources();
+                // UX-3: on first entry, call refreshAllSourceViews() (not just
+                // wwRdRefreshSources()) so the workspace sidebar is also populated.
+                // This replaces the old Recordings page-entry call that did the same.
+                await refreshAllSourceViews();
             } else {
                 wwRdRenderBrowser(); // re-render from cache (search/sort preserved)
             }
@@ -36749,6 +36733,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdRenderDetails() {
             const body = document.getElementById("wwRdDetailsBody");
             if (!body) return;
+            // UX-3: sync View Waveform button — disabled when no recording is selected.
+            const viewWfBtn = document.getElementById("wwRdViewWaveformBtn");
+            if (viewWfBtn) viewWfBtn.disabled = !wwRdState.selectedSourceId;
             // Slice C-1: sync tab aria-selected state
             const tabRec = document.getElementById("wwRdTabRecordingInfo");
             const tabGrp = document.getElementById("wwRdTabGroupDetails");
@@ -36870,6 +36857,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += row("Channels", chCount);
             html += '</div>';
             html += '</div>';
+
+            // UX-3 (migrated from Recording Events): Time Reference section —
+            // shown only when the recorder clock time is unverified and the
+            // recording has at least one timestamp to interpret. The existing
+            // document-level change listener handles .recording-time-reference
+            // selects from any page; no additional wiring needed here.
+            if (s.time_basis === "unknown" && (s.start_time || s.trigger_time)) {
+                html += '<div class="ww-rd-section">';
+                html += '<div class="ww-rd-section-heading">Time Reference</div>';
+                html += '<div class="ww-rd-time-reference-body">';
+                html += wwTimeReferenceControl(s);
+                html += '</div>';
+                html += '</div>';
+            }
 
             return html;
         }
@@ -61792,7 +61793,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             " — build " + buildVersion()
         );
         document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
-        document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
+        // UX-3: #newWorkspaceButton removed from frontend per owner direction.
         // Phasor Playback integration: the ONE, permanent subscription to
         // the shared wwPlayback controller's own tick/transition seam
         // (wwPlaybackOnTick(), near wwClearWorkspace()) -- registered once,
@@ -61882,7 +61883,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // existing `if (page === "recordings") refreshAllSourceViews();`
         // branch, replacing the old unconditional trailing call at the
         // end of Init (see below) so there is only ONE fetch, not two.
-        shellSetCurrentPage("recordings");
+        // UX-3: Recording Details is now the application's default starting page.
+        shellSetCurrentPage("recording-details");
         // Phase 5A: one Init-time fetch of the workspace's own calculated-
         // channel registry (mirrors the Recordings list fetch immediately
         // above) -- kept in sync incrementally after this by
@@ -61929,7 +61931,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // correct wording immediately, not a stale static default.
             wwUpdateEmptyState();
         });
-        document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
+        // UX-3: mainNavRecordingsBtn removed with Recording Events page.
         document.getElementById("mainNavEventReconstructionBtn").addEventListener("click", () => shellSetCurrentPage("event-reconstruction"));
         // Slice 3C: Event Reconstruction's own panels re-theme themselves
         // (Waveform's wwApplyTheme() only iterates ww.panels).
@@ -62135,6 +62137,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("wwRdUploadBtn").addEventListener("click", () => {
             openUploadModal();
+        });
+        // UX-3: View Waveform action — navigates to Waveform Analysis using
+        // the selected recording via the authoritative openRecordingForAnalysis()
+        // path. Preserves all workspace state (synchronization, calculated
+        // channels, waveform settings). Button is disabled when no recording
+        // is selected (enforced in wwRdRenderDetails()).
+        document.getElementById("wwRdViewWaveformBtn").addEventListener("click", () => {
+            if (wwRdState.selectedSourceId) openRecordingForAnalysis(wwRdState.selectedSourceId);
         });
         // UAT-B-07: back navigation buttons (narrow layout only).
         document.getElementById("rdBackToRecordings").addEventListener("click", () => {
