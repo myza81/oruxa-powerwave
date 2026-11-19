@@ -222,12 +222,12 @@ test("TABS-11: Slice C engineering details intact with tabs", async ({ page }) =
     // Engineering Evidence toggle present
     await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
 
-    // PU status line present (Slice C-3: replaces pill)
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    // UX-1: PU availability section removed — confirm main sections are still present
+    const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
+    expect(headings.length).toBeGreaterThan(0);
 
     // C4 amendment: CT/VT is a standalone section in main panel (not in Evidence).
-    const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
-    const allHeadings = await headings.allTextContents();
+    const allHeadings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
     const hasTransformerSection = allHeadings.some((t) =>
         t.includes("Voltage Transformer") || t.includes("Current Transformer"));
     expect(hasTransformerSection).toBe(true);

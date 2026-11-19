@@ -257,12 +257,12 @@ test("RD-1 C1-10: Slice C group details remain intact after Slice C-1 changes", 
     // Engineering Evidence toggle must be present
     await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
 
-    // PU availability status line must be present (Slice C-3: replaces pill)
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    // UX-1: PU availability section removed — Voltage Base Configuration section present instead
+    const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
+    expect(headings.some(h => h.includes("Voltage Base Configuration") || h.includes("Equipment Rating"))).toBe(true);
 
     // C4 amendment: CT/VT is a standalone section in main panel (not in Evidence).
-    const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
-    const allH = await headings.allTextContents();
+    const allH = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
     const hasTransformerSection = allH.some((t) =>
         t.includes("Voltage Transformer") || t.includes("Current Transformer"));
     expect(hasTransformerSection).toBe(true);

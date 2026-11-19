@@ -59,7 +59,7 @@ test("RD-1 C2-01: voltage group details — Configuration row is present and not
     expect(text).not.toContain("line_to_ground");
 });
 
-test("RD-1 C2-02: voltage group main view has exactly 4 rows (Nominal voltage, Reference, Configuration, PU availability)", async ({ page }) => {
+test("RD-1 C2-02: voltage group main view has Nominal voltage, Reference and Configuration — no Per-unit availability section", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -70,7 +70,8 @@ test("RD-1 C2-02: voltage group main view has exactly 4 rows (Nominal voltage, R
     await expect(details).toContainText("Nominal voltage");
     await expect(details).toContainText("Reference");
     await expect(details).toContainText("Configuration");
-    await expect(details).toContainText("Per-unit availability");
+    // UX-1: Per-unit availability section is removed
+    await expect(details).not.toContainText("Per-unit availability");
 });
 
 test("RD-1 C2-03: voltage group Engineering Evidence section is present", async ({ page }) => {
@@ -126,17 +127,20 @@ test("RD-1 C2-06: current group Engineering Evidence section is present", async 
     await expect(details.locator("details.ww-rd-evidence summary")).toContainText("Engineering Evidence");
 });
 
-test("RD-1 C2-07: PU status line shown for voltage group; absent for current group", async ({ page }) => {
+test("RD-1 C2-07: PU availability section absent for both voltage and current groups (UX-1)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
 
-    // Voltage group: PU status line must be present
+    // UX-1: PU availability section removed for voltage groups
     await selectGroupByKind(page, "voltage");
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Voltage Base Configuration section must be present instead
+    const vHeadings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
+    expect(vHeadings.some(h => h.includes("Voltage Base Configuration"))).toBe(true);
 
-    // Current group: no PU status line (current groups use Calculated Channels for PU)
+    // Current group: no PU section either (current groups use Calculated Channels for PU)
     await selectGroupByKind(page, "current");
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
 });

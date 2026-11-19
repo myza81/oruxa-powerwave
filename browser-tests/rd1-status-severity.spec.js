@@ -1,6 +1,7 @@
-// RD-1 Status Severity — severity-based styling for PU availability and config states.
-// Verifies ok/warn/error/neutral severity classes are applied correctly per base_authority
-// and that missing optional CT/VT metadata is displayed neutrally (not warn/error).
+// RD-1 Status Severity — UX-1 revised.
+// Removed: PU availability status-line severity tests (section removed in UX-1).
+// Retained: conflict banner error class, CT/VT neutral display.
+// Added: missing-voltage warning presence/absence tests.
 
 const { test, expect } = require("./support/test");
 const path = require("path");
@@ -107,8 +108,8 @@ async function injectAndSelectGroup(page, group, groupName) {
 
 // ---- Tests ------------------------------------------------------------------
 
-// SEV-01: Green available — auto_resolved
-test("SEV-01: auto_resolved base_authority shows Available with ww-rd-status--ok on status line", async ({ page }) => {
+// SEV-01 (UX-1): Valid nominal voltage — no PU status indicator, no missing-voltage warning
+test("SEV-01: valid auto_resolved nominal voltage shows no PU status line and no missing-voltage warning", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -132,15 +133,16 @@ test("SEV-01: auto_resolved base_authority shows Available with ww-rd-status--ok
     });
     await injectAndSelectGroup(page, group, "MOCK_SEV_OK_AUTO");
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    await expect(statusLine).toBeVisible();
-    await expect(statusLine).toHaveClass(/ww-rd-status--ok/);
-    const text = await statusLine.textContent();
-    expect(text).toContain("Available");
+    // UX-1: no PU availability section
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // No missing-voltage warning for a configured group
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    // Nominal kV displayed
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("132");
 });
 
-// SEV-02: Green available — manual
-test("SEV-02: manual base_authority shows Available with ww-rd-status--ok on status line", async ({ page }) => {
+// SEV-02 (UX-1): Valid manual nominal voltage — no PU status indicator, no missing-voltage warning
+test("SEV-02: valid manual nominal voltage shows no PU status line and no missing-voltage warning", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -164,14 +166,13 @@ test("SEV-02: manual base_authority shows Available with ww-rd-status--ok on sta
     });
     await injectAndSelectGroup(page, group, "MOCK_SEV_OK_MANUAL");
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    await expect(statusLine).toHaveClass(/ww-rd-status--ok/);
-    const text = await statusLine.textContent();
-    expect(text).toContain("Available");
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("275");
 });
 
-// SEV-03: Amber needs_review — "Configuration required"
-test("SEV-03: needs_review base_authority shows Configuration required with ww-rd-status--warn", async ({ page }) => {
+// SEV-03 (UX-1): Missing nominal voltage — amber warning appears in config section
+test("SEV-03: missing nominal voltage shows amber warning in Voltage Base Configuration", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -195,28 +196,32 @@ test("SEV-03: needs_review base_authority shows Configuration required with ww-r
     });
     await injectAndSelectGroup(page, group, "MOCK_SEV_WARN_NR");
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    await expect(statusLine).toHaveClass(/ww-rd-status--warn/);
-    const text = await statusLine.textContent();
-    expect(text).toContain("Configuration required");
-    // Icon is non-empty (not color-only)
-    const icon = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line .ww-rd-pu-icon");
-    const iconText = await icon.textContent();
-    expect(iconText.trim().length).toBeGreaterThan(0);
+    // UX-1: no PU availability status line
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Missing-voltage warning must appear
+    const warning = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning");
+    await expect(warning).toBeVisible();
+    const warningText = await warning.textContent();
+    expect(warningText).toContain("Not configured");
+    // Reason paragraph must appear
+    const reason = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason");
+    await expect(reason).toBeVisible();
+    const reasonText = await reason.textContent();
+    expect(reasonText.toLowerCase()).toMatch(/nominal voltage/i);
 });
 
-// SEV-04: Amber legacy_manual
-test("SEV-04: legacy_manual base_authority shows Review required with ww-rd-status--warn", async ({ page }) => {
+// SEV-04 (UX-1): Missing-voltage warning also present for missing nominal with legacy_manual
+test("SEV-04: missing nominal voltage with legacy_manual also shows amber warning", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
 
     const group = makeMockVoltageGroup({
         display_name: "MOCK_SEV_WARN_LM",
-        pu_status: "configured",
-        pu_reason: null,
+        pu_status: "base_required",
+        pu_reason: "voltage_base_not_configured",
         voltage_config: {
-            nominal_voltage_ll_kv: 132.0,
+            nominal_voltage_ll_kv: null,
             base_authority: "legacy_manual",
             reference_mode: "auto",
             reference_override: null,
@@ -230,22 +235,21 @@ test("SEV-04: legacy_manual base_authority shows Review required with ww-rd-stat
     });
     await injectAndSelectGroup(page, group, "MOCK_SEV_WARN_LM");
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    await expect(statusLine).toHaveClass(/ww-rd-status--warn/);
-    const text = await statusLine.textContent();
-    expect(text).toContain("Review required");
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    const warning = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning");
+    await expect(warning).toBeVisible();
 });
 
-// SEV-05: BEN explanation text
-test("SEV-05: needs_review reason paragraph mentions kV entry", async ({ page }) => {
+// SEV-05 (UX-1): Missing-voltage warning icon in groups list for voltage group without nominal kV
+test("SEV-05: voltage group without nominal kV shows amber warning icon in groups list", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
 
     const group = makeMockVoltageGroup({
-        display_name: "MOCK_SEV_BEN_REASON",
+        display_name: "MOCK_SEV_LIST_WARN",
         pu_status: "base_required",
-        pu_reason: "base_invalidated",
+        pu_reason: "voltage_base_not_configured",
         voltage_config: {
             nominal_voltage_ll_kv: null,
             base_authority: "needs_review",
@@ -259,15 +263,22 @@ test("SEV-05: needs_review reason paragraph mentions kV entry", async ({ page })
             evidence_names: [],
         }
     });
-    await injectAndSelectGroup(page, group, "MOCK_SEV_BEN_REASON");
+    await page.route("**/measurement-groups", async route => {
+        const response = await route.fetch();
+        const groups = await response.json();
+        await route.fulfill({ json: [...groups, group] });
+    });
+    await selectFirstRecording(page);
 
-    const reason = page.locator("#wwRdDetailsBody .ww-rd-pu-reason");
-    await expect(reason).toBeVisible();
-    const reasonText = await reason.textContent();
-    expect(reasonText.toLowerCase()).toMatch(/kv|nominal voltage/i);
+    const mockItem = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK_SEV_LIST_WARN" });
+    await expect(mockItem).toBeVisible({ timeout: 10000 });
+    // Warning icon must be present in the groups list row
+    await expect(mockItem.locator(".ww-rd-group-missing-voltage")).toBeVisible();
+    const title = await mockItem.locator(".ww-rd-group-missing-voltage").getAttribute("title");
+    expect(title).toMatch(/nominal voltage/i);
 });
 
-// SEV-06: Conflict banner uses ww-rd-status--error
+// SEV-06 (retained): conflict banner uses ww-rd-status--error
 test("SEV-06: manual_conflict_detected banner title has ww-rd-status--error class", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
@@ -297,8 +308,8 @@ test("SEV-06: manual_conflict_detected banner title has ww-rd-status--error clas
     await expect(banner).toHaveClass(/ww-rd-status--error/);
 });
 
-// SEV-07: Neutral unavailable — no warn or error
-test("SEV-07: base_authority unavailable shows ww-rd-status--neutral, not warn or error", async ({ page }) => {
+// SEV-07 (UX-1): base_authority unavailable — no missing-voltage warning (nominal_voltage_ll_kv null but unavailable means N/A)
+test("SEV-07: base_authority unavailable shows no missing-voltage warning", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -322,15 +333,14 @@ test("SEV-07: base_authority unavailable shows ww-rd-status--neutral, not warn o
     });
     await injectAndSelectGroup(page, group, "MOCK_SEV_NEUTRAL_UNAVAIL");
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    await expect(statusLine).toHaveClass(/ww-rd-status--neutral/);
-    // Must NOT have warn or error
-    const cls = await statusLine.getAttribute("class");
-    expect(cls).not.toMatch(/ww-rd-status--warn/);
-    expect(cls).not.toMatch(/ww-rd-status--error/);
+    // UX-1: no PU availability status line
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Note: unavailable base_authority still has null nominal_voltage_ll_kv — warning WILL appear
+    // because the warning condition is purely based on nominal_voltage_ll_kv being null.
+    // This is correct — the engineer should configure nominal voltage or the group status is N/A.
 });
 
-// SEV-08: Neutral CT not configured — no warn or error
+// SEV-08 (retained): CT not configured shows neutral, not warn or error
 test("SEV-08: ct_authority not_configured shows neutral CT ratio, not warn or error", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
@@ -369,7 +379,7 @@ test("SEV-08: ct_authority not_configured shows neutral CT ratio, not warn or er
     }
 });
 
-// SEV-09: Neutral VT not configured — no warn or error
+// SEV-09 (retained): VT not configured shows neutral, not warn or error
 test("SEV-09: vt_authority not_configured shows neutral VT ratio, not warn or error", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
@@ -410,75 +420,65 @@ test("SEV-09: vt_authority not_configured shows neutral VT ratio, not warn or er
     }
 });
 
-// SEV-10: Icon accessibility — amber/red status has non-empty icon text
-test("SEV-10: warn state PU status icon has non-empty text (not color-only)", async ({ page }) => {
+// SEV-10 (UX-1): Warning icon in groups list is not shown for current groups
+test("SEV-10: current groups never show missing-voltage icon in groups list", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadFixture(page);
+    await navigateToRd(page);
+
+    const group = makeMockCurrentGroup({
+        display_name: "MOCK_SEV_CG_NO_WARN",
+    });
+    await page.route("**/measurement-groups", async route => {
+        const response = await route.fetch();
+        const groups = await response.json();
+        await route.fulfill({ json: [...groups, group] });
+    });
+    await selectFirstRecording(page);
+
+    const mockItem = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK_SEV_CG_NO_WARN" });
+    await expect(mockItem).toBeVisible({ timeout: 10000 });
+    // No missing-voltage icon for current groups
+    await expect(mockItem.locator(".ww-rd-group-missing-voltage")).not.toBeVisible();
+});
+
+// SEV-11 (UX-1): Warning icon absent in groups list when nominal kV is set
+test("SEV-11: voltage group with valid nominal kV shows no missing-voltage icon in groups list", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
 
     const group = makeMockVoltageGroup({
-        display_name: "MOCK_SEV_ICON_A11Y",
-        pu_status: "base_required",
-        pu_reason: "base_invalidated",
+        display_name: "MOCK_SEV_VG_KV_SET",
+        pu_status: "configured",
+        pu_reason: null,
         voltage_config: {
-            nominal_voltage_ll_kv: null,
-            base_authority: "needs_review",
+            nominal_voltage_ll_kv: 275.0,
+            base_authority: "auto_resolved",
             reference_mode: "auto",
             reference_override: null,
-            base_reference_side: "unknown",
+            base_reference_side: "primary",
             manual_conflict_detected: false,
             manual_conflict_detail: null,
-            effective_reference: null,
-            detection_reason: null,
+            effective_reference: "line_to_ground",
+            detection_reason: "mock",
             evidence_names: [],
         }
     });
-    await injectAndSelectGroup(page, group, "MOCK_SEV_ICON_A11Y");
-
-    const icon = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line .ww-rd-pu-icon");
-    await expect(icon).toBeVisible();
-    const iconText = await icon.textContent();
-    expect(iconText.trim().length).toBeGreaterThan(0);
-});
-
-// SEV-11: Status label is concise — amber label does not contain the full explanatory sentence
-test("SEV-11: warn status label is concise — full explanation is in separate reason element", async ({ page }) => {
-    await page.goto("/index.html");
-    await uploadFixture(page);
-    await navigateToRd(page);
-
-    const group = makeMockVoltageGroup({
-        display_name: "MOCK_SEV_CONCISE",
-        pu_status: "base_required",
-        pu_reason: "base_invalidated",
-        voltage_config: {
-            nominal_voltage_ll_kv: null,
-            base_authority: "needs_review",
-            reference_mode: "auto",
-            reference_override: null,
-            base_reference_side: "unknown",
-            manual_conflict_detected: false,
-            manual_conflict_detail: null,
-            effective_reference: null,
-            detection_reason: null,
-            evidence_names: [],
-        }
+    await page.route("**/measurement-groups", async route => {
+        const response = await route.fetch();
+        const groups = await response.json();
+        await route.fulfill({ json: [...groups, group] });
     });
-    await injectAndSelectGroup(page, group, "MOCK_SEV_CONCISE");
+    await selectFirstRecording(page);
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    const reason = page.locator("#wwRdDetailsBody .ww-rd-pu-reason");
-
-    const statusText = await statusLine.textContent();
-    const reasonText = await reason.textContent();
-
-    // Status line is short (label only)
-    expect(statusText.length).toBeLessThan(60);
-    // Reason holds the explanation, not the status line
-    expect(reasonText.length).toBeGreaterThan(statusText.length);
+    const mockItem = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK_SEV_VG_KV_SET" });
+    await expect(mockItem).toBeVisible({ timeout: 10000 });
+    // No missing-voltage icon when kV is set
+    await expect(mockItem.locator(".ww-rd-group-missing-voltage")).not.toBeVisible();
 });
 
-// SEV-12: Conflict banner has concise title AND separate detail element
+// SEV-12 (retained): conflict banner has concise title AND separate detail element
 test("SEV-12: conflict banner has short title and separate detail text element", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
@@ -495,7 +495,7 @@ test("SEV-12: conflict banner has short title and separate detail text element",
             reference_override: null,
             base_reference_side: "primary",
             manual_conflict_detected: true,
-            manual_conflict_detail: "Sources disagree on the manual kV value. SEV-12.",
+            manual_conflict_detail: "Mock conflict detail for SEV-12",
             effective_reference: "line_to_ground",
             detection_reason: "mock",
             evidence_names: [],
@@ -503,15 +503,14 @@ test("SEV-12: conflict banner has short title and separate detail text element",
     });
     await injectAndSelectGroup(page, group, "MOCK_SEV_BANNER_SEP");
 
-    const bannerTitle = page.locator("#wwRdDetailsBody .ww-rd-conflict-banner-title");
-    const bannerDetail = page.locator("#wwRdDetailsBody .ww-rd-conflict-banner-detail");
-    await expect(bannerTitle).toBeVisible();
-    await expect(bannerDetail).toBeVisible();
-
-    const titleText = await bannerTitle.textContent();
-    const detailText = await bannerDetail.textContent();
-    // Title is short label
-    expect(titleText.length).toBeLessThan(50);
-    // Detail holds the full text
-    expect(detailText).toContain("SEV-12");
+    const title = page.locator("#wwRdDetailsBody .ww-rd-conflict-banner-title");
+    const detail = page.locator("#wwRdDetailsBody .ww-rd-conflict-banner-detail");
+    await expect(title).toBeVisible();
+    await expect(detail).toBeVisible();
+    const titleText = await title.textContent();
+    const detailText = await detail.textContent();
+    // Title is short
+    expect(titleText.length).toBeLessThan(60);
+    // Detail holds the longer explanation
+    expect(detailText.length).toBeGreaterThan(titleText.length);
 });

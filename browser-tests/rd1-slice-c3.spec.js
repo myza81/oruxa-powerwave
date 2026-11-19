@@ -135,25 +135,22 @@ test("C3-04: Voltage Base Configuration shows provenance labels (D2: Configurati
     expect(bodyText).not.toMatch(/Auto-resolved/);
 });
 
-test("C3-05: Per-unit availability section present for voltage group with status word and reason paragraph", async ({ page }) => {
+test("C3-05: Per-unit availability section is absent — voltage groups show Voltage Base Configuration without PU status", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
-    // Per-unit availability is only shown for voltage groups
+    // UX-1: PU availability section removed
     await selectGroupByKind(page, "voltage");
 
-    // Section heading
+    // Section heading must NOT contain "Per-unit availability"
     const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
     const hasPuHeading = headings.some(h => h.includes("Per-unit availability"));
-    expect(hasPuHeading).toBeTruthy();
-    // Status line icon+word
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line").first();
-    await expect(statusLine).toBeVisible();
-    const statusText = await statusLine.textContent();
-    // Contains one of the known status words
-    const knownWords = ["Available", "Unavailable", "Blocked", "Review required", "Not applicable", "Configuration required"];
-    expect(knownWords.some(w => statusText.includes(w))).toBeTruthy();
+    expect(hasPuHeading).toBeFalsy();
+    // No PU status line in details
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Voltage Base Configuration section must be present
+    expect(headings.some(h => h.includes("Voltage Base Configuration"))).toBeTruthy();
 });
 
 // C3-06 and C3-07 use page.route() to inject a mock voltage group with the required PU state
@@ -228,13 +225,12 @@ test("C3-06: Available state shows checkmark and green-class word (not inside a 
     await mockGroupItem.click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 
-    const statusText = await page.locator("#wwRdDetailsBody .ww-rd-pu-status-line").first().textContent();
-    expect(statusText).toContain("Available");
-    // Status word must be shown via .ww-rd-pu-word--eligible (not inside a .ww-rd-pu-pill)
-    const eligibleWord = page.locator("#wwRdDetailsBody .ww-rd-pu-word--eligible");
-    await expect(eligibleWord).toBeVisible();
-    const pillCount = await page.locator("#wwRdDetailsBody .ww-rd-pu-pill .ww-rd-pu-word--eligible").count();
-    expect(pillCount).toBe(0);
+    // UX-1: PU availability section removed — valid nominal kV shown without PU status indicator
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Nominal voltage is displayed (132 kV from mock)
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("132");
+    // No missing-voltage warning for a configured group
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
 });
 
 test("C3-07: Conflict group shows Blocked (not full sentence as status word)", async ({ page }) => {
@@ -274,12 +270,16 @@ test("C3-07: Conflict group shows Blocked (not full sentence as status word)", a
     await expect(mockGroupItem).toBeVisible({ timeout: 10000 });
     await mockGroupItem.click();
 
-    const statusLine = page.locator("#wwRdDetailsBody .ww-rd-pu-status-line");
-    await expect(statusLine.first()).toBeVisible({ timeout: 5000 });
-    const statusText = await statusLine.first().textContent();
-    expect(statusText.trim()).toContain("Blocked");
-    // The reason text "conflicts with" belongs in the reason paragraph, not the status word
-    expect(statusText).not.toContain("conflicts with");
+    // UX-1: PU availability section removed — conflict shown exclusively via conflict banner
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Conflict banner must be present
+    const banner = page.locator("#wwRdDetailsBody .ww-rd-conflict-banner");
+    await expect(banner.first()).toBeVisible({ timeout: 5000 });
+    // Banner title must indicate the conflict
+    const bannerTitle = page.locator("#wwRdDetailsBody .ww-rd-conflict-banner-title");
+    await expect(bannerTitle).toBeVisible();
+    const bannerText = await bannerTitle.textContent();
+    expect(bannerText).toContain("Conflict");
 });
 
 test("C3-08: Voltage group has VT section in main panel (not CT/VT combined)", async ({ page }) => {

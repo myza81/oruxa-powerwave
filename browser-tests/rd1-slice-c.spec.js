@@ -136,8 +136,8 @@ test("RD-1 C-04: PU eligible badge shown for configured voltage group", async ({
             return;
         }
     }
-    // If no configured group found, verify PU section is at least shown
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    // If no configured group found, verify group details panel is shown
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible();
 });
 
 test("RD-1 C-05: no conflict banner for ordinary auto-resolved base", async ({ page }) => {
@@ -289,8 +289,8 @@ test("RD-1 C-10: details panel renders without layout breakage in dark theme", a
 
     // Key elements visible
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name")).toBeVisible();
-    // Slice C-3: PU state shown via status line, not pill
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    // UX-1: PU availability section removed — group details sections present
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible();
 });
 
 test("RD-1 C-11: narrow layout — selecting group navigates to details panel with content", async ({ page }) => {
@@ -314,8 +314,8 @@ test("RD-1 C-11: narrow layout — selecting group navigates to details panel wi
 
     // Details content visible
     await expect(page.locator("#wwRdDetailsBody .ww-rd-details-group-name")).toBeVisible({ timeout: 3000 });
-    // Slice C-3: PU availability shown via status line
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).toBeVisible();
+    // UX-1: PU availability section removed — group details sections present
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible();
 
     // Back button visible
     await expect(page.locator("#rdBackToGroups")).toBeVisible();
