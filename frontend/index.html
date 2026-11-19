@@ -37419,7 +37419,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     } else {
                         configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
                         configHtml += '<div class="ww-rd-voltage-missing-warning" id="wwRdNomKvMissingWarning">⚠ Not configured</div>';
-                        configHtml += '<p class="ww-rd-voltage-missing-reason">Nominal voltage is required for voltage per-unit calculation.</p>';
                     }
                     if (nomProvText !== "Manual" && nomProvText !== "Auto-resolved") {
                         configHtml += '<div class="ww-rd-provenance ' + nomProvClass + '" id="wwRdNomKvProvenance">' + escapeHtml(nomProvText) + '</div>';
@@ -37437,6 +37436,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     }
                     configHtml += '</div>';
                     configHtml += '</div>'; // .ww-rd-field-grid
+                    if (!nomKv) {
+                        configHtml += '<p class="ww-rd-voltage-missing-reason">Nominal voltage is required for voltage per-unit calculation.</p>';
+                    }
                     configHtml += '</div>'; // .ww-rd-section
                 }
             } else if (kind === "current") {
