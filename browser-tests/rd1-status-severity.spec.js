@@ -136,7 +136,7 @@ test("SEV-01: valid auto_resolved nominal voltage shows no PU status line and no
     // UX-1: no PU availability section
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
     // No missing-voltage warning for a configured group
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     // Nominal kV displayed
     await expect(page.locator("#wwRdDetailsBody")).toContainText("132");
 });
@@ -167,7 +167,7 @@ test("SEV-02: valid manual nominal voltage shows no PU status line and no missin
     await injectAndSelectGroup(page, group, "MOCK_SEV_OK_MANUAL");
 
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     await expect(page.locator("#wwRdDetailsBody")).toContainText("275");
 });
 
@@ -198,16 +198,12 @@ test("SEV-03: missing nominal voltage shows amber warning in Voltage Base Config
 
     // UX-1: no PU availability status line
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
-    // Missing-voltage warning must appear
-    const warning = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning");
-    await expect(warning).toBeVisible();
-    const warningText = await warning.textContent();
-    expect(warningText).toContain("Not configured");
-    // Reason paragraph must appear
+    // Single amber warning must appear — no separate "Not configured" badge
     const reason = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason");
     await expect(reason).toBeVisible();
     const reasonText = await reason.textContent();
-    expect(reasonText.toLowerCase()).toMatch(/nominal voltage/i);
+    expect(reasonText.toLowerCase()).toMatch(/nominal voltage.*per.unit/i);
+    await expect(page.locator("#wwRdDetailsBody #wwRdNomKvMissingWarning")).not.toBeVisible();
 });
 
 // SEV-04 (UX-1): Missing-voltage warning also present for missing nominal with legacy_manual
@@ -236,8 +232,7 @@ test("SEV-04: missing nominal voltage with legacy_manual also shows amber warnin
     await injectAndSelectGroup(page, group, "MOCK_SEV_WARN_LM");
 
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
-    const warning = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning");
-    await expect(warning).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).toBeVisible();
 });
 
 // SEV-05 (UX-1): Missing-voltage warning icon in groups list for voltage group without nominal kV

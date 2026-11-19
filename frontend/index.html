@@ -1103,20 +1103,11 @@
             line-height: 1;
             pointer-events: none;
         }
-        /* UX-1: Missing nominal-voltage warning in Voltage Base Configuration section */
-        .ww-rd-voltage-missing-warning {
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: var(--warn);
-            margin-top: 4px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
+        /* UX-1: Single missing-nominal-voltage warning in Voltage Base Configuration section */
         .ww-rd-voltage-missing-reason {
-            font-size: 0.72rem;
-            color: var(--text-dim);
-            margin: 2px 0 0;
+            font-size: 0.82rem;
+            color: var(--warn);
+            margin: 4px 0 0;
             line-height: 1.4;
         }
         /* Severity modifier classes — added to .ww-rd-pu-status-line and other elements */
@@ -37411,33 +37402,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     configHtml = '<div class="ww-rd-section">';
                     configHtml += '<div class="ww-rd-section-heading">Voltage Base Configuration' +
                         '<button class="ww-rd-edit-btn" id="wwRdVoltageEditBtn">Edit</button></div>';
-                    configHtml += '<div class="ww-rd-field-grid">';
-                    configHtml += '<div class="ww-rd-field">';
-                    configHtml += '<div class="ww-rd-field-label">Nominal voltage (L‑L)</div>';
-                    if (nomKv) {
-                        configHtml += '<div class="ww-rd-field-value">' + escapeHtml(nomKv) + '</div>';
-                    } else {
-                        configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
-                        configHtml += '<div class="ww-rd-voltage-missing-warning" id="wwRdNomKvMissingWarning">⚠ Not configured</div>';
-                    }
-                    if (nomProvText !== "Manual" && nomProvText !== "Auto-resolved") {
-                        configHtml += '<div class="ww-rd-provenance ' + nomProvClass + '" id="wwRdNomKvProvenance">' + escapeHtml(nomProvText) + '</div>';
-                    }
-                    configHtml += '</div>';
-                    configHtml += '<div class="ww-rd-field">';
-                    configHtml += '<div class="ww-rd-field-label">Voltage reference</div>';
-                    if (effRef) {
-                        configHtml += '<div class="ww-rd-field-value">' + escapeHtml(effRef) + '</div>';
-                    } else {
-                        configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
-                    }
-                    if (refProvClass && refProvText && refProvText !== "Auto-detected") {
-                        configHtml += '<div class="ww-rd-provenance ' + refProvClass + '">' + escapeHtml(refProvText) + '</div>';
-                    }
-                    configHtml += '</div>';
-                    configHtml += '</div>'; // .ww-rd-field-grid
                     if (!nomKv) {
-                        configHtml += '<p class="ww-rd-voltage-missing-reason">Nominal voltage is required for voltage per-unit calculation.</p>';
+                        configHtml += '<div class="ww-rd-voltage-missing-reason">⚠ Nominal voltage is required for voltage per-unit calculation.</div>';
+                    } else {
+                        configHtml += '<div class="ww-rd-field-grid">';
+                        configHtml += '<div class="ww-rd-field">';
+                        configHtml += '<div class="ww-rd-field-label">Nominal voltage (L‑L)</div>';
+                        configHtml += '<div class="ww-rd-field-value">' + escapeHtml(nomKv) + '</div>';
+                        if (nomProvText !== "Manual" && nomProvText !== "Auto-resolved") {
+                            configHtml += '<div class="ww-rd-provenance ' + nomProvClass + '" id="wwRdNomKvProvenance">' + escapeHtml(nomProvText) + '</div>';
+                        }
+                        configHtml += '</div>';
+                        configHtml += '<div class="ww-rd-field">';
+                        configHtml += '<div class="ww-rd-field-label">Voltage reference</div>';
+                        if (effRef) {
+                            configHtml += '<div class="ww-rd-field-value">' + escapeHtml(effRef) + '</div>';
+                        } else {
+                            configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
+                        }
+                        if (refProvClass && refProvText && refProvText !== "Auto-detected") {
+                            configHtml += '<div class="ww-rd-provenance ' + refProvClass + '">' + escapeHtml(refProvText) + '</div>';
+                        }
+                        configHtml += '</div>';
+                        configHtml += '</div>'; // .ww-rd-field-grid
                     }
                     configHtml += '</div>'; // .ww-rd-section
                 }

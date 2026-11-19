@@ -84,13 +84,11 @@ test("C3-02: voltage group shows Nominal voltage (L-L) label and Not resolved or
         if (badge.trim() === "V") {
             await groups.nth(i).click();
             await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
-            const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
-            const hasNomLabel = labels.some(l => l.includes("Nominal voltage"));
-            expect(hasNomLabel).toBeTruthy();
-            // Value is either a kV string or "Not resolved"
+            // Voltage Base Configuration shows either a resolved kV value or the missing-voltage warning
             const values = await page.locator("#wwRdDetailsBody .ww-rd-field-value").allTextContents();
-            const hasValue = values.some(v => v.includes("kV") || v.includes("Not resolved"));
-            expect(hasValue).toBeTruthy();
+            const hasKvValue = values.some(v => v.includes("kV"));
+            const hasMissingWarning = await page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason").count() > 0;
+            expect(hasKvValue || hasMissingWarning).toBeTruthy();
             return;
         }
     }
@@ -109,6 +107,10 @@ test("C3-03: two-column grid has Voltage reference label alongside Nominal volta
         const badge = await groups.nth(i).locator(".ww-rd-group-badge").textContent().catch(() => "");
         if (badge.trim() === "V") {
             await groups.nth(i).click();
+            await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
+            // Field-grid is only shown when nominal voltage is resolved; skip if missing warning shown instead
+            const hasMissingWarning = await page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason").count() > 0;
+            if (hasMissingWarning) return;
             await expect(page.locator("#wwRdDetailsBody .ww-rd-field-grid").first()).toBeVisible({ timeout: 5000 });
             const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
             const hasVRef = labels.some(l => l.includes("Voltage reference"));
@@ -230,7 +232,7 @@ test("C3-06: Available state shows checkmark and green-class word (not inside a 
     // Nominal voltage is displayed (132 kV from mock)
     await expect(page.locator("#wwRdDetailsBody")).toContainText("132");
     // No missing-voltage warning for a configured group
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
 });
 
 test("C3-07: Conflict group shows Blocked (not full sentence as status word)", async ({ page }) => {

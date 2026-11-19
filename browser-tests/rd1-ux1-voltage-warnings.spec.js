@@ -144,7 +144,7 @@ test("UX1-01: auto-resolved nominal voltage — no warning in groups list or con
     // No warning icon in groups list
     await expect(item.locator(".ww-rd-group-missing-voltage")).not.toBeVisible();
     // No warning in config section
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     // No PU availability section
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
     // Nominal kV displayed
@@ -179,7 +179,7 @@ test("UX1-02: manually configured valid nominal voltage — no warning", async (
     const item = await selectGroupByName(page, "MOCK_UX1_MANUAL_OK");
 
     await expect(item.locator(".ww-rd-group-missing-voltage")).not.toBeVisible();
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     await expect(page.locator("#wwRdDetailsBody")).toContainText("132");
 });
 
@@ -220,15 +220,13 @@ test("UX1-04: unresolved nominal voltage — warning in Voltage Base Configurati
     await selectFirstRecording(page);
     await selectGroupByName(page, "MOCK_UX1_CFG_WARN");
 
-    // Warning must appear in config section
-    const warning = page.locator("#wwRdDetailsBody #wwRdNomKvMissingWarning");
-    await expect(warning).toBeVisible();
-    await expect(warning).toContainText("Not configured");
-    // Reason paragraph
+    // Single amber warning must appear — no separate "Not configured" badge
     const reason = page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason");
     await expect(reason).toBeVisible();
     const reasonText = await reason.textContent();
     expect(reasonText.toLowerCase()).toMatch(/nominal voltage.*per.unit/i);
+    // No redundant badge or separate id
+    await expect(page.locator("#wwRdDetailsBody #wwRdNomKvMissingWarning")).not.toBeVisible();
 });
 
 // UX1-05: Correct warning scope — only the missing-voltage group gets the warning, not others
@@ -309,10 +307,10 @@ test("UX1-07: warning disappears after nominal-voltage is configured via Edit �
     await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 
     // Check if there is a missing warning — only proceed with the Edit flow if there is
-    const hasWarning = await page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning").count();
+    const hasWarning = await page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason").count();
     if (hasWarning === 0) {
         // Group already has nominal kV — verify no warning, test still verifies correct behavior
-        await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+        await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
         return;
     }
 
@@ -335,7 +333,7 @@ test("UX1-07: warning disappears after nominal-voltage is configured via Edit �
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).not.toBeVisible({ timeout: 8000 });
 
     // Warning must be gone
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     // Nominal kV displayed
     await expect(page.locator("#wwRdDetailsBody")).toContainText("275");
 });
@@ -355,8 +353,8 @@ test("UX1-08: warning appears when nominal voltage is null in group data", async
     await selectFirstRecording(page);
     const item = await selectGroupByName(page, "MOCK_UX1_REAPPEAR");
 
-    // Warning present when nominal is null
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).toBeVisible();
+    // Single amber warning present when nominal is null
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).toBeVisible();
     await expect(item.locator(".ww-rd-group-missing-voltage")).toBeVisible();
 });
 
@@ -431,7 +429,7 @@ test("UX1-10: confirmed-conflict red banner preserved when manual_conflict_detec
     const item = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK_UX1_CONFLICT" });
     await expect(item.locator(".ww-rd-group-conflict")).toBeVisible();
     // No "mislabeled as missing nominal voltage" — it has nominal_voltage_ll_kv set
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
 });
 
 // UX1-11: Backend eligibility still blocks invalid PU operations (structural, no live PU attempt)
@@ -462,7 +460,7 @@ test("UX1-11: backend pu_status preserved in group data — base_required state 
     await selectGroupByName(page, "MOCK_UX1_PU_GATE");
 
     // group_not_confirmed with valid nominal kV — no missing-voltage warning (warning is only for null kV)
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     // Nominal kV is displayed normally
     await expect(page.locator("#wwRdDetailsBody")).toContainText("275");
     // No PU section shown (removed by UX-1)
@@ -554,11 +552,11 @@ test("UX1-15: switching between groups updates warning state correctly", async (
 
     // Select the missing-voltage group
     await selectGroupByName(page, "MOCK_UX1_SWITCH_MISSING");
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).toBeVisible();
 
     // Switch to the OK group
     await selectGroupByName(page, "MOCK_UX1_SWITCH_OK");
-    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-warning")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-voltage-missing-reason")).not.toBeVisible();
     await expect(page.locator("#wwRdDetailsBody")).toContainText("275");
 });
 
