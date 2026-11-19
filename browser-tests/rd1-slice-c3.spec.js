@@ -127,12 +127,12 @@ test("C3-04: Voltage Base Configuration shows provenance labels (D2: Configurati
     // Use voltage group specifically
     await selectGroupByKind(page, "voltage");
 
-    // D2 refinement: standalone "Configuration source" field is gone;
-    // per-property provenance labels appear instead (e.g. Auto-resolved, Auto-detected, etc.)
+    // D2 refinement: standalone "Configuration source" field is gone.
+    // DEC cleanup: normal auto-resolved state shows no subtitle provenance labels.
     const bodyText = await page.locator("#wwRdDetailsBody").textContent();
     expect(bodyText).not.toMatch(/Configuration source/);
-    // Provenance label present for nominal voltage
-    await expect(page.locator("#wwRdDetailsBody #wwRdNomKvProvenance")).toBeVisible({ timeout: 5000 });
+    // "Auto-resolved" subtitle label must not appear in the read-only section
+    expect(bodyText).not.toMatch(/Auto-resolved/);
 });
 
 test("C3-05: Per-unit availability section present for voltage group with status word and reason paragraph", async ({ page }) => {

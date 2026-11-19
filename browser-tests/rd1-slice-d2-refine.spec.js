@@ -87,7 +87,8 @@ async function injectAndSelectVoltageGroup(page, voltageConfigOverrides, display
 
 // ---- REF-01: Auto-resolved kV shows "Auto-resolved" provenance ---------------
 
-test("REF-01: auto_resolved kV shows Auto-resolved provenance (no Configuration source label)", async ({ page }) => {
+test("REF-01: auto_resolved kV shows no provenance subtitle (no Configuration source label, no Auto-resolved label)", async ({ page }) => {
+    // DEC cleanup: normal auto-resolved state shows values without subtitle labels.
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -97,8 +98,11 @@ test("REF-01: auto_resolved kV shows Auto-resolved provenance (no Configuration 
         effective_reference: "line_to_ground",
     });
     const detailsBody = page.locator("#wwRdDetailsBody");
-    // Property-level provenance for nominal voltage (by ID to avoid matching the reference provenance too)
-    await expect(detailsBody.locator("#wwRdNomKvProvenance")).toHaveText(/Auto-resolved/);
+    // Nominal kV value must still display
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Base Configuration" });
+    await expect(section).toContainText("275 kV");
+    // No "Auto-resolved" subtitle label in read-only
+    await expect(detailsBody.locator("#wwRdNomKvProvenance")).not.toBeVisible();
     // No standalone "Configuration source:" label
     const configSourceText = await detailsBody.textContent();
     expect(configSourceText).not.toMatch(/Configuration source/);
@@ -126,7 +130,8 @@ test("REF-02: needs_review kV shows Not resolved provenance", async ({ page }) =
 
 // ---- REF-03: Manual kV shows "Manual" provenance (not "Engineer configured") -
 
-test("REF-03: manual kV shows Manual provenance, not Engineer configured terminology", async ({ page }) => {
+test("REF-03: manual kV shows value without 'Manual' subtitle, no Engineer configured terminology", async ({ page }) => {
+    // DEC cleanup: normal manual state shows no subtitle provenance labels.
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -136,11 +141,14 @@ test("REF-03: manual kV shows Manual provenance, not Engineer configured termino
         effective_reference: "line_to_ground",
     });
     const detailsBody = page.locator("#wwRdDetailsBody");
-    const nomField = detailsBody.locator(".ww-rd-field").first();
-    const nomText = await nomField.textContent();
-    expect(nomText).toMatch(/Manual/);
-    expect(nomText).not.toMatch(/engineer configured/i);
-    expect(nomText).not.toMatch(/manually configured/i);
+    // Value is shown
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Base Configuration" });
+    await expect(section).toContainText("132 kV");
+    // No subtitle provenance labels for normal manual state
+    await expect(detailsBody.locator("#wwRdNomKvProvenance")).not.toBeVisible();
+    // No legacy terminology
+    expect(await detailsBody.textContent()).not.toMatch(/engineer configured/i);
+    expect(await detailsBody.textContent()).not.toMatch(/manually configured/i);
     expect(await detailsBody.textContent()).not.toMatch(/Configuration source/);
 });
 
@@ -375,7 +383,8 @@ test("REF-11: read-only section does not contain Configuration source label", as
 
 // ---- REF-12: Voltage reference provenance in read-only section ---------------
 
-test("REF-12: read-only section shows voltage reference provenance Auto-detected or Manual", async ({ page }) => {
+test("REF-12: read-only section does not show Auto-detected or Auto-resolved subtitle labels", async ({ page }) => {
+    // DEC cleanup: normal auto-resolved state shows no subtitle provenance labels.
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -385,9 +394,14 @@ test("REF-12: read-only section shows voltage reference provenance Auto-detected
         reference_mode: "auto",
         effective_reference: "line_to_ground",
     });
-    const detailsBody = page.locator("#wwRdDetailsBody");
-    const provenances = await detailsBody.locator(".ww-rd-provenance").allTextContents();
-    expect(provenances.some(t => t.includes("Auto-detected") || t.includes("Auto-resolved"))).toBe(true);
+    // Values must still display correctly
+    const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Base Configuration" });
+    await expect(section).toContainText("275 kV");
+    await expect(section).toContainText("Line-to-ground");
+    // No Auto-detected / Auto-resolved subtitle labels in the read-only section
+    const provenances = await page.locator("#wwRdDetailsBody").locator(".ww-rd-provenance").allTextContents();
+    expect(provenances.some(t => t.includes("Auto-detected"))).toBe(false);
+    expect(provenances.some(t => t.includes("Auto-resolved"))).toBe(false);
 });
 
 // ---- REF-13: Advanced section collapsed by default for auto group -------------
@@ -482,7 +496,8 @@ test("REF-16: Apply with auto-detected reference does not send reference_mode=ma
 
 // ---- REF-17: Nominal voltage field in read-only view -------------------------
 
-test("REF-17: nominal voltage field shows kV value and provenance tag", async ({ page }) => {
+test("REF-17: nominal voltage field shows kV value without subtitle provenance tag in normal states", async ({ page }) => {
+    // DEC cleanup: normal auto-resolved state shows kV value without subtitle provenance labels.
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -494,9 +509,8 @@ test("REF-17: nominal voltage field shows kV value and provenance tag", async ({
     const detailsBody = page.locator("#wwRdDetailsBody");
     // Value is shown
     await expect(detailsBody.locator(".ww-rd-field-value").first()).toContainText("275");
-    // Provenance tag present
-    const provText = await detailsBody.locator(".ww-rd-provenance").first().textContent();
-    expect(provText).toMatch(/Auto-resolved|Manual|Not resolved|Review required/);
+    // No subtitle provenance label for auto-resolved (normal state)
+    await expect(detailsBody.locator("#wwRdNomKvProvenance")).not.toBeVisible();
 });
 
 // ---- REF-18: Revert button not in normal editor actions ---------------------

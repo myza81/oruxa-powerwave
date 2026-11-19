@@ -1091,6 +1091,7 @@
         .ww-rd-provenance--manual { color: var(--text-dim); }
         .ww-rd-provenance--warn { color: var(--warn); }
         .ww-rd-provenance--unresolved { color: var(--warn); }
+        .ww-rd-provenance--suggested { color: var(--text-dim); font-style: italic; }
         .ww-rd-ref-unresolved-note { font-size: var(--font-size-xs, 0.72rem); color: var(--warn); display: block; margin-top: 2px; }
         /* PU availability section */
         .ww-rd-pu-status-line {
@@ -37163,20 +37164,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '<div class="ww-rd-section-heading">Voltage Transformer (VT)</div>';
                 html += '<div class="ww-rd-field-grid">';
                 html += '<div class="ww-rd-field">';
-                html += '<div class="ww-rd-field-label">Primary (H side, kV L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-label">VT primary voltage (kV, L&#x2011;L)</div>';
                 html += '<input type="number" class="ww-rd-edit-input" id="wwRdVtPrimaryKv"' +
                     ' min="0" step="any" placeholder="e.g. 275"' +
                     ' value="' + escapeHtml(ed.draftPrimaryKv) + '"' +
+                    ' oninput="wwRdVtUpdateLiveRatio()"' +
                     (ed.pending ? ' disabled' : '') + '>';
                 html += '</div>';
                 html += '<div class="ww-rd-field">';
-                html += '<div class="ww-rd-field-label">Secondary (X side, V L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-label">VT secondary voltage (V, L&#x2011;L)</div>';
                 html += '<input type="number" class="ww-rd-edit-input" id="wwRdVtSecondaryV"' +
                     ' min="0" step="any" placeholder="e.g. 110"' +
                     ' value="' + escapeHtml(ed.draftSecondaryV) + '"' +
+                    ' oninput="wwRdVtUpdateLiveRatio()"' +
                     (ed.pending ? ' disabled' : '') + '>';
                 html += '</div>';
                 html += '</div>'; // .ww-rd-field-grid
+                // Live ratio preview
+                const _livePrimKv = parseFloat(ed.draftPrimaryKv);
+                const _liveSecV = parseFloat(ed.draftSecondaryV);
+                const _liveRatioStr = (!isNaN(_livePrimKv) && _livePrimKv > 0 && !isNaN(_liveSecV) && _liveSecV > 0)
+                    ? (parseFloat((_livePrimKv).toPrecision(6)).toString() + ' kV\u00a0/\u00a0' + parseFloat((_liveSecV).toPrecision(6)).toString() + ' V')
+                    : '\u2014';
+                html += '<div class="ww-rd-field-sub" style="margin-bottom:4px">Ratio: <span id="wwRdVtLiveRatio">' + _liveRatioStr + '</span></div>';
                 html += '<div class="ww-rd-edit-actions">';
                 html += '<button class="ww-rd-apply-btn" id="wwRdVtApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying\u2026' : 'Apply') + '</button>';
                 html += '<button class="ww-rd-cancel-btn" id="wwRdVtCancelBtn">Cancel</button>';
@@ -37196,27 +37206,57 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Read mode
             const vtPrimary = vc && vc.vt_primary_v;
             const vtSecondary = vc && vc.vt_secondary_v;
-            const vtRatio = vc && vc.vt_ratio;
             const configured = vtPrimary != null && vtSecondary != null;
+            const vtSugPrimary = vc && vc.vt_suggested_primary_v;
+            const vtSugSecondary = vc && vc.vt_suggested_secondary_v;
+            const hasSuggestion = !configured && vtSugPrimary != null && vtSugSecondary != null;
+
+            // Helper: format a kV/V pair as "X kV / Y V" with clean precision
+            function fmtVtRatio(primaryV, secondaryV) {
+                const kv = primaryV / 1000;
+                const kvStr = parseFloat(kv.toPrecision(6)).toString();
+                const vStr = parseFloat(secondaryV.toPrecision(6)).toString();
+                return kvStr + ' kV\u00a0/\u00a0' + vStr + ' V';
+            }
 
             let html = '<div class="ww-rd-section">';
             html += '<div class="ww-rd-section-heading">Voltage Transformer (VT)' +
                 '<button class="ww-rd-edit-btn" id="wwRdVtEditBtn">Edit</button></div>';
-            if (!configured) {
+            if (!configured && !hasSuggestion) {
                 html += '<div class="ww-rd-field-value ww-rd-status--neutral">\u2014 Not configured</div>';
-            } else {
+            } else if (hasSuggestion) {
+                // Suggestion state \u2014 distinct from configured and not-configured
                 html += '<div class="ww-rd-field-grid">';
                 html += '<div class="ww-rd-field">';
-                html += '<div class="ww-rd-field-label">Primary (H side, L&#x2011;L)</div>';
-                html += '<div class="ww-rd-field-value">' + (vtPrimary / 1000).toPrecision(6).replace(/\\.?0+$/, '') + ' kV</div>';
+                html += '<div class="ww-rd-field-label">VT primary voltage (kV, L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-value">' + parseFloat((vtSugPrimary / 1000).toPrecision(6)).toString() + ' kV</div>';
+                html += '<div class="ww-rd-field-sub ww-rd-provenance--suggested">Suggested</div>';
                 html += '</div>';
                 html += '<div class="ww-rd-field">';
-                html += '<div class="ww-rd-field-label">Secondary (X side, L&#x2011;L)</div>';
-                html += '<div class="ww-rd-field-value">' + vtSecondary + ' V</div>';
+                html += '<div class="ww-rd-field-label">VT secondary voltage (V, L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-value">' + parseFloat(vtSugSecondary.toPrecision(6)).toString() + ' V</div>';
+                html += '<div class="ww-rd-field-sub ww-rd-provenance--suggested">Suggested</div>';
                 html += '</div>';
                 html += '<div class="ww-rd-field">';
                 html += '<div class="ww-rd-field-label">Ratio</div>';
-                html += '<div class="ww-rd-field-value">' + (vtRatio != null ? Math.round(vtRatio) + '\u00a0:\u00a01' : '\u2014') + '</div>';
+                html += '<div class="ww-rd-field-value">' + fmtVtRatio(vtSugPrimary, vtSugSecondary) + '</div>';
+                html += '</div>';
+                html += '</div>'; // .ww-rd-field-grid
+                html += '<div class="ww-rd-field-sub" style="color:var(--text-dim);margin-top:4px">Based on nominal voltage. Edit to review and save.</div>';
+            } else {
+                // Configured state (vt_authority = recording_metadata or manual)
+                html += '<div class="ww-rd-field-grid">';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">VT primary voltage (kV, L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-value">' + parseFloat((vtPrimary / 1000).toPrecision(6)).toString() + ' kV</div>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">VT secondary voltage (V, L&#x2011;L)</div>';
+                html += '<div class="ww-rd-field-value">' + parseFloat(vtSecondary.toPrecision(6)).toString() + ' V</div>';
+                html += '</div>';
+                html += '<div class="ww-rd-field">';
+                html += '<div class="ww-rd-field-label">Ratio</div>';
+                html += '<div class="ww-rd-field-value">' + fmtVtRatio(vtPrimary, vtSecondary) + '</div>';
                 html += '</div>';
                 if (vc.vt_provenance_note) {
                     html += '<div class="ww-rd-field">';
@@ -37492,7 +37532,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     } else {
                         configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
                     }
-                    configHtml += '<div class="ww-rd-provenance ' + nomProvClass + '" id="wwRdNomKvProvenance">' + escapeHtml(nomProvText) + '</div>';
+                    if (nomProvText !== "Manual" && nomProvText !== "Auto-resolved") {
+                        configHtml += '<div class="ww-rd-provenance ' + nomProvClass + '" id="wwRdNomKvProvenance">' + escapeHtml(nomProvText) + '</div>';
+                    }
                     configHtml += '</div>';
                     configHtml += '<div class="ww-rd-field">';
                     configHtml += '<div class="ww-rd-field-label">Voltage reference</div>';
@@ -37501,7 +37543,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     } else {
                         configHtml += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not resolved</div>';
                     }
-                    if (refProvClass && refProvText) {
+                    if (refProvClass && refProvText && refProvText !== "Auto-detected") {
                         configHtml += '<div class="ww-rd-provenance ' + refProvClass + '">' + escapeHtml(refProvText) + '</div>';
                     }
                     configHtml += '</div>';
@@ -37660,6 +37702,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.currentEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
+        }
+
+        // D4-suggest: live ratio update while typing in the VT edit form.
+        function wwRdVtUpdateLiveRatio() {
+            const pEl = document.getElementById("wwRdVtPrimaryKv");
+            const sEl = document.getElementById("wwRdVtSecondaryV");
+            const rEl = document.getElementById("wwRdVtLiveRatio");
+            if (!rEl) return;
+            const p = pEl ? parseFloat(pEl.value) : NaN;
+            const s = sEl ? parseFloat(sEl.value) : NaN;
+            if (!isNaN(p) && p > 0 && !isNaN(s) && s > 0) {
+                rEl.textContent = parseFloat(p.toPrecision(6)).toString() + " kV / " + parseFloat(s.toPrecision(6)).toString() + " V";
+            } else {
+                rEl.textContent = "—";
+            }
         }
 
         // D4: Apply VT instrument-transformer configuration.
@@ -62418,9 +62475,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
                 const g = groups.find((x) => x.id === wwRdState.selectedGroupId);
                 const vc = g && g.voltage_config;
+                // Prefill: authoritative saved values first; fall back to suggestions; else empty.
+                let initPrimaryKv = "";
+                let initSecondaryV = "";
+                if (vc && vc.vt_primary_v != null) {
+                    initPrimaryKv = String(parseFloat((vc.vt_primary_v / 1000).toPrecision(10)));
+                    initSecondaryV = String(vc.vt_secondary_v != null ? vc.vt_secondary_v : "");
+                } else if (vc && vc.vt_suggested_primary_v != null) {
+                    initPrimaryKv = String(parseFloat((vc.vt_suggested_primary_v / 1000).toPrecision(10)));
+                    initSecondaryV = String(vc.vt_suggested_secondary_v != null ? vc.vt_suggested_secondary_v : "");
+                }
                 wwRdState.vtEdit = {
-                    draftPrimaryKv: vc && vc.vt_primary_v != null ? String(vc.vt_primary_v / 1000) : "",
-                    draftSecondaryV: vc && vc.vt_secondary_v != null ? String(vc.vt_secondary_v) : "",
+                    draftPrimaryKv: initPrimaryKv,
+                    draftSecondaryV: initSecondaryV,
                     pending: false,
                     error: null,
                 };

@@ -299,8 +299,9 @@ test("C4-02f: voltage group shows Nominal voltage, Voltage reference, property-l
             expect(labels.some(l => l.includes("Voltage reference"))).toBeTruthy();
             // "Configuration source" standalone field removed — verify it is gone
             expect(labels.some(l => l.includes("Configuration source"))).toBeFalsy();
-            // Property-level provenance present for nominal voltage
-            await expect(page.locator("#wwRdDetailsBody #wwRdNomKvProvenance")).toBeVisible();
+            // DEC cleanup: "Auto-resolved" / "Manual" subtitle provenance labels absent in normal read-only display
+            const bodyText = await page.locator("#wwRdDetailsBody").textContent();
+            expect(bodyText).not.toMatch(/Auto-resolved/);
             // PU availability section present (voltage groups only)
             const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
             expect(headings.some(h => h.includes("Per-unit availability"))).toBeTruthy();

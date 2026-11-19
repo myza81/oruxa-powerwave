@@ -64,6 +64,10 @@ class VoltageGroupConfigView:
     vt_ratio: float | None = None
     vt_authority: str = "not_configured"
     vt_provenance_note: str | None = None
+    # D4-suggest: non-persisted suggestion fields (None when VT already configured or nominal kV unresolved).
+    vt_suggested_primary_v: float | None = None
+    vt_suggested_secondary_v: float | None = None
+    vt_suggested_ratio: float | None = None
 
 
 @dataclass(slots=True)
@@ -104,6 +108,26 @@ def _build_voltage_view(
 ) -> tuple[VoltageGroupConfigView, str, str | None]:
     effective = resolve_effective_voltage_reference_for_group(group, config)
     resolution = resolve_voltage_base_for_group(group, config)
+    # D4-suggest: compute non-persisted VT suggestions when VT is not configured
+    # and nominal voltage is valid and uncontested.
+    _vt_suggested_primary_v: float | None = None
+    _vt_suggested_secondary_v: float | None = None
+    _vt_suggested_ratio: float | None = None
+    if (
+        config is not None
+        and (config.vt_authority if config is not None else "not_configured") == "not_configured"
+        and not (config.manual_conflict_detected if config is not None else False)
+        and (config.base_authority if config is not None else "unavailable") not in ("needs_review", "unavailable")
+        and config.nominal_voltage_ll_kv is not None
+        and isinstance(config.nominal_voltage_ll_kv, (int, float))
+        and not isinstance(config.nominal_voltage_ll_kv, bool)
+        and config.nominal_voltage_ll_kv > 0
+        and config.nominal_voltage_ll_kv == config.nominal_voltage_ll_kv  # not NaN
+    ):
+        _vt_suggested_primary_v = config.nominal_voltage_ll_kv * 1000.0
+        _vt_suggested_secondary_v = 110.0
+        _vt_suggested_ratio = _vt_suggested_primary_v / _vt_suggested_secondary_v
+
     view = VoltageGroupConfigView(
         nominal_voltage_ll_kv=config.nominal_voltage_ll_kv if config is not None else None,
         reference_mode=config.reference_mode if config is not None else "auto",
@@ -121,6 +145,9 @@ def _build_voltage_view(
         vt_ratio=config.vt_ratio if config is not None else None,
         vt_authority=config.vt_authority if config is not None else "not_configured",
         vt_provenance_note=config.vt_provenance_note if config is not None else None,
+        vt_suggested_primary_v=_vt_suggested_primary_v,
+        vt_suggested_secondary_v=_vt_suggested_secondary_v,
+        vt_suggested_ratio=_vt_suggested_ratio,
     )
     pu_status = "configured" if resolution.status == _VOLTAGE_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason

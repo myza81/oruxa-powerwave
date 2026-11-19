@@ -54,6 +54,9 @@ function makeMockVoltageGroup(id, voltageConfigOverrides, sourceId) {
             vt_ratio: null,
             vt_authority: "not_configured",
             vt_provenance_note: null,
+            vt_suggested_primary_v: null,
+            vt_suggested_secondary_v: null,
+            vt_suggested_ratio: null,
         }, voltageConfigOverrides || {}),
     };
 }
@@ -169,7 +172,7 @@ test("D4-03: VT section shows primary kV, secondary V and ratio when configured"
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
     await expect(section).toContainText("275");     // kV
     await expect(section).toContainText("110");     // V secondary
-    await expect(section).toContainText("2500");    // ratio
+    await expect(section).toContainText("275 kV");  // ratio in "X kV / Y V" format
 });
 
 // ---- D4-04: VT Edit button is visible in read mode -------------------------

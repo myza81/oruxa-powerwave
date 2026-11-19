@@ -179,6 +179,9 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             vt_ratio=view.voltage_config.vt_ratio,
             vt_authority=view.voltage_config.vt_authority,
             vt_provenance_note=view.voltage_config.vt_provenance_note,
+            vt_suggested_primary_v=view.voltage_config.vt_suggested_primary_v,
+            vt_suggested_secondary_v=view.voltage_config.vt_suggested_secondary_v,
+            vt_suggested_ratio=view.voltage_config.vt_suggested_ratio,
         )
         if view.voltage_config is not None
         else None
