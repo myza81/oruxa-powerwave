@@ -92,13 +92,25 @@ class CurrentGroupConfigRegistry:
         ct_authority: str | None = None,
         ct_provenance_note: str | None = None,
         update_ct: bool = False,
+        equipment_mva: float | None = None,
+        equipment_linked_voltage_group_id: str | None = None,
+        update_equipment: bool = False,
     ) -> CurrentBaseConfiguration:
-        """Publish CT-validated fields as one configuration replacement.
+        """Publish CT-validated and/or equipment-metadata fields as one
+        configuration replacement.
 
         Merge omitted fields under the existing lock, so concurrent method
-        and CT edits cannot overwrite each other's accepted fields.
-        `update_ct=True` applies `ct_primary_a`, `ct_secondary_a`, `ct_authority`,
-        and `ct_provenance_note`; False (default) preserves the existing CT fields.
+        and metadata edits cannot overwrite each other's accepted fields.
+
+        ``update_ct=True`` applies ``ct_primary_a``, ``ct_secondary_a``,
+        ``ct_authority``, and ``ct_provenance_note``; False preserves existing
+        CT fields.
+
+        ``update_equipment=True`` applies the D3 independent equipment-metadata
+        fields ``equipment_mva`` and ``equipment_linked_voltage_group_id``.
+        These fields are NEVER cleared by the method setters, so this path is
+        always additive and never destructive to existing PU configuration.
+
         All copies (including the return value) are prepared before publication.
         """
         with self._lock:
@@ -112,6 +124,9 @@ class CurrentGroupConfigRegistry:
                 candidate.ct_secondary_a = ct_secondary_a
                 candidate.ct_authority = ct_authority if ct_authority is not None else "not_configured"
                 candidate.ct_provenance_note = ct_provenance_note
+            if update_equipment:
+                candidate.equipment_mva = equipment_mva
+                candidate.equipment_linked_voltage_group_id = equipment_linked_voltage_group_id
             result = _copy_config(candidate)
             self._configs[key] = candidate
             return result

@@ -167,12 +167,31 @@ class CurrentBaseConfiguration:
     ct_secondary_a: float | None = None
     ct_authority: str = "not_configured"
     ct_provenance_note: str | None = None
+    # D3: Independent equipment-rating metadata -- deliberately separate from the
+    # method-coupled fields (equipment_rating_mva / linked_voltage_group_id above).
+    # These two fields persist regardless of which PU current-base method is active;
+    # they are NEVER cleared by set_current_base_manual() or set_current_base_none().
+    # Storing equipment capacity independently of PU method selection is the core
+    # D3 engineering requirement (OQ-D3-1 Option C).
+    equipment_mva: float | None = None
+    equipment_linked_voltage_group_id: str | None = None
 
     @property
     def ct_ratio(self) -> float | None:
         if self.ct_primary_a and self.ct_secondary_a and self.ct_secondary_a > 0:
             return self.ct_primary_a / self.ct_secondary_a
         return None
+
+    def compute_equipment_rated_current_ka(self, nominal_voltage_ll_kv: float | None) -> float | None:
+        """Derives rated current from independent equipment_mva and an externally
+        supplied nominal L-L kV (from the associated Voltage group).  Uses the
+        identical formula as equipment_rating_ibase_ka() -- always raw LL voltage,
+        never reference-aware -- but is callable for all three methods since
+        equipment_mva is now method-independent.  Returns None when either input
+        is absent or the result is not representable."""
+        if not _positive_finite(self.equipment_mva):
+            return None
+        return equipment_rating_ibase_ka(self.equipment_mva, nominal_voltage_ll_kv) if nominal_voltage_ll_kv else None
 
 
 def equipment_rating_ibase_ka(equipment_rating_mva: float, applicable_voltage_ll_kv: float) -> float | None:

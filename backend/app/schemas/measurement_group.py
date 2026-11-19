@@ -103,6 +103,10 @@ class CurrentGroupConfigOut(BaseModel):
     ct_ratio: float | None = None
     ct_authority: str = "not_configured"
     ct_provenance_note: str | None = None
+    # D3: Independent equipment-rating metadata (method-independent).
+    equipment_mva: float | None = None
+    equipment_linked_voltage_group_id: str | None = None
+    equipment_rated_current_ka: float | None = None
 
 
 class MeasurementGroupOut(BaseModel):
@@ -172,16 +176,30 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
 
 
 class CurrentGroupConfigUpdateRequest(BaseModel):
-    """PUT body for a Current group's own configuration. Exactly one
-    request shape per `method`, dispatched server-side to the matching
-    Slice 4 setter -- the API never partially applies a method's own
-    fields the way DEC-049's single flat PUT can; see
-    `app.services.current_group_config_service`'s own per-method setter
-    docstrings for the exact field requirements/mutual exclusivity this
-    endpoint enforces (never re-validated here, only passed through)."""
+    """PUT body for a Current group's own configuration.
 
+    Two dispatch paths:
+
+    1. ``update_equipment_metadata_only=True`` (D3): updates only the
+       independent ``equipment_mva`` / ``equipment_linked_voltage_group_id``
+       fields without touching the PU current-base method.  ``method`` must
+       not be supplied in this path; existing method/manual_ibase_ka/etc are
+       preserved exactly.
+
+    2. ``update_equipment_metadata_only=False`` (default): dispatches to
+       exactly one of Slice 4's three method setters based on ``body.method``
+       -- existing behavior completely unchanged.
+    """
+
+    # D3 independent equipment-metadata path (method-safe).
+    update_equipment_metadata_only: bool = False
+    equipment_mva: PerUnitBaseNumber | None = None
+    equipment_linked_voltage_group_id: str | None = None
+    clear_equipment_mva: bool = False
+
+    # Existing method-setter fields (used when update_equipment_metadata_only=False).
     base_reference_side: ReferenceSide = "unknown"
-    method: CurrentBaseMethod
+    method: CurrentBaseMethod = "none"
     equipment_rating_mva: PerUnitBaseNumber | None = None
     linked_voltage_group_id: str | None = None
     manual_voltage_base_kv: PerUnitBaseNumber | None = None

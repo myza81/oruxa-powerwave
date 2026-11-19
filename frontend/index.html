@@ -36615,6 +36615,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             detailsView: "recording", // "recording"|"group" — what Column 3 shows (Slice C-1)
             // D2: inline voltage-base edit state (null = not editing)
             voltageEdit: null,       // null | { draftKv, draftRefMode, draftRefOverride, draftRefSide, pending, error }
+            // D3: inline current equipment-rating edit state (null = not editing)
+            currentEdit: null,       // null | { draftMva, draftLinkedGroupId, pending, error }
         };
 
         // ------------------------------------------------------------------
@@ -36709,6 +36711,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.selectedGroupId = null;
             wwRdState.detailsView = "recording"; // Slice C-1: show Recording Info on selection
             wwRdState.voltageEdit = null; // D2: discard any in-progress edit on source change
+            wwRdState.currentEdit = null; // D3: discard any in-progress current edit on source change
             // UAT-B-07/Slice C-1: in narrow layout, advance to the groups panel.
             // Recording Info is accessible via the "Recording Info" link in the
             // groups panel header area, or by tapping "← Groups" after going
@@ -37052,31 +37055,68 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwRdCurrentConfigHtml(g) {
             const cc = g.current_config;
-            // All current groups show Equipment Rating section regardless of method.
+            const ed = wwRdState.currentEdit;
+
+            if (ed) {
+                // Edit mode — MVA input + voltage group selector
+                const sourceGroups = ww.measurementGroups.get(g.source_id) || [];
+                const voltageGroups = sourceGroups.filter(function(grp) { return grp.kind === "voltage"; });
+                let groupOptions = '<option value="">— None —</option>';
+                for (const vg of voltageGroups) {
+                    const kv = vg.voltage_config && vg.voltage_config.nominal_voltage_ll_kv != null
+                        ? ' (' + vg.voltage_config.nominal_voltage_ll_kv + ' kV)' : '';
+                    groupOptions += '<option value="' + escapeHtml(vg.id) + '"' +
+                        (ed.draftLinkedGroupId === vg.id ? ' selected' : '') + '>' +
+                        escapeHtml(vg.display_name) + escapeHtml(kv) + '</option>';
+                }
+                let html = '<div class="ww-rd-section">';
+                html += '<div class="ww-rd-section-heading">Equipment Rating</div>';
+                html += '<div class="ww-rd-field-grid">';
+                html += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdCurMva">Equipment capacity (MVA)</label>' +
+                    '<input class="ww-rd-edit-input" id="wwRdCurMva" type="number" min="0.001" step="any" placeholder="e.g. 100"' +
+                    ' value="' + escapeHtml(ed.draftMva || "") + '"></div>';
+                html += '<div class="ww-rd-field"><label class="ww-rd-field-label" for="wwRdCurVoltageGroup">Associated voltage group</label>' +
+                    '<select class="ww-rd-edit-select" id="wwRdCurVoltageGroup">' + groupOptions + '</select></div>';
+                html += '</div>'; // .ww-rd-field-grid
+                html += '<div class="ww-rd-edit-actions">';
+                html += '<button class="ww-rd-apply-btn" id="wwRdCurrentApplyBtn"' + (ed.pending ? ' disabled' : '') + '>' + (ed.pending ? 'Applying…' : 'Apply') + '</button>';
+                html += '<button class="ww-rd-cancel-btn" id="wwRdCurrentCancelBtn">Cancel</button>';
+                html += '</div>';
+                if (ed.error) {
+                    html += '<div class="ww-rd-edit-error">' + escapeHtml(ed.error) + '</div>';
+                }
+                html += '</div>'; // .ww-rd-section
+                return html;
+            }
+
+            // Read mode
             let html = '<div class="ww-rd-section">';
-            html += '<div class="ww-rd-section-heading">Equipment Rating<span class="ww-rd-readonly-note">Read-only · Slice C</span></div>';
+            html += '<div class="ww-rd-section-heading">Equipment Rating' +
+                '<button class="ww-rd-edit-btn" id="wwRdCurrentEditBtn">Edit</button></div>';
             html += '<div class="ww-rd-field-grid">';
 
-            // Left: Equipment capacity
+            // Left: Equipment capacity (D3 independent field — persists regardless of PU method)
             html += '<div class="ww-rd-field">';
             html += '<div class="ww-rd-field-label">Equipment capacity</div>';
-            if (cc && cc.equipment_rating_mva != null) {
-                html += '<div class="ww-rd-field-value">' + cc.equipment_rating_mva + ' MVA</div>';
+            if (cc && cc.equipment_mva != null) {
+                html += '<div class="ww-rd-field-value">' + cc.equipment_mva + ' MVA</div>';
             } else {
                 html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not specified</div>';
             }
             html += '</div>';
 
-            // Right: Linked voltage group
+            // Right: Linked voltage group (D3 independent field)
             html += '<div class="ww-rd-field">';
             html += '<div class="ww-rd-field-label">Associated voltage group</div>';
-            if (cc && cc.linked_voltage_group_id) {
+            if (cc && cc.equipment_linked_voltage_group_id) {
                 const sourceGroups = ww.measurementGroups.get(g.source_id) || [];
-                const linked = sourceGroups.find(function(grp) { return grp.id === cc.linked_voltage_group_id; });
-                const linkedName = linked ? linked.display_name : cc.linked_voltage_group_id;
+                const linked = sourceGroups.find(function(grp) { return grp.id === cc.equipment_linked_voltage_group_id; });
+                const linkedName = linked ? linked.display_name : cc.equipment_linked_voltage_group_id;
+                const linkedKv = linked && linked.voltage_config && linked.voltage_config.nominal_voltage_ll_kv != null
+                    ? linked.voltage_config.nominal_voltage_ll_kv : null;
                 html += '<div class="ww-rd-field-value">' + escapeHtml(linkedName) + '</div>';
-                if (cc.applicable_voltage_ll_kv != null) {
-                    html += '<div class="ww-rd-field-sub">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</div>';
+                if (linkedKv != null) {
+                    html += '<div class="ww-rd-field-sub">' + linkedKv + ' kV (L‑L)</div>';
                 } else {
                     html += '<div class="ww-rd-field-sub">kV not resolved</div>';
                 }
@@ -37085,18 +37125,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             html += '</div>';
 
-            // Full-width: Derived rated current
-            // Only shown as "derived" when method=equipment_rating AND resolved_ibase_ka comes from MVA/kV calc.
-            // For method=manual, resolved_ibase_ka carries the manual value — must not be shown as derived.
+            // Full-width: Equipment rated current (D3 independent — available for ALL PU methods)
             html += '<div class="ww-rd-field ww-rd-field-full">';
-            html += '<div class="ww-rd-field-label">Derived rated current</div>';
-            const method = cc ? cc.method : "none";
-            if (method === "equipment_rating" && cc.resolved_ibase_ka != null) {
-                html += '<div class="ww-rd-field-value">' + cc.resolved_ibase_ka.toFixed(4) + ' kA</div>';
-                html += '<div class="ww-rd-field-sub">I = MVA / (√3 × kV<sub>LL</sub>)</div>';
-            } else if (method === "manual") {
-                html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">Not derived from equipment rating</div>';
-                html += '<div class="ww-rd-field-sub">Manual configuration — see Engineering Evidence</div>';
+            html += '<div class="ww-rd-field-label">Equipment rated current</div>';
+            if (cc && cc.equipment_rated_current_ka != null) {
+                html += '<div class="ww-rd-field-value">' + cc.equipment_rated_current_ka.toFixed(4) + ' kA</div>';
+                html += '<div class="ww-rd-field-sub">I = MVA / (√3 \xd7 k<span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">LL</sub></span>)</div>';
             } else {
                 html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">—</div>';
             }
@@ -37457,6 +37491,49 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (ww.perUnitMode) {
                 wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
             }
+        }
+
+        // D3: Apply the in-progress current equipment-rating edit to the backend.
+        // Uses update_equipment_metadata_only=true — does not touch method or manual_ibase_ka.
+        async function wwRdCurrentApply() {
+            const ed = wwRdState.currentEdit;
+            if (!ed || ed.pending) return;
+            const rawMva = (ed.draftMva !== "" && ed.draftMva != null) ? parseFloat(ed.draftMva) : null;
+            if (ed.draftMva !== "" && ed.draftMva != null && (isNaN(rawMva) || rawMva <= 0)) {
+                wwRdState.currentEdit = Object.assign({}, ed, { error: "Equipment capacity must be a positive number (e.g. 100 for 100 MVA)." });
+                wwRdRenderDetails();
+                return;
+            }
+            wwRdState.currentEdit = Object.assign({}, ed, { pending: true, error: null });
+            wwRdRenderDetails();
+            const sourceId = wwRdState.selectedSourceId;
+            const groupId = wwRdState.selectedGroupId;
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) +
+                "/measurement-groups/" + encodeURIComponent(groupId) + "/current-config";
+            const body = { update_equipment_metadata_only: true };
+            if (rawMva != null) body.equipment_mva = rawMva;
+            body.equipment_linked_voltage_group_id = ed.draftLinkedGroupId || null;
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (_err) {
+                wwRdState.currentEdit = Object.assign({}, wwRdState.currentEdit, { pending: false, error: "Could not reach the backend. Check your connection and try again." });
+                wwRdRenderDetails();
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (_e) { /* ignore */ }
+                wwRdState.currentEdit = Object.assign({}, wwRdState.currentEdit, { pending: false, error: detail.message || "Could not save this group's equipment rating." });
+                wwRdRenderDetails();
+                return;
+            }
+            const updatedGroup = await response.json();
+            wwRdUpdateGroupInCache(sourceId, updatedGroup);
+            wwRdState.currentEdit = null;
+            wwRdRenderGroups();
+            wwRdRenderDetails();
         }
 
         // D2: update a single group in the shared ww.measurementGroups cache.
@@ -61838,6 +61915,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwRdState.selectedGroupId = item.dataset.groupId;
                 wwRdState.detailsView = "group"; // Slice C-1
                 wwRdState.voltageEdit = null; // D2: discard any in-progress edit on group change
+                wwRdState.currentEdit = null; // D3: discard any in-progress current edit on group change
                 // UAT-B-07: in narrow layout, advance to the details panel.
                 if (window.matchMedia("(max-width: 692px)").matches) {
                     wwRdState.narrowPanel = "details";
@@ -61976,26 +62054,54 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 return;
             }
-        });
-        // D2: live-sync draft state from edit form inputs (event delegation).
-        document.getElementById("wwRdDetailsBody").addEventListener("input", (e) => {
-            if (!wwRdState.voltageEdit) return;
-            const id = e.target.id;
-            if (id === "wwRdVltKv") wwRdState.voltageEdit.draftKv = e.target.value;
-            else if (id === "wwRdVltRefInline") {
-                // Inline unresolved-reference selector — selecting a value establishes a manual override
-                if (e.target.value) {
-                    wwRdState.voltageEdit.draftRefMode = "manual";
-                    wwRdState.voltageEdit.draftRefOverride = e.target.value;
-                }
+            if (btn.id === "wwRdCurrentEditBtn") {
+                // D3: enter current equipment-rating edit mode
+                const groups = ww.measurementGroups.get(wwRdState.selectedSourceId) || [];
+                const g = groups.find((x) => x.id === wwRdState.selectedGroupId);
+                const cc = g && g.current_config;
+                wwRdState.currentEdit = {
+                    draftMva: cc && cc.equipment_mva != null ? String(cc.equipment_mva) : "",
+                    draftLinkedGroupId: (cc && cc.equipment_linked_voltage_group_id) || "",
+                    pending: false,
+                    error: null,
+                };
                 wwRdRenderDetails();
-            } else if (id === "wwRdVltRefOverride") {
-                if (e.target.value) {
-                    wwRdState.voltageEdit.draftRefMode = "manual";
-                    wwRdState.voltageEdit.draftRefOverride = e.target.value;
-                }
+                return;
             }
-            else if (id === "wwRdVltRefSide") wwRdState.voltageEdit.draftRefSide = e.target.value;
+            if (btn.id === "wwRdCurrentCancelBtn") {
+                wwRdState.currentEdit = null;
+                wwRdRenderDetails();
+                return;
+            }
+            if (btn.id === "wwRdCurrentApplyBtn") {
+                wwRdCurrentApply();
+                return;
+            }
+        });
+        // D2/D3: live-sync draft state from edit form inputs (event delegation).
+        document.getElementById("wwRdDetailsBody").addEventListener("input", (e) => {
+            const id = e.target.id;
+            if (wwRdState.voltageEdit) {
+                if (id === "wwRdVltKv") wwRdState.voltageEdit.draftKv = e.target.value;
+                else if (id === "wwRdVltRefInline") {
+                    // Inline unresolved-reference selector — selecting a value establishes a manual override
+                    if (e.target.value) {
+                        wwRdState.voltageEdit.draftRefMode = "manual";
+                        wwRdState.voltageEdit.draftRefOverride = e.target.value;
+                    }
+                    wwRdRenderDetails();
+                } else if (id === "wwRdVltRefOverride") {
+                    if (e.target.value) {
+                        wwRdState.voltageEdit.draftRefMode = "manual";
+                        wwRdState.voltageEdit.draftRefOverride = e.target.value;
+                    }
+                } else if (id === "wwRdVltRefSide") wwRdState.voltageEdit.draftRefSide = e.target.value;
+            }
+            if (wwRdState.currentEdit) {
+                // D3: sync current equipment-rating draft
+                if (id === "wwRdCurMva") wwRdState.currentEdit.draftMva = e.target.value;
+                else if (id === "wwRdCurVoltageGroup") wwRdState.currentEdit.draftLinkedGroupId = e.target.value;
+            }
         });
         // UAT-B-07: re-apply layout when viewport crosses the narrow breakpoint.
         window.matchMedia("(max-width: 692px)").addEventListener("change", wwRdApplyNarrowLayout);

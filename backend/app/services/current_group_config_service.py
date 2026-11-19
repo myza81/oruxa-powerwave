@@ -317,6 +317,59 @@ def update_current_ct_config(
     )
 
 
+def update_equipment_rating_metadata(
+    *,
+    workspace_id: str,
+    measurement_group_id: str,
+    equipment_mva: float | None,
+    equipment_linked_voltage_group_id: str | None,
+    clear_equipment_mva: bool = False,
+    group_registry: MeasurementGroupRegistry,
+    current_config_registry: CurrentGroupConfigRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry,
+) -> CurrentBaseConfiguration:
+    """D3 independent equipment-rating metadata update.
+
+    Writes only ``equipment_mva`` and ``equipment_linked_voltage_group_id``
+    -- the D3 method-independent fields.  Does NOT touch ``method``,
+    ``manual_ibase_ka``, or any other configuration field.  Three PU
+    current-base methods are explicitly preserved:
+
+    - ``method="none"`` stays ``none``.
+    - ``method="manual"`` stays ``manual``; ``manual_ibase_ka`` is untouched.
+    - ``method="equipment_rating"`` stays ``equipment_rating``; the existing
+      method-coupled fields are not changed by this call (they remain managed
+      exclusively by ``set_current_base_equipment_rating()``).
+
+    ``clear_equipment_mva=True`` sets ``equipment_mva=None`` without MVA
+    validation -- used when the user explicitly removes a previously entered
+    capacity.  Linked group association is preserved on a clear unless
+    ``equipment_linked_voltage_group_id`` is also explicitly passed as None.
+    """
+    group = _get_current_group(workspace_id, measurement_group_id, group_registry=group_registry)
+    if not clear_equipment_mva and equipment_mva is not None:
+        if not equipment_rating_mva_valid(equipment_mva):
+            raise InvalidEquipmentRatingValueError(
+                f"equipment_mva={equipment_mva!r} must be a finite, positive number."
+            )
+    resolved_mva = None if clear_equipment_mva else equipment_mva
+    resolved_linked_id: str | None = equipment_linked_voltage_group_id
+    if resolved_linked_id is not None:
+        _validate_linked_voltage_group(
+            workspace_id=workspace_id,
+            source_id=group.source_id,
+            linked_voltage_group_id=resolved_linked_id,
+            group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry,
+        )
+    return current_config_registry.update_fields(
+        workspace_id, measurement_group_id,
+        equipment_mva=resolved_mva,
+        equipment_linked_voltage_group_id=resolved_linked_id,
+        update_equipment=True,
+    )
+
+
 def resolve_group_current_base(
     *,
     workspace_id: str,

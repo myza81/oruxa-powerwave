@@ -46,6 +46,7 @@ from app.services.current_group_config_service import (
     set_current_base_manual,
     set_current_base_none,
     update_current_ct_config,
+    update_equipment_rating_metadata,
 )
 from app.services.errors import ImportServiceError, SourceNotFoundError
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -198,6 +199,9 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             ct_ratio=view.current_config.ct_ratio,
             ct_authority=view.current_config.ct_authority,
             ct_provenance_note=view.current_config.ct_provenance_note,
+            equipment_mva=view.current_config.equipment_mva,
+            equipment_linked_voltage_group_id=view.current_config.equipment_linked_voltage_group_id,
+            equipment_rated_current_ka=view.current_config.equipment_rated_current_ka,
         )
         if view.current_config is not None
         else None
@@ -452,14 +456,37 @@ def put_current_config(
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> MeasurementGroupOut:
-    """Dispatches to exactly one of Slice 4's three method setters based
-    on `body.method` -- `KIND_CURRENT`-only. Cross-source/wrong-kind
-    linked-Voltage-group validation happens entirely inside
-    `set_current_base_equipment_rating()` (`InvalidLinkedVoltageGroupError`/
-    `MeasurementGroupNotFoundError`, translated below) -- never
-    re-validated at this layer."""
+    """Two dispatch paths:
+
+    1. ``update_equipment_metadata_only=True`` (D3): updates only the
+       independent equipment-rating metadata fields without touching the PU
+       current-base method.  ``method`` field is ignored in this path.
+    2. ``update_equipment_metadata_only=False`` (default): dispatches to
+       exactly one of Slice 4's three method setters based on ``body.method``
+       -- existing behavior completely unchanged.
+    """
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+    if body.update_equipment_metadata_only:
+        try:
+            update_equipment_rating_metadata(
+                workspace_id=workspace_id,
+                measurement_group_id=measurement_group_id,
+                equipment_mva=body.equipment_mva,
+                equipment_linked_voltage_group_id=body.equipment_linked_voltage_group_id,
+                clear_equipment_mva=body.clear_equipment_mva,
+                group_registry=group_registry,
+                current_config_registry=current_config_registry,
+                voltage_config_registry=voltage_config_registry,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
+        group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+        view = build_group_view(
+            group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry,
+        )
+        return _view_to_out(view)
     try:
         if body.method == METHOD_EQUIPMENT_RATING:
             set_current_base_equipment_rating(

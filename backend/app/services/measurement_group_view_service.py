@@ -84,6 +84,10 @@ class CurrentGroupConfigView:
     ct_ratio: float | None = None
     ct_authority: str = "not_configured"
     ct_provenance_note: str | None = None
+    # D3: Independent equipment-rating metadata (method-independent).
+    equipment_mva: float | None = None
+    equipment_linked_voltage_group_id: str | None = None
+    equipment_rated_current_ka: float | None = None
 
 
 @dataclass(slots=True)
@@ -141,6 +145,15 @@ def _build_current_view(
     resolution = resolve_current_base_for_group(
         group, config, linked_voltage_group=linked_voltage_group, linked_voltage_config=linked_voltage_config
     )
+    # D3: resolve independent equipment linked voltage group for equipment_rated_current_ka.
+    # This is distinct from the method-coupled linked_voltage_group_id above.
+    equip_nominal_kv: float | None = None
+    if config is not None and config.equipment_linked_voltage_group_id is not None:
+        equip_linked_config = voltage_config_registry.get(group.workspace_id, config.equipment_linked_voltage_group_id)
+        if equip_linked_config is not None:
+            from app.domain.voltage_group_config import voltage_base_valid as _vbv
+            equip_nominal_kv = equip_linked_config.nominal_voltage_ll_kv if _vbv(equip_linked_config.nominal_voltage_ll_kv) else None
+    equipment_rated_current_ka = config.compute_equipment_rated_current_ka(equip_nominal_kv) if config is not None else None
     view = CurrentGroupConfigView(
         base_reference_side=configured_base_side(config.method, config.base_reference_side) if config else "unknown",
         method=config.method if config is not None else "none",
@@ -156,6 +169,9 @@ def _build_current_view(
         ct_ratio=config.ct_ratio if config is not None else None,
         ct_authority=config.ct_authority if config is not None else "not_configured",
         ct_provenance_note=config.ct_provenance_note if config is not None else None,
+        equipment_mva=config.equipment_mva if config is not None else None,
+        equipment_linked_voltage_group_id=config.equipment_linked_voltage_group_id if config is not None else None,
+        equipment_rated_current_ka=equipment_rated_current_ka,
     )
     pu_status = "configured" if resolution.status == _CURRENT_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason
