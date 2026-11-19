@@ -23,16 +23,16 @@ const VI = [
 ];
 const SLOW_VI = VI.map((c) => Object.assign({}, c, { frequencyHz: 0.5 }));
 
-// Uploads one synthetic record through the normal Recordings flow.
+// Uploads one synthetic record through the Recording Details flow (UX-3).
 async function uploadRecord(page, { station, date, startClock, triggerClock, rateHz = 1000, durationS = 1, channels = VI }) {
   const { cfg, dat } = syntheticComtrade({ station, date, startClock, triggerClock, rateHz, durationS, channels });
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
 }
 
 async function workspaceId(page) {

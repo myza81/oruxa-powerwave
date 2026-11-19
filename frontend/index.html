@@ -1185,21 +1185,105 @@
             outline-offset: -2px;
             border-radius: 2px;
         }
-        /* UX-3: recording-level action bar above the Recording Info / Group Details tabs */
+        /* UX-3: recording context header — shows selected recording identity
+           and the Analyze Waveform primary action above the tab bar */
         .ww-rd-recording-action-bar {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
-            padding: 5px 10px;
+            justify-content: space-between;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--panel-border);
             flex-shrink: 0;
-            gap: 8px;
-            min-height: 34px;
+            gap: 10px;
+            min-height: 50px;
         }
-        .ww-rd-view-waveform-btn {
+        .ww-rd-recording-context-info {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            overflow: hidden;
+            flex: 1;
+            min-width: 0;
+        }
+        .ww-rd-recording-context-name {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .ww-rd-recording-context-name .ww-rd-group-badge {
+            flex-shrink: 0;
+        }
+        .ww-rd-recording-context-label {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        /* Analyze Waveform — restrained primary action pill */
+        .ww-rd-analyze-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 20px;
+            background: var(--text);
+            color: var(--bg);
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            border: none;
+            cursor: pointer;
+            flex-shrink: 0;
+            line-height: 1;
+            transition: opacity 0.15s;
+        }
+        .ww-rd-analyze-btn:hover:not(:disabled) { opacity: 0.82; }
+        .ww-rd-analyze-btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .ww-rd-analyze-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .ww-rd-analyze-btn .ww-analyze-icon {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+        /* UX-3: Per-unit Configuration section inside Recording Info */
+        .ww-rd-pu-config-section .ww-rd-section-heading {
+            margin-bottom: 8px;
+        }
+        .ww-rd-pu-config-issue {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: var(--warn);
+            margin-bottom: 6px;
+        }
+        .ww-rd-pu-config-issue::before {
+            content: "⚠";
+            flex-shrink: 0;
             font-size: 0.75rem;
-            padding: 4px 10px;
+            margin-top: 1px;
         }
+        .ww-rd-pu-review-btn {
+            margin-top: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--panel-border);
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+        }
+        .ww-rd-pu-review-btn:hover { background: var(--accent-wash); }
         /* UX-3: Time Reference section inside Recording Info */
         .ww-rd-time-reference-body {
             font-size: 0.8rem;
@@ -1218,10 +1302,6 @@
         .ww-rd-time-reference-body .hint {
             font-size: 0.72rem;
             color: var(--text-dim);
-        }
-        /* UX-3: import PU status banner inside Recording Details browser panel */
-        .ww-rd-panel--browser .ww-import-pu-banner {
-            margin: 6px 10px 0;
         }
         /* Slice C-1: empty state shown when Group Details tab is active with no group selected */
         .ww-rd-empty-state {
@@ -15242,11 +15322,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                 Upload New
                             </button>
                         </div>
-                        <!-- UX-3 (migrated from Recording Events §5D-3): compact
-                             non-blocking PU status after import. Hidden by default;
-                             shown/hidden by wwShowImportPuStatus() /
-                             wwClearImportPuStatus(). Never blocks other actions. -->
-                        <div id="wwImportPuStatusBanner" class="ww-import-pu-banner" hidden role="status" aria-live="polite"></div>
                         <div class="ww-rd-toolbar">
                             <div class="ww-rd-toolbar-row">
                                 <input type="search" class="ww-rd-search" id="wwRdSearch"
@@ -15293,12 +15368,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <div class="ww-rd-panel ww-rd-panel--details" id="wwRdDetailsPanel">
                         <!-- UAT-B-07: back to groups (narrow layout only) -->
                         <button type="button" class="ww-rd-back-btn" id="rdBackToGroups">← Groups</button>
-                        <!-- UX-3: recording-level action bar; visible for the currently
-                             selected recording regardless of which tab is active.
-                             Disabled when no recording is selected (synced by
-                             wwRdRenderDetails()). -->
+                        <!-- UX-3: recording context header — shows selected recording
+                             identity and the primary Analyze Waveform action.
+                             Visible at all times; content updated by wwRdRenderDetails().
+                             Button disabled when no recording is selected. -->
                         <div class="ww-rd-recording-action-bar" id="wwRdRecordingActionBar">
-                            <button type="button" class="secondary ww-rd-view-waveform-btn" id="wwRdViewWaveformBtn" disabled>View Waveform</button>
+                            <div class="ww-rd-recording-context-info" id="wwRdRecordingContextInfo">
+                                <span class="ww-rd-recording-context-label">No recording selected</span>
+                            </div>
+                            <button type="button" class="ww-rd-analyze-btn" id="wwRdViewWaveformBtn" disabled>
+                                <svg class="ww-analyze-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <polyline points="1,12 4,7 7,10 10,4 13,7 15,3"
+                                        stroke="currentColor" stroke-width="1.6"
+                                        stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                Analyze Waveform
+                            </button>
                         </div>
                         <!-- Slice C-1: persistent underline tabs replacing the old back-link navigation -->
                         <div class="ww-rd-tabs" role="tablist" id="wwRdDetailsTabs"
@@ -17704,36 +17789,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return { configuredVoltageGroups, needsReviewVoltageGroups, configuredVoltageChannels, configuredCurrentGroups };
         }
 
-        function wwShowImportPuStatus(summary) {
-            const banner = document.getElementById("wwImportPuStatusBanner");
-            if (!banner) return;
-            if (summary.configuredVoltageGroups === 0 && summary.needsReviewVoltageGroups === 0) {
-                banner.hidden = true;
-                return;
-            }
-            const parts = [];
-            if (summary.configuredVoltageGroups > 0) {
-                const ch = summary.configuredVoltageChannels;
-                const gr = summary.configuredVoltageGroups;
-                parts.push(ch + " Voltage channel" + (ch === 1 ? "" : "s") +
-                    " in " + gr + " group" + (gr === 1 ? "" : "s") + " — PU ready");
-            }
-            if (summary.needsReviewVoltageGroups > 0) {
-                const gr = summary.needsReviewVoltageGroups;
-                parts.push(gr + " group" + (gr === 1 ? "" : "s") + " need base configuration");
-            }
-            const hasPartial = summary.needsReviewVoltageGroups > 0;
-            banner.className = "ww-import-pu-banner " + (hasPartial ? "pu-partial" : "pu-ready");
-            banner.innerHTML = parts.join(" · ") +
-                ' <a class="ww-pu-banner-action" role="button" ' +
-                'onclick="wwOpenPerUnitSettingsModal()" tabindex="0">Per-Unit Settings</a>';
-            banner.hidden = false;
-        }
-
-        function wwClearImportPuStatus() {
-            const banner = document.getElementById("wwImportPuStatusBanner");
-            if (banner) { banner.hidden = true; banner.className = "ww-import-pu-banner"; }
-        }
+        // UX-3 (A): PU configuration messaging is now shown inline inside the
+        // Recording Info tab (wwRdBuildRecordingInfoHtml). These functions are
+        // kept as stubs so callers in the upload path continue to work.
+        // wwCheckAndApplyAutoImportPuMode still fires for the auto-switch logic.
+        function wwShowImportPuStatus(_summary) { /* no-op: shown inline in Recording Info */ }
+        function wwClearImportPuStatus() { /* no-op: shown inline in Recording Info */ }
 
         async function wwCheckAndApplyAutoImportPuMode(sourceId, isFirstRecording) {
             try {
@@ -36733,9 +36794,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdRenderDetails() {
             const body = document.getElementById("wwRdDetailsBody");
             if (!body) return;
-            // UX-3: sync View Waveform button — disabled when no recording is selected.
+            // Resolve selected source for context header and button state.
+            const sources = wwRdState.sources || [];
+            const s = wwRdState.selectedSourceId
+                ? (sources.find(function(x) { return x.source_id === wwRdState.selectedSourceId; }) || null)
+                : null;
+            // UX-3: sync Analyze Waveform button — disabled when no recording is selected.
             const viewWfBtn = document.getElementById("wwRdViewWaveformBtn");
-            if (viewWfBtn) viewWfBtn.disabled = !wwRdState.selectedSourceId;
+            if (viewWfBtn) viewWfBtn.disabled = !s;
+            // UX-3: update recording context header
+            const ctxInfo = document.getElementById("wwRdRecordingContextInfo");
+            if (ctxInfo) {
+                if (s) {
+                    ctxInfo.innerHTML =
+                        '<span class="ww-rd-recording-context-name">' +
+                        escapeHtml(recordingDisplayName(s)) +
+                        '<span class="ww-rd-group-badge">' + escapeHtml(recordingFormatLabel(s)) + '</span>' +
+                        '</span>' +
+                        '<span class="ww-rd-recording-context-label">Selected recording</span>';
+                } else {
+                    ctxInfo.innerHTML = '<span class="ww-rd-recording-context-label">No recording selected</span>';
+                }
+            }
             // Slice C-1: sync tab aria-selected state
             const tabRec = document.getElementById("wwRdTabRecordingInfo");
             const tabGrp = document.getElementById("wwRdTabGroupDetails");
@@ -36749,15 +36829,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Update tabpanel aria-labelledby to reflect active tab
             body.setAttribute("aria-labelledby", isRecording ? "wwRdTabRecordingInfo" : "wwRdTabGroupDetails");
             if (isRecording) {
-                if (!wwRdState.selectedSourceId) {
-                    body.innerHTML = '<p class="ww-rd-placeholder">Select a recording to view information.</p>';
+                if (!s) {
+                    body.innerHTML = '<p class="ww-rd-placeholder">' +
+                        (wwRdState.selectedSourceId ? 'Recording not found.' : 'Select a recording to view information.') +
+                        '</p>';
                     return;
                 }
-                const sources = wwRdState.sources || [];
-                const s = sources.find(function(x) { return x.source_id === wwRdState.selectedSourceId; });
-                body.innerHTML = s
-                    ? wwRdBuildRecordingInfoHtml(s)
-                    : '<p class="ww-rd-placeholder">Recording not found.</p>';
+                body.innerHTML = wwRdBuildRecordingInfoHtml(s);
                 return;
             }
             // detailsView === "group"
@@ -36857,6 +36935,35 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += row("Channels", chCount);
             html += '</div>';
             html += '</div>';
+
+            // UX-3: Per-unit Configuration section — only shown when the
+            // selected recording has actionable PU issues. Uses the already-
+            // loaded ww.measurementGroups cache (populated on recording
+            // selection) so no extra fetch is needed. Never shows green
+            // success state (§8), never links to legacy Per-Unit Settings (§10).
+            const groups = ww.measurementGroups.get(s.source_id) || [];
+            const voltageGroups = groups.filter(function(g) { return g.kind === "voltage"; });
+            const baseRequiredGroups = voltageGroups.filter(function(g) { return g.pu_status === "base_required"; });
+            const conflictGroups = voltageGroups.filter(function(g) { return g.pu_status === "conflict"; });
+            if (baseRequiredGroups.length > 0 || conflictGroups.length > 0) {
+                html += '<div class="ww-rd-section ww-rd-pu-config-section">';
+                html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
+                if (baseRequiredGroups.length > 0) {
+                    const n = baseRequiredGroups.length;
+                    html += '<div class="ww-rd-pu-config-issue">' +
+                        n + ' voltage group' + (n === 1 ? '' : 's') +
+                        ' need' + (n === 1 ? 's' : '') + ' a nominal voltage base</div>';
+                }
+                if (conflictGroups.length > 0) {
+                    const n = conflictGroups.length;
+                    html += '<div class="ww-rd-pu-config-issue">' +
+                        n + ' voltage group' + (n === 1 ? '' : 's') +
+                        ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
+                }
+                html += '<button class="ww-rd-pu-review-btn" ' +
+                    'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
+                html += '</div>';
+            }
 
             // UX-3 (migrated from Recording Events): Time Reference section —
             // shown only when the recorder clock time is unverified and the
@@ -37741,6 +37848,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             browser.classList.toggle("ww-rd-narrow-hidden", p !== "recordings");
             groups.classList.toggle("ww-rd-narrow-hidden",  p !== "groups");
             details.classList.toggle("ww-rd-narrow-hidden", p !== "details");
+        }
+
+        // UX-3: "Review affected groups" action from the PU Configuration section.
+        // Filters the Measurement Groups panel to voltage groups and navigates
+        // there in narrow layout so the user can configure the missing bases.
+        function wwRdReviewAffectedGroups() {
+            const voltageBtn = document.querySelector('#wwRdGroupKindFilter button[data-kind="voltage"]');
+            if (voltageBtn) voltageBtn.click();
+            if (wwRdState.narrowPanel !== "groups") {
+                wwRdState.narrowPanel = "groups";
+                wwRdApplyNarrowLayout();
+            }
         }
 
         async function wwFetchMeasurementGroupsForSource(sourceId) {

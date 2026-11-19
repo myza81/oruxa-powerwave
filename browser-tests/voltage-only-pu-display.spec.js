@@ -63,11 +63,12 @@ async function uploadWith275kVVoltageGroup(page, station) {
       .replace(/,1\.0,1\.0,P/g, `,${llKv},1.0,P`),
     "latin1",
   );
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
 }
 
 // Upload with no PU-eligible primary ratio.
@@ -76,11 +77,12 @@ async function uploadBasicRecording(page, station) {
     station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.1,
     channels: makeChannels(),
   });
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: data.cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
 }
 
 const wsUrl = async (page, path) => `${BACKEND}/api/v1/workspaces/${await workspaceId(page)}${path}`;
@@ -382,8 +384,7 @@ test("VD-11: auto-switch fires on first import when Voltage group auto-resolves 
   // On the first import with configuredVoltageGroups > 0, the frontend auto-switches to PU.
   await uploadWith275kVVoltageGroup(page, "VD11");
 
-  // Banner appears and unit mode switches to per_unit.
-  await expect(page.locator("#wwImportPuStatusBanner")).not.toHaveAttribute("hidden", { timeout: 8000 });
+  // Unit mode switches to per_unit (UX-3 A: banner removed; PU status shown in Recording Info).
   await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 8000 }).toBe("per_unit");
 });
 

@@ -38,8 +38,7 @@ const withAutoBase = (cfgText) => cfgText.replaceAll(",1.0,1.0,P", `,${P_RATIO_V
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Upload a synthetic COMTRADE through the Recordings UI.
-// Navigates to the Recordings page first (matches uploadRecord in helpers).
+// Upload a synthetic COMTRADE through the Recording Details UI.
 async function upload(page, { station, channels, cfgPostProcess } = {}) {
   const data = syntheticComtrade({
     station,
@@ -55,18 +54,22 @@ async function upload(page, { station, channels, cfgPostProcess } = {}) {
     ? Buffer.from(cfgPostProcess(data.cfg.toString("latin1")), "latin1")
     : data.cfg;
 
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
 }
 
-// Wait for the auto-import PU banner to appear.
+// UX-3 (A): The PU import banner was removed from the browser panel.
+// PU configuration is now shown inline in Recording Info. For tests
+// that need to wait until auto-import processing has completed, waiting
+// for PU mode to switch is the definitive signal for auto-switch tests.
+// This stub is kept so call sites remain readable.
 async function waitForBanner(page, { timeout = 5000 } = {}) {
-  await expect(page.locator("#wwImportPuStatusBanner")).not.toHaveAttribute("hidden", { timeout });
+  await waitForPuMode(page, { timeout });
 }
 
 // Wait for the auto-switch to PU to complete.
@@ -272,22 +275,15 @@ test("AT-13: channels with no resolved base stay in ENG units when global mode i
   expect(statB.unit).not.toBe("pu");
 });
 
-test("AT-13: banner correctly reflects configured and needs-review split after first import", async ({ page }) => {
+test("AT-13: auto-switch fires when first import has a configured voltage group", async ({ page }) => {
   const station = "AT13_BANNER";
   await page.goto("/index.html");
 
-  // PS=P recording with realistic primary ratio → configured group → banner shows "PU ready" only.
+  // PS=P recording with realistic primary ratio → configured group → auto-switch to PU.
   await upload(page, { station, cfgPostProcess: withAutoBase });
-  await waitForBanner(page);
-
-  const bannerEl = page.locator("#wwImportPuStatusBanner");
-  const bannerText = await bannerEl.textContent();
-
-  // Banner must include the configured voltage channel count phrase.
-  expect(bannerText).toMatch(/\d+\s+Voltage channel/);
-  expect(bannerText).toMatch(/PU ready/);
 
   // Auto-switch must have fired (configuredVoltageGroups > 0).
+  // PU configuration details are now shown inline in Recording Info (UX-3 A).
   await waitForPuMode(page);
 });
 
@@ -318,64 +314,48 @@ test("AT-14: second import preserves user's ENG mode choice", async ({ page }) =
   expect(await page.evaluate(() => ww.unitMode)).toBe("engineering");
 });
 
-test("AT-14: source deletion clears the import status banner", async ({ page }) => {
+test("AT-14: source deletion removes the recording from the browser list", async ({ page }) => {
   const station = "AT14_DELETE";
   await page.goto("/index.html");
   await upload(page, { station, cfgPostProcess: withAutoBase });
-  await waitForBanner(page);
+  await waitForPuMode(page);
 
   const sid = await sourceIdFor(page, station);
   const ws  = await workspaceId(page);
 
-  // Delete via API, then trigger the UI refresh that fires wwClearImportPuStatus.
+  // Delete via API, then refresh the UI.
   const delResp = await page.request.delete(`${BACKEND}/api/v1/workspaces/${ws}/sources/${sid}`);
   expect(delResp.status()).toBe(204);
 
-  // refreshSourceList() is the function the UI calls after a delete.
   await page.evaluate(() => refreshSourceList());
 
-  // The source-removed handler in submitSourceUpload's closure calls
-  // wwClearImportPuStatus() when lastImportedSourceId === sourceId.
-  // Drive it directly so the test is not timing-dependent on the deletion handler.
-  await page.evaluate((sourceId) => {
-    if (typeof lastImportedSourceId !== "undefined" && lastImportedSourceId === sourceId) {
-      wwClearImportPuStatus();
-    }
-  }, sid);
-
-  await expect(page.locator("#wwImportPuStatusBanner")).toHaveAttribute("hidden");
+  // Recording must be gone from the browser list.
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0, { timeout: 5000 });
 });
 
-test("AT-14: workspace reset clears banner; first import into new workspace auto-switches again", async ({ page }) => {
+test("AT-14: workspace reset clears state; first import into new workspace auto-switches again", async ({ page }) => {
   const stationFirst  = "AT14_RESET_A";
   const stationSecond = "AT14_RESET_B";
   await page.goto("/index.html");
 
   // ── Workspace 1: upload with realistic primary ratio → auto-switch to PU → switch back to ENG ──
   await upload(page, { station: stationFirst, cfgPostProcess: withAutoBase });
-  await waitForBanner(page);
   await waitForPuMode(page);
 
   // Switch to ENG so the workspace reset state is "ENG, latestSourcesCount=1".
   await page.evaluate(() => wwApplyUnitMode("engineering"));
   await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("engineering");
 
-  // Start New Workspace: click the button, then confirm if dialog appears.
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#newWorkspaceButton").click();
-  const confirmOverlay = page.locator("#newWorkspaceConfirmOverlay");
-  if (await confirmOverlay.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await page.locator("#newWorkspaceConfirmStartBtn").click();
-  }
+  // Start New Workspace via the backend lifecycle function (UX-3: button removed).
+  await page.evaluate(() => resetToNewWorkspace());
 
-  // After workspace reset: banner must be hidden.
-  await expect(page.locator("#wwImportPuStatusBanner")).toHaveAttribute("hidden", { timeout: 3000 });
+  // After workspace reset: recording list must be empty.
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0, { timeout: 5000 });
 
   // ── Workspace 2: first import → auto-switch should fire again ──
   // latestSourcesCount was reset to 0 by the workspace reset, so isFirstRecording = true.
   // Current mode is "engineering" (we didn't change it), so the auto-switch condition is met.
   await upload(page, { station: stationSecond, cfgPostProcess: withAutoBase });
-  await waitForBanner(page);
   await waitForPuMode(page);
 });
 

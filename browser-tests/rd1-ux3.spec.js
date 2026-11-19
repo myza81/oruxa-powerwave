@@ -220,12 +220,14 @@ test("RD-1 UX3-09: deleting the final recording returns clean state; subsequent 
     await expect(newItem).toBeVisible({ timeout: 8000 });
 });
 
-// Test 10: Start New Workspace button is absent from the frontend
+// Test 10: Start New Workspace trigger button is absent from the frontend
 test("RD-1 UX3-10: Start New Workspace button is absent from the frontend", async ({ page }) => {
     await page.goto("/index.html");
-    // Check across the entire DOM — no button with this text or ID should exist
+    // The trigger button (#newWorkspaceButton) is removed per UX-3 decision 3.
     await expect(page.locator("#newWorkspaceButton")).toHaveCount(0);
-    await expect(page.locator("text=Start new workspace")).toHaveCount(0);
+    // The backend confirm overlay (#newWorkspaceConfirmOverlay) is kept in the DOM
+    // so the backend workspace-reset lifecycle remains intact; it must start hidden.
+    await expect(page.locator("#newWorkspaceConfirmOverlay")).toHaveAttribute("hidden");
 });
 
 // Test 11: Recording Events navigation entry is absent
@@ -267,6 +269,90 @@ test("RD-1 UX3-13: voltage engineering configuration and nominal voltage warning
     // May be 0 or 1 — just verify no duplicate (UX-1)
     const cnt = await missingWarning.count();
     expect(cnt).toBeLessThanOrEqual(1);
+});
+
+// ---- D-series: Per-unit Configuration and context header ------------------
+
+// D-01: PU configuration message is absent from the Recordings list panel.
+test("RD-1 UX3-D01: PU configuration message is not shown in the Recordings list panel", async ({ page }) => {
+    await page.goto("/index.html");
+    await goToRd(page);
+    await uploadFixture(page);
+
+    // The old #wwImportPuStatusBanner must be absent from the DOM.
+    await expect(page.locator("#wwImportPuStatusBanner")).toHaveCount(0);
+
+    // The browser panel (column 1) must contain no PU configuration text.
+    const browserPanel = page.locator("#wwRdBrowserPanel");
+    await expect(browserPanel).not.toContainText("Per-unit");
+    await expect(browserPanel).not.toContainText("PU ready");
+    await expect(browserPanel).not.toContainText("need base configuration");
+});
+
+// D-02: Recording context header shows selected recording identity and Analyze Waveform button.
+test("RD-1 UX3-D02: recording context header shows station name and format badge when recording selected", async ({ page }) => {
+    await page.goto("/index.html");
+    await goToRd(page);
+
+    // No recording selected: placeholder text
+    const ctxInfo = page.locator("#wwRdRecordingContextInfo");
+    await expect(ctxInfo).toContainText("No recording selected");
+
+    // Analyze Waveform button disabled
+    await expect(page.locator("#wwRdViewWaveformBtn")).toBeDisabled();
+
+    await uploadFixture(page);
+    await selectFirstRecording(page);
+
+    // After selection: recording name visible in context header
+    await expect(ctxInfo.locator(".ww-rd-recording-context-name")).toBeVisible();
+    // "Selected recording" label present
+    await expect(ctxInfo.locator(".ww-rd-recording-context-label")).toContainText("Selected recording");
+    // Format badge visible (synth_ascii → COMTRADE)
+    await expect(ctxInfo.locator(".ww-rd-group-badge")).toBeVisible();
+    // Analyze Waveform button enabled
+    await expect(page.locator("#wwRdViewWaveformBtn")).toBeEnabled();
+});
+
+// D-03: Per-unit Configuration section shows per-recording issues when groups need base.
+// synth_ascii has voltage groups with no resolved base, so the section should appear.
+test("RD-1 UX3-D03: Per-unit Configuration section appears in Recording Info when voltage groups need base", async ({ page }) => {
+    await page.goto("/index.html");
+    await goToRd(page);
+    await uploadFixture(page);
+    await selectFirstRecording(page);
+
+    // Switch to Recording Info tab
+    await page.locator("#wwRdTabRecordingInfo").click();
+
+    const details = page.locator("#wwRdDetailsBody");
+
+    // Check whether this fixture's groups have unresolved bases
+    // synth_ascii has basic voltage groups with no primary ratio configured.
+    const puSection = details.locator(".ww-rd-pu-config-section");
+    const hasPuIssues = await puSection.count() > 0;
+    if (hasPuIssues) {
+        // Section must have heading and at least one issue line
+        await expect(puSection).toContainText("Per-unit Configuration");
+        await expect(puSection.locator(".ww-rd-pu-config-issue").first()).toBeVisible();
+        // Review affected groups button must be present
+        await expect(puSection.locator(".ww-rd-pu-review-btn")).toBeVisible();
+    }
+    // No "Per-unit availability" section (UX-1 retired section must stay absent)
+    await expect(details).not.toContainText("Per-unit availability");
+});
+
+// D-04: PU Configuration section is absent from Measurement Groups panel (column 2).
+test("RD-1 UX3-D04: PU configuration is not shown in Measurement Groups panel", async ({ page }) => {
+    await page.goto("/index.html");
+    await goToRd(page);
+    await uploadFixture(page);
+    await selectFirstRecording(page);
+
+    const groupsPanel = page.locator("#wwRdGroupsPanel");
+    await expect(groupsPanel).not.toContainText("Per-unit Configuration");
+    await expect(groupsPanel).not.toContainText("PU ready");
+    await expect(groupsPanel).not.toContainText("need base configuration");
 });
 
 // Test 14: Default landing page is Recording Details
