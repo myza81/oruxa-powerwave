@@ -59,7 +59,7 @@ test("RD-1 C2-01: voltage group details — Configuration row is present and not
     expect(text).not.toContain("line_to_ground");
 });
 
-test("RD-1 C2-02: voltage group main view has Nominal voltage, Reference and Configuration — no Per-unit availability section", async ({ page }) => {
+test("RD-1 C2-02: voltage group main view — unresolved nominal voltage shows single actionable warning, not field grid; no Per-unit availability section", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -67,9 +67,13 @@ test("RD-1 C2-02: voltage group main view has Nominal voltage, Reference and Con
     await selectGroupByKind(page, "voltage");
 
     const details = page.locator("#wwRdDetailsBody");
-    await expect(details).toContainText("Nominal voltage");
-    await expect(details).toContainText("Reference");
+    // Section heading present regardless of nominal voltage state
     await expect(details).toContainText("Configuration");
+    // UX-1: when nominal voltage is unresolved, the single actionable warning replaces the field grid
+    // ("Voltage reference" label is absent; the warning contains "Nominal voltage")
+    await expect(details).toContainText("Nominal voltage is required for voltage per-unit calculation.");
+    // Exactly one missing-voltage warning — no redundant unresolved status messages
+    await expect(details.locator(".ww-rd-voltage-missing-reason")).toHaveCount(1);
     // UX-1: Per-unit availability section is removed
     await expect(details).not.toContainText("Per-unit availability");
 });
@@ -150,22 +154,25 @@ test("RD-1 C2-07: PU availability section absent for both voltage and current gr
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
 });
 
-test("RD-1 C2-08: CT/VT section shows 'Not available from recording metadata' (not 'Not configured')", async ({ page }) => {
+test("RD-1 C2-08: CT/VT section shows 'Not configured' when VT has no manual override, no recording-metadata VT and no auto_nominal base (D4: not_configured authority)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectGroupByKind(page, "voltage");
 
-    // C4 amendment: CT/VT is a standalone section in main panel (not in Evidence).
-    // The standalone VT section shows "Not available from recording metadata".
+    // VT section must be present as a standalone section in the main panel
     const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
     const allH = await headings.allTextContents();
     const hasTransformerSection = allH.some((t) =>
         t.includes("Voltage Transformer") || t.includes("Current Transformer"));
     expect(hasTransformerSection).toBe(true);
-    await expect(page.locator("#wwRdDetailsBody")).toContainText("Not available from recording metadata");
-    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Not configured");
+    // D4 authority hierarchy: manual > recording_metadata > auto_nominal > not_configured
+    // synth_ascii.cfg: no manual VT, no recording-metadata VT, nominal voltage unresolved
+    // → vt_effective_authority = not_configured → frontend renders "Not configured"
+    await expect(page.locator("#wwRdDetailsBody")).toContainText("Not configured");
+    // "Not available from recording metadata" was the old rendering; it must not appear
+    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Not available from recording metadata");
 });
 
 test("RD-1 C2-09: conflict banner is preserved when manual_conflict_detected", async ({ page }) => {
