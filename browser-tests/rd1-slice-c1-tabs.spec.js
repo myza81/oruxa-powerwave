@@ -219,8 +219,8 @@ test("TABS-11: Slice C engineering details intact with tabs", async ({ page }) =
 
     await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
 
-    // Engineering Evidence toggle present
-    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
+    // UX-2: Engineering Evidence removed — section must not be present.
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
 
     // UX-1: PU availability section removed — confirm main sections are still present
     const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();

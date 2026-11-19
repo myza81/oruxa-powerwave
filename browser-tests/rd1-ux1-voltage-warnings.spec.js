@@ -467,8 +467,8 @@ test("UX1-11: backend pu_status preserved in group data — base_required state 
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
 });
 
-// UX1-12: Existing group-confirmation safeguards remain (Engineering Evidence still present)
-test("UX1-12: Engineering Evidence section preserved after UX-1 removal of PU section", async ({ page }) => {
+// UX1-12: Group-confirmation safeguards remain after UX-1 and UX-2
+test("UX1-12: Essential sections preserved after UX-1 and UX-2 (no PU section, no Engineering Evidence)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -482,10 +482,14 @@ test("UX1-12: Engineering Evidence section preserved after UX-1 removal of PU se
     if (await tabGrp.isVisible()) await tabGrp.click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 
-    // Engineering Evidence section must still be present (unchanged by UX-1)
-    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
-    // No PU section present
+    // UX-2: Engineering Evidence removed by owner decision.
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
+    // UX-1: No PU section present.
     await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-status-line")).not.toBeVisible();
+    // Essential configuration sections remain.
+    const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
+    const hasConfig = headings.some(h => h.includes("Voltage Base Configuration") || h.includes("Equipment Rating"));
+    expect(hasConfig).toBe(true);
 });
 
 // UX1-13: Automatic VT follows valid nominal-voltage changes (D4 preserved)

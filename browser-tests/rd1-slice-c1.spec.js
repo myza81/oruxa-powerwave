@@ -254,8 +254,8 @@ test("RD-1 C1-10: Slice C group details remain intact after Slice C-1 changes", 
         detailsText.includes("Equipment Rating");
     expect(hasConfig).toBe(true);
 
-    // Engineering Evidence toggle must be present
-    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).toBeVisible();
+    // UX-2: Engineering Evidence removed — section must not be present.
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
 
     // UX-1: PU availability section removed — Voltage Base Configuration section present instead
     const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();

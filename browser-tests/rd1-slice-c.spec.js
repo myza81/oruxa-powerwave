@@ -166,7 +166,7 @@ test("RD-1 C-05: no conflict banner for ordinary auto-resolved base", async ({ p
     }
 });
 
-test("RD-1 C-06: Engineering Evidence section is present and toggleable", async ({ page }) => {
+test("RD-1 C-06: Engineering Evidence section is absent (UX-2: intentional removal)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -177,29 +177,19 @@ test("RD-1 C-06: Engineering Evidence section is present and toggleable", async 
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // Evidence details element is present
-    const evidenceEl = page.locator("#wwRdDetailsBody details.ww-rd-evidence");
-    await expect(evidenceEl).toBeAttached();
+    // UX-2: Engineering Evidence section removed by owner decision (Option C).
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
 
-    // Summary is visible
-    const summary = evidenceEl.locator("summary");
-    await expect(summary).toBeVisible();
-    await expect(summary).toContainText("Engineering Evidence");
-
-    // Closed by default: body not expanded
-    const isOpen = await evidenceEl.evaluate((el) => el.open);
-    expect(isOpen).toBe(false);
-
-    // Click to open
-    await summary.click();
-    const isNowOpen = await evidenceEl.evaluate((el) => el.open);
-    expect(isNowOpen).toBe(true);
-
-    // Body content is visible
-    await expect(evidenceEl.locator(".ww-rd-evidence-body")).toBeVisible();
+    // Essential configuration sections remain present.
+    const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
+    const hasConfig = headings.some(h => h.includes("Voltage Base Configuration") || h.includes("Equipment Rating"));
+    expect(hasConfig).toBe(true);
+    // Transformer section remains present.
+    const hasTransformer = headings.some(h => h.includes("Voltage Transformer") || h.includes("Current Transformer"));
+    expect(hasTransformer).toBe(true);
 });
 
-test("RD-1 C-07: instrument transformers note in Engineering Evidence (not standalone CT/VT section)", async ({ page }) => {
+test("RD-1 C-07: CT/VT section is a standalone section in the main panel (UX-2: not in Evidence)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -210,13 +200,14 @@ test("RD-1 C-07: instrument transformers note in Engineering Evidence (not stand
     await rows.first().click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-placeholder")).not.toBeVisible({ timeout: 5000 });
 
-    // C4 amendment: CT/VT is now a standalone section in the main panel (not in Evidence).
-    // Verify the standalone transformer section is present in the main panel.
+    // CT/VT is a standalone section in the main panel — Engineering Evidence is gone.
     const headings = page.locator("#wwRdDetailsBody .ww-rd-section-heading");
     const allHeadings = await headings.allTextContents();
     const hasTransformerSection = allHeadings.some((t) =>
         t.includes("Voltage Transformer") || t.includes("Current Transformer"));
     expect(hasTransformerSection).toBe(true);
+    // No Engineering Evidence element anywhere in the panel.
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
 });
 
 test("RD-1 C-08: group switching — details update to new group", async ({ page }) => {

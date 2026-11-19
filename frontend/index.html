@@ -1116,36 +1116,6 @@
         .ww-rd-status--error  { color: var(--error); }
         .ww-rd-status--neutral { color: var(--text-dim); }
         .ww-rd-pu-word--error { color: var(--error); }
-        /* Engineering evidence */
-        details.ww-rd-evidence { }
-        details.ww-rd-evidence > summary {
-            cursor: pointer;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text);
-            user-select: none;
-            list-style: none;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        details.ww-rd-evidence > summary::marker,
-        details.ww-rd-evidence > summary::-webkit-details-marker { display: none; }
-        details.ww-rd-evidence > summary::after {
-            content: "▾";
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            transition: transform 0.15s;
-            display: inline-block;
-        }
-        details.ww-rd-evidence[open] > summary::after { transform: rotate(180deg); }
-        .ww-rd-evidence-body {
-            margin-top: 8px;
-            font-size: 0.72rem;
-        }
-        .ww-rd-evidence-row { display: flex; gap: 8px; margin-bottom: 4px; }
-        .ww-rd-evidence-key { flex: none; color: var(--text-dim); min-width: 120px; }
-        .ww-rd-evidence-val { color: var(--text); }
         /* Legacy selectors kept for Recording Info rows (Slice C-1 uses these) */
         .ww-rd-details-section { margin-bottom: 14px; }
         .ww-rd-details-section-title {
@@ -36904,63 +36874,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
-        function wwRdEvidenceHtml(g) {
-            const kind = g.kind;
-            let rows = "";
-            if (kind === "voltage" && g.voltage_config) {
-                const vc = g.voltage_config;
-                if (vc.detection_reason) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Detection reason</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.detection_reason) + '</span></div>';
-                }
-                if (vc.evidence_names && vc.evidence_names.length > 0) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Evidence channels</span><span class="ww-rd-evidence-val">' + vc.evidence_names.map(escapeHtml).join(", ") + '</span></div>';
-                }
-                if (vc.reference_mode) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference mode</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.reference_mode) + '</span></div>';
-                }
-                if (vc.reference_override) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference override</span><span class="ww-rd-evidence-val">' + escapeHtml(vc.reference_override.replace(/_/g, "-")) + '</span></div>';
-                }
-                if (vc.base_reference_side && vc.base_reference_side !== "unknown") {
-                    const side = vc.base_reference_side === "primary" ? "Primary" : "Secondary";
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference side</span><span class="ww-rd-evidence-val">' + escapeHtml(side) + '</span></div>';
-                }
-                if (vc.secondary_voltage_ll_v != null) {
-                    rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Secondary voltage (L‑L)</span><span class="ww-rd-evidence-val">' + vc.secondary_voltage_ll_v + ' V</span></div>';
-                }
-            } else if (kind === "current") {
-                const cc = g.current_config;
-                const ccMethod = cc ? cc.method : "none";
-                const methodLabel = ccMethod === "equipment_rating" ? "Equipment rating"
-                    : ccMethod === "manual" ? "Manual"
-                    : ccMethod === "none" ? "None"
-                    : escapeHtml(ccMethod);
-                rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Method</span><span class="ww-rd-evidence-val">' + methodLabel + '</span></div>';
-                if (cc) {
-                    if (cc.manual_ibase_ka != null) {
-                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Manual current base</span><span class="ww-rd-evidence-val">' + cc.manual_ibase_ka.toFixed(4) + ' kA</span></div>';
-                    }
-                    if (cc.manual_voltage_base_kv != null) {
-                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Manual V base</span><span class="ww-rd-evidence-val">' + cc.manual_voltage_base_kv + ' kV</span></div>';
-                    }
-                    if (cc.applicable_voltage_ll_kv != null) {
-                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Applicable V base</span><span class="ww-rd-evidence-val">' + cc.applicable_voltage_ll_kv + ' kV (L‑L)</span></div>';
-                    }
-                    if (cc.linked_voltage_group_id) {
-                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Linked V group</span><span class="ww-rd-evidence-val">' + escapeHtml(cc.linked_voltage_group_id) + '</span></div>';
-                    }
-                    if (cc.base_reference_side && cc.base_reference_side !== "unknown") {
-                        const side = cc.base_reference_side === "primary" ? "Primary" : "Secondary";
-                        rows += '<div class="ww-rd-evidence-row"><span class="ww-rd-evidence-key">Reference side</span><span class="ww-rd-evidence-val">' + escapeHtml(side) + '</span></div>';
-                    }
-                }
-            }
-            const body = rows.length > 0
-                ? rows
-                : '<p style="margin:0;font-size:0.72rem;color:var(--text-dim)">No detailed evidence available from this group’s current configuration.</p>';
-            return '<div class="ww-rd-section"><details class="ww-rd-evidence"><summary>Engineering Evidence</summary><div class="ww-rd-evidence-body">' + body + '</div></details></div>';
-        }
-
         function wwRdCurrentConfigHtml(g) {
             const cc = g.current_config;
             const ed = wwRdState.currentEdit;
@@ -37435,10 +37348,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Instrument transformer section — group-type specific, read-only
             const transformerHtml = kind === "voltage" ? wwRdVtSectionHtml(g) : wwRdCtSectionHtml(g);
 
-            // Engineering Evidence section
-            const evidenceHtml = wwRdEvidenceHtml(g);
-
-            return headerHtml + conflictHtml + configHtml + transformerHtml + evidenceHtml;
+            return headerHtml + conflictHtml + configHtml + transformerHtml;
         }
 
         // D2: Apply the in-progress voltage edit to the backend.

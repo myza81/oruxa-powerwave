@@ -1,6 +1,6 @@
 // RD-1 Slice C-3: Group Details visual design regression tests.
-// Verifies new section structure, two-column field grid, PU status line,
-// CT/VT moved into Engineering Evidence, and "Not resolved" for null values.
+// Verifies new section structure, two-column field grid, standalone CT/VT sections,
+// and "Not resolved" for null values.
 
 const { test, expect } = require("./support/test");
 const path = require("path");

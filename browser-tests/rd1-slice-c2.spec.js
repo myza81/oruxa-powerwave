@@ -74,29 +74,32 @@ test("RD-1 C2-02: voltage group main view has Nominal voltage, Reference and Con
     await expect(details).not.toContainText("Per-unit availability");
 });
 
-test("RD-1 C2-03: voltage group Engineering Evidence section is present", async ({ page }) => {
+test("RD-1 C2-03: voltage group Engineering Evidence section is absent (UX-2: removed)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectGroupByKind(page, "voltage");
 
+    // UX-2: Engineering Evidence removed by owner decision.
     const details = page.locator("#wwRdDetailsBody");
-    await expect(details.locator("details.ww-rd-evidence")).toBeVisible();
-    await expect(details.locator("details.ww-rd-evidence summary")).toContainText("Engineering Evidence");
+    await expect(details.locator("details.ww-rd-evidence")).not.toBeAttached();
+    // Voltage Base Configuration remains present.
+    const headings = await details.locator(".ww-rd-section-heading").allTextContents();
+    expect(headings.some(h => h.includes("Voltage Base Configuration"))).toBe(true);
 });
 
-test("RD-1 C2-04: voltage group Detection reason is in Engineering Evidence, not main view", async ({ page }) => {
+test("RD-1 C2-04: detection reason not visible in main view (UX-2: Engineering Evidence removed)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectGroupByKind(page, "voltage");
 
-    const evidence = page.locator("#wwRdDetailsBody details.ww-rd-evidence");
-    // Open the details element
-    await evidence.locator("summary").click();
-    await expect(evidence).toContainText("Detection reason");
+    // UX-2: Engineering Evidence removed — detection reason is a backend-only diagnostic field.
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
+    // Detection reason token must not appear in the main panel.
+    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Detection reason");
 });
 
 test("RD-1 C2-05: current group main view shows equipment-capacity design (no PU section)", async ({ page }) => {
@@ -111,20 +114,22 @@ test("RD-1 C2-05: current group main view shows equipment-capacity design (no PU
     await expect(details).toContainText("Equipment Rating");
     // Per-unit availability section must NOT appear for current groups
     await expect(details.locator(".ww-rd-pu-status-line")).not.toBeVisible();
-    // Engineering Evidence section is still present
-    await expect(details.locator("details.ww-rd-evidence")).toBeVisible();
+    // UX-2: Engineering Evidence section removed.
+    await expect(details.locator("details.ww-rd-evidence")).not.toBeAttached();
 });
 
-test("RD-1 C2-06: current group Engineering Evidence section is present", async ({ page }) => {
+test("RD-1 C2-06: current group Engineering Evidence section is absent (UX-2: removed)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectGroupByKind(page, "current");
 
+    // UX-2: Engineering Evidence removed by owner decision.
     const details = page.locator("#wwRdDetailsBody");
-    await expect(details.locator("details.ww-rd-evidence")).toBeVisible();
-    await expect(details.locator("details.ww-rd-evidence summary")).toContainText("Engineering Evidence");
+    await expect(details.locator("details.ww-rd-evidence")).not.toBeAttached();
+    // Equipment Rating remains present.
+    await expect(details).toContainText("Equipment Rating");
 });
 
 test("RD-1 C2-07: PU availability section absent for both voltage and current groups (UX-1)", async ({ page }) => {
@@ -177,21 +182,15 @@ test("RD-1 C2-09: conflict banner is preserved when manual_conflict_detected", a
     await expect(page.locator("#wwRdDetailsBody .ww-rd-conflict-banner")).not.toBeVisible();
 });
 
-test("RD-1 C2-10: Engineering Evidence section expands and collapses via summary click", async ({ page }) => {
+test("RD-1 C2-10: Engineering Evidence section is absent (UX-2: removed, was toggle test)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await selectFirstRecording(page);
     await selectGroupByKind(page, "voltage");
 
-    const evidence = page.locator("#wwRdDetailsBody details.ww-rd-evidence");
-    const body = evidence.locator(".ww-rd-evidence-body");
-
-    // Should be closed by default; click to open
-    await evidence.locator("summary").click();
-    await expect(body).toBeVisible();
-
-    // Click again to close
-    await evidence.locator("summary").click();
-    await expect(body).not.toBeVisible();
+    // UX-2: Engineering Evidence removed — no toggle element in the panel.
+    await expect(page.locator("#wwRdDetailsBody details.ww-rd-evidence")).not.toBeAttached();
+    // No JavaScript errors: group selection workflow remains functional.
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 });
