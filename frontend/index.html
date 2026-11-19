@@ -37129,7 +37129,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<div class="ww-rd-field ww-rd-field-full">';
             html += '<div class="ww-rd-field-label">Equipment rated current</div>';
             if (cc && cc.equipment_rated_current_ka != null) {
-                html += '<div class="ww-rd-field-value">' + cc.equipment_rated_current_ka.toFixed(4) + ' kA</div>';
+                html += '<div class="ww-rd-field-value">' + Math.round(cc.equipment_rated_current_ka * 1000) + ' A</div>';
                 html += '<div class="ww-rd-field-sub">I = MVA / (√3 \xd7 k<span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">LL</sub></span>)</div>';
             } else {
                 html += '<div class="ww-rd-field-value ww-rd-field-value--unresolved">—</div>';

@@ -336,8 +336,8 @@ test("D3-11: equipment_rated_current_ka is displayed in read mode when non-null"
         equipment_rated_current_ka: 0.2099,
     });
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Equipment Rating" });
-    await expect(section).toContainText("0.2099");
-    await expect(section).toContainText("kA");
+    await expect(section).toContainText("210");
+    await expect(section).toContainText(" A");
 });
 
 // ---- D3-12: "Not specified" shown for equipment_mva=null --------------------
