@@ -119,7 +119,7 @@ def test_every_loaded_source_appears_automatically_via_the_existing_source_list(
     mechanism, and never the filename as any kind of persistent
     identity (source_id is)."""
     source = _source()
-    body = _function_body(source, "async function wwOpenPerUnitProfilesModal()", "function wwClosePerUnitProfilesModal()")
+    body = _function_body(source, "async function wwOpenPerUnitProfilesModal(preselectedSourceId)", "function wwClosePerUnitProfilesModal()")
     assert "await fetchSourcesList();" in body
     assert "await wwFetchPerUnitSourceConfigs();" in body
 

@@ -110,7 +110,7 @@ class TestBothChildModalsRemainReachable:
     def test_existing_modal_functions_are_unmodified_and_still_present(self):
         source = _source()
         for fn in (
-            "async function wwOpenPerUnitProfilesModal()",
+            "async function wwOpenPerUnitProfilesModal(preselectedSourceId)",
             "function wwClosePerUnitProfilesModal()",
             "async function wwOpenMeasurementGroupsModal()",
             "function wwCloseMeasurementGroupsModal()",

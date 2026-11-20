@@ -892,6 +892,44 @@
             font-size: 13px;
             line-height: 1;
         }
+        /* Group confirmation status badges — shown for suggested/needs_review/manual */
+        .ww-rd-group-status {
+            flex: none;
+            font-size: 0.6rem;
+            font-weight: 500;
+            padding: 1px 5px;
+            border-radius: 3px;
+        }
+        .ww-rd-group-status--suggested,
+        .ww-rd-group-status--needs-review { background: var(--warn-wash); color: var(--warn); }
+        .ww-rd-group-status--manual        { background: var(--hover-tint); color: var(--text-dim); }
+        /* Suggest Groups button in Measurement Groups panel header */
+        .ww-rd-suggest-btn {
+            font-size: 0.7rem;
+            font-weight: 500;
+            background: none;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            padding: 2px 8px;
+            color: var(--accent);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .ww-rd-suggest-btn:hover { background: var(--accent-wash); }
+        /* Source Default contextual link in PU configuration section (D-005) */
+        .ww-rd-pu-source-default-link {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            text-align: left;
+            text-decoration: underline;
+        }
+        .ww-rd-pu-source-default-link:hover { color: var(--accent); }
 
         .ww-rd-groups-body,
         .ww-rd-details-body {
@@ -15379,6 +15417,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         <button type="button" class="ww-rd-back-btn" id="rdBackToRecordings">← Recordings</button>
                         <div class="ww-rd-panel-header ww-rd-groups-panel-header">
                             <h2 class="ww-rd-panel-title">Measurement Groups</h2>
+                            <button type="button" class="ww-rd-suggest-btn" id="wwRdSuggestGroupsBtn"
+                                title="Auto-detect measurement groups from channel names"
+                                onclick="wwRdSuggestGroups()">Suggest Groups</button>
                         </div>
                         <div class="ww-rd-filter-row" id="wwRdGroupKindFilter" role="group"
                             aria-label="Filter groups by kind">
@@ -36125,13 +36166,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return "—";
         }
 
-        async function wwOpenPerUnitProfilesModal() {
+        // PU-UI-001 Slice A: accepts an optional preselectedSourceId so Recording
+        // Details can open the Source Default modal on the current recording's source.
+        async function wwOpenPerUnitProfilesModal(preselectedSourceId) {
             const sources = await fetchSourcesList();
             wwPerUnitSourcesList = sources || [];
             await wwFetchPerUnitSourceConfigs();
-            const firstSourceId = wwPerUnitSourcesList.length ? wwPerUnitSourcesList[0].source_id : null;
-            perUnitEditorState = firstSourceId
-                ? wwPerUnitConfigToEditorState(firstSourceId, ww.perUnitSourceConfigs.get(firstSourceId))
+            const targetSourceId = (preselectedSourceId &&
+                    wwPerUnitSourcesList.some(function(s) { return s.source_id === preselectedSourceId; }))
+                ? preselectedSourceId
+                : (wwPerUnitSourcesList.length ? wwPerUnitSourcesList[0].source_id : null);
+            perUnitEditorState = targetSourceId
+                ? wwPerUnitConfigToEditorState(targetSourceId, ww.perUnitSourceConfigs.get(targetSourceId))
                 : null;
             wwRenderPerUnitSourceSelect();
             wwRenderPerUnitProfileEditor();
@@ -36820,7 +36866,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const sel = g.id === wwRdState.selectedGroupId
                     ? ' aria-selected="true"' : ' aria-selected="false"';
                 const conflict = g.voltage_config && g.voltage_config.manual_conflict_detected;
-                // Single-line row: name | ⚠ (missing voltage, voltage groups only) | ⚠ (conflict) | V or I badge
+                // Single-line row: name | status | ⚠ (missing voltage) | ⚠ (conflict) | V or I badge
                 const badge = g.kind === "voltage" ? "V" : g.kind === "current" ? "I" : escapeHtml(g.kind.charAt(0).toUpperCase());
                 const conflictIcon = conflict
                     ? '<span class="ww-rd-group-conflict" title="Manual base conflict">⚠</span>' : "";
@@ -36828,10 +36874,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const missingVoltageIcon = missingVoltage
                     ? '<span class="ww-rd-group-missing-voltage" aria-label="Nominal voltage required" title="Nominal voltage required">⚠</span>'
                     : "";
+                const statusLabel = g.status === "suggested" ? "Suggested"
+                    : g.status === "needs_review" ? "Review"
+                    : g.status === "manual" ? "Manual" : null;
+                const statusBadge = statusLabel
+                    ? '<span class="ww-rd-group-status ww-rd-group-status--' +
+                      g.status.replace("_", "-") + '">' + statusLabel + '</span>'
+                    : "";
                 return '<div class="ww-rd-group-item" role="option" tabindex="0"' +
                     sel + ' data-group-id="' + escapeHtml(g.id) + '">' +
                     '<span class="ww-rd-group-name" title="' + escapeHtml(g.display_name) + '">' +
                     escapeHtml(g.display_name) + '</span>' +
+                    statusBadge +
                     missingVoltageIcon +
                     conflictIcon +
                     '<span class="ww-rd-group-badge">' + badge + '</span>' +
@@ -36978,16 +37032,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '</div>';
             html += '</div>';
 
-            // UX-3: Per-unit Configuration section — only shown when the
-            // selected recording has actionable PU issues. Uses the already-
-            // loaded ww.measurementGroups cache (populated on recording
-            // selection) so no extra fetch is needed. Never shows green
-            // success state (§8), never links to legacy Per-Unit Settings (§10).
+            // PU-UI-001 Slice A: Per-unit Configuration section — shown when
+            // the recording has actionable PU issues OR when no measurement
+            // groups exist (channel may rely on the DEC-049 source-level
+            // fallback). The Source Default link gives contextual access per
+            // D-005 (advanced only, not prominently). Never shows green success
+            // state (§8).
             const groups = ww.measurementGroups.get(s.source_id) || [];
             const voltageGroups = groups.filter(function(g) { return g.kind === "voltage"; });
             const baseRequiredGroups = voltageGroups.filter(function(g) { return g.pu_status === "base_required"; });
             const conflictGroups = voltageGroups.filter(function(g) { return g.pu_status === "conflict"; });
-            if (baseRequiredGroups.length > 0 || conflictGroups.length > 0) {
+            const hasPuIssues = baseRequiredGroups.length > 0 || conflictGroups.length > 0;
+            const noGroups = groups.length === 0;
+            if (hasPuIssues || noGroups) {
                 html += '<div class="ww-rd-section ww-rd-pu-config-section">';
                 html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
                 if (baseRequiredGroups.length > 0) {
@@ -37002,8 +37059,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         n + ' voltage group' + (n === 1 ? '' : 's') +
                         ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
                 }
-                html += '<button class="ww-rd-pu-review-btn" ' +
-                    'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
+                if (hasPuIssues) {
+                    html += '<button class="ww-rd-pu-review-btn" ' +
+                        'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
+                }
+                html += '<button class="ww-rd-pu-source-default-link" ' +
+                    'data-source-id="' + escapeHtml(s.source_id) + '" ' +
+                    'onclick="wwOpenPerUnitProfilesModal(this.dataset.sourceId)">' +
+                    'Configure Source Default…</button>';
                 html += '</div>';
             }
 
@@ -37901,6 +37964,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (wwRdState.narrowPanel !== "groups") {
                 wwRdState.narrowPanel = "groups";
                 wwRdApplyNarrowLayout();
+            }
+        }
+
+        // PU-UI-001 Slice A: user-triggered group auto-detection from Recording
+        // Details. Mirrors the MG modal's suggest function but operates on the
+        // RD-selected source; refreshes both panels on success.
+        async function wwRdSuggestGroups() {
+            const sourceId = wwRdState.selectedSourceId;
+            if (!sourceId) return;
+            const btn = document.getElementById("wwRdSuggestGroupsBtn");
+            if (btn) { btn.disabled = true; btn.textContent = "Working…"; }
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups/suggest",
+                    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+                );
+                if (!response.ok) {
+                    let detail = {};
+                    try { detail = (await response.json()).detail || {}; } catch (e) { /* ignore */ }
+                    const body = document.getElementById("wwRdGroupsBody");
+                    if (body) body.innerHTML = '<p class="ww-rd-placeholder ww-rd-status--error">' +
+                        escapeHtml(detail.message || "Could not generate suggestions.") + '</p>';
+                    return;
+                }
+                await wwFetchMeasurementGroupsForSource(sourceId);
+                wwRdRenderGroups();
+                wwRdRenderDetails();
+            } catch (e) {
+                const body = document.getElementById("wwRdGroupsBody");
+                if (body) body.innerHTML = '<p class="ww-rd-placeholder ww-rd-status--error">Could not reach the backend.</p>';
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = "Suggest Groups"; }
             }
         }
 
