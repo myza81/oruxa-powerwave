@@ -37450,7 +37450,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.voltageEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
-            if (ww.perUnitMode) {
+            if (ww.unitMode === "per_unit") {
                 wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
             }
         }
@@ -37496,7 +37496,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.voltageEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
-            if (ww.perUnitMode) {
+            if (ww.unitMode === "per_unit") {
                 wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
             }
         }
@@ -37542,6 +37542,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.currentEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
+            if (ww.unitMode === "per_unit") {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
         }
 
         // D4-suggest: live ratio update while typing in the VT edit form.
@@ -37624,6 +37627,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.vtEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
+            if (ww.unitMode === "per_unit") {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
         }
 
         // D4: Remove manual VT configuration (clear_vt=true); echoes reference fields.
@@ -37667,6 +37673,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.vtEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
+            if (ww.unitMode === "per_unit") {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
         }
 
         // D4: Apply CT instrument-transformer configuration.
@@ -37726,6 +37735,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.ctEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
+            if (ww.unitMode === "per_unit") {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
         }
 
         // D4: Remove manual CT configuration (clear_ct=true via update_ct_only path).
@@ -37761,6 +37773,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRdState.ctEdit = null;
             wwRdRenderGroups();
             wwRdRenderDetails();
+            if (ww.unitMode === "per_unit") {
+                wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
+            }
         }
 
                 // D2: update a single group in the shared ww.measurementGroups cache.
