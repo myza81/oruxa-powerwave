@@ -304,14 +304,32 @@ test("RD-1 UX3-D02: recording context header shows station name and format badge
     await uploadFixture(page);
     await selectFirstRecording(page);
 
-    // After selection: recording name visible in context header
-    await expect(ctxInfo.locator(".ww-rd-recording-context-name")).toBeVisible();
-    // "Selected recording" label present
-    await expect(ctxInfo.locator(".ww-rd-recording-context-label")).toContainText("Selected recording");
+    // After selection: recording name visible in context header (no subtitle)
+    const nameEl = ctxInfo.locator(".ww-rd-recording-context-name");
+    await expect(nameEl).toBeVisible();
+    await expect(nameEl).not.toHaveClass(/ww-rd-recording-context-name--empty/);
     // Format badge visible (synth_ascii → COMTRADE)
     await expect(ctxInfo.locator(".ww-rd-group-badge")).toBeVisible();
+    // No "Selected recording" subtitle (removed per cosmetic refinement)
+    await expect(ctxInfo.locator(".ww-rd-recording-context-label")).toHaveCount(0);
     // Analyze Waveform button enabled
     await expect(page.locator("#wwRdViewWaveformBtn")).toBeEnabled();
+});
+
+// D-02b: Recording Info body does not repeat the name/badge already in the context header.
+test("RD-1 UX3-D02b: Recording Info body omits the duplicate recording name header", async ({ page }) => {
+    await page.goto("/index.html");
+    await goToRd(page);
+    await uploadFixture(page);
+    await selectFirstRecording(page);
+    await page.locator("#wwRdTabRecordingInfo").click();
+
+    const details = page.locator("#wwRdDetailsBody");
+    // The .ww-rd-details-group-header element (name + badge) must NOT appear in Recording Info.
+    await expect(details.locator(".ww-rd-details-group-header")).toHaveCount(0);
+    // The metadata table must still be present.
+    await expect(details.locator(".ww-rd-config-table")).toBeVisible();
+    await expect(details).toContainText("Format");
 });
 
 // D-03: Per-unit Configuration section shows per-recording issues when groups need base.
