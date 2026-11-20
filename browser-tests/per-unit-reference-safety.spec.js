@@ -19,7 +19,7 @@ async function setup(page, { marker = "P", side = "primary", sourceDefault = fal
   const data = syntheticComtrade({ station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.2,
     channels: ["IA", "IB"].map((name, i) => ({ name, phase: i ? "B" : "A", unit: "A", amplitude: .5, frequencyHz: 50 })) });
   const cfg = Buffer.from(data.cfg.toString("latin1").replaceAll(",1.0,1.0,P", `,2000,1,${marker}`), "latin1");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "reference.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "reference.dat", mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
@@ -233,7 +233,7 @@ test("Current MG drawer shows no PU controls for standard Current group (DEC-212
   const station = "MG_UI_STANDARD";
   const data = syntheticComtrade({ station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.1,
     channels: [{ name: "IA", phase: "A", unit: "A", amplitude: .5, frequencyHz: 50 }] });
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "mgtest.cfg", mimeType: "application/octet-stream", buffer: data.cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "mgtest.dat", mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();

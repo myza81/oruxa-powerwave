@@ -46,26 +46,26 @@ function wsUrl(wsId, suffix) {
 
 async function uploadComtrade(page) {
   await page.goto("/index.html");
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(COMTRADE_FIXTURES, `${COMTRADE_STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(COMTRADE_FIXTURES, `${COMTRADE_STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").last()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").last()).toBeVisible();
 }
 
 async function uploadBen5k(page, benPath) {
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(benPath);
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden", timeout: 30000 });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").last()).toBeVisible();
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").last()).toBeVisible();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   return row.getAttribute("data-source-id");
 }
 
@@ -189,7 +189,7 @@ test.describe("Scenario C — UI smoke (Compliance page, no JS errors)", () => {
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#pageCompliance")).toBeVisible();
     // Navigate away and back; page must hide then show correctly.
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await expect(page.locator("#pageCompliance")).toBeHidden();
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#pageCompliance")).toBeVisible();

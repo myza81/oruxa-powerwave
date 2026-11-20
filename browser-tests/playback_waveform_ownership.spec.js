@@ -43,7 +43,7 @@ const ANALYZERS = [
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
@@ -56,7 +56,7 @@ async function uploadFixture(page) {
 // claims), and make sure the DEC-104 full-bay context exists.
 async function setupDisplayedRecording(page) {
   await uploadFixture(page);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -220,8 +220,8 @@ test.describe("Playback Cursor is Analysis-owned -- never rendered on Waveform",
     await openAnalyzerAndClaimTime(page, ANALYZERS[1], contextId);
     await expectNoArmedPlaybackOverlay(page);
     // Analysis -> Recordings
-    await page.locator("#mainNavRecordingsBtn").click();
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
     await expectNoArmedPlaybackOverlay(page);
     // Recordings -> Analysis -> Compliance
     await page.locator("#mainNavAnalysisBtn").click();

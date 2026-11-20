@@ -44,12 +44,12 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.goto("/index.html");
-      await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+      await page.locator("#wwRdUploadBtn").first().click();
       await page.locator("#uploadModalFormatSelect").selectOption("ben");
       await page.locator("#uploadModalFile_0").setInputFiles({ name: "clock.ben", mimeType: "application/octet-stream", buffer: clockFixture() });
       await page.locator("#uploadModalSubmitBtn").click();
       await expect(page.locator("#uploadModalOverlay")).toBeHidden();
-      const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+      const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
       await expect(row.locator(".recording-start-time-cell")).toHaveText("2026-10-16 18:03:14.035400 (timezone unverified)");
       await row.locator('[data-action="details"]').click();
       await expect(page.locator(".recording-details-row").first()).toContainText("2026-10-16 18:03:14.535400 (timezone unverified)");

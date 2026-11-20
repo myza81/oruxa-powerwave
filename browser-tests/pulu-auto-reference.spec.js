@@ -186,7 +186,7 @@ async function uploadPulu(page, station = "PULU_SGT1") {
     puluCfgPostProcess(data.cfg.toString("latin1")),
     "latin1",
   );
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({
     name: `${station}.cfg`,
@@ -223,7 +223,7 @@ async function uploadPuluRealLv(page, station = "PULU_RLV") {
     puluRealLvCfgPostProcess(data.cfg.toString("latin1")),
     "latin1",
   );
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({
     name: `${station}.cfg`,

@@ -20,7 +20,7 @@ function trackErrors(page) {
 
 async function openBenUpload(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await expect(page.locator("#uploadModalFile_0")).toHaveAttribute("accept", ".ben,.BEN");
@@ -38,12 +38,13 @@ test("Fast BEN uploads and opens like any recording", async ({ page }) => {
   await uploadBen(page, path.join(FIXTURES, "synthetic_fast.ben"));
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(row).toBeVisible();
   await expect(row).toContainText("BEN");
   await expect(row).toContainText("SYNTH BEN FAST");
 
   await row.click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   const analog = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-channel-name="LINE1 VR"]');
   await expect(analog).toBeVisible();
@@ -60,9 +61,10 @@ test("Slow BEN imports frequency/power channels, unavailable samples included", 
   await uploadBen(page, path.join(FIXTURES, "synthetic_slow.ben"));
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(row).toContainText("SYNTH BEN SLOW");
   await row.click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
 
   for (const name of ["POWER LINE1", "FREQ LINE1 VR", "FREQ LINE2 VY"]) {
@@ -97,5 +99,5 @@ test("unsupported BEN layout and non-BEN .ben files show the import error", asyn
   });
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalStatus")).toContainText("not a recognized BEN record");
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(0);
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0);
 });

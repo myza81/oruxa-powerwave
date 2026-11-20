@@ -24,13 +24,13 @@ const STEM = "line_to_line_multibay";
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
 }
 
 async function openLineToLineBuilder(page) {
@@ -343,13 +343,13 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     await uploadFixture(page);
     // A second ready bay with a distinct name: upload the fixture again
     // and rename that upload's own KPDN1 context.
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(2);
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(2);
     const renamed = await page.evaluate(async () => {
       const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/engineering-contexts";
       const kpdn1 = (await (await fetch(base)).json()).filter((c) => c.display_name === "KPDN1");

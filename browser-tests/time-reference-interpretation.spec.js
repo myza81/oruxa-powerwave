@@ -26,8 +26,8 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    const errors=[];page.on("pageerror",e=>errors.push(e.message));
    await page.goto("/index.html");
    await uploadRecord(page,{station:"KTBR",date:"16/10/2026",startClock:"18:03:14.037467",triggerClock:"18:03:14.537467",rateHz:5000,durationS:.6});
-   await page.locator("#mainNavRecordingsBtn").click();
-   await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+   await page.locator("#mainNavRecordingDetailsBtn").click();
+   await page.locator("#wwRdUploadBtn").first().click();
    await page.locator("#uploadModalFormatSelect").selectOption("ben");
    await page.locator("#uploadModalFile_0").setInputFiles({name:"GPTH.ben",mimeType:"application/octet-stream",buffer:clockFixture()});
    await page.locator("#uploadModalSubmitBtn").click();
@@ -35,7 +35,7 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    const sources=await getApi(page,"/sources");
    const gpth=sources.find(s=>s.station_name==="CLOCK TEST").source_id;
    const ktbr=sources.find(s=>s.station_name==="KTBR").source_id;
-   const row=()=>page.locator(`#recordingsTableBody tr[data-source-id="${gpth}"]`);
+   const row=()=>page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${gpth}"]`);
    await row().click();
    await expect(page.locator("#workspaceRow")).toBeVisible();
    for(const sid of [ktbr,gpth]) {
@@ -51,7 +51,7 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
     await wwFetchSynchronizationStateForWorkspace();
     const cursor=wwEnsureTimeGroupCursorStateEntry(ktbr);cursor.enabled=true;cursor.a.time=.4;
    },ktbr);
-   await page.locator("#mainNavRecordingsBtn").click();
+   await page.locator("#mainNavRecordingDetailsBtn").click();
    await row().locator('[data-action="details"]').click();
    const select=page.locator(`.recording-time-reference[data-source-id="${gpth}"]`);
    await expect(select).toHaveValue("raw");
@@ -95,7 +95,7 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    await selectChannel(page,"KTBR","VA");await selectChannel(page,"CLOCK TEST","CLOCK VR");await waitForPlot(page,2);
    const er=await getApi(page,"/event-reconstruction/definition");
    expect(er.members.find(m=>m.record_id===gpth).recorded_placement_s).toBeCloseTo(-.002067,10);
-   await page.locator("#mainNavRecordingsBtn").click();
+   await page.locator("#mainNavRecordingDetailsBtn").click();
    await select.selectOption("raw");await expect(select).toBeEnabled();
    await expect.poll(async()=> (await timingState(page)).groups.length).toBe(2);
    await expect.poll(() => timeGroupHeader(page, gpth)).toContain("Elapsed / unaligned");

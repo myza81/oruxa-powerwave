@@ -39,14 +39,14 @@ async function currentWorkspaceIdOf(page) {
 }
 
 async function uploadFixture(page, stem) {
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }

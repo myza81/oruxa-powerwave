@@ -41,7 +41,7 @@ async function setup(page, { marker = "P", baseSide = "primary", sourceDefault =
     "latin1",
   );
 
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "vlt.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "vlt.dat", mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();

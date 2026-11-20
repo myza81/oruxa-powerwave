@@ -46,13 +46,13 @@ const SYNTHETIC_BEN5K_PHASOR = path.join(
 
 async function uploadComtrade(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${COMTRADE_STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${COMTRADE_STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -61,14 +61,14 @@ async function uploadComtrade(page) {
 
 async function uploadBen5k(page, benPath) {
   // Navigate to Recordings without a full reload if already in-session.
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(benPath);
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden", timeout: 30000 });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
@@ -219,7 +219,7 @@ test.describe("Scenario E — Mixed BEN5K + COMTRADE: BEN5K blocked, COMTRADE av
       `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(
         // find the comtrade source (non-ben)
         await page.evaluate(() => {
-          const rows = document.querySelectorAll("#recordingsTableBody tr[data-source-id]");
+          const rows = document.querySelectorAll("#wwRdRecordingList .ww-rd-recording-item");
           return rows.length > 0 ? rows[0].getAttribute("data-source-id") : "";
         })
       )}`

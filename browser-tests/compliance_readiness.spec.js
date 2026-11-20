@@ -32,26 +32,26 @@ const wsUrl = async (page, suffix) => `${BACKEND_URL}/api/v1/workspaces/${encode
 
 async function uploadMultibay(page) {
   await page.goto("/index.html");
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${FIXTURE}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${FIXTURE}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").last()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").last()).toBeVisible();
 }
 
 async function uploadSmokeMultibay(page) {
   await page.goto("/index.html");
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${FIXTURE_SMOKE}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${FIXTURE_SMOKE}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").last()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").last()).toBeVisible();
 }
 
 async function addReference(page, { name = "Reference", representation = "line_line_rms", treatment = "each_phase", member = null, unit = "pu" } = {}) {

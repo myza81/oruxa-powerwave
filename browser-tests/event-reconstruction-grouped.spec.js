@@ -101,7 +101,7 @@ test.describe("Event Reconstruction Grouped View -- group formation", () => {
     let state = await plotState(page);
     expect(state.groups.map((g) => g.traces)).toEqual([["STN_SLOWER · VA", "STN_FAST · VA"]]);
     const panelKey = state.groups[0].key;
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openEventReconstruction(page);
     await waitForPlot(page, 2);
     state = await plotState(page);
@@ -329,7 +329,7 @@ test.describe("Event Reconstruction Grouped View -- cursors and isolation", () =
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: MIXED });
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:00.500000", channels: MIXED });
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const wfRows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     for (let i = 0; i < 3; i++) {

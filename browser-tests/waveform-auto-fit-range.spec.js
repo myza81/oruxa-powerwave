@@ -49,11 +49,11 @@ async function uploadFixture(page, stem) {
   // source B from Recordings, then return to A's already-open workspace
   // to toggle B's channel directly from the sidebar).
   const onRecordingsPage = await page.evaluate(() => {
-    const el = document.getElementById("pageRecordings");
+    const el = document.getElementById("pageRecordingDetails");
     return !!el && !el.hidden;
   });
-  if (!onRecordingsPage) await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  if (!onRecordingsPage) await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
@@ -64,7 +64,7 @@ async function uploadFixture(page, stem) {
   // .last() (not .first(), which would keep re-resolving to the very
   // first source ever uploaded once a second source exists) is the
   // just-uploaded row.
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   expect(sourceId).toBeTruthy();
@@ -90,7 +90,7 @@ async function openSourceInWorkspace(page, sourceId) {
   if (!onWaveformPage) {
     // Not on the Waveform page yet -- only the Recordings-page row
     // ("Open ... for analysis") navigates there.
-    await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
   }
   const details = page.locator(`details.source-recording[data-source-id="${sourceId}"]`);
@@ -151,7 +151,7 @@ test("Waveform auto-fit: default time extent tracks the currently displayed sour
 
   await test.step("Load app", async () => {
     await page.goto("/index.html");
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
   });
 
   let longId;

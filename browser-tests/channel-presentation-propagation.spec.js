@@ -25,13 +25,13 @@ async function upload(page) {
       { name: "VA", unit: "V", phase: "A", amplitude: 100, frequencyHz: 50 },
     ],
   });
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "osc.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "osc.dat", mimeType: "application/octet-stream", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
 }
 
 const rawRow = (page, name) => page.locator(`#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-channel-name="${name}"]`);

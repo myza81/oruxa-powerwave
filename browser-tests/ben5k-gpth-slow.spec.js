@@ -21,12 +21,12 @@ test("GPTH legacy Slow: 20 calculated channels plot all independent Hz/MW export
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(filename);
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden({ timeout: 30000 });
-  const recording = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const recording = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   const sid = await recording.getAttribute("data-source-id");
   await recording.click();
   const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');

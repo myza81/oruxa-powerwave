@@ -85,13 +85,13 @@ function threePhaseFixture() {
 async function uploadAndGoToCC(page, { cfg, dat }, cfgName) {
   await routeConfig(page);
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: cfgName, mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: cfgName.replace(".cfg", ".dat"), mimeType: "application/octet-stream", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }

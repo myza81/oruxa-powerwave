@@ -40,7 +40,7 @@ function trackErrors(page) {
 
 async function uploadBen5kFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(FIXTURE);
@@ -53,7 +53,7 @@ async function uploadBen5kFixture(page) {
   ]).catch(() => "timeout");
 
   if (outcome !== "hidden") return null;
-  const tableRow = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const tableRow = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(tableRow).toBeVisible({ timeout: 10_000 });
   return tableRow.getAttribute("data-source-id");
 }

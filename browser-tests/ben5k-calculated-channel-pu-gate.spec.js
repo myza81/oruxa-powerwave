@@ -39,7 +39,7 @@ function trackErrors(page) {
 // rejected the upload (BEN5K_EXPERIMENTAL_ENABLED not set in this environment).
 async function uploadBen5kFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(FIXTURE);
@@ -52,7 +52,7 @@ async function uploadBen5kFixture(page) {
   ]).catch(() => "timeout");
 
   if (outcome !== "hidden") return null;
-  const tableRow = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const tableRow = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(tableRow).toBeVisible({ timeout: 10_000 });
   return tableRow.getAttribute("data-source-id");
 }
@@ -330,13 +330,13 @@ test("BEN5K calc gate (baseline): COMTRADE-sourced Reverse Polarity is NOT block
   }
   const dat = rows.join("\r\n") + "\r\n";
 
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "baseline.cfg", mimeType: "application/octet-stream", buffer: Buffer.from(cfg, "latin1") });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "baseline.dat", mimeType: "application/octet-stream", buffer: Buffer.from(dat, "latin1") });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10_000 });
 
   await openCalcPage(page);
   const calcA = await createReversePolarity(page, "VA");

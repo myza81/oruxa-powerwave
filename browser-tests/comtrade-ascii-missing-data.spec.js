@@ -13,12 +13,12 @@ async function uploadFrequency(page, revision) {
   const raw = [0, 99999, 99999, 1000, -1000, 99999, 2000];
   const dat = raw.map((v, i) => `${i+1},${i*1000},${v},100`).join("\r\n") + "\r\n";
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({name:"event.cfg",mimeType:"application/octet-stream",buffer:Buffer.from(cfg)});
   await page.locator("#uploadModalFile_1").setInputFiles({name:"event.dat",mimeType:"application/octet-stream",buffer:Buffer.from(dat)});
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
-  const source = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const source = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   const sid = await source.getAttribute("data-source-id");
   await source.click();
   return sid;

@@ -308,7 +308,7 @@ test.describe("Event Reconstruction Y-axis drag zoom -- channels and isolation",
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4, channels: MIXED });
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();

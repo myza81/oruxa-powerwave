@@ -553,8 +553,8 @@ test.describe("Event Reconstruction annotations -- manager and independence", ()
     const consoleErrors = collectConsoleErrors(page);
     await setup(page);
     // Waveform: a note through Waveform's own annotation API.
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();

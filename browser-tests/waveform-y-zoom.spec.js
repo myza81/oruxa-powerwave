@@ -34,7 +34,7 @@ const VI_CHANNELS = [
 
 async function uploadFixture(page, stem) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
@@ -46,7 +46,7 @@ async function uploadFixture(page, stem) {
 // Waveform page -- opens the source and selects it from the Channels
 // sidebar, the same flow every Waveform browser test already uses.
 async function displayChannel(page, sourceId, channelName) {
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -104,7 +104,7 @@ async function clickAutoscaleY(page, groupId) {
 async function setupTwoPanelsOneGroup(page) {
   await page.goto("/index.html");
   await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4, channels: VI_CHANNELS });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   const sourceId = await row.getAttribute("data-source-id");
   await displayChannel(page, sourceId, "VA");
   // A second channel on the SAME already-open source: the sidebar's
@@ -128,12 +128,12 @@ async function setupTwoPanelsOneGroup(page) {
 async function setupTwoTimeGroups(page) {
   await uploadFixture(page, "synth_playback");
   await uploadFixture(page, "synth_playback_b");
-  const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+  const rows = page.locator("#wwRdRecordingList .ww-rd-recording-item");
   await expect(rows).toHaveCount(2);
   const sourceIdA = await rows.nth(0).getAttribute("data-source-id");
   const sourceIdB = await rows.nth(1).getAttribute("data-source-id");
   for (const sourceId of [sourceIdA, sourceIdB]) {
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await displayChannel(page, sourceId, "V0_R");
   }
   await expect(page.locator(".ww-time-group-canvas")).toHaveCount(2);
@@ -262,8 +262,8 @@ test.describe("Waveform global Y Zoom -- no valid target", () => {
 
   test("a recording exists but no channel is displayed yet: still disabled", async ({ page }) => {
     await uploadFixture(page, "synth_playback");
-    const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
-    await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+    const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const state = await waveformState(page);
     expect(state.zoomInDisabled).toBe(true);

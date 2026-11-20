@@ -46,8 +46,8 @@ function cfgBuffer(station, startClock) {
 }
 
 async function upload(page, station, startClock) {
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfgBuffer(station, startClock) });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: fs.readFileSync(path.join(FIXTURES, "synth_ascii.dat")) });
@@ -100,12 +100,12 @@ async function sourceIdFor(page, station) {
 // Removes a recording through the Recordings page, as an engineer would.
 async function removeRecording(page, station) {
   const sourceId = await sourceIdFor(page, station);
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator(`button[data-action="remove"][data-source-id="${sourceId}"]`).click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"] .ww-rd-recording-item-remove`).click();
   await expect(page.locator("#confirmOverlay")).toBeVisible();
   await page.locator("#confirmRemoveBtn").click();
   await expect(page.locator("#confirmOverlay")).toBeHidden();
-  await expect(page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`)).toHaveCount(0);
+  await expect(page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`)).toHaveCount(0);
   return sourceId;
 }
 
@@ -118,7 +118,7 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
       items.map((item) => item.id)
     );
     expect(navOrder).toEqual([
-      "mainNavRecordingsBtn",
+      "mainNavRecordingDetailsBtn",
       "mainNavWaveformBtn",
       "mainNavEventReconstructionBtn",
       "mainNavTableBtn",
@@ -134,11 +134,11 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     await expect(page.locator("#pageEventReconstruction")).toBeVisible();
     await expect(erNav).toHaveAttribute("aria-current", "page");
     await expect(page.locator("#workspaceRow")).toBeHidden();
-    await expect(page.locator("#pageRecordings")).toBeHidden();
+    await expect(page.locator("#pageRecordingDetails")).toBeHidden();
 
     const pages = [
       ["#mainNavWaveformBtn", "#workspaceRow"],
-      ["#mainNavRecordingsBtn", "#pageRecordings"],
+      ["#mainNavRecordingDetailsBtn", "#pageRecordingDetails"],
       ["#mainNavCalculatedChannelsBtn", "#pageCalculatedChannels"],
       ["#mainNavAnalysisBtn", "#pageAnalysis"],
       ["#mainNavComplianceBtn", "#pageCompliance"],
@@ -398,7 +398,7 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
 
     // A later Waveform change is inherited on refresh -- nothing is copied.
     await page.evaluate((sid) => wwSetChannelDisplayName(sid, "VB", "Bus VB again"), sourceA);
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openEventReconstruction(page);
     await openMemberTree(page, "STN_A");
     await expect(memberRow(page, "STN_A").locator('tr.ww-er-channel-row[data-er-channel-name="VB"]')).toContainText("Bus VB again");
@@ -421,7 +421,8 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
     const calc = await createCalculatedChannel(page, sourceA);
 
     // One channel displayed in Waveform first.
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#wwRdViewWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();
@@ -530,7 +531,8 @@ test.describe("Event Reconstruction -- analog-only scope (DEC-127)", () => {
     await createCalculatedChannel(page, sourceA);
 
     // Waveform: show one digital channel and record its digital browser.
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#wwRdViewWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const digitalGroup = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceA}"] details.channel-group[data-group="digital"]`);
     await expect(digitalGroup).toHaveCount(1);
@@ -666,7 +668,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     // Reset, then leave and come back: the definition is restored from the backend.
     await memberRow(page, "STN_B").locator('button[data-er-action="reset-correction"]').click();
     await expect(memberRow(page, "STN_B").locator(".ww-er-correction-value")).toHaveText("0.000 ms");
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openEventReconstruction(page);
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(2)");
     await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
@@ -775,7 +777,8 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await upload(page, "STN_A_TWIN", "10:00:00");
 
     // Display one channel in Waveform first.
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#wwRdViewWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await channelRow.getAttribute("aria-pressed")) !== "true") await channelRow.click();

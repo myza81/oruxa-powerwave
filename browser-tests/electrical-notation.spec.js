@@ -132,12 +132,12 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
     fs.copyFileSync(path.join(FIXTURES, "line_to_line_multibay.dat"), path.join(dir, "slks_names.dat"));
 
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(dir, "slks_names.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(dir, "slks_names.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
 
     const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     await expect(rows.first()).toBeVisible();

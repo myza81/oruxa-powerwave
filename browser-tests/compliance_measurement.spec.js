@@ -49,13 +49,13 @@ async function openCompliance(page) {
 }
 
 async function uploadFixture(page, stem) {
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
@@ -335,7 +335,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       await openCompliance(page);
       await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(5); // placeholder + 4 bays
 
-      await page.locator("#mainNavRecordingsBtn").click();
+      await page.locator("#mainNavRecordingDetailsBtn").click();
       await openCompliance(page);
       await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(5);
     });
@@ -396,7 +396,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       expect(patchResponse.ok()).toBeTruthy();
 
       // Return to Compliance (re-fetches the group list fresh).
-      await page.locator("#mainNavRecordingsBtn").click();
+      await page.locator("#mainNavRecordingDetailsBtn").click();
       await openCompliance(page);
       await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeHidden();
       await expect(page.locator("#wwComplianceGroupField")).toBeVisible();

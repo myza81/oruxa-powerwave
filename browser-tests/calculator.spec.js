@@ -44,8 +44,8 @@ test("Calculator is a first-class page accessible without an event recording", a
   );
 
   await page.goto("/index.html");
-  await expect(page.locator("#pageRecordings")).toBeVisible();
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(0);
+  await expect(page.locator("#pageRecordingDetails")).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0);
 
   const complianceNav = page.locator("#mainNavComplianceBtn");
   const calculatorNav = page.locator("#mainNavCalculatorBtn");
@@ -56,7 +56,7 @@ test("Calculator is a first-class page accessible without an event recording", a
     items.map((item) => item.id)
   );
   expect(navOrder).toEqual([
-    "mainNavRecordingsBtn",
+    "mainNavRecordingDetailsBtn",
     "mainNavWaveformBtn",
     "mainNavEventReconstructionBtn",
     "mainNavTableBtn",

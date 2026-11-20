@@ -107,12 +107,12 @@ async function uploadAndOpenCc(page, fixture) {
   await routeConfig(page);
   await page.goto("/index.html");
   const { cfg, dat } = fixture;
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "test.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "test.dat", mimeType: "application/octet-stream", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden", timeout: 15000 });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }

@@ -26,7 +26,7 @@ const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "com
 
 async function uploadFixture(page, stem) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
@@ -35,7 +35,7 @@ async function uploadFixture(page, stem) {
 }
 
 async function displayChannel(page, sourceId, channelName) {
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -89,7 +89,7 @@ const VI_CHANNELS = [
 async function setupOneGroup(page) {
   await page.goto("/index.html");
   await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4, channels: VI_CHANNELS });
-  const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
+  const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
   await displayChannel(page, sourceId, "VA");
   const groupId = await page.evaluate((sid) => wwTimeGroupIdForDisplaySourceId(sid), sourceId);
   return { sourceId, groupId };
@@ -109,7 +109,7 @@ const VIF_CHANNELS = [
 async function setupThreePanelsOneGroup(page) {
   await page.goto("/index.html");
   await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4, channels: VIF_CHANNELS });
-  const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
+  const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
   await displayChannel(page, sourceId, "VA");
   for (const name of ["IA", "F"]) {
     const row = page.locator(
@@ -127,12 +127,12 @@ async function setupThreePanelsOneGroup(page) {
 async function setupTwoTimeGroups(page) {
   await uploadFixture(page, "synth_playback");
   await uploadFixture(page, "synth_playback_b");
-  const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+  const rows = page.locator("#wwRdRecordingList .ww-rd-recording-item");
   await expect(rows).toHaveCount(2);
   const sourceIdA = await rows.nth(0).getAttribute("data-source-id");
   const sourceIdB = await rows.nth(1).getAttribute("data-source-id");
   for (const sourceId of [sourceIdA, sourceIdB]) {
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await displayChannel(page, sourceId, "V0_R");
   }
   await expect(page.locator(".ww-time-group-canvas")).toHaveCount(2);
@@ -173,8 +173,8 @@ test.describe("Waveform top toolbar -- controls present and complete", () => {
 
   test("a recording exists but no channel is displayed yet: still disabled", async ({ page }) => {
     await uploadFixture(page, "synth_playback");
-    const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
-    await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+    const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const state = await waveformState(page);
     for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"]) {
@@ -621,15 +621,15 @@ test.describe("Waveform top toolbar -- Clear Waveforms restored to the left oper
     const { groupId } = await setupOneGroup(page);
     const btn = page.locator("#clearWorkspaceBtn");
     await expect(btn).toBeEnabled();
-    const sourceCountBefore = await page.locator("#recordingsTableBody tr[data-source-id]").count();
+    const sourceCountBefore = await page.locator("#wwRdRecordingList .ww-rd-recording-item").count();
 
     await btn.click();
     await expect(page.locator(".ww-panel")).toHaveCount(0);
     await expect(btn).toBeDisabled();
     // Navigate to Recordings to confirm the source recording itself is
     // still present -- display-only clear, never a server-side delete.
-    await page.locator("#mainNavRecordingsBtn").click();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(sourceCountBefore);
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(sourceCountBefore);
   });
 
   test("no duplicate Clear control remains anywhere else in the toolbar", async ({ page }) => {

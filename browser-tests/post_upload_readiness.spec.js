@@ -36,13 +36,13 @@ const STEM = "compliance_smoke_multibay";
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
 }
 
@@ -116,8 +116,8 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
 
   test("re-uploading a second source into the same workspace does not duplicate or disturb the first bay's discovery", async ({ page }) => {
     await uploadFixture(page);
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "compliance_smoke_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "compliance_smoke_three_phase.dat"));
@@ -129,7 +129,7 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     // 4 original bays + 1 newly-discovered bay from the second upload --
     // idempotent, additive-only, never duplicated on repeated visits.
     await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(6);
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(6);
   });
@@ -176,13 +176,13 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
 test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immediately after upload, with zero manual context selection", () => {
   async function uploadPhasorSmokeFixture(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "phasor_smoke_three_phase.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -321,13 +321,13 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
 test.describe("DEC-106: initial context auto-selection is analyzer-compatibility-aware, not merely 'first context'", () => {
   async function uploadMixedCapabilityFixture(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "mixed_capability_multibay.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "mixed_capability_multibay.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -408,7 +408,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
     // Overcurrent/Impedance/Distance requirement is genuinely
     // unsatisfiable by any context.
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "compliance_smoke_multibay.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "compliance_smoke_multibay.dat"));
@@ -451,7 +451,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
     // the engineer's own explicit choice is preserved, even though it
     // is analyzer-incompatible (auto-selection only applies to the
     // initial unselected state).
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn1Id);
   });
@@ -489,13 +489,13 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
 test.describe("DEC-107: initial context auto-selection is representation-eligibility-aware (RMS/magnitude current is never treated as usable)", () => {
   async function uploadRepresentationEligibilityFixture(page, stem) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -600,7 +600,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
     await page.locator("#wwOvercurrentContextSelect").selectOption(rmsbayId);
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
 
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
   });
@@ -641,13 +641,13 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
 test.describe("DEC-108: multi-window waveform-form detector correctly accepts genuine disturbance-record instantaneous current", () => {
   async function uploadDisturbanceRecordFixture(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "disturbance_record_multibay.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "disturbance_record_multibay.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 

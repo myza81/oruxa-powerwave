@@ -35,7 +35,7 @@ async function showChannel(page, sourceId, channelName) {
 }
 
 async function upload(page, format, files) {
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption(format);
   for (let i = 0; i < files.length; i++) {
@@ -76,13 +76,11 @@ test("a BEN record and its BEN32 COMTRADE export show the same local time", asyn
   await upload(page, "ben", ["synthetic_fast.ben"]);
 
   // ---- Recording Events: identical Start Time, no UTC "Z" ----
-  const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+  const rows = page.locator("#wwRdRecordingList .ww-rd-recording-item");
   await expect(rows).toHaveCount(2);
-  const cells = page.locator("#recordingsTableBody tr[data-source-id] .recording-start-time-cell");
-  await expect(cells.nth(0)).toHaveText(LOCAL_START);
-  await expect(cells.nth(1)).toHaveText(LOCAL_START);
-  await expect(cells.nth(1)).not.toContainText("Z");
-  await expect(cells.nth(0)).toHaveAttribute("title", "Shown in Asia/Kuala_Lumpur");
+  await expect(rows.nth(0).locator(".ww-rd-recording-item-meta")).toContainText(LOCAL_START);
+  await expect(rows.nth(1).locator(".ww-rd-recording-item-meta")).toContainText(LOCAL_START);
+  await expect(rows.nth(1).locator(".ww-rd-recording-item-meta")).not.toContainText("Z");
   await expect(rows.nth(0)).toContainText("COMTRADE");
   await expect(rows.nth(1)).toContainText("BEN");
   const comtradeId = await rows.nth(0).getAttribute("data-source-id");

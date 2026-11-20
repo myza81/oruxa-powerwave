@@ -50,7 +50,7 @@ const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 
 async function uploadFixture(page, stem) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
@@ -63,7 +63,7 @@ async function uploadFixture(page, stem) {
 // concept driven entirely off DISPLAYED channels, never upload alone).
 // Assumes the Recordings page is already showing `sourceId`'s own row.
 async function displayFirstAnalogChannel(page, sourceId) {
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -113,7 +113,7 @@ async function createSinglePhaseContext(page, workspaceId, sourceId, displayName
 // mount locator (for the actual Restart/Play/Speed/seek controls).
 async function setupPhasorPlayback(page, stem, displayName) {
   await uploadFixture(page, stem);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -264,7 +264,7 @@ test.describe("Event Playback Slice 1", () => {
 
   test("Waveform Time Group toolbar no longer mounts Playback controls", async ({ page }) => {
     await uploadFixture(page, "synth_playback");
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     const sourceId = await row.getAttribute("data-source-id");
     await displayFirstAnalogChannel(page, sourceId);
 
@@ -381,13 +381,13 @@ test.describe("Event Playback Slice 1", () => {
     await uploadFixture(page, "synth_playback");
     await uploadFixture(page, "synth_playback_b");
 
-    const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+    const rows = page.locator("#wwRdRecordingList .ww-rd-recording-item");
     await expect(rows).toHaveCount(2);
     const sourceIdA = await rows.nth(0).getAttribute("data-source-id");
     const sourceIdB = await rows.nth(1).getAttribute("data-source-id");
 
     for (const sourceId of [sourceIdA, sourceIdB]) {
-      await page.locator("#mainNavRecordingsBtn").click();
+      await page.locator("#mainNavRecordingDetailsBtn").click();
       await displayFirstAnalogChannel(page, sourceId);
     }
 
@@ -445,11 +445,11 @@ test.describe("Event Playback Slice 1", () => {
     await expect(playBtn).toHaveText("Pause");
     await page.waitForTimeout(300);
 
-    // "Start new workspace" lives on the Recordings page (Phase 3B-UAT2:
-    // relocated there as the one workspace-management surface).
-    await page.locator("#mainNavRecordingsBtn").click();
-    await expect(page.locator("#newWorkspaceButton")).toBeVisible();
-    await page.locator("#newWorkspaceButton").click();
+    // "Start new workspace" trigger button removed per UX-3; show the
+    // confirm overlay programmatically to preserve the workspace-reset-
+    // during-playback test coverage.
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.evaluate(() => { document.getElementById("newWorkspaceConfirmOverlay").hidden = false; });
     await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeVisible();
     await page.locator("#newWorkspaceConfirmStartBtn").click();
     await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeHidden();
@@ -733,7 +733,7 @@ test.describe("Event Playback Slice 2", () => {
     await expect(mount.locator(".ww-tg-playback-speed-select")).toHaveValue("4");
     expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(4);
 
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await page.locator("#mainNavAnalysisBtn").click();
     await expect(page.locator("#wwPhasorPlaybackMount .ww-tg-playback-speed-select")).toHaveValue("4");
   });
