@@ -379,21 +379,19 @@ class TestErrors:
 class TestReadyMeansTheTraceCanBeProduced:
     """DEC-169: metadata readiness is not Ready; the measurement product must be resolvable."""
 
-    def test_pu_with_a_base_set_but_group_not_confirmed_is_action_required_not_ready(self, client):
+    def test_suggested_group_with_nominal_voltage_set_is_ready(self, client):
+        """DEC-UA-002: suggested + manual authority (nominal_voltage set) → ready.
+        Manual correction is not a separate confirmation workflow."""
         _add_reference(client, representation="phase_ground_rms", unit="pu")
         _prepare(client, "KPDN1")
         group = _groups(client)["KPDN1"]
         client.put(
             f"/api/v1/workspaces/{WS}/sources/{group['source_id']}/measurement-groups/{group['id']}/voltage-config",
             json={"nominal_voltage_ll_kv": 132.0, "reference_mode": "auto"},
-        )  # base saved but the suggested group is NOT confirmed
+        )  # base saved; suggested group is NOT explicitly confirmed, but manual authority bypasses the status gate
         readiness = _readiness(client, "KPDN1")
-        assert readiness["status"] == "action_required"
-        assert readiness["references"][0]["unit_state"] == "action_required"
-        assert "confirm" in readiness["references"][0]["message"].lower()
-        assert readiness["needs_base"] is True
-        _set_base(client, "KPDN1", 132.0)  # confirm, as the editor's Save does
-        assert _readiness(client, "KPDN1")["status"] == "ready"
+        assert readiness["status"] == "ready"
+        assert readiness["needs_base"] is False
 
     def test_kv_reference_is_ready_without_any_base(self, client):
         _add_reference(client, representation="phase_ground_rms", unit="kV")

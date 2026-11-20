@@ -338,9 +338,11 @@ class TestUngroupedAndUnresolvedGroups:
         assert result is not None
         assert result.status == STATUS_BASE_REQUIRED
 
-    def test_suggested_group_status_resolves_base_required_not_configured(
+    def test_suggested_group_status_with_valid_config_resolves(
         self, voltage_config_registry, current_config_registry
     ):
+        """DEC-UA-002: suggested + engineer-approved authority + valid voltage config → CONFIGURED.
+        Manual correction is not a separate confirmation workflow."""
         registry = MeasurementGroupRegistry()
         registry.add(_group("mg-v1", KIND_VOLTAGE, channel_names=("VR", "VY", "VB"), status=STATUS_SUGGESTED))
         _configure_voltage("mg-v1", registry, voltage_config_registry)
@@ -351,7 +353,7 @@ class TestUngroupedAndUnresolvedGroups:
             current_config_registry=current_config_registry,
         )
         assert result is not None
-        assert result.status == STATUS_BASE_REQUIRED
+        assert result.status == STATUS_CONFIGURED
 
 
 class TestCalculatedOnCalculated:

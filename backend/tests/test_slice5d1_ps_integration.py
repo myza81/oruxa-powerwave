@@ -310,15 +310,15 @@ class TestSecondaryPath:
         assert result.status == V_STATUS_BASE_REQUIRED
         assert result.reason == "voltage_reference_undetermined"
 
-    def test_secondary_path_suggested_plus_legacy_manual_blocked(self):
-        """suggested group status + legacy_manual authority → group_not_confirmed (gate still applies)."""
+    def test_secondary_path_suggested_plus_legacy_manual_resolves(self):
+        """DEC-UA-002: suggested + legacy_manual + valid secondary config → CONFIGURED.
+        Engineer-approved authority bypasses the status gate for suggested groups."""
         group = _vgroup(status=STATUS_SUGGESTED)
         cfg = _vconfig(base_reference_side="secondary", secondary_voltage_ll_v=110.0,
                        base_authority=BASE_AUTHORITY_LEGACY,
                        reference_mode="manual", reference_override="line_to_line")
         result = resolve_voltage_base_for_group(group, cfg)
-        assert result.status == V_STATUS_BASE_REQUIRED
-        assert result.reason == "group_not_confirmed"
+        assert result.status == V_STATUS_CONFIGURED
 
 
 # ---------------------------------------------------------------------------

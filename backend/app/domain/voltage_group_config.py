@@ -58,6 +58,7 @@ from app.domain.base_authority import (
     BaseAuthorityState,
     is_auto_resolved,
     is_base_eligible_for_pu,
+    is_engineer_approved,
 )
 from app.domain.measurement_group import (
     KIND_VOLTAGE,
@@ -301,14 +302,16 @@ def resolve_voltage_base_for_group(
             reason="manual_conflict_detected",
         )
 
-    # Group status gate: preserved for engineer-approved authority (legacy_manual / manual).
-    # auto_resolved authority bypasses the gate ONLY for suggested groups — a suggested group
-    # with valid auto_resolved evidence resolves to CONFIGURED without confirmed/manual status.
+    # Group status gate: suggested groups bypass the gate when the base authority is
+    # trustworthy.  Two conditions qualify:
+    #   auto_resolved  — automatic evidence resolved a valid base (original Slice 5C-1 bypass).
+    #   manual / legacy_manual — engineer explicitly set the nominal kV in RD (DEC-UA-002:
+    #     "manual correction is not a separate confirmation workflow").
     # needs_review groups have conflicting identity evidence and must not become PU-authoritative
-    # even when base_authority is auto_resolved — identity conflict takes precedence over base.
+    # regardless of base_authority — identity conflict takes precedence over base.
     skip_status_gate = (
         config is not None
-        and is_auto_resolved(config.base_authority)
+        and (is_auto_resolved(config.base_authority) or is_engineer_approved(config.base_authority))
         and group.status == STATUS_SUGGESTED
     )
     if not skip_status_gate and group.status not in AUTHORITATIVE_GROUP_STATUSES:

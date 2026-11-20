@@ -213,21 +213,21 @@ class TestVoltageAuthorityGate:
         result = resolve_voltage_base_for_group(group, cfg)
         assert result.status == V_STATUS_CONFIGURED
 
-    def test_legacy_manual_does_not_bypass_status_gate(self):
-        """legacy_manual requires confirmed/manual group status."""
+    def test_legacy_manual_bypasses_status_gate_for_suggested(self):
+        """DEC-UA-002: legacy_manual (engineer-approved) bypasses the status gate
+        for suggested groups — same as auto_resolved."""
         group = _vgroup(STATUS_SUGGESTED, channel_names=("VRY",))
         cfg = _vconfig(base_authority=BASE_AUTHORITY_LEGACY)
         result = resolve_voltage_base_for_group(group, cfg)
-        assert result.status == V_STATUS_BASE_REQUIRED
-        assert result.reason == "group_not_confirmed"
+        assert result.status == V_STATUS_CONFIGURED
 
-    def test_manual_does_not_bypass_status_gate(self):
-        """manual authority also requires confirmed/manual group status."""
+    def test_manual_bypasses_status_gate_for_suggested(self):
+        """DEC-UA-002: manual authority bypasses the status gate for suggested groups.
+        The engineer's explicit entry is accepted without a separate confirmation step."""
         group = _vgroup(STATUS_SUGGESTED, channel_names=("VRY",))
         cfg = _vconfig(nominal_voltage_ll_kv=275.0, base_authority=BASE_AUTHORITY_MANUAL)
         result = resolve_voltage_base_for_group(group, cfg)
-        assert result.status == V_STATUS_BASE_REQUIRED
-        assert result.reason == "group_not_confirmed"
+        assert result.status == V_STATUS_CONFIGURED
 
     def test_no_config_still_base_required_no_authority_check(self):
         """When config is None, authority gate is not consulted — falls to base-not-configured."""
@@ -289,12 +289,13 @@ class TestCurrentAuthorityGate:
         result = resolve_current_base_for_group(group, cfg)
         assert result.status == C_STATUS_CONFIGURED
 
-    def test_legacy_does_not_bypass_status_gate(self):
+    def test_legacy_bypasses_status_gate_for_suggested(self):
+        """DEC-UA-002: legacy_manual (engineer-approved) bypasses the status gate
+        for suggested current groups — same as auto_resolved."""
         group = _cgroup(STATUS_SUGGESTED)
         cfg = _iconfig(base_authority=BASE_AUTHORITY_LEGACY)
         result = resolve_current_base_for_group(group, cfg)
-        assert result.status == C_STATUS_BASE_REQUIRED
-        assert result.reason == "group_not_confirmed"
+        assert result.status == C_STATUS_CONFIGURED
 
     def test_no_config_still_base_required(self):
         group = _cgroup(STATUS_CONFIRMED)

@@ -29,7 +29,7 @@ The skip_status_gate bypass (Slice 5C-1) is what makes scenarios 3–5 work:
   needs_review + auto_resolved → still blocked (scenario 10 regression guard).
 
 Manual authority is INDEPENDENT of group status (scenarios 6, 7):
-  suggested + manual → blocked (manual authority requires confirmed/manual status).
+  suggested + manual → resolves (manual correction is accepted for suggested groups, DEC-UA-002).
   confirmed + manual → resolves normally.
   manual group status + manual authority → resolves normally.
 """
@@ -185,19 +185,21 @@ class TestCurrentAutoAcceptance:
 
 class TestManualOverridePrecedence:
     """Scenario 6: when an engineer explicitly sets a voltage base, the
-    base_authority transitions to "manual", which requires confirmed/manual group
-    status before resolving.  This is intentional — manual authority is engineer-
-    approved and must not silently override back to auto on a suggested group."""
+    base_authority transitions to "manual".  Per DEC-UA-002, manual correction
+    is not a separate confirmation workflow — an engineer explicitly configuring
+    a nominal kV for a suggested group makes PU immediately available, the same
+    way auto_resolved evidence does.  needs_review groups remain blocked (identity
+    conflict takes precedence regardless of authority)."""
 
-    def test_suggested_group_with_manual_authority_is_blocked(self):
-        """manual authority on a suggested group → group_not_confirmed.
-        The engineer's explicit correction still requires the group to be
-        acknowledged (confirmed or manual status) before PU resolves."""
+    def test_suggested_group_with_manual_authority_resolves(self):
+        """manual authority on a suggested group → CONFIGURED (DEC-UA-002).
+        The engineer's explicit nominal-kV entry bypasses the status gate for
+        suggested groups — same as auto_resolved.  No separate confirmation step
+        is required."""
         group = _vgroup(STATUS_SUGGESTED)
         cfg = _vconfig(nominal_voltage_ll_kv=132.0, base_authority=BASE_AUTHORITY_MANUAL)
         result = resolve_voltage_base_for_group(group, cfg)
-        assert result.status == V_STATUS_BASE_REQUIRED
-        assert result.reason == "group_not_confirmed"
+        assert result.status == V_STATUS_CONFIGURED
 
     def test_confirmed_group_with_manual_authority_resolves(self):
         """When the engineer both confirms the group AND sets a manual kV,
@@ -212,6 +214,18 @@ class TestManualOverridePrecedence:
         cfg = _vconfig(nominal_voltage_ll_kv=132.0, base_authority=BASE_AUTHORITY_MANUAL)
         result = resolve_voltage_base_for_group(group, cfg)
         assert result.status == V_STATUS_CONFIGURED
+
+    def test_needs_review_group_with_manual_authority_is_blocked(self):
+        """needs_review + manual → group_not_confirmed (DEC-UA-002 regression guard).
+        Identity conflict takes precedence over base authority.  The DEC-UA-002 bypass
+        only applies to suggested groups — a needs_review group still requires engineer
+        resolution of the conflicting channel membership."""
+        from app.domain.measurement_group import STATUS_NEEDS_REVIEW
+        group = _vgroup(STATUS_NEEDS_REVIEW)
+        cfg = _vconfig(nominal_voltage_ll_kv=132.0, base_authority=BASE_AUTHORITY_MANUAL)
+        result = resolve_voltage_base_for_group(group, cfg)
+        assert result.status == V_STATUS_BASE_REQUIRED
+        assert result.reason == "group_not_confirmed"
 
 
 # ---------------------------------------------------------------------------
