@@ -35835,8 +35835,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwNavigateToRdForPuConfiguration(sourceId) {
             // PU-UI-001 Slice C: navigate to Recording Details with the
             // affected source pre-selected and the groups panel visible.
+            // Gap 2: use "all" filter so current groups that need attention
+            // are not hidden by a voltage-only filter.
             wwRdState.selectedSourceId = sourceId || null;
-            wwRdState.groupKindFilter = "voltage";
+            wwRdState.groupKindFilter = "all";
             wwRdState.narrowPanel = "groups";
             shellSetCurrentPage("recording-details");
         }
@@ -36890,43 +36892,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '</div>';
             html += '</div>';
 
-            // PU-UI-001 Slice A: Per-unit Configuration section — shown when
-            // the recording has actionable PU issues OR when no measurement
-            // groups exist (channel may rely on the DEC-049 source-level
-            // fallback). The Source Default link gives contextual access per
-            // D-005 (advanced only, not prominently). Never shows green success
-            // state (§8).
+            // PU-UI-001 Slice A: Per-unit Configuration section — always shown
+            // so the Source Default link (D-005: contextual access, advanced
+            // only, not prominently) is accessible even after all PU issues are
+            // resolved (Gap 1: a fully-configured recording must still be able
+            // to access, edit and clear an existing Source Default). Issue
+            // counts and the "Review affected groups" button are conditional.
+            // Never shows green success state (§8).
             const groups = ww.measurementGroups.get(s.source_id) || [];
             const voltageGroups = groups.filter(function(g) { return g.kind === "voltage"; });
             const baseRequiredGroups = voltageGroups.filter(function(g) { return g.pu_status === "base_required"; });
             const conflictGroups = voltageGroups.filter(function(g) { return g.pu_status === "conflict"; });
             const hasPuIssues = baseRequiredGroups.length > 0 || conflictGroups.length > 0;
-            const noGroups = groups.length === 0;
-            if (hasPuIssues || noGroups) {
-                html += '<div class="ww-rd-section ww-rd-pu-config-section">';
-                html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
-                if (baseRequiredGroups.length > 0) {
-                    const n = baseRequiredGroups.length;
-                    html += '<div class="ww-rd-pu-config-issue">' +
-                        n + ' voltage group' + (n === 1 ? '' : 's') +
-                        ' need' + (n === 1 ? 's' : '') + ' a nominal voltage base</div>';
-                }
-                if (conflictGroups.length > 0) {
-                    const n = conflictGroups.length;
-                    html += '<div class="ww-rd-pu-config-issue">' +
-                        n + ' voltage group' + (n === 1 ? '' : 's') +
-                        ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
-                }
-                if (hasPuIssues) {
-                    html += '<button class="ww-rd-pu-review-btn" ' +
-                        'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
-                }
-                html += '<button class="ww-rd-pu-source-default-link" ' +
-                    'data-source-id="' + escapeHtml(s.source_id) + '" ' +
-                    'onclick="wwOpenPerUnitProfilesModal(this.dataset.sourceId)">' +
-                    'Configure Source Default…</button>';
-                html += '</div>';
+            html += '<div class="ww-rd-section ww-rd-pu-config-section">';
+            html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
+            if (baseRequiredGroups.length > 0) {
+                const n = baseRequiredGroups.length;
+                html += '<div class="ww-rd-pu-config-issue">' +
+                    n + ' voltage group' + (n === 1 ? '' : 's') +
+                    ' need' + (n === 1 ? 's' : '') + ' a nominal voltage base</div>';
             }
+            if (conflictGroups.length > 0) {
+                const n = conflictGroups.length;
+                html += '<div class="ww-rd-pu-config-issue">' +
+                    n + ' voltage group' + (n === 1 ? '' : 's') +
+                    ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
+            }
+            if (hasPuIssues) {
+                html += '<button class="ww-rd-pu-review-btn" ' +
+                    'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
+            }
+            html += '<button class="ww-rd-pu-source-default-link" ' +
+                'data-source-id="' + escapeHtml(s.source_id) + '" ' +
+                'onclick="wwOpenPerUnitProfilesModal(this.dataset.sourceId)">' +
+                'Configure Source Default…</button>';
+            html += '</div>';
 
             // UX-3 (migrated from Recording Events): Time Reference section —
             // shown only when the recorder clock time is unverified and the
