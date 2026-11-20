@@ -326,11 +326,10 @@ def test_manage_per_unit_bases_toolbar_control_exists_in_html():
     # Waveform toolbar migration: two direct icon buttons, no dropdown.
     assert 'id="wwUnitEngineeringBtn"' in source
     assert 'id="wwUnitPerUnitBtn"' in source
-    # Slice 1 (Per-Unit Settings hierarchy): the toolbar now routes to a
-    # single "Per-Unit Settings..." entry point rather than opening the
-    # source-wide modal directly -- the modal itself, its own function,
-    # and its own form controls are all still fully present/unchanged.
-    assert 'id="wwOpenPerUnitSettingsBtn"' in source
+    # PU-UI-001 Slice B: the Hub (#wwOpenPerUnitSettingsBtn) is retired;
+    # the Source Default modal is still fully present and accessible
+    # directly (e.g. from Recording Details).
+    assert 'id="wwOpenPerUnitSettingsBtn"' not in source
     assert 'id="perUnitProfilesOverlay"' in source
     assert 'id="perUnitSourceSelect"' in source
 

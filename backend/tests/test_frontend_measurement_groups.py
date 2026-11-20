@@ -49,21 +49,18 @@ class TestModalAndDrawerMarkupExists:
         assert 'id="wwMgDrawerSaveBtn"' in source
         assert 'id="wwMgDrawerCancelBtn"' in source
 
-    def test_toolbar_exposes_one_settings_entry_point_not_two_competing_ones(self):
-        """Slice 1 (Per-Unit Settings hierarchy): the toolbar's own Unit
-        Mode area no longer exposes Measurement Groups and Source
-        Default as two directly-competing items -- both are reached
-        through the new parent #perUnitSettingsOverlay instead. Waveform
-        toolbar migration: the former dropdown menu (#wwUnitModeMenu) is
-        gone -- Engineering Units/Per Unit are two direct icon buttons
-        and Per-Unit Settings is its own adjacent icon button."""
+    def test_toolbar_exposes_eng_pu_toggle_only_no_hub_entry(self):
+        """PU-UI-001 Slice B: the Hub (#wwOpenPerUnitSettingsBtn) has been
+        retired; the toolbar's unit mode area now contains only the ENG/PU
+        toggle.  PU configuration is managed via Recording Details."""
         source = _source()
         assert 'id="wwUnitModeMenu"' not in source
-        assert 'id="wwOpenPerUnitSettingsBtn"' in source
-        assert "Per-Unit Settings" in source
-        unit_mode_region = _function_body(source, 'id="wwUnitModeToggle"', 'id="wwOpenPerUnitSettingsBtn"')
-        assert 'id="wwManageMeasurementGroupsBtn"' not in unit_mode_region
-        assert 'id="wwManagePerUnitBasesBtn"' not in unit_mode_region
+        assert 'id="wwOpenPerUnitSettingsBtn"' not in source
+        assert 'id="wwManageMeasurementGroupsBtn"' not in source
+        assert 'id="wwManagePerUnitBasesBtn"' not in source
+        # ENG/PU toggle buttons remain
+        assert 'id="wwUnitEngineeringBtn"' in source
+        assert 'id="wwUnitPerUnitBtn"' in source
 
 
 class TestDec049CoexistenceUnchanged:
@@ -73,14 +70,14 @@ class TestDec049CoexistenceUnchanged:
     presented as "Source Default"/"Fallback"), never its own markup,
     functions, or backend."""
 
-    def test_source_default_modal_still_exists_and_still_opens_via_the_original_function(self):
+    def test_source_default_modal_still_exists_and_accessible_directly(self):
+        """PU-UI-001 Slice B: the Hub routing button is gone; the SD modal
+        is still present and opened directly via
+        wwOpenPerUnitProfilesModal() (e.g. from Recording Details)."""
         source = _source()
         assert 'id="perUnitProfilesOverlay"' in source
-        assert 'id="wwOpenPerUnitProfilesFromSettingsBtn"' in source
-        # Routed from the new parent surface, but still wired to the
-        # ORIGINAL, unmodified open function.
-        wiring = _function_body(source, 'document.getElementById("wwOpenPerUnitProfilesFromSettingsBtn")', "document.addEventListener")
-        assert "wwOpenPerUnitProfilesModal()" in wiring
+        assert 'id="wwOpenPerUnitProfilesFromSettingsBtn"' not in source
+        assert 'async function wwOpenPerUnitProfilesModal(preselectedSourceId)' in source
 
     def test_no_user_facing_legacy_wording_remains(self):
         """Owner requirement: 'Legacy' must not be shown to normal users.
@@ -231,14 +228,13 @@ class TestCancelDiscardsUnsavedEdits:
 
     def test_escape_closes_the_drawer_before_the_modal_behind_it(self):
         source = _source()
-        # The WIRING block's own comment (not the earlier JS-module-level
-        # comment of the same prefix) -- scoped precisely so an unrelated,
-        # earlier "// Phase 2C-B1/C1" comment elsewhere in the file can
-        # never truncate this slice short.
+        # Locate the keydown/Escape handler for the MG modal by its unique
+        # comment.  The Back-to-Hub button is gone (PU-UI-001 Slice B) but
+        # the drawer-first close order remains correct.
         body = _function_body(
             source,
-            'document.getElementById("wwMeasurementGroupsBackToSettingsBtn").addEventListener',
-            "// Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.",
+            "The drawer takes priority: Escape closes IT first if open",
+            'document.getElementById("wwMgDrawerSaveBtn").addEventListener',
         )
         drawer_check_index = body.index('wwCloseMgDrawer(); return;')
         modal_check_index = body.index("wwCloseMeasurementGroupsModal();", drawer_check_index)

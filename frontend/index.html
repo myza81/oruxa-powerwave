@@ -4067,30 +4067,6 @@
            .ww-mg-row-name/.ww-mg-badge verbatim (same font sizes as
            everywhere else in this dialog family -- no new type scale) --
            only the right-aligned action-button wrapper below is new. */
-        .ww-pu-settings-actions { margin-top: 8px; text-align: right; }
-        /* Same plain-text-link pattern already established by
-           .ww-data-prep-export-provenance-link -- a subtle way back to
-           the parent surface from either child modal, never a bordered
-           button competing with that modal's own primary actions. */
-        .ww-pu-settings-back-link {
-            display: inline-block; margin: 0 0 8px; padding: 0; background: none; border: none;
-            font-size: 0.72rem; color: var(--text-dim); text-decoration: underline; cursor: pointer;
-        }
-        .ww-pu-settings-back-link:hover { color: var(--accent); }
-
-        /* Slice 2 (Per-Unit Settings hierarchy, coverage): a compact
-           stat list, never a dashboard -- same 0.72rem body scale as
-           every other hint/status-line in this dialog family. Only the
-           "Needs configuration" row's own count gets --warn when its
-           count is > 0 (proportional attention, never --error/red --
-           Source Default and Measurement Groups usage are both always
-           neutral, matching every other .ww-mg-badge in this file that
-           deliberately never uses --error). */
-        .ww-pu-coverage-rows { display: flex; flex-direction: column; gap: 4px; }
-        .ww-pu-coverage-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 0.72rem; color: var(--text-dim); }
-        .ww-pu-coverage-row .ww-pu-coverage-count { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
-        .ww-pu-coverage-row--attention .ww-pu-coverage-count { color: var(--warn); }
-
         /* Voltage Reference: a concise two-line result plus two small
            actions -- never the full evidence list inline (section 4/5).
            `.ww-pu-ref-actions` holds View details/Override side by side,
@@ -10946,12 +10922,8 @@
                              is active and >=1 displayed eligible channel is
                              Base required -- same condition, same function,
                              just relocated from the old trigger onto its
-                             own button. Per-Unit Settings access (DEC-051's
-                             own hierarchy) is fully preserved via its own
-                             adjacent icon button immediately after --
-                             same handler (wwOpenPerUnitSettingsModal()),
-                             no longer reached through a dropdown menu
-                             item, but never removed or hidden. -->
+                             own button. PU configuration is managed via
+                             Recording Details (PU-UI-001). -->
                         <div class="theme-toggle ww-icon-group" id="wwUnitModeToggle" role="group" aria-label="Voltage Display">
                             <button type="button" id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units">
                                 <span class="ww-icon" data-ww-icon="UNIT_ENGINEERING"></span>
@@ -10961,25 +10933,6 @@
                                 <span class="ww-unit-mode-warning" id="wwUnitModeWarning" hidden aria-hidden="true">&#9888;</span>
                             </button>
                         </div>
-                        <!-- Slice 1 (Per-Unit Settings hierarchy, UI
-                             formalization of DEC-051): unchanged target --
-                             both existing modals -- Measurement Groups
-                             (DEC-050, the specific/Recommended path for a
-                             channel a group actually covers) and Source
-                             Default (DEC-049, the broad/Fallback path for
-                             channels outside any group; internally still
-                             #perUnitProfilesOverlay/
-                             wwOpenPerUnitProfilesModal(), unchanged) -- are
-                             still reached through the same
-                             #perUnitSettingsOverlay parent, which still
-                             explains the relationship before routing into
-                             whichever the engineer picks. Neither existing
-                             modal's own markup/functionality/backend
-                             changes; only this entry point's own presentation
-                             (icon button instead of a menu item) changed. -->
-                        <button type="button" class="ww-icon-btn" id="wwOpenPerUnitSettingsBtn" title="Per-Unit Settings&hellip;" aria-label="Per-Unit Settings&hellip;">
-                            <span class="ww-icon" data-ww-icon="PU_SETTINGS"></span>
-                        </button>
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
@@ -15769,79 +15722,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         </div>
     </div>
 
-    <!-- Slice 1 (Per-Unit Settings hierarchy, UI formalization of
-         DEC-051 -- see docs/project-memory/DECISIONS.md): a lightweight
-         parent surface that establishes the mental model BEFORE the
-         engineer reaches either configuration modal. It never configures
-         anything itself (no fetch of any kind) -- it only explains the
-         relationship between the two scopes and routes into the two
-         existing, functionally-unchanged modals below. Reuses the exact
-         same .confirm-overlay/.group-editor-box/.ww-pu-dialog shell. -->
-    <div class="confirm-overlay" id="perUnitSettingsOverlay" hidden>
-        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="perUnitSettingsTitle">
-            <div class="group-editor-header">
-                <h3 id="perUnitSettingsTitle">Per-Unit Settings</h3>
-                <button type="button" class="group-editor-close" id="perUnitSettingsCloseBtn" aria-label="Close">&times;</button>
-            </div>
-            <p class="hint">Configure engineering bases for this recording. Measurement Group settings
-                are used where available. Source Default is used for applicable channels outside
-                Measurement Groups.</p>
-
-            <!-- Slice 2 (Per-Unit Settings hierarchy, coverage): this
-                 parent surface had no source-selection concept in Slice
-                 1 (it was pure static routing copy) -- coverage is
-                 inherently source-scoped, so a "Recording" selector is
-                 added here, reusing the exact same .ww-pu-section/
-                 .ww-cc-field/<select> shape the two child modals'
-                 own "Recording" sections already use. -->
-            <div class="ww-pu-section ww-pu-section--first">
-                <h4 class="ww-pu-section-title">Recording</h4>
-                <label class="ww-cc-field">
-                    <span class="ww-visually-hidden-label">Recording</span>
-                    <select id="perUnitSettingsSourceSelect"></select>
-                </label>
-            </div>
-
-            <!-- Coverage is a derived READ MODEL only (GET .../per-unit/
-                 sources/{source_id}/coverage) -- this section never
-                 mutates anything, and its counts are informational, not
-                 warnings (only the "Needs configuration" row gets a
-                 muted, proportional --warn treatment, and only when its
-                 own count is > 0 -- see wwLoadAndRenderPerUnitCoverage()). -->
-            <div class="ww-pu-section" id="wwPuCoverageSection">
-                <h4 class="ww-pu-section-title">Per-unit coverage</h4>
-                <div id="wwPuCoverageBody"></div>
-            </div>
-
-            <div class="ww-pu-section">
-                <div class="ww-mg-row-header">
-                    <span class="ww-mg-row-name">Measurement Groups</span>
-                    <span class="ww-mg-badge ww-mg-badge--recommended">Recommended</span>
-                </div>
-                <p class="hint">Configure bases for individual measurement groups, bays or equipment.</p>
-                <div class="ww-pu-settings-actions">
-                    <button type="button" class="secondary" id="wwOpenMeasurementGroupsFromSettingsBtn">Manage Measurement Groups</button>
-                </div>
-            </div>
-
-            <div class="ww-pu-section">
-                <div class="ww-mg-row-header">
-                    <span class="ww-mg-row-name">Source Default</span>
-                    <span class="ww-mg-badge ww-mg-badge--fallback">Fallback</span>
-                </div>
-                <p class="hint">Used for applicable Voltage/Current channels not covered by a Measurement Group.</p>
-                <div class="ww-pu-settings-actions">
-                    <button type="button" class="secondary" id="wwOpenPerUnitProfilesFromSettingsBtn">Manage Source Default</button>
-                </div>
-            </div>
-
-            <div class="group-editor-footer">
-                <span class="toolbar-spacer"></span>
-                <button type="button" class="secondary" id="perUnitSettingsCloseFooterBtn">Close</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Phase 5C (DEC-049): "Manage Per-Unit Bases" -- same
          .confirm-overlay/.group-editor-box shell as Custom Groups above
          (working-copy-until-Apply state model, same dismissal pattern).
@@ -15873,7 +15753,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 <h3 id="perUnitProfilesTitle">Source Default &mdash; Per-Unit</h3>
                 <button type="button" class="group-editor-close" id="perUnitProfilesCloseBtn" aria-label="Close">&times;</button>
             </div>
-            <button type="button" class="ww-pu-settings-back-link" id="wwPerUnitProfilesBackToSettingsBtn">&larr; Per-Unit Settings</button>
             <p class="hint">Source Default is used for applicable Voltage/Current channels of this
                 recording that are not covered by a Measurement Group.</p>
             <p class="hint">Measurement Group settings remain authoritative for channels assigned to a group.</p>
@@ -15903,19 +15782,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
          the primary/Recommended PU configuration entry point for a
          channel a group actually covers; Source Default (the source-wide
          Per-Unit modal above) remains the fully-functional Fallback path
-         for channels outside any group -- see the new parent
-         #perUnitSettingsOverlay above for how the two are now introduced
-         together. Reuses the exact same .confirm-overlay/.group-editor-box
-         shell. Opening this modal NEVER mutates group status/membership/
-         base configuration -- it only ever GETs; every write happens
-         inside the Edit drawer below, behind its own explicit Save. -->
+         for channels outside any group. Reuses the exact same
+         .confirm-overlay/.group-editor-box shell. Opening this modal
+         NEVER mutates group status/membership/base configuration -- it
+         only ever GETs; every write happens inside the Edit drawer below,
+         behind its own explicit Save. -->
     <div class="confirm-overlay" id="measurementGroupsOverlay" hidden>
         <div class="group-editor-box ww-pu-dialog ww-mg-dialog" role="dialog" aria-modal="true" aria-labelledby="measurementGroupsTitle">
             <div class="group-editor-header">
                 <h3 id="measurementGroupsTitle">Measurement Groups</h3>
                 <button type="button" class="group-editor-close" id="measurementGroupsCloseBtn" aria-label="Close">&times;</button>
             </div>
-            <button type="button" class="ww-pu-settings-back-link" id="wwMeasurementGroupsBackToSettingsBtn">&larr; Per-Unit Settings</button>
             <p class="hint">Configure voltage and current bases by electrical measurement group --
                 a recording may contain multiple voltage levels or current contexts, each
                 with its own independent Per-Unit base.</p>
@@ -16639,10 +16516,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             UNIT_ENGINEERING: "assets/icons/waveform/engineering_unit.svg",
             UNIT_PER_UNIT: "assets/icons/waveform/per_unit.svg",
 
-            // -- Per-Unit Settings entry point (#wwOpenPerUnitSettingsBtn,
-            // DEC-051's own hierarchy) -- owner-supplied (pu_settings.svg,
-            // a dedicated cog/gear pictogram), replacing the former
-            // hand-drawn inline gear <svg>. --
             PU_SETTINGS: "assets/icons/waveform/pu_settings.svg",
 
             // -- Clear Waveforms (#clearWorkspaceBtn) -- owner-supplied
@@ -35890,108 +35763,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         : "Per Unit"
                 );
             }
-        }
-
-        // ------------------------------------------------------------------
-        // Slice 1 (Per-Unit Settings hierarchy): the new parent surface's
-        // two option blocks close it and open the corresponding existing,
-        // unmodified modal (wwOpenMeasurementGroupsModal()/
-        // wwOpenPerUnitProfilesModal()); each of those modals' own header
-        // gets a small "back to Per-Unit Settings" link that reverses the
-        // same close-then-open sequence, per the task's own "robust/simple
-        // over clever modal stacking" instruction.
-        //
-        // Slice 2 (Per-Unit Settings hierarchy, coverage): the parent
-        // surface now ALSO owns a "Recording" selector and a read-only
-        // "Per-unit coverage" section -- the ONE new fetch this surface
-        // ever issues is GET .../per-unit/sources/{id}/coverage, never a
-        // mutation. Mirrors wwOpenMeasurementGroupsModal()'s own exact
-        // "fetch sources -> default to first -> render select -> show
-        // overlay -> load body" shape (no "remember last selection"
-        // logic, matching that established convention).
-        // ------------------------------------------------------------------
-
-        let wwPuSettingsSourcesList = [];
-        let wwPuSettingsSelectedSourceId = null;
-
-        async function wwOpenPerUnitSettingsModal() {
-            const sources = await fetchSourcesList();
-            wwPuSettingsSourcesList = sources || [];
-            wwPuSettingsSelectedSourceId = wwPuSettingsSourcesList.length ? wwPuSettingsSourcesList[0].source_id : null;
-            wwRenderPerUnitSettingsSourceSelect();
-            document.getElementById("perUnitSettingsOverlay").hidden = false;
-            await wwLoadAndRenderPerUnitCoverage();
-        }
-
-        function wwClosePerUnitSettingsModal() {
-            document.getElementById("perUnitSettingsOverlay").hidden = true;
-        }
-
-        function wwRenderPerUnitSettingsSourceSelect() {
-            const select = document.getElementById("perUnitSettingsSourceSelect");
-            let html = "";
-            for (const source of wwPuSettingsSourcesList) {
-                html += '<option value="' + escapeHtml(source.source_id) + '">' +
-                    escapeHtml(recordingDisplayName(source)) + '</option>';
-            }
-            select.innerHTML = html || '<option value="">No recordings loaded yet</option>';
-            select.value = wwPuSettingsSelectedSourceId || "";
-        }
-
-        async function wwPerUnitSettingsSourceSelectChange(sourceId) {
-            wwPuSettingsSelectedSourceId = sourceId;
-            await wwLoadAndRenderPerUnitCoverage();
-        }
-
-        function wwPuCoverageRowHtml(label, count, attention) {
-            return '<div class="ww-pu-coverage-row' + (attention ? ' ww-pu-coverage-row--attention' : '') + '">' +
-                '<span class="ww-pu-coverage-label">' + escapeHtml(label) + '</span>' +
-                '<span class="ww-pu-coverage-count">' + count + ' channel' + (count === 1 ? '' : 's') + '</span>' +
-            '</div>';
-        }
-
-        async function wwFetchPerUnitCoverage(sourceId) {
-            let response;
-            try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/per-unit/sources/" + encodeURIComponent(sourceId) + "/coverage"
-                );
-            } catch (error) {
-                return null;
-            }
-            if (!response.ok) return null;
-            return await response.json();
-        }
-
-        // The one place this surface decides what to show for coverage --
-        // "no recordings at all" / "fetch failed" / "no applicable
-        // channels" / the three-row breakdown are each a distinct,
-        // explicit state (never an approximated/inferred one).
-        async function wwLoadAndRenderPerUnitCoverage() {
-            const bodyEl = document.getElementById("wwPuCoverageBody");
-            if (!wwPuSettingsSourcesList.length) {
-                bodyEl.innerHTML = '<p class="hint">Upload a recording to see Per-Unit coverage.</p>';
-                return;
-            }
-            bodyEl.innerHTML = '<p class="hint">Loading coverage&hellip;</p>';
-            const coverage = await wwFetchPerUnitCoverage(wwPuSettingsSelectedSourceId);
-            if (coverage === null) {
-                bodyEl.innerHTML = '<p class="hint error">Failed to load coverage. Check your connection and try again.</p>';
-                return;
-            }
-            if (coverage.applicable_channel_count === 0) {
-                bodyEl.innerHTML = '<p class="hint">No applicable Voltage/Current channels for per-unit conversion.</p>';
-                return;
-            }
-            const needsAttention = coverage.needs_configuration_count > 0;
-            bodyEl.innerHTML =
-                '<div class="ww-pu-coverage-rows">' +
-                    wwPuCoverageRowHtml("Measurement Groups", coverage.measurement_group_count, false) +
-                    wwPuCoverageRowHtml("Source Default", coverage.source_default_count, false) +
-                    wwPuCoverageRowHtml("Needs configuration", coverage.needs_configuration_count, needsAttention) +
-                    (coverage.unverified_reference_count ? wwPuCoverageRowHtml("Unverified reference (included above)", coverage.unverified_reference_count, true) : "") +
-                '</div>';
         }
 
         // ------------------------------------------------------------------
@@ -67970,42 +67741,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // surface, auto-opening Source Default here would make it
             // look like the automatic/default configuration path and
             // undermine the Recommended/Fallback hierarchy. Selecting
-            // Per Unit now ONLY changes display mode; opening any
-            // configuration surface is always a separate, explicit
-            // action via the adjacent "Per-Unit Settings..." button.
+            // Per Unit now ONLY changes display mode; PU configuration
+            // is managed via Recording Details (PU-UI-001 Slice B).
             await wwApplyUnitMode("per_unit");
-        });
-        document.getElementById("wwOpenPerUnitSettingsBtn").addEventListener("click", () => {
-            wwOpenPerUnitSettingsModal();
-        });
-
-        // Slice 1 (Per-Unit Settings hierarchy): the new parent surface's
-        // own open/close/backdrop/Escape wiring -- same convention as
-        // every other overlay in this file. Its two option buttons simply
-        // route into the two existing, unmodified modals below.
-        document.getElementById("perUnitSettingsCloseBtn").addEventListener("click", wwClosePerUnitSettingsModal);
-        document.getElementById("perUnitSettingsCloseFooterBtn").addEventListener("click", wwClosePerUnitSettingsModal);
-        document.getElementById("perUnitSettingsOverlay").addEventListener("click", (event) => {
-            if (event.target.id === "perUnitSettingsOverlay") wwClosePerUnitSettingsModal(); // click on backdrop
-        });
-        document.addEventListener("keydown", (event) => {
-            if (event.key !== "Escape") return;
-            if (!document.getElementById("perUnitSettingsOverlay").hidden) wwClosePerUnitSettingsModal();
-        });
-        // Slice 2 (Per-Unit Settings hierarchy, coverage): the only new
-        // interactive control this surface gains -- switching the
-        // selected recording re-fetches that source's own coverage only
-        // (GET, never a mutation).
-        document.getElementById("perUnitSettingsSourceSelect").addEventListener("change", (event) => {
-            wwPerUnitSettingsSourceSelectChange(event.target.value);
-        });
-        document.getElementById("wwOpenMeasurementGroupsFromSettingsBtn").addEventListener("click", () => {
-            wwClosePerUnitSettingsModal();
-            wwOpenMeasurementGroupsModal();
-        });
-        document.getElementById("wwOpenPerUnitProfilesFromSettingsBtn").addEventListener("click", () => {
-            wwClosePerUnitSettingsModal();
-            wwOpenPerUnitProfilesModal();
         });
 
         // Phase 5C: "Manage Per-Unit Bases" modal wiring -- same
@@ -68025,21 +67763,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (event.key !== "Escape") return;
             if (!document.getElementById("perUnitProfilesOverlay").hidden) wwClosePerUnitProfilesModal();
         });
-        document.getElementById("wwPerUnitProfilesBackToSettingsBtn").addEventListener("click", () => {
-            wwClosePerUnitProfilesModal();
-            wwOpenPerUnitSettingsModal();
-        });
-
         // Slice 6 (DEC-050): Measurement Group configuration workspace
         // wiring -- same Apply/Cancel/close/Escape/backdrop-click
         // convention as Custom Groups/legacy Per-Unit modal above. The
         // Edit drawer gets its OWN independent Escape/backdrop handling
         // (closing the drawer must never also close the modal behind
         // it, and vice versa).
-        document.getElementById("wwMeasurementGroupsBackToSettingsBtn").addEventListener("click", () => {
-            wwCloseMeasurementGroupsModal();
-            wwOpenPerUnitSettingsModal();
-        });
         document.getElementById("measurementGroupsSourceSelect").addEventListener("change", (event) => {
             wwMeasurementGroupsSourceSelectChange(event.target.value);
         });
