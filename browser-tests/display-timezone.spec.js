@@ -95,6 +95,7 @@ test("a BEN record and its BEN32 COMTRADE export show the same local time", asyn
 
   // ---- One Time Group, explicitly labelled in UTC; the ruler keeps the configured display timezone ----
   await rows.nth(1).click(); // open the BEN recording
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await showChannel(page, benId, "LINE1 VR");
   await showChannel(page, comtradeId, "LINE1 VR");

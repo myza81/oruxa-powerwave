@@ -53,6 +53,8 @@ function makeMockVoltageGroup(id, voltageConfigOverrides, sourceId) {
             evidence_names: [],
             vt_primary_v: null,
             vt_secondary_v: null,
+            vt_effective_primary_v: null,
+            vt_effective_secondary_v: null,
             vt_ratio: null,
             vt_authority: "not_configured",
             vt_provenance_note: null,
@@ -168,6 +170,8 @@ test("D4-03: VT section shows primary kV, secondary V and ratio when configured"
     await injectAndSelectVoltageGroup(page, {
         vt_primary_v: 275000,
         vt_secondary_v: 110,
+        vt_effective_primary_v: 275000,
+        vt_effective_secondary_v: 110,
         vt_ratio: 2500,
         vt_authority: "manual",
     });
@@ -210,6 +214,8 @@ test("D4-06: VT edit pre-fills existing vt_primary_v as kV", async ({ page }) =>
     await injectAndSelectVoltageGroup(page, {
         vt_primary_v: 275000,
         vt_secondary_v: 110,
+        vt_effective_primary_v: 275000,
+        vt_effective_secondary_v: 110,
         vt_ratio: 2500,
         vt_authority: "manual",
     });
@@ -228,7 +234,7 @@ test("D4-07: VT Cancel returns to read mode", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
-    await injectAndSelectVoltageGroup(page, { vt_primary_v: 275000, vt_secondary_v: 110, vt_ratio: 2500, vt_authority: "manual" });
+    await injectAndSelectVoltageGroup(page, { vt_primary_v: 275000, vt_secondary_v: 110, vt_effective_primary_v: 275000, vt_effective_secondary_v: 110, vt_ratio: 2500, vt_authority: "manual" });
     await page.locator("#wwRdDetailsBody #wwRdVtEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVtPrimaryKv")).toBeVisible({ timeout: 3000 });
     await page.locator("#wwRdDetailsBody #wwRdVtCancelBtn").click();
@@ -323,6 +329,8 @@ test("D4-10: after VT Apply, read mode shows updated primary kV", async ({ page 
                 body: JSON.stringify(makeMockVoltageGroup("mock-vg-d4", {
                     vt_primary_v: 110000,
                     vt_secondary_v: 110,
+                    vt_effective_primary_v: 110000,
+                    vt_effective_secondary_v: 110,
                     vt_ratio: 1000,
                     vt_authority: "manual",
                 })),

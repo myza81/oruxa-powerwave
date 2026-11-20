@@ -37,6 +37,7 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    const ktbr=sources.find(s=>s.station_name==="KTBR").source_id;
    const row=()=>page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${gpth}"]`);
    await row().click();
+   await page.locator("#wwRdViewWaveformBtn").click();
    await expect(page.locator("#workspaceRow")).toBeVisible();
    for(const sid of [ktbr,gpth]) {
     const source=page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
@@ -52,12 +53,13 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
     const cursor=wwEnsureTimeGroupCursorStateEntry(ktbr);cursor.enabled=true;cursor.a.time=.4;
    },ktbr);
    await page.locator("#mainNavRecordingDetailsBtn").click();
-   await row().locator('[data-action="details"]').click();
+   // UX-3: time reference control is now in the Recording Details info panel;
+   // navigating back via the nav button re-shows the selected recording's info panel.
    const select=page.locator(`.recording-time-reference[data-source-id="${gpth}"]`);
    await expect(select).toHaveValue("raw");
    expect(await select.locator("option").count()).toBe(106);
    await select.selectOption("0");
-   await expect(row().locator(".recording-start-time-cell")).toContainText("2026-10-16 18:03:14.035400 (UTC; user assigned)");
+   await expect(row().locator(".ww-rd-recording-item-meta")).toContainText("2026-10-16 18:03:14.035400 (UTC; user assigned)");
    await expect(page.locator(`#channelGroups details.source-recording[data-source-id="${gpth}"] .source-recording-time-identity`)).toContainText("2026-10-16 18:03:14.035400 (UTC; user assigned)");
    await expect.poll(() => timeGroupHeader(page, gpth)).toContain("16 Oct 2026 · 18:03:14");
    await expect.poll(() => timeGroupHeader(page, gpth)).toContain(" UTC · 1 source");
@@ -65,9 +67,9 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
    expect((await getApi(page,"/synchronization/t0?source_id="+ktbr)).t0_workspace_time).toBeCloseTo(.4,10);
    await select.selectOption("480");
    await expect(select).toBeEnabled();
-   await expect(row().locator(".recording-start-time-cell")).toContainText("2026-10-16 18:03:14.035400 (UTC+08:00; user assigned)");
+   await expect(row().locator(".ww-rd-recording-item-meta")).toContainText("2026-10-16 18:03:14.035400 (UTC+08:00; user assigned)");
    await expect(page.locator(`#channelGroups details.source-recording[data-source-id="${gpth}"] .source-recording-time-identity`)).toContainText("2026-10-16 18:03:14.035400 (UTC+08:00; user assigned)");
-   await expect(page.locator(`.recording-details-row[data-details-for="${gpth}"]`)).toContainText("2026-10-16T10:03:14.535400Z");
+   await expect(page.locator('#wwRdDetailsBody')).toContainText("2026-10-16T10:03:14.535400Z");
    await expect.poll(async()=> (await timingState(page)).groups.length).toBe(1);
    await expect.poll(() => timeGroupHeader(page, gpth)).toContain("16 Oct 2026 · 10:03:14");
    await expect.poll(() => timeGroupHeader(page, gpth)).toContain(" UTC · 2 sources");

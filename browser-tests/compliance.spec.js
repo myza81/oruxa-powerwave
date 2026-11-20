@@ -17,7 +17,7 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     await page.goto("/index.html");
     const labels = page.locator("#mainSidebarMenu .shell-nav-list .shell-nav-label");
     await expect(labels).toHaveText([
-      "Recordings",
+      "Recording Details",
       "Waveform",
       "Event Reconstruction",
       "Table",

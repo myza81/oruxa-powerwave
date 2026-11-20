@@ -327,7 +327,7 @@ test("AT-14: source deletion removes the recording from the browser list", async
   const delResp = await page.request.delete(`${BACKEND}/api/v1/workspaces/${ws}/sources/${sid}`);
   expect(delResp.status()).toBe(204);
 
-  await page.evaluate(() => refreshSourceList());
+  await page.evaluate(() => refreshAllSourceViews());
 
   // Recording must be gone from the browser list.
   await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0, { timeout: 5000 });

@@ -103,6 +103,7 @@ test("BEN5K PU gate: VA has perUnitStatus=calibration_unavailable and unit=kV af
 
   // Open workspace, navigate to Waveform.
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`).click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await page.locator("#mainNavWaveformBtn").click();
 
@@ -135,6 +136,7 @@ test("BEN5K PU gate: VA is not rendered on a :pu axis panel", async ({ page }) =
   test.skip(!sid, "BEN5K upload not supported in this environment (BEN5K_EXPERIMENTAL_ENABLED not set)");
 
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`).click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await page.locator("#mainNavWaveformBtn").click();
 
@@ -178,6 +180,7 @@ test("BEN5K PU gate (original-risk): channel added while PU mode is already acti
 
   // Open workspace and navigate to Waveform.
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`).click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await page.locator("#mainNavWaveformBtn").click();
 

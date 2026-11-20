@@ -120,6 +120,7 @@ test("C4-02a: equipment_rating current group shows Equipment capacity label and 
             current_config: {
                 method: "equipment_rating",
                 equipment_rating_mva: 100,
+                equipment_mva: 100,
                 linked_voltage_group_id: null,
                 manual_voltage_base_kv: null,
                 manual_ibase_ka: null,
@@ -242,9 +243,12 @@ test("C4-02d: manual-method current group shows 'Not derived from equipment rati
     await mockItem.click();
     await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 
-    // resolved_ibase_ka comes from manual entry — must NOT show as derived rated current
+    // resolved_ibase_ka comes from manual entry — equipment_mva is null so "Not specified"
     const values = await page.locator("#wwRdDetailsBody .ww-rd-field-value").allTextContents();
-    expect(values.some(v => v.includes("Not derived from equipment rating"))).toBeTruthy();
+    expect(values.some(v => v.includes("Not specified"))).toBeTruthy();
+    // No false attribution that this is "derived from equipment rating"
+    const bodyText = await page.locator("#wwRdDetailsBody").textContent();
+    expect(bodyText).not.toMatch(/derived.{0,20}equipment rating/i);
 });
 
 test("C4-02e: equipment_rating current group shows Derived rated current label", async ({ page }) => {
@@ -276,7 +280,7 @@ test("C4-02e: equipment_rating current group shows Derived rated current label",
     await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
 
     const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
-    expect(labels.some(l => l.includes("Derived rated current"))).toBeTruthy();
+    expect(labels.some(l => l.includes("Equipment rated current"))).toBeTruthy();
 });
 
 // Updated: "Configuration source" standalone field removed in D2 refinement (628c8d9).
@@ -285,30 +289,61 @@ test("C4-02f: voltage group shows Nominal voltage, Voltage reference, property-l
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
-    await selectFirstRecording(page);
 
-    const groups = page.locator("#wwRdGroupsBody .ww-rd-group-item");
-    const count = await groups.count();
-    for (let i = 0; i < count; i++) {
-        const badge = await groups.nth(i).locator(".ww-rd-group-badge").textContent().catch(() => "");
-        if (badge.trim() === "V") {
-            await groups.nth(i).click();
-            await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
-            const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
-            expect(labels.some(l => l.includes("Nominal voltage"))).toBeTruthy();
-            expect(labels.some(l => l.includes("Voltage reference"))).toBeTruthy();
-            // "Configuration source" standalone field removed — verify it is gone
-            expect(labels.some(l => l.includes("Configuration source"))).toBeFalsy();
-            // DEC cleanup: "Auto-resolved" / "Manual" subtitle provenance labels absent in normal read-only display
-            const bodyText = await page.locator("#wwRdDetailsBody").textContent();
-            expect(bodyText).not.toMatch(/Auto-resolved/);
-            // PU availability section present (voltage groups only)
-            const headings = await page.locator("#wwRdDetailsBody .ww-rd-section-heading").allTextContents();
-            expect(headings.some(h => h.includes("Per-unit availability"))).toBeTruthy();
-            return;
-        }
-    }
-    test.skip(true, "No voltage group found in test recording");
+    await page.route("**/measurement-groups", async route => {
+        const response = await route.fetch();
+        const groups = await response.json();
+        const sourceId = groups.length > 0 ? groups[0].source_id : "src-test";
+        await route.fulfill({ json: [...groups, {
+            id: "mock-vg-c4f",
+            workspace_id: "ws-test",
+            source_id: sourceId,
+            display_name: "MOCK_VG_C4F",
+            kind: "voltage",
+            status: "confirmed",
+            channel_refs: [{ channel_name: "VA" }],
+            pu_status: "configured",
+            pu_reason: null,
+            current_config: null,
+            voltage_config: {
+                nominal_voltage_ll_kv: 132.0,
+                base_authority: "auto_resolved",
+                reference_mode: "auto",
+                reference_override: null,
+                base_reference_side: "primary",
+                manual_conflict_detected: false,
+                manual_conflict_detail: null,
+                effective_reference: "line_to_ground",
+                detection_reason: "mock",
+                evidence_names: [],
+                vt_primary_v: null,
+                vt_secondary_v: null,
+                vt_effective_primary_v: null,
+                vt_effective_secondary_v: null,
+                vt_ratio: null,
+                vt_authority: "not_configured",
+                vt_provenance_note: null,
+                vt_suggested_primary_v: null,
+                vt_suggested_secondary_v: null,
+                vt_suggested_ratio: null,
+            },
+        }] });
+    });
+
+    await selectFirstRecording(page);
+    const mockItem = page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "MOCK_VG_C4F" });
+    await expect(mockItem).toBeVisible({ timeout: 10000 });
+    await mockItem.click();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-section").first()).toBeVisible({ timeout: 5000 });
+    const labels = await page.locator("#wwRdDetailsBody .ww-rd-field-label").allTextContents();
+    expect(labels.some(l => l.includes("Nominal voltage"))).toBeTruthy();
+    expect(labels.some(l => l.includes("Voltage reference"))).toBeTruthy();
+    // "Configuration source" standalone field removed — verify it is gone
+    expect(labels.some(l => l.includes("Configuration source"))).toBeFalsy();
+    // DEC cleanup: "Auto-resolved" / "Manual" subtitle provenance labels absent in normal read-only display
+    const bodyText = await page.locator("#wwRdDetailsBody").textContent();
+    expect(bodyText).not.toMatch(/Auto-resolved/);
+    // UX-1: "Per-unit availability" section was removed from voltage group details (confirmed by UX3-13)
 });
 
 test("C4-02g: current group main section has no Per-unit availability heading", async ({ page }) => {

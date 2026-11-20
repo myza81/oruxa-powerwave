@@ -233,9 +233,9 @@ test("RD-1 UX3-10: Start New Workspace button is absent from the frontend", asyn
 // Test 11: Recording Events navigation entry is absent
 test("RD-1 UX3-11: Recording Events navigation entry is removed", async ({ page }) => {
     await page.goto("/index.html");
-    await expect(page.locator("#mainNavRecordingDetailsBtn")).toHaveCount(0);
-    // The old page section must also be absent
-    await expect(page.locator("#pageRecordingDetails")).toHaveCount(0);
+    // The OLD Recording Events nav, page and table must be absent
+    await expect(page.locator("#mainNavRecordingsBtn")).toHaveCount(0);
+    await expect(page.locator("#pageRecordings")).toHaveCount(0);
     await expect(page.locator("#recordingsTableBody")).toHaveCount(0);
 });
 

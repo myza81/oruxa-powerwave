@@ -115,7 +115,7 @@ test("REF-02: needs_review kV shows Not resolved provenance", async ({ page }) =
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {
-        nominal_voltage_ll_kv: null,
+        nominal_voltage_ll_kv: 132.0,
         base_authority: "needs_review",
         effective_reference: null,
     });
