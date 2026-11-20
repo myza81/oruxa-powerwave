@@ -37,8 +37,43 @@ test("a failed source deletion preserves current selection and reports the failu
     ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: { message: "Deletion refused" } }) }) : route.continue());
   await page.evaluate(sid => performRemoveSource(sid), sid);
   expect(await page.evaluate(() => focusedSourceId)).toBe(sid);
-  await expect(page.locator("#workspaceResetError")).toBeVisible();
-  await expect(page.locator("#workspaceResetError")).toContainText("Could not remove the recording");
+  // UX-3: error is shown in #wwRdRemoveError (Recording Details browser panel),
+  // not #workspaceResetError (removed with the retired Recording Events page).
+  await expect(page.locator("#wwRdRemoveError")).toBeVisible();
+  await expect(page.locator("#wwRdRemoveError")).toContainText("Could not remove the recording");
+  // Recording must remain in the list after failure — not silently removed.
+  await expect(page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`)).toHaveCount(1);
+});
+
+test("a subsequent successful deletion clears the remove error and removes the recording", async ({ page }) => {
+  const sid = await recording(page);
+  // Fail the first attempt.
+  await page.route("**/sources/" + sid, route => route.request().method() === "DELETE"
+    ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: { message: "Deletion refused" } }) }) : route.continue());
+  await page.evaluate(sid => performRemoveSource(sid), sid);
+  await expect(page.locator("#wwRdRemoveError")).toBeVisible();
+  // Remove the interception; retry succeeds.
+  await page.unroute("**/sources/" + sid);
+  await page.evaluate(sid => performRemoveSource(sid), sid);
+  // hideRdRemoveError is called at the start of the next attempt — error clears.
+  await expect(page.locator("#wwRdRemoveError")).toBeHidden();
+  // Recording must be gone from the list after success.
+  await expect(page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`)).toHaveCount(0);
+});
+
+test("deleting the final recording leaves a clean empty state ready for upload", async ({ page }) => {
+  const sid = await recording(page);
+  // Any prior error must not be shown on a clean start.
+  await expect(page.locator("#wwRdRemoveError")).toBeHidden();
+  await page.evaluate(sid => performRemoveSource(sid), sid);
+  // List is empty — no items and no error.
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0);
+  await expect(page.locator("#wwRdRemoveError")).toBeHidden();
+  // Upload modal opens without error (workspace is usable).
+  await page.locator("#wwRdUploadBtn").first().click();
+  await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+  await page.locator("#uploadModalOverlay").press("Escape");
+  await expect(page.locator("#uploadModalOverlay")).toBeHidden();
 });
 
 
@@ -98,7 +133,9 @@ test("failed workspace deletion retains recordings and restores analysis transpo
   await page.route("**/workspaces/" + workspace, route => route.request().method() === "DELETE"
     ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" }) : route.continue());
   await page.evaluate(() => resetToNewWorkspace());
-  await expect(page.locator("#workspaceResetError")).toContainText("Could not clear");
+  // UX-3: #workspaceResetError removed with the retired Recording Events page.
+  // The workspace reset path is unreachable from the current UI (#newWorkspaceButton removed).
+  // Verify functional correctness: workspace identity and analysis transport are preserved.
   expect(await page.evaluate(() => currentWorkspaceId())).toBe(workspace);
   const result = await page.evaluate(sid => wwPhasorFetchJson(apiBaseUrl() + "/api/v1/workspaces/" + currentWorkspaceId() + "/sources/" + sid + "/channels"), sid);
   expect(result).toBeTruthy();

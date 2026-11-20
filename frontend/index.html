@@ -1037,6 +1037,15 @@
             padding: 4px 8px;
             border-radius: 2px;
         }
+        .ww-rd-remove-error {
+            margin: 6px 0 0;
+            font-size: 0.72rem;
+            color: var(--error, #c0392b);
+            background: color-mix(in srgb, var(--error, #c0392b) 8%, transparent);
+            border-left: 2px solid var(--error, #c0392b);
+            padding: 4px 8px;
+            border-radius: 2px;
+        }
         /* Two-column field grid */
         .ww-rd-field-grid {
             display: grid;
@@ -15361,6 +15370,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             aria-label="Recordings" aria-multiselectable="false">
                             <!-- Populated by wwRdRenderBrowser() -->
                         </div>
+                        <p id="wwRdRemoveError" class="ww-rd-remove-error" role="alert" hidden></p>
                     </div>
 
                     <!-- Panel 2: Measurement Groups -->
@@ -17380,6 +17390,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function hideWorkspaceResetError() {
             const el = document.getElementById("workspaceResetError");
             if (!el) return; // UX-3: element removed with Recording Events page
+            el.hidden = true;
+            el.textContent = "";
+        }
+
+        // UX-3: contextual error feedback for recording deletion, shown in
+        // the Recording Details recordings panel. Kept separate from
+        // showWorkspaceResetError / hideWorkspaceResetError (workspace-level
+        // reset is a distinct operation with its own lifecycle semantics).
+        function showRdRemoveError(message) {
+            const el = document.getElementById("wwRdRemoveError");
+            if (!el) return;
+            el.textContent = message;
+            el.hidden = false;
+        }
+
+        function hideRdRemoveError() {
+            const el = document.getElementById("wwRdRemoveError");
+            if (!el) return;
             el.hidden = true;
             el.textContent = "";
         }
@@ -28923,7 +28951,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function performRemoveSource(sourceId) {
             const workspaceId = currentWorkspaceId();
             const epoch = ww.epoch;
-            hideWorkspaceResetError();
+            hideRdRemoveError();
             wwSourcesPendingRemoval.add(sourceId);
             wwSynchronizationLifecycleGeneration += 1;
             try {
@@ -28933,12 +28961,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 );
                 if (!response.ok) {
                     wwSourcesPendingRemoval.delete(sourceId);
-                    showWorkspaceResetError("Could not remove the recording. Please try again.");
+                    showRdRemoveError("Could not remove the recording. Please try again.");
                     return false;
                 }
             } catch (error) {
                 wwSourcesPendingRemoval.delete(sourceId);
-                showWorkspaceResetError("Could not reach the backend to remove the recording. Please try again.");
+                showRdRemoveError("Could not reach the backend to remove the recording. Please try again.");
                 return false;
             }
             wwSourcesPendingRemoval.delete(sourceId);
