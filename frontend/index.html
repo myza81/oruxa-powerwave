@@ -922,7 +922,8 @@
             font-size: 13px;
             line-height: 1;
         }
-        /* Group confirmation status badges — shown for suggested/needs_review/manual */
+        /* Group status badges — needs_review (genuine issue) and manual (user-created).
+           Suggested groups are auto-accepted; no badge is shown for them. */
         .ww-rd-group-status {
             flex: none;
             font-size: 0.6rem;
@@ -930,22 +931,8 @@
             padding: 1px 5px;
             border-radius: 3px;
         }
-        .ww-rd-group-status--suggested,
         .ww-rd-group-status--needs-review { background: var(--warn-wash); color: var(--warn); }
         .ww-rd-group-status--manual        { background: var(--hover-tint); color: var(--text-dim); }
-        /* Suggest Groups button in Measurement Groups panel header */
-        .ww-rd-suggest-btn {
-            font-size: 0.7rem;
-            font-weight: 500;
-            background: none;
-            border: 1px solid var(--accent);
-            border-radius: 4px;
-            padding: 2px 8px;
-            color: var(--accent);
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .ww-rd-suggest-btn:hover { background: var(--accent-wash); }
         /* Source Default contextual link in PU configuration section (D-005) */
         .ww-rd-pu-source-default-link {
             display: block;
@@ -15412,9 +15399,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         <button type="button" class="ww-rd-back-btn" id="rdBackToRecordings">← Recordings</button>
                         <div class="ww-rd-panel-header ww-rd-groups-panel-header">
                             <h2 class="ww-rd-panel-title">Measurement Groups</h2>
-                            <button type="button" class="ww-rd-suggest-btn" id="wwRdSuggestGroupsBtn"
-                                title="Auto-detect measurement groups from channel names"
-                                onclick="wwRdSuggestGroups()">Suggest Groups</button>
                         </div>
                         <div class="ww-rd-filter-row" id="wwRdGroupKindFilter" role="group"
                             aria-label="Filter groups by kind">
@@ -36734,8 +36718,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const missingVoltageIcon = missingVoltage
                     ? '<span class="ww-rd-group-missing-voltage" aria-label="Nominal voltage required" title="Nominal voltage required">⚠</span>'
                     : "";
-                const statusLabel = g.status === "suggested" ? "Suggested"
-                    : g.status === "needs_review" ? "Review"
+                // "suggested" groups are auto-accepted — no badge shown (DEC-214).
+                const statusLabel = g.status === "needs_review" ? "Review"
                     : g.status === "manual" ? "Manual" : null;
                 const statusBadge = statusLabel
                     ? '<span class="ww-rd-group-status ww-rd-group-status--' +
@@ -37822,39 +37806,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (wwRdState.narrowPanel !== "groups") {
                 wwRdState.narrowPanel = "groups";
                 wwRdApplyNarrowLayout();
-            }
-        }
-
-        // PU-UI-001 Slice A: user-triggered group auto-detection from Recording
-        // Details. Mirrors the MG modal's suggest function but operates on the
-        // RD-selected source; refreshes both panels on success.
-        async function wwRdSuggestGroups() {
-            const sourceId = wwRdState.selectedSourceId;
-            if (!sourceId) return;
-            const btn = document.getElementById("wwRdSuggestGroupsBtn");
-            if (btn) { btn.disabled = true; btn.textContent = "Working…"; }
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups/suggest",
-                    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-                );
-                if (!response.ok) {
-                    let detail = {};
-                    try { detail = (await response.json()).detail || {}; } catch (e) { /* ignore */ }
-                    const body = document.getElementById("wwRdGroupsBody");
-                    if (body) body.innerHTML = '<p class="ww-rd-placeholder ww-rd-status--error">' +
-                        escapeHtml(detail.message || "Could not generate suggestions.") + '</p>';
-                    return;
-                }
-                await wwFetchMeasurementGroupsForSource(sourceId);
-                wwRdRenderGroups();
-                wwRdRenderDetails();
-            } catch (e) {
-                const body = document.getElementById("wwRdGroupsBody");
-                if (body) body.innerHTML = '<p class="ww-rd-placeholder ww-rd-status--error">Could not reach the backend.</p>';
-            } finally {
-                if (btn) { btn.disabled = false; btn.textContent = "Suggest Groups"; }
             }
         }
 
