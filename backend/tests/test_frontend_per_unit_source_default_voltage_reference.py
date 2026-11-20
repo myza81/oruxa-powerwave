@@ -106,13 +106,17 @@ class TestSlice1Through3NavigationUnaffected:
     structure (Per-Unit Settings hierarchy, coverage, traceability) must
     remain completely intact."""
 
-    def test_per_unit_settings_entry_point_still_present(self):
+    def test_per_unit_settings_hub_retired_rd_is_the_config_entry_point(self):
+        """PU-UI-001 Slice B: the Hub is retired; RD is the new entry point."""
         source = _source()
-        assert 'id="wwOpenPerUnitSettingsBtn"' in source
+        assert 'id="wwOpenPerUnitSettingsBtn"' not in source
 
-    def test_coverage_section_still_present(self):
+    def test_coverage_hub_section_retired_banner_is_the_new_signal(self):
+        """PU-UI-001 Slice B: Hub coverage section retired; Slice C banner
+        (#wwPuConfigBanner) replaces it in Waveform Analysis."""
         source = _source()
-        assert 'id="wwPuCoverageBody"' in source
+        assert 'id="wwPuCoverageBody"' not in source
+        assert 'id="wwPuConfigBanner"' in source
 
     def test_per_unit_details_popover_still_present(self):
         source = _source()

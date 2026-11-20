@@ -489,6 +489,36 @@
             color: var(--text-dim);
             background: var(--panel);
         }
+        /* PU-UI-001 Slice C: contextual PU configuration banner.
+           Shares the same layout pattern as #wwAnnotationGuidance but uses
+           warn-wash/warn to signal that action is needed. Never --error/red
+           (DEC-212/DEC-049: a missing PU base is a configuration gap, not a
+           data error). The [hidden] override prevents author `display:flex`
+           from beating the UA [hidden] default -- same fix already applied
+           to #wwAnnotationGuidance above. */
+        .ww-pu-config-banner {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 14px;
+            background: var(--warn-wash);
+            border-bottom: 1px solid var(--warn);
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+        .ww-pu-config-banner[hidden] { display: none; }
+        .ww-pu-config-banner-link {
+            flex: 0 0 auto;
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.75rem;
+            padding: 0;
+            text-decoration: underline;
+            white-space: nowrap;
+        }
         .shell-view-placeholder {
             padding: 48px 24px;
             text-align: center;
@@ -11265,6 +11295,18 @@
                         <span class="ww-annotation-guidance-icon" id="wwAnnotationGuidanceIcon" aria-hidden="true"></span>
                         <span class="ww-annotation-guidance-text" id="wwAnnotationGuidanceText"></span>
                         <span class="ww-annotation-guidance-esc" aria-hidden="true">Esc</span>
+                    </div>
+
+                    <!-- PU-UI-001 Slice C: contextual PU configuration banner.
+                         Shown when Per Unit is active and >=1 eligible
+                         channel has no base configured.  Provides a direct
+                         link to Recording Details for the affected source.
+                         hidden by default; shown/hidden by
+                         wwUpdateUnitModeWarningBadge(). -->
+                    <div class="ww-pu-config-banner" id="wwPuConfigBanner" role="status" hidden>
+                        <span id="wwPuConfigBannerMsg"></span>
+                        <button type="button" class="ww-pu-config-banner-link"
+                            id="wwPuConfigBannerBtn">Configure in Recording Details &#8594;</button>
                     </div>
 
                     <!-- Split View UX V1 (owner-approved): #activeViewArea
@@ -35745,13 +35787,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwUpdateUnitModeWarningBadge() {
             const warning = document.getElementById("wwUnitModeWarning");
             if (!warning) return;
+            const banner = document.getElementById("wwPuConfigBanner");
             if (ww.unitMode !== "per_unit") {
                 warning.hidden = true;
+                if (banner) banner.hidden = true;
                 return;
             }
             let baseRequiredCount = 0;
+            let firstSourceId = null;
             for (const entry of ww.displayed.values()) {
-                if (entry.channel.perUnitStatus === "base_required") baseRequiredCount += 1;
+                if (entry.channel.perUnitStatus === "base_required") {
+                    baseRequiredCount += 1;
+                    if (!firstSourceId) firstSourceId = entry.channel.sourceId;
+                }
             }
             warning.hidden = baseRequiredCount === 0;
             const btn = document.getElementById("wwUnitPerUnitBtn");
@@ -35763,6 +35811,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         : "Per Unit"
                 );
             }
+            // PU-UI-001 Slice C: show contextual navigation banner.
+            if (banner) {
+                const hasIssues = baseRequiredCount > 0;
+                banner.hidden = !hasIssues;
+                if (hasIssues) {
+                    const msgEl = document.getElementById("wwPuConfigBannerMsg");
+                    if (msgEl) {
+                        msgEl.textContent = baseRequiredCount +
+                            " channel" + (baseRequiredCount === 1 ? "" : "s") +
+                            " need a per-unit base.";
+                    }
+                    const bannerBtn = document.getElementById("wwPuConfigBannerBtn");
+                    if (bannerBtn) {
+                        bannerBtn.onclick = function () {
+                            wwNavigateToRdForPuConfiguration(firstSourceId);
+                        };
+                    }
+                }
+            }
+        }
+
+        function wwNavigateToRdForPuConfiguration(sourceId) {
+            // PU-UI-001 Slice C: navigate to Recording Details with the
+            // affected source pre-selected and the groups panel visible.
+            wwRdState.selectedSourceId = sourceId || null;
+            wwRdState.groupKindFilter = "voltage";
+            wwRdState.narrowPanel = "groups";
+            shellSetCurrentPage("recording-details");
         }
 
         // ------------------------------------------------------------------
@@ -36513,6 +36589,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 await refreshAllSourceViews();
             } else {
                 wwRdRenderBrowser(); // re-render from cache (search/sort preserved)
+            }
+            // PU-UI-001 Slice C: when navigating here from the WA PU-config
+            // banner, a source is pre-selected.  Load its groups if not cached,
+            // or just re-render if they already are.
+            if (wwRdState.selectedSourceId) {
+                if (!ww.measurementGroups.has(wwRdState.selectedSourceId)) {
+                    await wwRdSelectSource(wwRdState.selectedSourceId);
+                } else {
+                    wwRdRenderGroups();
+                    wwRdRenderDetails();
+                }
             }
         }
 

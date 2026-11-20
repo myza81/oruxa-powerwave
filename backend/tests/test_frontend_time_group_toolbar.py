@@ -392,15 +392,16 @@ class TestWaveformToolbarSpacingAndIconsFollowup:
             assert "id=" in between, "two separators with nothing rendered between them at position " + str(i)
 
     def test_per_unit_settings_button_uses_the_registered_asset_not_inline_svg(self):
+        """PU-UI-001 Slice B: the Hub (#wwOpenPerUnitSettingsBtn) is retired;
+        the icon asset registration is preserved for future use but the button
+        no longer appears in the toolbar."""
         source = _source()
-        btn_idx = source.index('id="wwOpenPerUnitSettingsBtn"')
-        btn = source[btn_idx - 80 : source.index("</button>", btn_idx)]
-        assert 'data-ww-icon="PU_SETTINGS"' in btn
-        assert "<svg" not in btn
-        assert 'PU_SETTINGS: "assets/icons/waveform/pu_settings.svg"' in source
-        # Handler/tooltip/accessibility/position-defining attributes
-        # untouched by the icon swap.
-        assert 'title="Per-Unit Settings&hellip;" aria-label="Per-Unit Settings&hellip;"' in btn
+        assert 'id="wwOpenPerUnitSettingsBtn"' not in source
+        # The asset registration (PU_SETTINGS) may still exist; that is not
+        # a problem -- unused registered assets are harmless.
+        # The ENG/PU toggle buttons remain.
+        assert 'id="wwUnitEngineeringBtn"' in source
+        assert 'id="wwUnitPerUnitBtn"' in source
 
     def test_clear_waveforms_button_uses_the_registered_asset_not_inline_svg(self):
         source = _source()
