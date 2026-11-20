@@ -199,10 +199,11 @@ class TestResolveGroupVoltageBase:
             resolve_group_voltage_base(workspace_id="ws-1", measurement_group_id="does-not-exist",
                                         group_registry=group_registry, voltage_config_registry=voltage_config_registry)
 
-    def test_suggested_group_never_resolves_as_authoritative(self, group_registry, voltage_config_registry):
+    def test_suggested_group_with_manual_base_resolves(self, group_registry, voltage_config_registry):
+        """DEC-UA-002: suggested + set_voltage_base (manual authority) → CONFIGURED."""
         group_registry.add(_group("mg-suggested", status=STATUS_SUGGESTED, channel_names=("OTHER VA", "OTHER VB", "OTHER VC")))
         set_voltage_base(workspace_id="ws-1", measurement_group_id="mg-suggested", nominal_voltage_ll_kv=275.0,
                           group_registry=group_registry, voltage_config_registry=voltage_config_registry)
         resolution = resolve_group_voltage_base(workspace_id="ws-1", measurement_group_id="mg-suggested",
                                                   group_registry=group_registry, voltage_config_registry=voltage_config_registry)
-        assert resolution.status == STATUS_BASE_REQUIRED
+        assert resolution.status == STATUS_CONFIGURED
