@@ -152,10 +152,13 @@ for (const kind of ["impedance", "distance"]) {
       await putVt(page, s, MANUAL_VT);
       // Same real report, but with the recording's side declarations removed.
       await page.route("**/protection-instrument-context?*", async (route) => {
-        const response = await route.fetch();
-        const body = await response.json();
-        for (const q of [body.voltage, body.current]) Object.assign(q, { declared_basis: null, side_status: "unknown", side: "unknown" });
-        await route.fulfill({ response, json: body });
+        try {
+          const response = await route.fetch();
+          const body = await response.json();
+          // The Overcurrent page reads its own (current-only) report too: leave it alone.
+          for (const q of [body.voltage, body.current].filter(Boolean)) Object.assign(q, { declared_basis: null, side_status: "unknown", side: "unknown" });
+          await route.fulfill({ response, json: body });
+        } catch (error) { /* page closed mid-fetch */ }
       });
       await openPanel(page, kind, s.contextId);
       await page.waitForFunction((k) => wwCtVtStateOf(wwCtVtPanel(k)).status === "ready", kind);
@@ -177,11 +180,15 @@ for (const kind of ["impedance", "distance"]) {
       await putCt(page, s, MANUAL_CT);
       await putVt(page, s, MANUAL_VT);
       await page.route("**/protection-instrument-context?*", async (route) => {
-        const response = await route.fetch();
-        const body = await response.json();
-        Object.assign(body.voltage, { declared_basis: "primary", side_status: "recording_declared", side: "primary" });
-        Object.assign(body.current, { declared_basis: "secondary", side_status: "recording_declared", side: "secondary" });
-        await route.fulfill({ response, json: body });
+        try {
+          const response = await route.fetch();
+          const body = await response.json();
+          if (body.voltage) {   // the Overcurrent page's own report is current-only: leave it alone
+            Object.assign(body.voltage, { declared_basis: "primary", side_status: "recording_declared", side: "primary" });
+            Object.assign(body.current, { declared_basis: "secondary", side_status: "recording_declared", side: "secondary" });
+          }
+          await route.fulfill({ response, json: body });
+        } catch (error) { /* page closed mid-fetch */ }
       });
       const requests = [];
       page.on("request", (r) => { if (r.url().includes(PANELS[kind].endpoint)) requests.push(r.url()); });

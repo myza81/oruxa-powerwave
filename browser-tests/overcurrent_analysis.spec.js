@@ -20,13 +20,16 @@
 const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
+const { leaveCurrentSideUndeclared } = require("./support/current_side_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
+const BACKEND = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const STEM = "phasor_smoke_three_phase";
 const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]];
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
+  await leaveCurrentSideUndeclared(page);   // see support/current_side_helpers.js
   await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
@@ -50,6 +53,23 @@ async function uploadAndCreateContext(page) {
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
   const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
   return { workspaceId, sourceId, contextId: context.id };
+}
+
+// D5A-OC-001: a recorded CT is never typed into the analyzer; it is the Current Measurement Group's CT in
+// Recording Details. Configure it there (the same API Recording Details saves through).
+async function configureRecordedCt(page, { workspaceId, sourceId }, primaryA, secondaryA) {
+  const base = `${BACKEND}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${sourceId}/measurement-groups`;
+  let groups = await (await page.request.get(base)).json();
+  if (!groups.some((g) => g.kind === "current")) {
+    await page.request.post(`${base}/suggest`, { data: {} });
+    groups = await (await page.request.get(base)).json();
+  }
+  const current = groups.find((g) => g.kind === "current");
+  expect(current).toBeTruthy();
+  const r = await page.request.put(`${base}/${current.id}/current-config`, {
+    data: { update_ct_only: true, ct_primary_a: primaryA, ct_secondary_a: secondaryA },
+  });
+  expect(r.ok(), await r.text()).toBeTruthy();
 }
 
 async function openAnalysisOvercurrent(page) {
@@ -118,20 +138,16 @@ test.describe("Overcurrent Analysis v1 -- basic configuration", () => {
     await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(1);
   });
 
-  test("primary basis requires and applies CT ratio", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
+  test("primary basis applies the CT ratio of the Measurement Group (read-only, from Recording Details)", async ({ page }) => {
+    const seeded = await uploadAndCreateContext(page);
+    await configureRecordedCt(page, seeded, 1000, 1);
     await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
+    await selectContextAndWaitForValues(page, seeded.contextId);
 
-    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeHidden();
     await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
-    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentCtSecondaryField")).toBeVisible();
-
-    await page.locator("#wwOvercurrentCtPrimaryInput").fill("1000");
-    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentCtSecondaryInput").fill("1");
-    await page.locator("#wwOvercurrentCtSecondaryInput").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentCtVtAuthority")).toContainText("1000 A / 1 A");
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeHidden();        // no recorded-mode CT editor
+    await expect(page.locator("#wwOvercurrentCtSecondaryField")).toBeHidden();
 
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
@@ -152,12 +168,13 @@ test.describe("Overcurrent Analysis v1 -- basic configuration", () => {
 // same fix for a different pre-existing test.
 test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT)", () => {
   async function setupWithPrimaryBasis(page) {
-    const { contextId } = await uploadAndCreateContext(page);
+    const seeded = await uploadAndCreateContext(page);
+    await configureRecordedCt(page, seeded, 1000, 1);
     await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
+    await selectContextAndWaitForValues(page, seeded.contextId);
     await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
-    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toBeVisible();
-    return contextId;
+    await expect(page.locator("#wwOvercurrentCtVtAuthority")).toBeVisible();        // read-only CT block (D5A-OC-001)
+    return seeded.contextId;
   }
 
   // The task's own explicit acceptance test: every settings control's
@@ -169,7 +186,7 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
     const panelBox = await page.locator("#wwOvercurrentBody .ww-phasor-values-panel").boundingBox();
     const controlIds = [
       "wwOvercurrentCharacteristicSelect", "wwOvercurrentPickupInput", "wwOvercurrentTmsInput",
-      "wwOvercurrentBasisSelect", "wwOvercurrentCtPrimaryInput", "wwOvercurrentCtSecondaryInput",
+      "wwOvercurrentBasisSelect", "wwOvercurrentCtVtAuthority", "wwOvercurrentCtPrimaryInput", "wwOvercurrentCtSecondaryInput",
     ];
     for (const id of controlIds) {
       const locator = page.locator(`#${id}`);
@@ -204,10 +221,6 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
       const tmsBox = await boxOf("wwOvercurrentTmsInput");
       expect(boxesOverlap(pickupBox, tmsBox), "Pickup and TMS must never overlap").toBe(false);
 
-      const ctPrimaryBox = await boxOf("wwOvercurrentCtPrimaryInput");
-      const ctSecondaryBox = await boxOf("wwOvercurrentCtSecondaryInput");
-      expect(boxesOverlap(ctPrimaryBox, ctSecondaryBox), "CT Primary and CT Secondary must never overlap").toBe(false);
-
       // Characteristic and Recording basis are marked full-width
       // (`grid-column: 1 / -1`) regardless of column count -- at 2
       // columns their own right edge sits past the halfway point of
@@ -224,6 +237,18 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
       const bodyScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
       const bodyClientWidth = await page.evaluate(() => document.documentElement.clientWidth);
       expect(bodyScrollWidth).toBeLessThanOrEqual(bodyClientWidth + 1);
+
+      // Recording: the read-only CT block (D5A-OC-001) sits clear of the basis select.
+      const ctBlockBox = await boxOf("wwOvercurrentCtVtAuthority");
+      expect(boxesOverlap(basisBox, ctBlockBox), "Recording basis and the CT block must never overlap").toBe(false);
+
+      // Manual: the CT inputs (Manual input source only) never overlap each other and stay within the card.
+      await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+      await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toBeVisible();
+      await assertAllControlsWithinPanel(page);
+      const ctPrimaryBox = await boxOf("wwOvercurrentCtPrimaryInput");
+      const ctSecondaryBox = await boxOf("wwOvercurrentCtSecondaryInput");
+      expect(boxesOverlap(ctPrimaryBox, ctSecondaryBox), "CT Primary and CT Secondary must never overlap").toBe(false);
     });
   }
 
@@ -270,7 +295,7 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
       await expect(page.locator(`#${id}`)).toHaveValue(value);
     }
 
-    await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();      // the CT inputs are Manual input source only
     for (const [id, value] of [["wwOvercurrentCtPrimaryInput", "1200"], ["wwOvercurrentCtPrimaryInput", "10000"], ["wwOvercurrentCtSecondaryInput", "1"]]) {
       await page.locator(`#${id}`).fill(value);
       await page.locator(`#${id}`).dispatchEvent("change");
@@ -1833,7 +1858,9 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
   }
 
   test("visible in Recording, hidden in both Manual methods, restored with the selected basis on return", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
+    const seeded = await uploadAndCreateContext(page);
+    const { contextId } = seeded;
+    await configureRecordedCt(page, seeded, 1000, 1);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
@@ -1842,8 +1869,7 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
     await expect(field).toBeVisible();
     await expect(field).toContainText("Recording current basis");
     await select.selectOption("primary");
-    await setField(page, "#wwOvercurrentCtPrimaryInput", "1000");
-    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
+    await expect(page.locator("#wwOvercurrentCtVtAuthority")).toContainText("1000 A / 1 A");
     await expect(page.locator("#wwOvercurrentValuesList")).toContainText(/40\.0\s*A primary/);
 
     await page.locator("#wwOvercurrentInputSourceManualBtn").click();
@@ -1862,7 +1888,8 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
     await expect(field).toBeVisible();
     await expect(select).toHaveValue("primary");
     expect(await page.evaluate(() => wwOvercurrentState.settings.recordingBasis)).toBe("primary");
-    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeHidden();        // Recording shows the read-only block instead
+    await expect(page.locator("#wwOvercurrentCtVtAuthority")).toBeVisible();
     // Recording-mode result is unchanged: 40 A primary through 1000:1.
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
@@ -1871,8 +1898,10 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
     }).toPass({ timeout: 5000 });
   });
 
-  test("CT fields follow only the active source in all five cases, and keep their values while hidden", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
+  test("CT inputs are Manual-only: hidden in Recording, and in the four Manual cases they follow the method and keep their values while hidden", async ({ page }) => {
+    const seeded = await uploadAndCreateContext(page);
+    const { contextId } = seeded;
+    await configureRecordedCt(page, seeded, 800, 1);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
@@ -1894,16 +1923,17 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
     await expect(page.locator("#wwOvercurrentBasisSelect")).toHaveValue("secondary");
     await expectCt(false);
 
-    // 2. Recording + Primary: shown.
+    // 2. Recording + Primary: still hidden (D5A-OC-001) -- the CT is read-only from Recording Details.
     await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
-    await expectCt(true);
-    await setField(page, "#wwOvercurrentCtPrimaryInput", "800");
-    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
+    await expectCt(false);
+    await expect(page.locator("#wwOvercurrentCtVtAuthority")).toContainText("800 A / 1 A");
 
-    // 3. Manual + Direct Current + Primary (default): shown.
+    // 3. Manual + Direct Current + Primary (default): shown; the Manual CT is typed here.
     await page.locator("#wwOvercurrentInputSourceManualBtn").click();
     await expect(page.locator("#wwOvercurrentManualBasisSelect")).toHaveValue("primary");
     await expectCt(true);
+    await setField(page, "#wwOvercurrentCtPrimaryInput", "800");
+    await setField(page, "#wwOvercurrentCtSecondaryInput", "1");
     await expectCtValues();
 
     // 4. Manual + Direct Current + Secondary: hidden, even though the
@@ -1930,10 +1960,10 @@ test.describe("Overcurrent Analysis v1 -- Recording current basis is shown only 
     await page.locator("#wwOvercurrentInputMethodDirectBtn").click();
     await expectCt(false);
 
-    // Back to Recording (Primary): shown, values intact, result unchanged
+    // Back to Recording (Primary): inputs hidden, Manual values intact, result from the group's CT
     // (40 A primary through 800/1 -> 0.05 A secondary).
     await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
-    await expectCt(true);
+    await expectCt(false);
     await expectCtValues();
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();

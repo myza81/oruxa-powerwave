@@ -125,15 +125,16 @@ class TestOvercurrentPanelStructure:
         assert "wwOvercurrentCtFieldsNeeded()" in fn
 
     def test_ct_fields_needed_follows_only_the_active_input_source(self):
-        """CT Primary/Secondary are shared, never duplicated between
-        modes (task §5). Since 2026-10-16 their FIELDS follow only the
-        ACTIVE source: Recording's basis in Recording; in Manual, Direct
-        Current's own basis, or always for Equipment Loading. The hidden
-        Recording basis never shows them in Manual."""
+        """The CT Primary/Secondary INPUTS are Manual input source only
+        (D5A-OC-001): Recording mode reads the CT of the owning
+        Measurement Group from Recording Details (read-only block), so it
+        never shows an editor, whatever the Recording basis. In Manual the
+        fields follow Direct Current's own basis, or always for Equipment
+        Loading; the hidden Recording basis never shows them."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentCtFieldsNeeded()", "function wwOvercurrentUpdateCtFieldsVisibility")
-        recording_branch, manual_branch = fn.split("return wwOvercurrentState.settings.recordingBasis === \"primary\";", 1)
-        assert "if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) {" in recording_branch
+        recording_branch, manual_branch = fn.split("if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return false;", 1)
+        assert "settings.recordingBasis" not in fn          # the Recording basis no longer decides whether CT inputs show
         assert "recordingBasis" not in manual_branch
         assert "manual.inputMethod === WW_OC_INPUT_METHOD_LOADING" in manual_branch
         assert "manual.inputBasis === \"primary\"" in manual_branch
