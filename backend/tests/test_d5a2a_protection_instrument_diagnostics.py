@@ -23,12 +23,12 @@ from app.services.protection_instrument_diagnostics import (
 
 
 def _ctx(quantity: str, *, primary=None, secondary=None, side="unknown", side_status=SIDE_UNKNOWN,
-         status=None, nominal=None) -> TransformerContext:
+         status=None, nominal=None, nominal_refused=None) -> TransformerContext:
     configured = primary is not None
     return TransformerContext(
         quantity=quantity, ratio_status=status or (RATIO_CONFIGURED if configured else RATIO_NOT_CONFIGURED),
         primary=primary, secondary=secondary, authority="manual" if configured else "not_configured",
-        side=side, side_status=side_status, ignored_nominal_kv=nominal,
+        side=side, side_status=side_status, nominal_ll_kv=nominal, nominal_refused_reason=nominal_refused,
     )
 
 
@@ -107,10 +107,17 @@ def test_ratio_tolerance_is_relative_and_tight():
         ANALYSIS_IMPEDANCE, v, I(), RequestAssumptions(vt_primary=132000.0 * 1.001, vt_secondary=110.0))
 
 
-def test_nominal_display_only_notice_is_info_and_carries_the_value():
-    findings = build_diagnostics(ANALYSIS_IMPEDANCE, V(nominal=275.0), I(), RequestAssumptions())
-    notice = next(d for d in findings if d.code == "VT_NOMINAL_DISPLAY_ONLY")
-    assert (notice.severity, notice.detail["nominal_ll_kv"]) == ("info", 275.0)
+def test_a_nominal_that_cannot_yield_a_vt_is_reported_with_the_reason():
+    findings = build_diagnostics(ANALYSIS_IMPEDANCE, V(nominal=275.0, nominal_refused="manual_conflict"), I(), RequestAssumptions())
+    notice = next(d for d in findings if d.code == "VT_NOMINAL_NOT_USABLE")
+    assert (notice.severity, notice.detail["nominal_ll_kv"], notice.detail["reason"]) == ("warning", 275.0, "manual_conflict")
+
+
+def test_a_usable_nominal_produces_no_notice():
+    # The auto-derived VT is valid configuration: nothing is flagged about it.
+    ctx = _ctx("voltage", primary=275000.0, secondary=110.0, nominal=275.0)
+    codes = [d.code for d in build_diagnostics(ANALYSIS_IMPEDANCE, ctx, I(), RequestAssumptions())]
+    assert "VT_NOMINAL_NOT_USABLE" not in codes and "VT_AUTHORITY_MISSING" not in codes
 
 
 def test_no_channels_context_is_not_reported_as_missing_authority():

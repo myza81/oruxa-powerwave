@@ -193,26 +193,42 @@ def test_two_recordings_in_one_workspace_never_share_configuration(client):
     assert {"VT_AUTHORITY_MISSING", "CT_AUTHORITY_MISSING"} <= set(_codes(two))
 
 
-def test_nominal_voltage_alone_is_never_reported_as_a_vt_ratio(client):
+def test_nominal_voltage_alone_is_reported_as_a_consumable_auto_derived_vt(client):
     ws = "d5a2a-nominal"
     src, ctx = _bay(client, ws)
     _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB", "VC"), "vg-1")
     client.app.state.voltage_group_config_registry.update_fields(ws, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
     body = _ctx(client, ws, ctx, analysis="impedance", phase="A").json()
     v = body["voltage"]
-    assert (v["ratio_status"], v["ratio"], v["primary"], v["secondary"], v["ratio_consumable"]) == ("not_configured", None, None, None, False)
-    assert v["ignored_nominal_kv"] == 132.0
-    assert "VT_AUTHORITY_MISSING" in _codes(body) and _diag(body, "VT_NOMINAL_DISPLAY_ONLY")["detail"]["nominal_ll_kv"] == 132.0
+    assert (v["ratio_status"], v["ratio"], v["primary"], v["secondary"], v["ratio_consumable"]) == ("configured", 1200.0, 132000.0, 110.0, True)
+    assert v["authority"] == "auto_nominal" and v["nominal_ll_kv"] == 132.0 and v["nominal_refused_reason"] is None
+    assert "VT_AUTHORITY_MISSING" not in _codes(body) and "VT_NOMINAL_NOT_USABLE" not in _codes(body)
 
 
-def test_nominal_with_request_vt_does_not_become_authoritative(client):
+def test_a_refused_nominal_is_reported_with_its_reason(client):
+    ws = "d5a2a-nominal-refused"
+    src, ctx = _bay(client, ws)
+    _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB", "VC"), "vg-1")
+    reg = client.app.state.voltage_group_config_registry
+    reg.update_fields(ws, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
+    config = reg.get(ws, "vg-1")
+    config.manual_conflict_detected = True
+    reg.upsert(config)
+    body = _ctx(client, ws, ctx, analysis="impedance", phase="A").json()
+    v = body["voltage"]
+    assert (v["ratio_status"], v["ratio_consumable"], v["nominal_ll_kv"], v["nominal_refused_reason"]) == ("not_configured", False, 132.0, "manual_conflict")
+    assert {"VT_AUTHORITY_MISSING", "VT_NOMINAL_NOT_USABLE"} <= set(_codes(body))
+
+
+def test_a_request_vt_is_checked_against_the_auto_derived_vt(client):
     ws = "d5a2a-nominal-req"
     src, ctx = _bay(client, ws)
     _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB", "VC"), "vg-1")
     client.app.state.voltage_group_config_registry.update_fields(ws, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
-    body = _ctx(client, ws, ctx, analysis="impedance", phase="A", vt_primary=132000.0, vt_secondary=110.0).json()
-    assert "REQUEST_VT_NOT_VERIFIED_BY_AUTHORITY" in _codes(body)
-    assert "REQUEST_VT_DIFFERS_FROM_AUTHORITY" not in _codes(body)
+    same = _ctx(client, ws, ctx, analysis="impedance", phase="A", vt_primary=132000.0, vt_secondary=110.0).json()
+    assert "REQUEST_VT_NOT_VERIFIED_BY_AUTHORITY" not in _codes(same) and "REQUEST_VT_DIFFERS_FROM_AUTHORITY" not in _codes(same)
+    other = _ctx(client, ws, ctx, analysis="impedance", phase="A", vt_primary=66000.0, vt_secondary=110.0).json()
+    assert "REQUEST_VT_DIFFERS_FROM_AUTHORITY" in _codes(other)
 
 
 # --------------------------------------------------------------------------- measurement sides

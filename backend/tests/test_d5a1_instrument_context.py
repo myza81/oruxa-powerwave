@@ -172,13 +172,53 @@ def test_group_without_configuration_is_not_configured(env):
     assert got.ratio_status == RATIO_NOT_CONFIGURED and got.ratio is None
 
 
-def test_nominal_voltage_alone_never_implies_a_vt_ratio(env):
-    """The Recording Details view synthesises nominal kV / 110 V as `auto_nominal`; that is an
-    assumption and must not become a consumable VT."""
+def test_nominal_voltage_alone_yields_a_consumable_auto_derived_vt(env):
+    """Owner decision (2026-11-21): the nominal-derived VT (nominal kV / 110 V) is valid engineering
+    configuration, needs no confirmation, and keeps its own `auto_nominal` provenance."""
     env.add_group("vg-1", KIND_VOLTAGE, ["VR"])
     env.vcfg.update_fields(WS, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
     got = env.one([_ref("VR")], "voltage")
+    assert got.ratio_status == RATIO_CONFIGURED and got.ratio_consumable
+    assert (got.primary, got.secondary, got.ratio) == (132000.0, 110.0, 1200.0)
+    assert got.authority == "auto_nominal" and got.authority not in ("manual", "recording_metadata")
+    assert got.provenance_note == "Auto-derived from nominal voltage 132 kV; secondary 110 V default"
+    assert got.nominal_ll_kv == 132.0 and got.nominal_refused_reason is None
+
+
+def test_a_stored_vt_always_takes_precedence_over_the_nominal(env):
+    env.add_group("vg-1", KIND_VOLTAGE, ["VR"])
+    env.vcfg.update_fields(WS, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
+    env.set_vt("vg-1", 33000.0, 110.0, authority="manual")
+    got = env.one([_ref("VR")], "voltage")
+    assert (got.primary, got.secondary, got.authority) == (33000.0, 110.0, "manual")
+    env.set_vt("vg-1", 11000.0, 110.0, authority="recording_metadata")
+    assert env.one([_ref("VR")], "voltage").authority == "recording_metadata"
+
+
+def test_changing_the_nominal_refreshes_the_derived_vt(env):
+    env.add_group("vg-1", KIND_VOLTAGE, ["VR"])
+    env.vcfg.update_fields(WS, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
+    assert env.one([_ref("VR")], "voltage").primary == 132000.0
+    env.vcfg.update_fields(WS, "vg-1", nominal_voltage_ll_kv=275.0, update_nominal=True)
+    assert env.one([_ref("VR")], "voltage").primary == 275000.0
+
+
+def test_the_nominal_derivation_is_refused_when_the_nominal_is_not_accepted(env):
+    env.add_group("vg-1", KIND_VOLTAGE, ["VR"])
+    env.vcfg.update_fields(WS, "vg-1", nominal_voltage_ll_kv=132.0, update_nominal=True)
+    config = env.vcfg.get(WS, "vg-1")
+    config.manual_conflict_detected = True
+    env.vcfg.upsert(config)
+    got = env.one([_ref("VR")], "voltage")
     assert got.ratio_status == RATIO_NOT_CONFIGURED and got.ratio is None and got.primary is None
+    assert (got.nominal_ll_kv, got.nominal_refused_reason) == (132.0, "manual_conflict")
+
+
+def test_a_ct_is_never_derived_from_equipment_rating_or_capacity(env):
+    env.add_group("ig-1", KIND_CURRENT, ["IR"])
+    env.ccfg.update_fields(WS, "ig-1", equipment_mva=100.0, equipment_linked_voltage_group_id=None, update_equipment=True)
+    got = env.one([_ref("IR")], "current")
+    assert got.ratio_status == RATIO_NOT_CONFIGURED and got.primary is None and got.nominal_ll_kv is None
 
 
 @pytest.mark.parametrize("authority", ["auto_nominal", "assumed_default", "garbage"])

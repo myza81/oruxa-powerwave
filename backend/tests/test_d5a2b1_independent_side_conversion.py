@@ -323,12 +323,26 @@ def test_untrusted_ratio_authority_is_not_consumed(client):
     assert body["side_conversion"]["block_detail"]["ratio_status"] == "untrusted_authority"
 
 
-def test_nominal_voltage_alone_is_never_a_vt_ratio(client):
+def test_the_nominal_derived_vt_is_consumed_by_strict_conversion(client):
+    """Owner decision (2026-11-21): nominal kV / 110 V is valid engineering configuration."""
     ws = "d5a2b1-nominal"
     src, ctx = _bay(client, ws, v_side="primary", i_side="primary")
     client.app.state.voltage_group_config_registry.update_fields(
         ws, f"vg-{src}", nominal_voltage_ll_kv=110.0, update_nominal=True, vt_primary_v=None, vt_secondary_v=None,
         vt_authority="not_configured", update_vt=True)
+    body = _imp(client, ws, ctx, **_strict("primary", "primary", "secondary")).json()
+    assert body["status"] == "computed" and body["impedance_basis"] == "secondary"
+
+
+def test_a_refused_nominal_still_blocks_strict_conversion(client):
+    ws = "d5a2b1-nominal-refused"
+    src, ctx = _bay(client, ws, v_side="primary", i_side="primary")
+    reg = client.app.state.voltage_group_config_registry
+    reg.update_fields(ws, f"vg-{src}", nominal_voltage_ll_kv=110.0, update_nominal=True, vt_primary_v=None,
+                      vt_secondary_v=None, vt_authority="not_configured", update_vt=True)
+    config = reg.get(ws, f"vg-{src}")
+    config.manual_conflict_detected = True
+    reg.upsert(config)
     _blocked(_imp(client, ws, ctx, **_strict("primary", "primary", "secondary")).json(), "vt_authority_unavailable", "voltage")
 
 
