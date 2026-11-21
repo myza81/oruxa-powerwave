@@ -113,10 +113,13 @@ def compute_impedance_analysis(
     matching the task's own golden-example convention (section 22: "same
     basis," no CT/VT involved at all)."""
     if isinstance(side_plan, SideBlock):
+        v_key, i_key = "V" + phase.lower(), "I" + phase.lower()
         return _blocked_impedance_result(
             side_plan, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            voltage_channel_ref=side_plan.role_refs.get(v_key), voltage_unit=side_plan.role_units.get(v_key),
+            current_channel_ref=side_plan.role_refs.get(i_key), current_unit=side_plan.role_units.get(i_key),
         )
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
@@ -134,12 +137,16 @@ def compute_impedance_analysis(
 def _blocked_impedance_result(
     block: SideBlock, *, engineering_context_id: str, phase: str, analysis_time: float, recording_basis, impedance_basis,
     vt_primary, vt_secondary, ct_primary, ct_secondary,
+    voltage_channel_ref=None, voltage_unit=None, current_channel_ref=None, current_unit=None,
 ) -> ImpedanceAnalysisResult:
-    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback."""
+    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback.
+    The channels that resolved (never an unresolved one) are still identified, so the physical signals stay plottable."""
     return ImpedanceAnalysisResult(
         status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
         analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        voltage_channel_ref=voltage_channel_ref, voltage_unit=voltage_unit,
+        current_channel_ref=current_channel_ref, current_unit=current_unit,
         reason_code=block.code, message=block.message, side_conversion=block.info,
     )
 
@@ -158,7 +165,10 @@ def _strict_impedance_result(
     def refuse(code: str, message: str, quantity: str | None = None) -> ImpedanceAnalysisResult:
         block = SideBlock(code=code, message=message, quantity=quantity, voltage_side=plan.voltage_side,
                           current_side=plan.current_side, output_side=plan.output_side)
-        return _blocked_impedance_result(block, **echo)
+        return _blocked_impedance_result(
+            block, **echo, voltage_channel_ref=voltage_role.channel_ref, voltage_unit=voltage_role.unit,
+            current_channel_ref=current_role.channel_ref, current_unit=current_role.unit,
+        )
 
     if (not plan.validated or set(plan.voltage_refs) != {voltage_role.channel_ref}
             or set(plan.current_refs) != {current_role.channel_ref}):
@@ -229,6 +239,17 @@ def _impedance_analysis_from_diagram(
     if diagram.status != "computed":
         return _short_circuit(diagram.status, reason_code=diagram.reason_code, message=diagram.message)
 
+    def _blocked_with_channels(reason_code: str, message: str) -> ImpedanceAnalysisResult:
+        """A configuration block where both roles ARE available: same status/reason/message as before, but the
+        resolved channels and their units are kept so the signals can still be shown (identity is not a result)."""
+        return ImpedanceAnalysisResult(
+            status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            voltage_channel_ref=voltage_role.channel_ref, voltage_unit=voltage_role.unit,
+            current_channel_ref=current_role.channel_ref, current_unit=current_role.unit,
+            reason_code=reason_code, message=message,
+        )
+
     voltage_role = diagram.roles.get("V" + phase.lower())
     current_role = diagram.roles.get("I" + phase.lower())
     if voltage_role is None or current_role is None:
@@ -250,9 +271,8 @@ def _impedance_analysis_from_diagram(
         vt_primary is not None and vt_secondary is not None and ct_primary is not None and ct_secondary is not None
         and impedance_ratio_valid(vt_primary, vt_secondary) and impedance_ratio_valid(ct_primary, ct_secondary)
     ):
-        return _short_circuit(
-            IMPEDANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_RATIO,
-            message="Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
+        return _blocked_with_channels(
+            REASON_INVALID_RATIO, "Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
         )
 
     # D5A-UNIT-001: Z = V / I only in consistent SI quantities. The recorded magnitudes are in the channels' own
@@ -260,15 +280,15 @@ def _impedance_analysis_from_diagram(
     # floor (1 mA) is therefore judged in amperes. An unrecognised unit is refused, never divided raw and labelled ohms.
     voltage = normalise_to_volts(voltage_role.magnitude_rms, voltage_role.unit)
     if voltage is None:
-        return _short_circuit(
-            IMPEDANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_VOLTAGE_UNIT,
-            message=f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts; impedance in ohms is not available.",
+        return _blocked_with_channels(
+            REASON_UNSUPPORTED_VOLTAGE_UNIT,
+            f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts; impedance in ohms is not available.",
         )
     current = normalise_to_amperes(current_role.magnitude_rms, current_role.unit)
     if current is None:
-        return _short_circuit(
-            IMPEDANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_CURRENT_UNIT,
-            message=f"Current unit {current_role.unit!r} cannot be normalized to amperes; impedance in ohms is not available.",
+        return _blocked_with_channels(
+            REASON_UNSUPPORTED_CURRENT_UNIT,
+            f"Current unit {current_role.unit!r} cannot be normalized to amperes; impedance in ohms is not available.",
         )
     point = compute_impedance_point(
         voltage, voltage_role.angle_deg_absolute, current, current_role.angle_deg_absolute,

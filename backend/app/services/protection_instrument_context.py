@@ -139,6 +139,20 @@ def resolve_channel_facts(
     )
 
 
+def resolve_channel_unit(
+    workspace_id: str, ref: ChannelRef, *, source_registry: WorkspaceRegistry, calculated_channel_registry,
+) -> str | None:
+    """The unit the channel itself declares (None if it cannot be found); never guessed."""
+    if ref.kind == "source":
+        active = source_registry.get(workspace_id, ref.source_id)
+        if active is None:
+            return None
+        channel = next((c for c in active.metadata.analog_channels if c.name == ref.channel_name), None)
+        return channel.unit if channel is not None else None
+    calculated = calculated_channel_registry.get(workspace_id, ref.calculated_channel_id)
+    return calculated.unit if calculated is not None else None
+
+
 def _resolve_side(
     workspace_id: str, refs: tuple[ChannelRef, ...], source_registry: WorkspaceRegistry,
 ) -> tuple[str, str]:

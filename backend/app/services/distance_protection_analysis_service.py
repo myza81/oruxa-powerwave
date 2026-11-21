@@ -112,11 +112,16 @@ def compute_distance_analysis(
     spelled the manual form's way."""
     evaluated_zones = collect_zones(zones, zone1, zone2, zone3, zone4)
     if isinstance(side_plan, SideBlock):
+        keys = LOOP_ROLE_KEYS.get(loop, (None, None, None, None))
+        ref = lambda k: side_plan.role_refs.get(k) if k else None       # noqa: E731
+        unit = lambda k: side_plan.role_units.get(k) if k else None     # noqa: E731
         return _blocked_distance_result(
             side_plan, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             characteristic=characteristic, zones=evaluated_zones,
+            v1_channel_ref=ref(keys[0]), v2_channel_ref=ref(keys[1]), i1_channel_ref=ref(keys[2]), i2_channel_ref=ref(keys[3]),
+            voltage_unit=unit(keys[0]), current_unit=unit(keys[2]),
         )
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
@@ -134,12 +139,17 @@ def compute_distance_analysis(
 def _blocked_distance_result(
     block: SideBlock, *, engineering_context_id: str, loop: str, analysis_time: float, recording_basis, impedance_basis,
     vt_primary, vt_secondary, ct_primary, ct_secondary, characteristic: str, zones,
+    v1_channel_ref=None, v2_channel_ref=None, i1_channel_ref=None, i2_channel_ref=None,
+    voltage_unit=None, current_unit=None,
 ) -> DistanceAnalysisResult:
-    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback."""
+    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback.
+    The channels that resolved (never an unresolved one) are still identified, so the physical signals stay plottable."""
     return DistanceAnalysisResult(
         status=DISTANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, loop=loop,
         analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        v1_channel_ref=v1_channel_ref, v2_channel_ref=v2_channel_ref, i1_channel_ref=i1_channel_ref,
+        i2_channel_ref=i2_channel_ref, voltage_unit=voltage_unit, current_unit=current_unit,
         characteristic=characteristic, zones=evaluate_zones(None, characteristic=characteristic, zones=zones),
         reason_code=block.code, message=block.message, side_conversion=block.info,
     )
@@ -162,7 +172,11 @@ def _strict_distance_result(
     def refuse(code: str, message: str, quantity: str | None = None) -> DistanceAnalysisResult:
         block = SideBlock(code=code, message=message, quantity=quantity, voltage_side=plan.voltage_side,
                           current_side=plan.current_side, output_side=plan.output_side)
-        return _blocked_distance_result(block, **echo)
+        return _blocked_distance_result(
+            block, **echo, v1_channel_ref=v1_role.channel_ref, v2_channel_ref=v2_role.channel_ref,
+            i1_channel_ref=i1_role.channel_ref, i2_channel_ref=i2_role.channel_ref,
+            voltage_unit=v1_role.unit, current_unit=i1_role.unit,
+        )
 
     if (not plan.validated or set(plan.voltage_refs) != {v1_role.channel_ref, v2_role.channel_ref}
             or set(plan.current_refs) != {i1_role.channel_ref, i2_role.channel_ref}):
@@ -251,6 +265,19 @@ def _distance_analysis_from_diagram(
 
     roles = (v1_role, v2_role, i1_role, i2_role)
     v1_ref, v2_ref, i1_ref, i2_ref = v1_role.channel_ref, v2_role.channel_ref, i1_role.channel_ref, i2_role.channel_ref
+
+    def _blocked_with_channels(reason_code: str, message: str) -> DistanceAnalysisResult:
+        """A configuration block where every leg IS available: same status/reason/message as before, but the resolved
+        channels and their units are kept so the signals can still be shown (identity is not a result)."""
+        return DistanceAnalysisResult(
+            status=DISTANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, loop=loop,
+            analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            v1_channel_ref=v1_ref, v2_channel_ref=v2_ref, i1_channel_ref=i1_ref, i2_channel_ref=i2_ref,
+            voltage_unit=v1_role.unit, current_unit=i1_role.unit,
+            characteristic=characteristic, zones=evaluate_zones(None, characteristic=characteristic, zones=zones),
+            reason_code=reason_code, message=message,
+        )
+
     if any(r.status != ROLE_STATUS_AVAILABLE for r in roles):
         status, reason = _worst_role_status(roles)
         return DistanceAnalysisResult(
@@ -274,9 +301,8 @@ def _distance_analysis_from_diagram(
         vt_primary is not None and vt_secondary is not None and ct_primary is not None and ct_secondary is not None
         and impedance_ratio_valid(vt_primary, vt_secondary) and impedance_ratio_valid(ct_primary, ct_secondary)
     ):
-        return _short_circuit(
-            DISTANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_RATIO,
-            message="Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
+        return _blocked_with_channels(
+            REASON_INVALID_RATIO, "Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
         )
 
     # D5A-UNIT-001: the loop impedance is formed only from consistent SI quantities. Normalise every leg to volts /
@@ -284,15 +310,15 @@ def _distance_analysis_from_diagram(
     # instead of dividing raw magnitudes and labelling the result ohms.
     volts = [normalise_to_volts(r.magnitude_rms, r.unit) for r in (v1_role, v2_role)]
     if any(v is None for v in volts):
-        return _short_circuit(
-            DISTANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_VOLTAGE_UNIT,
-            message="A voltage unit cannot be normalized to volts; loop impedance in ohms is not available.",
+        return _blocked_with_channels(
+            REASON_UNSUPPORTED_VOLTAGE_UNIT,
+            "A voltage unit cannot be normalized to volts; loop impedance in ohms is not available.",
         )
     amps = [normalise_to_amperes(r.magnitude_rms, r.unit) for r in (i1_role, i2_role)]
     if any(a is None for a in amps):
-        return _short_circuit(
-            DISTANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_CURRENT_UNIT,
-            message="A current unit cannot be normalized to amperes; loop impedance in ohms is not available.",
+        return _blocked_with_channels(
+            REASON_UNSUPPORTED_CURRENT_UNIT,
+            "A current unit cannot be normalized to amperes; loop impedance in ohms is not available.",
         )
     point = compute_loop_impedance(
         volts[0], v1_role.angle_deg_absolute, volts[1], v2_role.angle_deg_absolute,

@@ -109,6 +109,10 @@ class SideBlock:
     voltage_side: str | None = None
     current_side: str | None = None
     output_side: str | None = None
+    #: Channels that DID resolve for this analysis, keyed by role (e.g. "Va", "Ia"), with their unit metadata, so a
+    #: blocked result can still identify the physical signals. Never populated for an unresolved role.
+    role_refs: Mapping[str, ChannelRef] = field(default_factory=dict)
+    role_units: Mapping[str, str | None] = field(default_factory=dict)
 
     @property
     def info(self) -> SideConversionInfo:

@@ -43,12 +43,14 @@ from app.domain.side_conversion import (
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.errors import ImportServiceError
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.protection_context_report_service import InvalidProtectionContextRequest, resolve_analysis_roles
 from app.services.protection_instrument_context import (
     QUANTITY_CURRENT,
     QUANTITY_VOLTAGE,
     resolve_channel_facts,
+    resolve_channel_unit,
     resolve_transformer_context,
 )
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -87,9 +89,33 @@ def resolve_side_plan(
     if voltage_side is None and current_side is None:
         return None
 
+    resolved_roles: list[tuple[str, ChannelRef]] | None = None
+
+    def known_roles() -> list[tuple[str, ChannelRef]]:
+        """Roles that resolved for this analysis, best-effort: a missing context or bad phase simply yields none, so an
+        early validation block is still returned exactly as before and no identity is ever invented."""
+        nonlocal resolved_roles
+        if resolved_roles is None:
+            try:
+                resolved_roles, _ = resolve_analysis_roles(
+                    workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis=analysis,
+                    phase=phase, loop=loop, context_registry=context_registry, source_registry=source_registry,
+                    calculated_channel_registry=calculated_channel_registry,
+                )
+            except (ImportServiceError, InvalidProtectionContextRequest):
+                resolved_roles = []
+        return resolved_roles
+
     def block(code: str, message: str, quantity: str | None = None, **detail) -> SideBlock:
-        return SideBlock(code=code, message=message, quantity=quantity, detail=detail,
-                         voltage_side=voltage_side, current_side=current_side, output_side=impedance_basis)
+        roles = known_roles()
+        return SideBlock(
+            code=code, message=message, quantity=quantity, detail=detail,
+            voltage_side=voltage_side, current_side=current_side, output_side=impedance_basis,
+            role_refs={key: ref for key, ref in roles},
+            role_units={key: resolve_channel_unit(workspace_id, ref, source_registry=source_registry,
+                                                  calculated_channel_registry=calculated_channel_registry)
+                        for key, ref in roles},
+        )
 
     if impedance_basis not in KNOWN_SIDES:
         return block(REASON_INVALID_IMPEDANCE_BASIS, "impedance_basis must be 'primary' or 'secondary'.",
@@ -115,6 +141,7 @@ def resolve_side_plan(
         )
     except InvalidProtectionContextRequest as exc:     # same reason codes the legacy compute paths use
         return block("unsupported_loop" if analysis == "distance_protection" else "unsupported_phase", str(exc))
+    resolved_roles = resolved
     if unresolved:
         # The compute path reports its own natural status for unresolved/ambiguous channels.
         return SidePlan(voltage_side=voltage_side, current_side=current_side, output_side=impedance_basis,
