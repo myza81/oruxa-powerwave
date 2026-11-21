@@ -1,7 +1,12 @@
-"""Static regression checks for the Per-Unit Configuration Slice 4
-frontend fixes (frontend/index.html) -- the Source Default modal's own
-cosmetic previews and copy must match the corrected backend arithmetic
-(app.domain.per_unit.resolve_per_unit()'s VOLTAGE branch, Slice 4).
+"""Static regression checks confirming that the Source Default modal
+(#perUnitProfilesOverlay) and all its associated functions were removed
+in PU-UI-001 Step B.
+
+The original classes in this file tested arithmetic correctness inside
+the SD modal's current-base preview and voltage-reference block.  Those
+functions no longer exist; these replacement tests guard the removal
+contract instead -- the functions must stay gone, and the surviving
+navigation/display surfaces must remain intact.
 
 Same source-text substring-assertion pattern every other
 `test_frontend_*.py` file in this suite already uses.
@@ -19,101 +24,87 @@ def _source() -> str:
     return FRONTEND.read_text(encoding="utf-8")
 
 
-def _function_body(source: str, signature: str, next_signature: str) -> str:
-    start = source.index(signature)
-    end = source.index(next_signature, start)
-    return source[start:end]
+class TestSourceDefaultModalRemovedInPuUi001:
+    """PU-UI-001 Step B: the Source Default modal and all its markup
+    have been removed.  PU configuration is managed via Recording
+    Details."""
 
-
-class TestCurrentBasePreviewNoLongerDoubleAdjustsForLg:
-    """The cosmetic "Calculated Current Base" preview must match the
-    corrected backend formula: Vbase_LL is now always the raw entered
-    value, never multiplied by sqrt(3) for a line-to-ground reference."""
-
-    def test_derived_branch_never_multiplies_by_sqrt3_for_lg(self):
+    def test_sd_overlay_markup_is_gone(self):
         source = _source()
-        body = _function_body(
-            source, "function wwPerUnitEditorResolvedCurrentBaseText(state)", "async function wwOpenPerUnitProfilesModal"
-        )
-        derived_branch = body[body.index('state.currentBaseMode === "derived"'):]
-        assert "PER_UNIT_LINE_TO_GROUND" not in derived_branch
-        assert "vbaseLL" not in derived_branch
+        assert 'id="perUnitProfilesOverlay"' not in source
+        assert 'id="perUnitSourceSelect"' not in source
+        assert 'id="perUnitProfileFields"' not in source
 
-    def test_derived_branch_still_computes_ibase_from_raw_vbase(self):
+    def test_sd_link_in_recording_info_is_gone(self):
         source = _source()
-        body = _function_body(
-            source, "function wwPerUnitEditorResolvedCurrentBaseText(state)", "async function wwOpenPerUnitProfilesModal"
-        )
-        assert "wwPerUnitDerivedCurrentBaseKa(sbase, vbase)" in body
-        helper = _function_body(
-            source, "function wwPerUnitDerivedCurrentBaseKa(", "function wwPerUnitEditorResolvedCurrentBaseText("
-        )
-        # MVA/kV already yields kA; the overflow-safe helper must still use
-        # the nominal L-L base exactly once, without a reference adjustment.
-        assert "const denominator = PER_UNIT_SQRT_3 * nominalLlKv;" in helper
-        assert "let ka = ratingMva / denominator;" in helper
-        assert "PER_UNIT_LINE_TO_GROUND" not in helper
+        assert 'ww-rd-pu-source-default-link' not in source
+        assert 'Configure Source Default' not in source
 
 
-class TestVoltageReferenceTooltipNoLongerMisleading:
-    """The old tooltip claimed voltage reference is "never applied
-    automatically to a displayed channel's own per-unit value" -- false
-    since Slice 4. It must now accurately describe the corrected
-    division."""
+class TestSourceDefaultFunctionsRemovedInPuUi001:
+    """PU-UI-001 Step B: all SD-modal-only JS functions are gone."""
 
-    def test_stale_never_applied_claim_is_gone(self):
+    def test_open_close_functions_removed(self):
         source = _source()
-        assert "never applied automatically to a displayed channel's own per-unit value" not in source
+        assert 'async function wwOpenPerUnitProfilesModal' not in source
+        assert 'function wwClosePerUnitProfilesModal()' not in source
 
-    def test_tooltip_describes_the_corrected_division(self):
+    def test_editor_state_functions_removed(self):
         source = _source()
-        body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "if (state.voltageReferenceMode")
-        assert "Vbase_LL / √3" in body or "Vbase_LL" in body
+        assert 'function wwPerUnitConfigToEditorState(' not in source
+        assert 'function wwPerUnitEditorResolvedCurrentBaseText(' not in source
+        assert 'function wwPerUnitDerivedCurrentBaseKa(' not in source
 
-
-class TestEffectiveVoltageBasePreview:
-    """Same-day follow-up: the preview now shows three SEPARATE lines
-    (Nominal voltage / Channel interpretation / Effective base) instead
-    of one combined sentence -- see
-    test_frontend_per_unit_source_default_voltage_traceability.py for
-    the full focused coverage of this follow-up enhancement. This class
-    only re-confirms the helper still exists, is still wired into both
-    branches, and still never fabricates without both inputs."""
-
-    def test_preview_helper_exists_and_never_fabricates_without_both_inputs(self):
+    def test_render_functions_removed(self):
         source = _source()
-        body = _function_body(
-            source, "function wwPerUnitEffectiveVoltageBaseLines(state, reference)", "function wwRenderVoltageReferenceBlock"
-        )
-        assert "return null" in body
-        assert "PER_UNIT_LINE_TO_GROUND" in body
-        assert "PER_UNIT_SQRT_3" in body
+        assert 'function wwRenderVoltageReferenceBlock(' not in source
+        assert 'function wwRenderPerUnitProfileEditor(' not in source
+        assert 'function wwRenderPerUnitSourceSelect(' not in source
+        assert 'function wwRenderPerUnitSourceStatusLine(' not in source
 
-    def test_preview_is_wired_into_both_manual_and_auto_branches(self):
+    def test_apply_delete_functions_removed(self):
         source = _source()
-        body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents")
-        assert "wwPerUnitEffectiveVoltageBaseLines(state, state.voltageReferenceOverride)" in body
-        assert "wwPerUnitEffectiveVoltageBaseLines(state, state.autoDetection.reference)" in body
+        assert 'async function wwApplyPerUnitProfileEditor()' not in source
+        assert 'async function wwDeletePerUnitProfileEditor()' not in source
 
-    def test_preview_lines_are_html_escaped(self):
+    def test_wire_events_function_removed(self):
         source = _source()
-        body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents")
-        assert "escapeHtml(line)" in body
+        assert 'function wwWirePerUnitProfileFieldsEvents()' not in source
+
+    def test_fetch_source_configs_function_removed(self):
+        source = _source()
+        assert 'function wwFetchPerUnitSourceConfigs' not in source
+
+    def test_per_unit_source_configs_state_removed(self):
+        source = _source()
+        assert 'perUnitSourceConfigs: new Map()' not in source
+
+    def test_per_unit_constants_removed(self):
+        """PER_UNIT_SQRT_3 / _LINE_TO_GROUND / _LINE_TO_LINE were only
+        referenced by SD modal and MG overlay functions; both removed."""
+        source = _source()
+        assert 'const PER_UNIT_SQRT_3' not in source
+        assert 'const PER_UNIT_LINE_TO_GROUND' not in source
+        assert 'const PER_UNIT_LINE_TO_LINE' not in source
+
+    def test_sd_api_path_references_removed(self):
+        """The SD modal was the only frontend caller of the per-unit/sources
+        endpoints; removing it means those path strings are gone too."""
+        source = _source()
+        assert '"/per-unit/sources"' not in source
+        assert '"/per-unit/sources/"' not in source
 
 
 class TestSlice1Through3NavigationUnaffected:
-    """This slice is a calculation/copy fix only -- Slice 1-3's own
-    structure (Per-Unit Settings hierarchy, coverage, traceability) must
-    remain completely intact."""
+    """PU-UI-001 Step B is a navigation/surface removal only -- the
+    underlying waveform display, unit mode toggle, and per-unit details
+    popover remain completely intact."""
 
     def test_per_unit_settings_hub_retired_rd_is_the_config_entry_point(self):
-        """PU-UI-001 Slice B: the Hub is retired; RD is the new entry point."""
         source = _source()
         assert 'id="wwOpenPerUnitSettingsBtn"' not in source
 
     def test_coverage_hub_section_retired_banner_is_the_new_signal(self):
-        """PU-UI-001 Slice B: Hub coverage section retired; Slice C banner
-        (#wwPuConfigBanner) replaces it in Waveform Analysis."""
         source = _source()
         assert 'id="wwPuCoverageBody"' not in source
         assert 'id="wwPuConfigBanner"' in source
@@ -122,3 +113,8 @@ class TestSlice1Through3NavigationUnaffected:
         source = _source()
         assert 'id="wwChannelMenuPerUnitBtn"' in source
         assert 'id="wwChannelPerUnitOverlay"' in source
+
+    def test_navigate_to_rd_helper_replaces_modal_entry_points(self):
+        source = _source()
+        assert 'function wwNavigateToRdForPuConfiguration(' in source
+        assert 'function wwNavigateToRdForGroup(' in source

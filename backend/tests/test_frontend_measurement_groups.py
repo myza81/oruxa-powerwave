@@ -29,25 +29,54 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
     return source[start:end]
 
 
-class TestModalAndDrawerMarkupExists:
-    def test_measurement_groups_modal_markup_exists(self):
-        source = _source()
-        assert 'id="measurementGroupsOverlay"' in source
-        assert 'id="measurementGroupsSourceSelect"' in source
-        assert 'id="measurementGroupsSummary"' in source
-        assert 'id="measurementGroupsBody"' in source
-        assert 'id="measurementGroupsSuggestBtn"' in source
-        assert 'id="measurementGroupsCloseBtn"' in source
-        assert 'id="measurementGroupsCloseFooterBtn"' in source
+class TestModalAndDrawerRemovedInPuUi001:
+    """PU-UI-001 Step C: the MG modal overlay and the MG edit drawer are
+    removed.  Recording Details is now the sole Measurement Group
+    configuration surface."""
 
-    def test_edit_drawer_markup_exists(self):
+    def test_measurement_groups_modal_markup_removed(self):
         source = _source()
-        assert 'id="wwMgDrawer"' in source
-        assert 'id="wwMgDrawerBackdrop"' in source
-        assert 'id="wwMgDrawerBody"' in source
-        assert 'id="wwMgDrawerError"' in source
-        assert 'id="wwMgDrawerSaveBtn"' in source
-        assert 'id="wwMgDrawerCancelBtn"' in source
+        assert 'id="measurementGroupsOverlay"' not in source
+        assert 'id="measurementGroupsSourceSelect"' not in source
+        assert 'id="measurementGroupsSummary"' not in source
+        assert 'id="measurementGroupsBody"' not in source
+        assert 'id="measurementGroupsSuggestBtn"' not in source
+        assert 'id="measurementGroupsCloseBtn"' not in source
+        assert 'id="measurementGroupsCloseFooterBtn"' not in source
+
+    def test_edit_drawer_markup_removed(self):
+        source = _source()
+        assert 'id="wwMgDrawer"' not in source
+        assert 'id="wwMgDrawerBackdrop"' not in source
+        assert 'id="wwMgDrawerBody"' not in source
+        assert 'id="wwMgDrawerSaveBtn"' not in source
+        assert 'id="wwMgDrawerCancelBtn"' not in source
+
+    def test_mg_open_close_functions_removed(self):
+        source = _source()
+        assert 'async function wwOpenMeasurementGroupsModal()' not in source
+        assert 'function wwCloseMeasurementGroupsModal()' not in source
+        assert 'function wwOpenMgDrawer(' not in source
+        assert 'function wwCloseMgDrawer()' not in source
+        assert 'async function wwSaveMgDrawer()' not in source
+
+    def test_mg_render_and_state_functions_removed(self):
+        source = _source()
+        assert 'let wwMgSourcesList' not in source
+        assert 'let wwMgSelectedSourceId' not in source
+        assert 'function wwMgGroupsForSelectedSource()' not in source
+        assert 'function wwMgLinkableVoltageGroups()' not in source
+        assert 'function wwRenderMeasurementGroupsBody(' not in source
+        assert 'function wwLoadAndRenderMeasurementGroupsBody(' not in source
+        assert 'async function wwMeasurementGroupsSourceSelectChange(' not in source
+        assert 'async function wwSuggestMeasurementGroups()' not in source
+        assert 'function wwRenderMgDrawerVoltage(' not in source
+        assert 'function wwRenderMgDrawerCurrent(' not in source
+        assert 'function wwMgGroupToEditState(' not in source
+
+    def test_rd_navigation_helpers_replace_mg_modal_entry_points(self):
+        source = _source()
+        assert 'function wwNavigateToRdForGroup(' in source
 
     def test_toolbar_exposes_eng_pu_toggle_only_no_hub_entry(self):
         """PU-UI-001 Slice B: the Hub (#wwOpenPerUnitSettingsBtn) has been
@@ -63,205 +92,160 @@ class TestModalAndDrawerMarkupExists:
         assert 'id="wwUnitPerUnitBtn"' in source
 
 
-class TestDec049CoexistenceUnchanged:
-    """Task section 24 / Slice 1: the source-wide modal must remain fully
-    reachable and fully functional -- Slice 1 only changes how it is
-    framed/reached (via the new parent Per-Unit Settings surface,
-    presented as "Source Default"/"Fallback"), never its own markup,
-    functions, or backend."""
+class TestDec049CoexistenceAfterPuUi001:
+    """PU-UI-001 Steps B and C: the SD modal and MG modal are removed.
+    DEC-049 source-wide resolution continues on the backend for ungrouped
+    channels (DEC-051) but its frontend editor surface is gone.
+    Recording Details is the sole configuration entry point."""
 
-    def test_source_default_modal_still_exists_and_accessible_directly(self):
-        """PU-UI-001 Slice B: the Hub routing button is gone; the SD modal
-        is still present and opened directly via
-        wwOpenPerUnitProfilesModal() (e.g. from Recording Details)."""
+    def test_source_default_modal_removed_in_step_b(self):
         source = _source()
-        assert 'id="perUnitProfilesOverlay"' in source
-        assert 'id="wwOpenPerUnitProfilesFromSettingsBtn"' not in source
-        assert 'async function wwOpenPerUnitProfilesModal(preselectedSourceId)' in source
+        assert 'id="perUnitProfilesOverlay"' not in source
+        assert 'async function wwOpenPerUnitProfilesModal(' not in source
+        assert 'function wwClosePerUnitProfilesModal()' not in source
+        assert 'async function wwApplyPerUnitProfileEditor()' not in source
+        assert 'async function wwDeletePerUnitProfileEditor()' not in source
 
     def test_no_user_facing_legacy_wording_remains(self):
-        """Owner requirement: 'Legacy' must not be shown to normal users.
-        The word may still appear in internal comments -- this only
-        checks the one previously user-facing string is gone."""
         source = _source()
         assert "Legacy source-wide base settings" not in source
         assert 'class="ww-split-menu-item--legacy"' not in source
 
-    def test_legacy_modal_functions_are_unmodified_and_still_present(self):
+    def test_per_unit_source_wide_api_paths_removed_with_sd_modal(self):
+        """The SD modal was the only frontend caller of these paths;
+        removing it means the path strings are gone too."""
         source = _source()
-        for fn in (
-            "async function wwOpenPerUnitProfilesModal(preselectedSourceId)",
-            "function wwClosePerUnitProfilesModal()",
-            "async function wwApplyPerUnitProfileEditor",
-            "async function wwDeletePerUnitProfileEditor()",
-        ):
-            assert fn in source
+        assert '"/per-unit/sources"' not in source
+        assert '"/per-unit/sources/"' not in source
 
-    def test_per_unit_source_wide_api_paths_are_untouched(self):
+
+class TestMgModalFunctionsRemovedInPuUi001:
+    """PU-UI-001 Step C: modal-open, source-select-change, and
+    drawer-open functions are all gone.  These tests confirm removal."""
+
+    def test_open_modal_function_removed(self):
         source = _source()
-        assert '"/per-unit/sources"' in source
-        assert '"/per-unit/sources/"' in source
+        assert 'async function wwOpenMeasurementGroupsModal()' not in source
+        assert 'function wwCloseMeasurementGroupsModal()' not in source
 
-
-class TestNoHiddenModificationsOnOpen:
-    """Task section 21: opening the modal, switching source, or opening
-    the Edit drawer must never write anything -- only GET requests."""
-
-    def test_open_modal_never_issues_a_mutating_request(self):
+    def test_source_select_change_function_removed(self):
         source = _source()
-        body = _function_body(source, "async function wwOpenMeasurementGroupsModal()", "function wwCloseMeasurementGroupsModal()")
-        assert '"POST"' not in body
-        assert '"PUT"' not in body
-        assert '"PATCH"' not in body
-        assert '"DELETE"' not in body
-        assert "fetchSourcesList()" in body
-        assert "wwLoadAndRenderMeasurementGroupsBody()" in body
+        assert 'async function wwMeasurementGroupsSourceSelectChange(' not in source
 
-    def test_source_select_change_never_issues_a_mutating_request(self):
+    def test_open_drawer_function_removed(self):
         source = _source()
-        body = _function_body(
-            source, "async function wwMeasurementGroupsSourceSelectChange(sourceId)", "async function wwOpenMeasurementGroupsModal()"
-        )
-        assert '"POST"' not in body
-        assert '"PUT"' not in body
-        assert '"PATCH"' not in body
+        assert 'function wwOpenMgDrawer(' not in source
+        assert 'function wwCloseMgDrawer()' not in source
 
-    def test_open_drawer_never_issues_any_fetch_at_all(self):
+
+class TestSuggestFunctionRemovedInPuUi001:
+    """PU-UI-001 Step C: `wwSuggestMeasurementGroups` was wired only to
+    the MG modal's Suggest button, which is now gone.  Suggestion is
+    performed via Recording Details or the Compliance bootstrap path."""
+
+    def test_mg_modal_suggest_function_removed(self):
         source = _source()
-        body = _function_body(source, "function wwOpenMgDrawer(groupId)", "function wwCloseMgDrawer()")
-        assert "fetch(" not in body
+        assert 'async function wwSuggestMeasurementGroups()' not in source
+        assert 'id="measurementGroupsSuggestBtn"' not in source
 
-
-class TestSuggestionsAreExplicitOnly:
-    """Task section 20: Slice 2 grouping stays standalone/user-triggered
-    only -- never invoked on open, source-select, or Save."""
-
-    def test_suggest_function_is_only_wired_to_its_own_button(self):
+    def test_suggest_still_reachable_via_compliance_bootstrap(self):
+        """Compliance bootstrap (`wwComplianceSuggestGroupsForSource`) uses
+        the same /measurement-groups/suggest backend endpoint."""
         source = _source()
-        # Exactly two occurrences of the bare call form: the function's
-        # own declaration line, and the one click-handler call site --
-        # never a third call from anywhere else.
-        assert source.count("wwSuggestMeasurementGroups()") == 2
-        assert "async function wwSuggestMeasurementGroups()" in source
-        wiring = _function_body(source, 'document.getElementById("measurementGroupsSuggestBtn")', ");")
-        assert "wwSuggestMeasurementGroups()" in wiring
+        assert "measurement-groups/suggest" in source
 
-    def test_suggest_is_never_called_from_open_or_select_or_save(self):
+
+class TestMgDrawerSaveFunctionRemovedInPuUi001:
+    """PU-UI-001 Step C: `wwSaveMgDrawer`, `wwMgGroupToEditState`, and
+    related helpers are removed with the MG drawer.  The equivalent
+    PUT /voltage-config and PUT /current-config calls now live in
+    Recording Details."""
+
+    def test_save_drawer_function_removed(self):
         source = _source()
-        for fn_sig, next_sig in (
-            ("async function wwOpenMeasurementGroupsModal()", "function wwCloseMeasurementGroupsModal()"),
-            ("async function wwMeasurementGroupsSourceSelectChange(sourceId)", "async function wwOpenMeasurementGroupsModal()"),
-            ("async function wwSaveMgDrawer()", "\n\n        // \"Reset Time View\""),
-        ):
-            body = _function_body(source, fn_sig, next_sig)
-            assert "wwSuggestMeasurementGroups" not in body
+        assert 'async function wwSaveMgDrawer()' not in source
+        assert 'function wwMgGroupToEditState(' not in source
 
-    def test_suggest_endpoint_path_matches_the_backend_router(self):
+    def test_voltage_config_endpoint_still_used_by_rd(self):
+        """Recording Details uses the same /voltage-config endpoint."""
         source = _source()
-        body = _function_body(source, "async function wwSuggestMeasurementGroups()", "// ---- Edit drawer")
-        assert "/measurement-groups/suggest" in body
-        assert '"POST"' in body
+        assert '"/voltage-config"' in source
 
-
-class TestGroupingStatusPromotionOnSave:
-    """Canonical document section 15: saving a base configuration is
-    what promotes a suggested/needs_review group to confirmed -- never
-    a separate confirmation step, and never touching an already-manual/
-    confirmed group's own status."""
-
-    def test_save_promotes_suggested_or_needs_review_only(self):
+    def test_current_config_endpoint_still_used_by_rd(self):
+        """Recording Details uses the same /current-config endpoint."""
         source = _source()
-        body = _function_body(source, "async function wwSaveMgDrawer()", "\n\n        // \"Reset Time View\"")
-        assert 'state.originalStatus === "suggested" || state.originalStatus === "needs_review"' in body
-        assert '"status": "confirmed"' in body or "status: \"confirmed\"" in body
+        assert '"/current-config"' in source
 
-    def test_edit_state_captures_the_original_status_for_both_kinds(self):
+
+class TestMgModalStateVariablesRemovedInPuUi001:
+    """MG modal-scoped state variables are removed with the modal."""
+
+    def test_mg_sources_list_and_state_variables_removed(self):
         source = _source()
-        body = _function_body(source, "function wwMgGroupToEditState(group)", "function wwMgModeRow(")
-        assert body.count("originalStatus: group.status") == 2
+        assert 'let wwMgSourcesList' not in source
+        assert 'let wwMgSelectedSourceId' not in source
+        assert 'let wwMgEditState' not in source
 
-
-class TestVoltageAndCurrentConfigPayloads:
-    def test_voltage_config_put_targets_the_correct_endpoint(self):
+    def test_no_ct_vt_method_in_mg_configuration_code(self):
+        """Task section 13/41: MG configuration only uses equipment_rating/
+        manual/none -- never a CT-primary or ratio-based method.  The check
+        is scoped to the /current-config payload builder in Recording Details
+        (the replacement for the removed wwSaveMgDrawer), not the whole file
+        (CT/VT metadata objects exist in calibration code elsewhere)."""
         source = _source()
-        body = _function_body(source, "async function wwSaveMgDrawer()", "\n\n        // \"Reset Time View\"")
-        assert '"/voltage-config"' in body
-        assert "nominal_voltage_ll_kv: state.nominalKv" in body
-        assert "reference_mode: state.referenceMode" in body
+        # Find the current-config section of RD's apply handler.
+        start = source.index('"/current-config"')
+        end = source.index("\n        }", start)
+        segment = source[start:end]
+        for forbidden in ("ct_primary_a", "ct_ratio", "ctPrimary", "ctRatio"):
+            assert forbidden not in segment
 
-    def test_current_config_put_dispatches_on_method(self):
+    def test_mg_linkable_voltage_groups_function_removed(self):
         source = _source()
-        body = _function_body(source, "async function wwSaveMgDrawer()", "\n\n        // \"Reset Time View\"")
-        assert '"/current-config"' in body
-        assert "body.equipment_rating_mva = state.equipmentRatingMva" in body
-        assert "body.linked_voltage_group_id = state.linkedVoltageGroupId" in body
-        assert "body.manual_voltage_base_kv = state.manualVoltageBaseKv" in body
-        assert "body.manual_ibase_ka = state.manualIbaseKa" in body
+        assert 'function wwMgLinkableVoltageGroups()' not in source
 
-    def test_no_ct_vt_method_exists_anywhere_in_the_new_code(self):
-        """Task section 13/41: only equipment_rating/manual/none --
-        never a CT-primary or ratio-based method."""
+
+class TestMgDrawerButtonsRemovedInPuUi001:
+    """PU-UI-001 Step C: drawer buttons and their event handlers are
+    removed with the drawer."""
+
+    def test_drawer_buttons_removed(self):
         source = _source()
-        body = _function_body(source, "let wwMgSourcesList = []", "// \"Reset Time View\"")
-        for forbidden in ("ct_primary", "ct_ratio", "vt_ratio", "ctPrimary", "ctRatio", "vtRatio"):
-            assert forbidden not in body
+        assert 'id="wwMgDrawerCancelBtn"' not in source
+        assert 'id="wwMgDrawerSaveBtn"' not in source
+        assert 'id="wwMgDrawerCloseBtn"' not in source
+        assert 'id="wwMgDrawerBackdrop"' not in source
 
-    def test_linked_voltage_group_dropdown_is_scoped_to_the_same_source(self):
+    def test_drawer_open_close_functions_removed(self):
         source = _source()
-        body = _function_body(source, "function wwMgLinkableVoltageGroups()", "// Section 18")
-        # Reads from the SAME source's own already-fetched group list --
-        # never a second, cross-source fetch.
-        assert "wwMgGroupsForSelectedSource()" in body
-
-
-class TestCancelDiscardsUnsavedEdits:
-    def test_cancel_button_calls_close_with_no_save_call(self):
-        source = _source()
-        wiring = _function_body(source, 'document.getElementById("wwMgDrawerCancelBtn")', ");")
-        assert "wwCloseMgDrawer" in wiring
-        assert "wwSaveMgDrawer" not in wiring
-
-    def test_close_drawer_never_issues_a_network_request(self):
-        source = _source()
-        body = _function_body(source, "function wwCloseMgDrawer()", "async function wwSaveMgDrawer()")
-        assert "fetch(" not in body
-
-    def test_escape_closes_the_drawer_before_the_modal_behind_it(self):
-        source = _source()
-        # Locate the keydown/Escape handler for the MG modal by its unique
-        # comment.  The Back-to-Hub button is gone (PU-UI-001 Slice B) but
-        # the drawer-first close order remains correct.
-        body = _function_body(
-            source,
-            "The drawer takes priority: Escape closes IT first if open",
-            'document.getElementById("wwMgDrawerSaveBtn").addEventListener',
-        )
-        drawer_check_index = body.index('wwCloseMgDrawer(); return;')
-        modal_check_index = body.index("wwCloseMeasurementGroupsModal();", drawer_check_index)
-        assert drawer_check_index < modal_check_index
+        assert 'function wwCloseMgDrawer()' not in source
+        assert 'function wwOpenMgDrawer(' not in source
 
 
 class TestWorkspaceResetLifecycle:
-    def test_start_new_workspace_clears_measurement_groups_and_closes_the_modal(self):
+    def test_start_new_workspace_clears_measurement_groups_no_modal_close(self):
+        """PU-UI-001 Step C: `wwCloseMeasurementGroupsModal()` is removed
+        with the modal; `ww.measurementGroups.clear()` remains because
+        the data Map is still used by Recording Details."""
         source = _source()
         body = _function_body(source, "function wwClearWorkspace(options)", "function wwStickyRulerElapsedUnit")
         reset_branch = body[body.index("if (options.resetSourceBounds)") : body.index("} else {")]
         assert "ww.measurementGroups.clear();" in reset_branch
-        assert "wwCloseMeasurementGroupsModal();" in reset_branch
+        assert "wwCloseMeasurementGroupsModal();" not in reset_branch
 
     def test_measurement_groups_map_is_declared_in_ww_state(self):
         source = _source()
         assert "measurementGroups: new Map()," in source
 
 
-class TestNoCrossSourceLeakageInMarkup:
-    def test_source_select_change_reloads_the_group_list_for_the_new_source(self):
+class TestNoCrossSourceLeakageAfterPuUi001:
+    def test_mg_source_select_change_function_removed_no_cross_source_leak(self):
+        """PU-UI-001 Step C: `wwMeasurementGroupsSourceSelectChange` was the
+        modal-scoped source picker -- removed with the modal.  Cross-source
+        isolation is now enforced by Recording Details' own scoped state."""
         source = _source()
-        body = _function_body(
-            source, "async function wwMeasurementGroupsSourceSelectChange(sourceId)", "async function wwOpenMeasurementGroupsModal()"
-        )
-        assert "wwMgSelectedSourceId = sourceId;" in body
-        assert "wwLoadAndRenderMeasurementGroupsBody();" in body
+        assert 'async function wwMeasurementGroupsSourceSelectChange(' not in source
+        assert 'let wwMgSelectedSourceId' not in source
 
 
 class TestInputSuffixGroupAlignment:

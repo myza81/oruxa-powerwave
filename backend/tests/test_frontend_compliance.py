@@ -52,7 +52,7 @@ class TestComplianceTopLevelNav:
     def test_full_main_nav_order_matches_requested_sequence(self):
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
-        labels = ["Recordings", "Waveform", "Table", "Calculated Channels", "Analysis", "Compliance", "Calculator"]
+        labels = ["Recording Details", "Waveform", "Table", "Calculated Channels", "Analysis", "Compliance", "Calculator"]
         positions = [nav_list.index(f'<span class="shell-nav-label">{label}</span>') for label in labels]
         assert positions == sorted(positions)
 
@@ -310,7 +310,7 @@ class TestComplianceMeasurementReadinessStructure:
             "function wwComplianceRefreshReadiness(",
             "function wwComplianceRenderReadiness(",
             "async function wwCompliancePrepareMeasurement(",
-            "async function wwComplianceOpenConfigureBase(",
+            "function wwComplianceOpenConfigureBase(",
         ):
             assert fn in source
 
@@ -341,21 +341,34 @@ class TestComplianceMeasurementReadinessStructure:
         assert "wwFetchCalculatedChannels()" in prepare
         assert "localStorage" not in prepare
 
-    def test_configure_base_reuses_the_existing_group_editor_never_a_new_one(self):
+    def test_configure_base_navigates_to_rd_never_a_local_editor(self):
+        """PU-UI-001 Step C: the MG modal and drawer are removed.
+        `wwComplianceOpenConfigureBase` now navigates to Recording Details
+        (via `wwNavigateToRdForGroup`) instead of opening a local overlay."""
         source = _source()
         page = _compliance_page(source)
-        configure = _function_body(source, "async function wwComplianceOpenConfigureBase(", "\n        }")
-        assert "wwOpenMeasurementGroupsModal()" in configure
-        assert "wwOpenMgDrawer(" in configure
+        configure = _function_body(source, "function wwComplianceOpenConfigureBase(", "\n        }")
+        assert "wwNavigateToRdForGroup(" in configure
+        assert "wwOpenMeasurementGroupsModal()" not in configure
+        assert "wwOpenMgDrawer(" not in configure
         for forbidden in ("voltage-config", "nominal_voltage_ll_kv", "nominalKv"):
             assert forbidden not in configure
         assert "wwMgDrawer" not in page and "measurementGroupsOverlay" not in page
 
-    def test_group_editor_save_refreshes_compliance_readiness_when_active(self):
+    def test_rd_navigate_to_group_carries_compliance_readiness_on_return(self):
+        """PU-UI-001 Step C: `wwSaveMgDrawer` is removed with the drawer.
+        After configuring a group in Recording Details and returning to
+        Compliance, `wwComplianceLoadGroups()` runs on page-enter
+        (see `wwRenderCompliancePage`), which triggers
+        `wwComplianceRefreshReadiness()` via the existing listener chain.
+        No compliance-specific wiring in the removed save function is
+        needed -- the page-enter hook handles it."""
         source = _source()
-        save = _function_body(source, "async function wwSaveMgDrawer() {", "\n        }")
-        assert 'shell.currentPage === "compliance"' in save
-        assert "wwComplianceRefreshReadiness()" in save
+        # The page-enter hook fires wwComplianceLoadGroups on Compliance.
+        render_fn = _function_body(source, "function wwRenderCompliancePage() {", "\n        }")
+        assert "wwComplianceLoadGroups" in render_fn
+        # wwSaveMgDrawer no longer exists.
+        assert 'async function wwSaveMgDrawer()' not in source
 
     def test_layer_changes_recheck_readiness(self):
         source = _source()
@@ -475,23 +488,28 @@ class TestComplianceMeasurementGroupBootstrapAndReviewState:
         assert "usableCount === 0 && reviewCount === 0" in card_state_fn
         assert "usableCount === 0 && reviewCount > 0" in card_state_fn
 
-    def test_manage_groups_button_exists_reuses_existing_modal_never_a_new_editor(self):
+    def test_manage_groups_button_navigates_to_rd_never_a_local_editor(self):
+        """PU-UI-001 Step C: the MG modal is removed.
+        `wwComplianceOpenManageGroups` now navigates to Recording Details
+        (via `wwNavigateToRdForGroup`) instead of opening a local overlay."""
         source = _source()
         page = _compliance_page(source)
         assert 'id="wwComplianceManageGroupsBtn" hidden' in page
         open_fn = _function_body(source, "function wwComplianceOpenManageGroups() {", "\n        }")
-        assert "wwOpenMeasurementGroupsModal()" in open_fn
+        assert "wwNavigateToRdForGroup(" in open_fn
+        assert "wwOpenMeasurementGroupsModal()" not in open_fn
         # Never a second Measurement Group editor/drawer defined inside
         # the Compliance page section itself.
-        compliance_page_text = page
-        assert "wwMgDrawer" not in compliance_page_text
-        assert "measurementGroupsOverlay" not in compliance_page_text
+        assert "wwMgDrawer" not in page and "measurementGroupsOverlay" not in page
 
-    def test_closing_the_management_modal_refreshes_compliance_only_when_active(self):
+    def test_closing_mg_modal_function_removed_compliance_refreshes_on_rd_return(self):
+        """PU-UI-001 Step C: `wwCloseMeasurementGroupsModal` is removed with
+        the modal.  Compliance readiness refreshes on page-enter via
+        `wwComplianceLoadGroups` (called from `wwRenderCompliancePage`)."""
         source = _source()
-        close_fn = _function_body(source, "function wwCloseMeasurementGroupsModal() {", "\n        }")
-        assert 'shell.currentPage === "compliance"' in close_fn
-        assert "wwComplianceLoadGroups()" in close_fn
+        assert 'function wwCloseMeasurementGroupsModal()' not in source
+        render_fn = _function_body(source, "function wwRenderCompliancePage() {", "\n        }")
+        assert "wwComplianceLoadGroups" in render_fn
 
 
 class TestComplianceOutOfScopeSlice2:

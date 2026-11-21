@@ -53,26 +53,31 @@ class TestHubCoverageSectionIsRemoved:
         assert 'async function wwOpenPerUnitSettingsModal()' not in source
 
 
-class TestChildModalsSurviveHubRemoval:
-    """The two modals that the Hub formerly routed to are still present
-    and fully functional -- only the Hub routing layer is gone."""
+class TestChildModalsRemovedInPuUi001:
+    """PU-UI-001 Steps B and C: both the SD modal and the MG modal/drawer
+    have been removed.  PU configuration is managed via Recording Details.
+    The badge CSS classes are shared with RD and remain; the modal markup
+    and open/close functions are gone."""
 
-    def test_source_default_modal_still_present(self):
+    def test_source_default_modal_removed(self):
         source = _source()
-        assert 'id="perUnitProfilesOverlay"' in source
-        assert 'async function wwOpenPerUnitProfilesModal(preselectedSourceId)' in source
+        assert 'id="perUnitProfilesOverlay"' not in source
+        assert 'async function wwOpenPerUnitProfilesModal(preselectedSourceId)' not in source
 
-    def test_measurement_groups_modal_still_present(self):
+    def test_measurement_groups_modal_removed(self):
         source = _source()
-        assert 'id="measurementGroupsOverlay"' in source
-        assert 'async function wwOpenMeasurementGroupsModal()' in source
+        assert 'id="measurementGroupsOverlay"' not in source
+        assert 'async function wwOpenMeasurementGroupsModal()' not in source
 
-    def test_recommended_fallback_badges_still_present(self):
+    def test_recommended_fallback_badges_still_present_via_rd(self):
+        """Badge CSS classes are reused by Recording Details group rows."""
         source = _source()
         assert '.ww-mg-badge--recommended' in source
         assert '.ww-mg-badge--fallback' in source
 
-    def test_backend_api_paths_untouched(self):
+    def test_backend_measurement_group_api_path_still_used_by_rd(self):
+        """SD modal /per-unit/sources calls are gone; /measurement-groups
+        endpoints are still called from Recording Details."""
         source = _source()
-        assert '"/per-unit/sources"' in source
+        assert '"/per-unit/sources"' not in source
         assert '/measurement-groups' in source

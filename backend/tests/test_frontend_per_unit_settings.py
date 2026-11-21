@@ -94,31 +94,34 @@ class TestNoLegacyWordingUserFacing:
         assert 'ww-split-menu-item--legacy' not in source
 
 
-class TestBothChildModalsRemainReachable:
-    """PU-UI-001 Slice B: both modals remain fully functional, now
-    accessed directly (not routed through the removed Hub)."""
+class TestBothChildModalsRemovedInPuUi001:
+    """PU-UI-001 Steps B and C: both the SD modal and the MG modal/drawer
+    have been removed.  PU configuration is managed exclusively via
+    Recording Details."""
 
-    def test_measurement_groups_modal_still_exists(self):
+    def test_measurement_groups_modal_removed(self):
         source = _source()
-        assert 'id="measurementGroupsOverlay"' in source
+        assert 'id="measurementGroupsOverlay"' not in source
+        assert 'async function wwOpenMeasurementGroupsModal()' not in source
+        assert 'function wwCloseMeasurementGroupsModal()' not in source
 
-    def test_source_default_modal_still_exists(self):
+    def test_source_default_modal_removed(self):
         source = _source()
-        assert 'id="perUnitProfilesOverlay"' in source
+        assert 'id="perUnitProfilesOverlay"' not in source
+        assert 'async function wwOpenPerUnitProfilesModal(' not in source
+        assert 'function wwClosePerUnitProfilesModal()' not in source
 
-    def test_existing_modal_functions_are_unmodified_and_still_present(self):
+    def test_mg_drawer_removed(self):
         source = _source()
-        for fn in (
-            "async function wwOpenPerUnitProfilesModal(preselectedSourceId)",
-            "function wwClosePerUnitProfilesModal()",
-            "async function wwOpenMeasurementGroupsModal()",
-            "function wwCloseMeasurementGroupsModal()",
-        ):
-            assert fn in source
+        assert 'id="wwMgDrawer"' not in source
+        assert 'id="wwMgDrawerBackdrop"' not in source
 
-    def test_hub_routing_buttons_are_gone(self):
-        """Hub routing buttons removed; modals accessed directly via
-        Recording Details, not via a toolbar Hub surface."""
+    def test_rd_navigation_helpers_replace_modal_entry_points(self):
+        source = _source()
+        assert 'function wwNavigateToRdForPuConfiguration(' in source
+        assert 'function wwNavigateToRdForGroup(' in source
+
+    def test_hub_routing_buttons_were_already_gone_still_gone(self):
         source = _source()
         assert 'id="wwOpenPerUnitProfilesFromSettingsBtn"' not in source
         assert 'id="wwOpenMeasurementGroupsFromSettingsBtn"' not in source
@@ -127,33 +130,34 @@ class TestBothChildModalsRemainReachable:
 
 
 class TestSourceDefaultStaleHintFixed:
-    """Checklist item 6: the pre-DEC-051 stale hint must be gone."""
+    """Checklist item 6: the pre-DEC-051 stale hint must be gone.
+    PU-UI-001 Step B: the SD modal is removed so the second check no
+    longer applies -- the stale hint can't reappear in a removed modal."""
 
     def test_stale_every_eligible_channel_claim_is_gone(self):
         source = _source()
         assert "uses its own configuration" not in source
 
-    def test_source_default_modal_states_its_actual_current_scope(self):
+    def test_sd_modal_is_removed_so_scope_text_is_gone_with_it(self):
+        """PU-UI-001 Step B: the entire SD modal is removed; the
+        "not covered by a Measurement Group" copy no longer exists."""
         source = _source()
-        body = _function_body(source, 'id="perUnitProfilesOverlay"', 'id="measurementGroupsOverlay"')
-        assert "not covered by a Measurement Group" in body
+        assert 'id="perUnitProfilesOverlay"' not in source
 
 
-class TestPrecedenceExplanationPresent:
-    """Precedence copy is present in both child modals, and never
-    implies save-order-based "winning" or a grouped-but-incomplete
-    channel falling back.  The Hub surface that previously also carried
-    this copy has been retired (PU-UI-001 Slice B)."""
+class TestPrecedenceExplanationAbsenceAfterPuUi001:
+    """PU-UI-001 Steps B and C: both child modals are removed.  The
+    DEC-051 precedence (group-aware > Source Default) is now described
+    exclusively in Recording Details and backend documentation -- it
+    no longer needs a user-facing copy in a modal that no longer exists."""
 
-    def test_measurement_groups_modal_states_precedence(self):
+    def test_mg_modal_is_removed_so_precedence_copy_is_gone_with_it(self):
         source = _source()
-        body = _function_body(source, 'id="measurementGroupsOverlay"', 'id="measurementGroupsSourceSelect"')
-        assert "take precedence over Source Default" in body
+        assert 'id="measurementGroupsOverlay"' not in source
 
-    def test_source_default_modal_states_group_authority(self):
+    def test_sd_modal_is_removed_so_authority_copy_is_gone_with_it(self):
         source = _source()
-        body = _function_body(source, 'id="perUnitProfilesOverlay"', 'id="perUnitSourceSelect"')
-        assert "remain authoritative" in body
+        assert 'id="perUnitProfilesOverlay"' not in source
 
 
 class TestUnitModeControlsUnchanged:
@@ -168,11 +172,11 @@ class TestUnitModeControlsUnchanged:
 
     def test_per_unit_selection_still_calls_apply_unit_mode(self):
         source = _source()
-        wiring = _function_body(
-            source,
-            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
-            '// Phase 5C: "Manage Per-Unit Bases" modal wiring',
-        )
+        # Bound directly by the handler's closing }); — exact same pattern
+        # as test_frontend_per_unit_mode.py's own version.
+        start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
+        end = source.index("});", start) + 3
+        wiring = source[start:end]
         assert 'await wwApplyUnitMode("per_unit");' in wiring
 
     def test_hub_button_is_absent_no_separate_settings_action(self):
@@ -186,11 +190,9 @@ class TestUnitModeControlsUnchanged:
         """UAT fix preserved: wwUnitPerUnitBtn's own listener must ONLY
         call wwApplyUnitMode, never open any configuration overlay."""
         source = _source()
-        wiring = _function_body(
-            source,
-            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
-            '// Phase 5C: "Manage Per-Unit Bases" modal wiring',
-        )
+        start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
+        end = source.index("});", start) + 3
+        wiring = source[start:end]
         assert "wwOpenPerUnitProfilesModal" not in wiring
         assert "wwOpenPerUnitSettingsModal" not in wiring
         assert "wwOpenMeasurementGroupsModal" not in wiring
@@ -212,7 +214,10 @@ class TestNoBackendOrApiChange:
         assert 'async function wwLoadAndRenderPerUnitCoverage()' not in source
         assert 'function wwPuCoverageRowHtml(' not in source
 
-    def test_existing_api_paths_are_untouched(self):
+    def test_measurement_group_api_path_still_used_by_rd(self):
+        """PU-UI-001 Steps B and C: the SD modal's /per-unit/sources calls
+        are gone with the modal; the /measurement-groups endpoints are
+        still called from Recording Details."""
         source = _source()
-        assert '"/per-unit/sources"' in source
+        assert '"/per-unit/sources"' not in source
         assert "/measurement-groups" in source
