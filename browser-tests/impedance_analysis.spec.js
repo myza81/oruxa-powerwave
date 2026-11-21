@@ -25,6 +25,7 @@
 const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
+const { configureRecordedCtVt } = require("./support/ctvt_helpers");
 // (ensureContextSelected() is not reused verbatim here -- see
 // selectContextAndWaitForResult()'s own comment below for why this file
 // needs a variant that also conditions its already-armed `/impedance-
@@ -59,6 +60,8 @@ async function uploadAndCreateContext(page) {
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
   const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
+  // D5A: recorded CT/VT come only from the Recording Details Measurement Groups.
+  await configureRecordedCtVt(page, workspaceId, sourceId);
   return { workspaceId, sourceId, contextId: context.id };
 }
 

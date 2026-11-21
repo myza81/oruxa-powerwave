@@ -26,6 +26,7 @@
 const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
+const { configureRecordedCtVt } = require("./support/ctvt_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const STEM = "phasor_smoke_three_phase";
@@ -56,6 +57,8 @@ async function uploadAndCreateContext(page) {
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
   const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
+  // D5A: recorded CT/VT come only from the Recording Details Measurement Groups.
+  await configureRecordedCtVt(page, workspaceId, sourceId);
   return { workspaceId, sourceId, contextId: context.id };
 }
 
