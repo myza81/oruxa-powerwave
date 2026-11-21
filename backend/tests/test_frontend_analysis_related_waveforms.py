@@ -284,10 +284,12 @@ class TestOvercurrentPhaseSync:
         fn = _function_body(source, "function wwOvercurrentComputeActiveRelatedWaveformRoles", "function wwOvercurrentPushRelatedWaveformRoles")
         assert '"Voltage"' not in fn
 
-    def test_only_computed_status_with_a_resolved_channel_ref_declares_a_role(self):
+    def test_only_a_resolved_channel_ref_declares_a_role_even_when_the_result_is_blocked(self):
+        """D5A-OC-001: a result blocked by configuration (e.g. a missing CT) still identifies the resolved
+        channel, so its waveform stays plottable; a result with no resolved channel declares nothing."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentComputeActiveRelatedWaveformRoles", "function wwOvercurrentPushRelatedWaveformRoles")
-        assert 'result.status !== "computed"' in fn
+        assert 'result.status !== "computed"' not in fn
         assert '!result.channel_ref' in fn
 
 
