@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -933,20 +933,6 @@
         }
         .ww-rd-group-status--needs-review { background: var(--warn-wash); color: var(--warn); }
         .ww-rd-group-status--manual        { background: var(--hover-tint); color: var(--text-dim); }
-        /* Source Default contextual link in PU configuration section (D-005) */
-        .ww-rd-pu-source-default-link {
-            display: block;
-            margin-top: 6px;
-            font-size: 0.7rem;
-            color: var(--text-dim);
-            cursor: pointer;
-            background: none;
-            border: none;
-            padding: 0;
-            text-align: left;
-            text-decoration: underline;
-        }
-        .ww-rd-pu-source-default-link:hover { color: var(--accent); }
 
         .ww-rd-groups-body,
         .ww-rd-details-body {
@@ -15748,61 +15734,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         </div>
     </div>
 
-    <!-- Phase 5C (DEC-049): "Manage Per-Unit Bases" -- same
-         .confirm-overlay/.group-editor-box shell as Custom Groups above
-         (working-copy-until-Apply state model, same dismissal pattern).
-         One profile is edited at a time (the <select> below); Apply
-         sends a single PUT/POST covering that profile's base fields +
-         channel assignment together. -->
-    <!-- Phase 5C-UAT2 (owner UAT: "simple at first glance, expandable
-         when needed"): "Manage Per-Unit Bases" -- sectioned redesign of
-         the source-bound modal. Still no "profile" concept anywhere in
-         this UI: every loaded recording appears automatically
-         (fetchSourcesList(), the SAME list the Recordings page/
-         Workspace Sidebar already use), and configuring one immediately
-         covers every eligible Voltage/Current channel it owns, with no
-         channel-assignment checklist -- this pass only restructures the
-         PRESENTATION (sections, progressive disclosure, a wider dialog)
-         of that same source-bound model; see wwRenderPerUnitProfileEditor()
-         for the section-by-section render logic. -->
-    <!-- Slice 1 (Per-Unit Settings hierarchy): user-facing title/copy
-         updated to "Source Default" terminology and to state this
-         modal's ACTUAL current scope post-DEC-051 (it no longer applies
-         to every eligible channel unconditionally -- a channel covered by
-         a Measurement Group uses that group's configuration instead; see
-         DEC-051). Internal id (#perUnitProfilesOverlay), functions
-         (wwOpenPerUnitProfilesModal() etc.), and the DEC-049 backend it
-         calls are all completely unchanged. -->
-    <div class="confirm-overlay" id="perUnitProfilesOverlay" hidden>
-        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="perUnitProfilesTitle">
-            <div class="group-editor-header">
-                <h3 id="perUnitProfilesTitle">Source Default &mdash; Per-Unit</h3>
-                <button type="button" class="group-editor-close" id="perUnitProfilesCloseBtn" aria-label="Close">&times;</button>
-            </div>
-            <p class="hint">Source Default is used for applicable Voltage/Current channels of this
-                recording that are not covered by a Measurement Group.</p>
-            <p class="hint">Measurement Group settings remain authoritative for channels assigned to a group.</p>
-
-            <div class="ww-pu-section ww-pu-section--first">
-                <h4 class="ww-pu-section-title">Recording</h4>
-                <label class="ww-cc-field">
-                    <span class="ww-visually-hidden-label">Recording</span>
-                    <select id="perUnitSourceSelect"></select>
-                </label>
-                <div class="ww-pu-status-line" id="perUnitSourceStatus"></div>
-            </div>
-            <p class="hint error" id="perUnitProfileError" hidden role="alert"></p>
-
-            <div id="perUnitProfileFields"></div>
-
-            <div class="group-editor-footer">
-                <button type="button" class="secondary" id="perUnitDeleteProfileBtn" hidden>Clear Configuration</button>
-                <span class="toolbar-spacer"></span>
-                <button type="button" class="secondary" id="perUnitProfilesCloseFooterBtn">Cancel</button>
-                <button type="button" id="perUnitProfilesApplyBtn">Save</button>
-            </div>
-        </div>
-    </div>
 
     <!-- Slice 6 (DEC-050): Measurement Group configuration workspace --
          the primary/Recommended PU configuration entry point for a
@@ -31184,14 +31115,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // plain Clear Workspace leaves it alone, same policy as
             // ww.layoutMode/ww.dragMode/ww.timeMode above.
             unitMode: "engineering",
-            // Phase 5C-UAT (DEC-049 addendum): source_id -> configuration
-            // object as returned by GET .../per-unit/sources -- source-
-            // bound, never a separate profile identity (see the "Manage
-            // Per-Unit Bases" modal's own module docstring). Fetched
-            // when the modal opens, refreshed after every Save/Clear
-            // Configuration. Same lifecycle as ww.calculatedChannels --
-            // cleared only by Start New Workspace.
-            perUnitSourceConfigs: new Map(),
+
             // Slice 6 (DEC-050): source_id -> array of Measurement Group
             // objects as returned by GET .../measurement-groups (each
             // already embedding its own type-specific config + resolved
@@ -31199,8 +31123,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // docstring). Fetched once per source when the configuration
             // workspace opens or that source is selected within it,
             // refreshed only after an explicit Save/Suggest -- never
-            // re-fetched per rendered row. Same lifecycle as
-            // ww.perUnitSourceConfigs -- cleared only by Start New
+            // re-fetched per rendered row. Cleared only by Start New
             // Workspace.
             measurementGroups: new Map(),
             // Slice 1 of waveform time synchronization: source_id ->
@@ -31213,8 +31136,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // separate entry of its own (the offset belongs to the
             // source, never an individual channel -- task's own Core
             // Engineering Rule). A source absent from this map is simply
-            // unshifted (offset 0) -- mirrors ww.perUnitSourceConfigs'
-            // own "no entry = not configured" convention. Fetched
+            // unshifted (offset 0) -- "no entry = not configured"
+            // convention. Fetched
             // whenever a source's channels are (re-)opened
             // (wwFetchSynchronizationStateForWorkspace(), called from
             // selectSource()) and after every offset mutation; cleared
@@ -35740,19 +35663,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwApplyUnitMode(mode) {
             if (mode !== "engineering" && mode !== "per_unit") return;
             if (ww.unitMode === mode) return;
-            // Keeps ww.perUnitSourceConfigs fresh whenever Per Unit mode
-            // is selected -- a convenience for whenever the engineer
-            // later opens Source Default from the Per-Unit Settings
-            // surface, never a correctness requirement (that modal
-            // re-fetches its own configs on open regardless). Selecting
-            // Per Unit itself never opens any configuration surface --
-            // see the click handler below.
             // Publish the user's latest choice before any asynchronous work.
             // Optional editor metadata must never decide the active mode.
             ww.unitMode = mode;
             wwUnitModeGeneration += 1;
             wwSyncUnitModeControls();
-            if (mode === "per_unit") void wwFetchPerUnitSourceConfigs();
             await wwRefreshWaveformDisplayBasis();
         }
 
@@ -35827,14 +35742,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             shellSetCurrentPage("recording-details");
         }
 
-        // ------------------------------------------------------------------
-        // Phase 5C-UAT (DEC-049 addendum): "Manage Per-Unit Bases" modal --
-        // source-bound redesign. No separate "profile" concept exists in
-        // this UI at all: every loaded source appears automatically, and
-        // configuring it immediately covers every eligible Voltage/Current
-        // channel that source owns -- no channel-assignment checklist.
-        // ------------------------------------------------------------------
-
         // Mirrors app.domain.voltage_reference's own constants -- used
         // ONLY for this modal's own live "Calculated Current Base"
         // preview (section 40: "show calculated/derived result visibly"
@@ -35855,64 +35762,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return Number.isFinite(n) ? n : null;
         }
 
-        let wwPerUnitSourceConfigsGeneration = 0;
-
-        async function wwFetchPerUnitSourceConfigs() {
-            const workspaceId = currentWorkspaceId();
-            const epoch = ww.epoch;
-            const catalogue = wwTimingCatalogueGeneration;
-            const generation = ++wwPerUnitSourceConfigsGeneration;
-            let response;
-            try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/per-unit/sources"
-                );
-            } catch (error) {
-                return;
-            }
-            if (!response.ok) return;
-            let configs;
-            try { configs = await response.json(); } catch (error) { return; }
-            if (generation !== wwPerUnitSourceConfigsGeneration || epoch !== ww.epoch ||
-                workspaceId !== currentWorkspaceId() || catalogue !== wwTimingCatalogueGeneration) return;
-            ww.perUnitSourceConfigs = new Map(configs.map((c) => [c.source_id, c]));
-        }
-
-        // Section 1: the label the engineer actually recognizes is the
-        // recording's own display name -- reuses the EXACT SAME
-        // recordingDisplayName()/fetchSourcesList() the Recordings page
-        // and Workspace Sidebar already use (never a second "what is
-        // this file called" convention, and never the filename used as
-        // any kind of persistent identity -- source_id alone is).
-        let wwPerUnitSourcesList = [];
-
-        function wwPerUnitSourceLabel(sourceId) {
-            const source = wwPerUnitSourcesList.find((s) => s.source_id === sourceId);
-            return source ? recordingDisplayName(source) : sourceId;
-        }
-
-        function wwPerUnitSourceSummaryText(config) {
-            if (!config || !config.configured) return "Not configured";
-            const parts = [];
-            if (config.voltage_base_value != null) parts.push(config.voltage_base_value + " kV");
-            if (config.effective_voltage_reference) {
-                const refAbbrev = config.effective_voltage_reference === PER_UNIT_LINE_TO_LINE ? "L-L" : "L-G";
-                parts.push((config.voltage_reference_mode === "manual" ? "Manual " : "Auto ") + refAbbrev);
-            }
-            if (config.resolved_current_base) {
-                parts.push("Ibase " + (config.resolved_current_base.value / 1000).toFixed(2) + " kA");
-            }
-            return parts.length ? parts.join(" · ") : "Configured";
-        }
-
-        // Working-copy state for the modal, mirroring the Custom Groups
-        // editor's own "discard on Cancel/close, only commit on Save"
-        // model. `autoDetection` is captured ONCE when the editor opens
-        // (channel names are static for the session) so toggling
-        // Override/Return-to-Auto within one editing session never
-        // needs a re-fetch -- "Return to Auto" still genuinely reruns
-        // the algorithm's own result, just from an already-fresh read.
-        let perUnitEditorState = null;
 
         function wwReferenceSideText(side) {
             return side === "primary" ? "Primary" : side === "secondary" ? "Secondary" : "Unknown";
@@ -35923,507 +35772,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ["unknown", "primary", "secondary"].map((value) => '<option value="' + value + '"' +
                     (side === value ? ' selected' : '') + '>' + wwReferenceSideText(value) + '</option>').join("") +
                 '</select></label><p class="hint">Declare the base reference independently of the recorded samples. Known mismatches make PU unavailable. Historical Unknown references remain Unverified; cross-group Automatic and result Manual require compatible known references.</p>';
-        }
-
-        function wwPerUnitConfigToEditorState(sourceId, config) {
-            return {
-                sourceId,
-                voltageBaseValue: config ? config.voltage_base_value : null,
-                voltageReferenceMode: config ? config.voltage_reference_mode : "auto",
-                voltageReferenceOverride: config ? config.voltage_reference_override : null,
-                currentBaseMode: config ? config.current_base_mode : "none",
-                apparentPowerBaseValue: config ? config.apparent_power_base_value : null,
-                directCurrentBaseValue: config ? config.direct_current_base_value : null,
-                currentBaseReferenceSide: config && config.current_base_mode === "direct" ? (config.current_base_reference_side || "unknown") : "unknown",
-                configured: !!(config && config.configured),
-                autoDetection: {
-                    reference: config ? config.effective_voltage_reference : null,
-                    evidence: config ? config.voltage_reference_evidence : [],
-                    reason: config ? config.voltage_reference_reason : "no_voltage_channels",
-                },
-                // Phase 5C-UAT2 (section 5/6): the evidence list is
-                // collapsed by default every time a source is (re)
-                // selected or the modal reopens -- persists across an
-                // in-session re-render caused by any OTHER field edit
-                // (Override/Return to Auto/typing a value), so expanding
-                // it once doesn't collapse again mid-edit.
-                detectionDetailsExpanded: false,
-            };
-        }
-
-        function wwPerUnitDerivedCurrentBaseKa(ratingMva, nominalLlKv) {
-            if (!Number.isFinite(ratingMva) || ratingMva <= 0 ||
-                !Number.isFinite(nominalLlKv) || nominalLlKv <= 0 ||
-                !Number.isFinite(nominalLlKv * 1000)) return null;
-            // Cosmetic counterpart of backend derived_current_ka(): MVA/kV
-            // gives kA, so the SI factors cancel. Preserve its ordinary order;
-            // separate exponents only at floating-point range boundaries.
-            const minNormal = 2 ** -1022;
-            const denominator = PER_UNIT_SQRT_3 * nominalLlKv;
-            let ka = ratingMva / denominator;
-            if (!Number.isFinite(denominator) || denominator < minNormal ||
-                !Number.isFinite(ka) || ka < minNormal) {
-                const ratingExponent = Math.min(1023, Math.floor(Math.log2(ratingMva)));
-                const voltageExponent = Math.min(1023, Math.floor(Math.log2(nominalLlKv)));
-                let mantissa = ((ratingMva / (2 ** ratingExponent)) * (1 / PER_UNIT_SQRT_3)) /
-                    (nominalLlKv / (2 ** voltageExponent));
-                let exponent = ratingExponent - voltageExponent;
-                while (mantissa < 1) { mantissa *= 2; exponent -= 1; }
-                while (mantissa >= 2) { mantissa /= 2; exponent += 1; }
-                // Keep the first factor normal to avoid rounding a subnormal
-                // twice. These are IEEE-754 bounds, not engineering limits.
-                const power = Math.max(-1022, Math.min(1023, exponent));
-                ka = (mantissa * (2 ** power)) * (2 ** (exponent - power));
-            }
-            return Number.isFinite(ka) && ka > 0 && Number.isFinite(ka * 1000) ? ka : null;
-        }
-
-        function wwPerUnitEditorResolvedCurrentBaseText(state) {
-            if (state.currentBaseMode === "direct") {
-                const v = Number(state.directCurrentBaseValue);
-                if (!Number.isFinite(v) || v <= 0) return "—";
-                return v.toFixed(4) + " kA";
-            }
-            if (state.currentBaseMode === "derived") {
-                const vbase = Number(state.voltageBaseValue);
-                const sbase = Number(state.apparentPowerBaseValue);
-                const reference = state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : state.autoDetection.reference;
-                if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0 || !reference) return "—";
-                // The entered voltage is nominal system L-L in both reference
-                // modes. Save still derives the authoritative base on the backend.
-                const ka = wwPerUnitDerivedCurrentBaseKa(sbase, vbase);
-                if (ka == null) return "—";
-                const fixed = ka.toFixed(4);
-                return (Number(fixed) === 0 ? String(ka) : fixed) + " kA";
-            }
-            return "—";
-        }
-
-        // PU-UI-001 Slice A: accepts an optional preselectedSourceId so Recording
-        // Details can open the Source Default modal on the current recording's source.
-        async function wwOpenPerUnitProfilesModal(preselectedSourceId) {
-            const sources = await fetchSourcesList();
-            wwPerUnitSourcesList = sources || [];
-            await wwFetchPerUnitSourceConfigs();
-            const targetSourceId = (preselectedSourceId &&
-                    wwPerUnitSourcesList.some(function(s) { return s.source_id === preselectedSourceId; }))
-                ? preselectedSourceId
-                : (wwPerUnitSourcesList.length ? wwPerUnitSourcesList[0].source_id : null);
-            perUnitEditorState = targetSourceId
-                ? wwPerUnitConfigToEditorState(targetSourceId, ww.perUnitSourceConfigs.get(targetSourceId))
-                : null;
-            wwRenderPerUnitSourceSelect();
-            wwRenderPerUnitProfileEditor();
-            document.getElementById("perUnitProfileError").hidden = true;
-            document.getElementById("perUnitProfilesOverlay").hidden = false;
-        }
-
-        function wwClosePerUnitProfilesModal() {
-            perUnitEditorState = null;
-            document.getElementById("perUnitProfilesOverlay").hidden = true;
-        }
-
-        // Section 2: the <select> shows ONLY the recording's own short
-        // display name -- the previous design baked the whole
-        // configuration summary into each <option>'s own text, which
-        // made a native dropdown wrap/truncate badly. The summary now
-        // lives in a separate, always-visible status line underneath
-        // (wwRenderPerUnitSourceStatusLine()).
-        function wwRenderPerUnitSourceSelect() {
-            const select = document.getElementById("perUnitSourceSelect");
-            let html = "";
-            for (const source of wwPerUnitSourcesList) {
-                html += '<option value="' + escapeHtml(source.source_id) + '">' +
-                    escapeHtml(recordingDisplayName(source)) + '</option>';
-            }
-            select.innerHTML = html || '<option value="">No recordings loaded yet</option>';
-            select.value = (perUnitEditorState && perUnitEditorState.sourceId) || "";
-            wwRenderPerUnitSourceStatusLine();
-        }
-
-        function wwRenderPerUnitSourceStatusLine() {
-            const statusEl = document.getElementById("perUnitSourceStatus");
-            if (!statusEl) return;
-            if (!perUnitEditorState) {
-                statusEl.textContent = "";
-                return;
-            }
-            const config = ww.perUnitSourceConfigs.get(perUnitEditorState.sourceId);
-            statusEl.innerHTML = (config && config.configured)
-                ? "<strong>" + escapeHtml(wwPerUnitSourceSummaryText(config)) + "</strong>"
-                : "Status: Not configured";
-        }
-
-        function wwPerUnitSourceSelectChange(sourceId) {
-            perUnitEditorState = wwPerUnitConfigToEditorState(sourceId, ww.perUnitSourceConfigs.get(sourceId));
-            wwRenderPerUnitSourceStatusLine();
-            wwRenderPerUnitProfileEditor();
-            document.getElementById("perUnitProfileError").hidden = true;
-        }
-
-        function wwUpdatePerUnitCalculatedCurrentBasePreview() {
-            const preview = document.getElementById("perUnitCalculatedCurrentBase");
-            if (preview) preview.value = wwPerUnitEditorResolvedCurrentBaseText(perUnitEditorState);
-        }
-
-        // Section 4-6 (owner UAT2): renders the Voltage Reference block
-        // concisely -- a two-line result plus small View details/
-        // Override actions, NEVER the full evidence list inline (the
-        // owner's own explicit complaint about the previous design).
-        // Three states: confident auto-detection (evidence collapsed
-        // behind "View details" by default, section 5/6), an active
-        // manual override (with a Return to Auto action), or an honest
-        // "automatic detection unavailable" naming the ACTUAL reason
-        // (conflicting evidence vs. no recognizable pattern, section 5's
-        // own worked example) -- never a silently invented default; the
-        // engineer must still be able to pick a reference in that case.
-        // Per-Unit Configuration Slice 4 correction: the entered Voltage
-        // Base is the nominal SYSTEM LINE-TO-LINE voltage; a line-to-
-        // ground channel's own effective base is Vbase_LL / sqrt(3) --
-        // matching app.domain.per_unit.resolve_per_unit()'s own
-        // corrected VOLTAGE branch exactly (never re-derived
-        // independently here; this is a read-only preview of the SAME
-        // formula, not a second implementation of it). Returns `null`
-        // when the base/reference aren't both known yet -- callers skip
-        // rendering the preview line entirely in that case, never a
-        // fabricated "—".
-        // Same-day follow-up: three SEPARATE lines (Nominal voltage /
-        // Channel interpretation / Effective base) instead of one
-        // combined sentence -- matching the exact presentation the
-        // Per-Unit Details popover uses for the identical concepts
-        // (wwRenderChannelPerUnitResolution()'s own "Nominal voltage"/
-        // "Channel interpretation"/"Effective base" rows), so an
-        // engineer sees the same three-concept breakdown whether they
-        // are editing Source Default or inspecting an already-displayed
-        // channel's own provenance.
-        function wwPerUnitEffectiveVoltageBaseLines(state, reference) {
-            const vbase = Number(state.voltageBaseValue);
-            if (!Number.isFinite(vbase) || vbase <= 0 || !reference) return null;
-            const isLg = reference === PER_UNIT_LINE_TO_GROUND;
-            const effective = isLg ? vbase / PER_UNIT_SQRT_3 : vbase;
-            const interpretation = isLg ? "L-G" : "L-L";
-            return [
-                "Nominal voltage: " + vbase + " kV L-L",
-                "Channel interpretation: " + interpretation,
-                "Effective base: " + effective.toFixed(2) + " kV " + interpretation,
-            ];
-        }
-
-        function wwRenderVoltageReferenceBlock(state) {
-            const refLabel = (ref) => (ref === PER_UNIT_LINE_TO_LINE ? "Line-to-Line" : "Line-to-Ground");
-            const infoTip = wwInfoTipHtml(
-                "Voltage Reference",
-                "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. A line-to-ground channel's own per-unit base is Vbase_LL / √3; a line-to-line channel uses Vbase_LL directly. Also used to derive the Current Base below (which always uses the raw nominal Vbase_LL, regardless of reference)."
-            );
-            const detailsToggleBtn = (evidence) => (
-                evidence.length
-                    ? '<button type="button" class="secondary" id="perUnitToggleDetectionDetailsBtn">' +
-                      (state.detectionDetailsExpanded ? "Hide details" : "View details") + '</button>'
-                    : ''
-            );
-            const detailsPanel = (heading, evidence) => (
-                state.detectionDetailsExpanded && evidence.length
-                    ? '<div class="ww-pu-detection-details"><p>' + heading + '</p><p>Evidence:</p>' +
-                      '<ul class="ww-pu-evidence-list">' + evidence.map((name) => '<li>' + escapeHtml(name) + '</li>').join("") + '</ul></div>'
-                    : ''
-            );
-
-            const previewLinesHtml = (lines) => (
-                lines ? lines.map((line) => '<div class="hint">' + escapeHtml(line) + '</div>').join("") : ''
-            );
-
-            if (state.voltageReferenceMode === "manual") {
-                const manualPreview = wwPerUnitEffectiveVoltageBaseLines(state, state.voltageReferenceOverride);
-                return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
-                    '<select id="perUnitVoltageReferenceOverride">' +
-                    '<option value="' + PER_UNIT_LINE_TO_GROUND + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_GROUND ? " selected" : "") + '>Line-to-Ground</option>' +
-                    '<option value="' + PER_UNIT_LINE_TO_LINE + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_LINE ? " selected" : "") + '>Line-to-Line</option>' +
-                    '</select>' +
-                    '<div class="hint">Manual override</div>' +
-                    previewLinesHtml(manualPreview) +
-                    '<div class="ww-pu-ref-actions"><button type="button" class="secondary" id="perUnitReturnToAutoBtn">Return to Auto</button></div>' +
-                    '</div>';
-            }
-
-            if (state.autoDetection.reference) {
-                const evidence = state.autoDetection.evidence || [];
-                const autoPreview = wwPerUnitEffectiveVoltageBaseLines(state, state.autoDetection.reference);
-                return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
-                    '<div class="hint">Auto: ' + refLabel(state.autoDetection.reference) + '</div>' +
-                    '<div class="hint">Detected automatically from channel naming.</div>' +
-                    previewLinesHtml(autoPreview) +
-                    '<div class="ww-pu-ref-actions">' + detailsToggleBtn(evidence) +
-                    '<button type="button" class="secondary" id="perUnitOverrideReferenceBtn">Override</button></div>' +
-                    detailsPanel("Detected as " + refLabel(state.autoDetection.reference), evidence) +
-                    '</div>';
-            }
-
-            // No confident result -- the ACTUAL reason is shown plainly.
-            const evidence = state.autoDetection.evidence || [];
-            const reasonText = state.autoDetection.reason === "conflicting_evidence"
-                ? "Conflicting voltage-channel naming was detected."
-                : "No recognizable voltage-channel naming pattern was found.";
-            return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
-                '<div class="hint">Automatic detection unavailable</div>' +
-                '<div class="hint">' + reasonText + '</div>' +
-                (evidence.length ? '<div class="ww-pu-ref-actions">' + detailsToggleBtn(evidence) + '</div>' : '') +
-                detailsPanel("Conflicting evidence", evidence) +
-                '<select id="perUnitVoltageReferenceFallback" style="margin-top:8px;">' +
-                '<option value="">Select…</option>' +
-                '<option value="' + PER_UNIT_LINE_TO_GROUND + '">Line-to-Ground</option>' +
-                '<option value="' + PER_UNIT_LINE_TO_LINE + '">Line-to-Line</option>' +
-                '</select></div>';
-        }
-
-        function wwWirePerUnitProfileFieldsEvents() {
-            const state = perUnitEditorState;
-            const modeRadios = document.querySelectorAll('input[name="perUnitCurrentBaseMode"]');
-            modeRadios.forEach((radio) => {
-                radio.addEventListener("change", () => {
-                    if (!radio.checked) return;
-                    state.currentBaseMode = radio.value;
-                    state.currentBaseReferenceSide = "unknown";
-                    wwRenderPerUnitProfileEditor(); // structural (progressive disclosure) -- a radio change, never mid-typing
-                });
-            });
-            const vValueInput = document.getElementById("perUnitVoltageBaseValue");
-            if (vValueInput) vValueInput.addEventListener("input", () => {
-                state.voltageBaseValue = wwPerUnitNumberOrNull(vValueInput.value);
-                wwUpdatePerUnitCalculatedCurrentBasePreview();
-            });
-            const sValueInput = document.getElementById("perUnitApparentPowerBaseValue");
-            if (sValueInput) sValueInput.addEventListener("input", () => {
-                state.apparentPowerBaseValue = wwPerUnitNumberOrNull(sValueInput.value);
-                wwUpdatePerUnitCalculatedCurrentBasePreview();
-            });
-            const baseSideSelect = document.getElementById("perUnitCurrentBaseSide");
-            if (baseSideSelect) baseSideSelect.addEventListener("change", () => { state.currentBaseReferenceSide = baseSideSelect.value; });
-            const dValueInput = document.getElementById("perUnitDirectCurrentBaseValue");
-            if (dValueInput) dValueInput.addEventListener("input", () => {
-                state.directCurrentBaseValue = wwPerUnitNumberOrNull(dValueInput.value);
-                wwUpdatePerUnitCalculatedCurrentBasePreview();
-            });
-            const overrideBtn = document.getElementById("perUnitOverrideReferenceBtn");
-            if (overrideBtn) overrideBtn.addEventListener("click", () => {
-                state.voltageReferenceMode = "manual";
-                state.voltageReferenceOverride = state.autoDetection.reference || PER_UNIT_LINE_TO_GROUND;
-                wwRenderPerUnitProfileEditor();
-            });
-            const returnToAutoBtn = document.getElementById("perUnitReturnToAutoBtn");
-            if (returnToAutoBtn) returnToAutoBtn.addEventListener("click", () => {
-                // Section 8: reruns/reapplies the algorithmic result --
-                // never resurrects the previous manual choice invisibly.
-                // `state.autoDetection` itself came straight from the
-                // backend's own live detection when the editor opened.
-                state.voltageReferenceMode = "auto";
-                state.voltageReferenceOverride = null;
-                wwRenderPerUnitProfileEditor();
-            });
-            const overrideSelect = document.getElementById("perUnitVoltageReferenceOverride");
-            if (overrideSelect) overrideSelect.addEventListener("change", () => {
-                state.voltageReferenceOverride = overrideSelect.value;
-                wwUpdatePerUnitCalculatedCurrentBasePreview();
-            });
-            const fallbackSelect = document.getElementById("perUnitVoltageReferenceFallback");
-            if (fallbackSelect) fallbackSelect.addEventListener("change", () => {
-                if (!fallbackSelect.value) return;
-                state.voltageReferenceMode = "manual";
-                state.voltageReferenceOverride = fallbackSelect.value;
-                wwRenderPerUnitProfileEditor();
-            });
-            const toggleDetailsBtn = document.getElementById("perUnitToggleDetectionDetailsBtn");
-            if (toggleDetailsBtn) toggleDetailsBtn.addEventListener("click", () => {
-                state.detectionDetailsExpanded = !state.detectionDetailsExpanded;
-                wwRenderPerUnitProfileEditor();
-            });
-        }
-
-        // Owner UAT2's own section structure: Voltage Base (Vbase +
-        // Voltage Reference + its own collapsible detection details),
-        // Current Base (mode selector + only the fields that mode
-        // needs), Advanced Options (a native <details> disclosure --
-        // structurally present now, deliberately empty this pass, so a
-        // future capability has somewhere to go without another modal
-        // redesign; see the owner's own explicit "do not add unapproved
-        // features now" instruction).
-        function wwRenderPerUnitProfileEditor() {
-            const state = perUnitEditorState;
-            const fieldsEl = document.getElementById("perUnitProfileFields");
-            if (!state) {
-                fieldsEl.innerHTML = '<p class="hint">Upload a recording to configure its Per-Unit bases.</p>';
-                document.getElementById("perUnitDeleteProfileBtn").hidden = true;
-                return;
-            }
-            const showMva = state.currentBaseMode === "derived";
-            const showDirect = state.currentBaseMode === "direct";
-            const showNone = state.currentBaseMode === "none";
-
-            // Section 7: a compact, fully-clickable stacked row -- the
-            // whole <label> already toggles its own wrapped radio input,
-            // so no extra click-delegation JS is needed for "the whole
-            // row is clickable." The selected-row highlight is a class
-            // set here at render time (never :has()), so it works
-            // identically across every supported browser.
-            const currentBaseModeRow = (value, title, description) => {
-                const selected = state.currentBaseMode === value;
-                return '<label class="ww-pu-mode-row' + (selected ? ' ww-pu-mode-row--selected' : '') + '">' +
-                    '<input type="radio" name="perUnitCurrentBaseMode" value="' + value + '"' + (selected ? " checked" : "") + '>' +
-                    '<span class="ww-pu-mode-row-text"><strong>' + title + '</strong><small>' + description + '</small></span>' +
-                    '</label>';
-            };
-
-            fieldsEl.innerHTML =
-                // Not --first: the static "Recording" section above
-                // (outside #perUnitProfileFields, in the modal's own
-                // HTML shell) already claims that role -- Voltage Base
-                // gets its own top separator, matching the owner's own
-                // mockup (a rule between RECORDING and VOLTAGE BASE).
-                '<div class="ww-pu-section">' +
-                    '<h4 class="ww-pu-section-title">Voltage Base</h4>' +
-                    // Section 3: a wide numeric field plus a fixed,
-                    // non-editable unit suffix (never a dropdown, since
-                    // the domain always accepts one canonical unit).
-                    '<label class="ww-cc-field"><span>Voltage Base ' +
-                    wwInfoTipHtml("Voltage Base", "The rated voltage that a per-unit value of 1.0 represents, for Voltage channels of this recording.") +
-                    '</span><div class="ww-pu-value-suffix-group">' +
-                    '<input type="number" step="any" id="perUnitVoltageBaseValue" value="' +
-                    (state.voltageBaseValue == null ? "" : state.voltageBaseValue) + '" placeholder="e.g. 275">' +
-                    '<span class="ww-pu-suffix">kV</span></div></label>' +
-                    wwRenderVoltageReferenceBlock(state) +
-                '</div>' +
-
-                '<div class="ww-pu-section">' +
-                    '<h4 class="ww-pu-section-title">Current Base</h4>' +
-                    '<p class="hint">How should current base be defined?</p>' +
-                    currentBaseModeRow("derived", "Calculate from apparent power", "Enter Sbase and Powerwave calculates Ibase.") +
-                    currentBaseModeRow("direct", "Enter current base manually", "Use a known Ibase directly.") +
-                    currentBaseModeRow("none", "No current base", "Voltage channels only.") +
-                    (showMva
-                        ? '<label class="ww-cc-field" style="margin-top:14px;"><span>Apparent Power Base ' +
-                          wwInfoTipHtml("Three-Phase MVA Base", "The total three-phase apparent power base used to derive the Current Base: Ibase = Sbase / (√3 × Vbase LL).") +
-                          '</span><div class="ww-pu-value-suffix-group">' +
-                          '<input type="number" step="any" id="perUnitApparentPowerBaseValue" value="' +
-                          (state.apparentPowerBaseValue == null ? "" : state.apparentPowerBaseValue) + '" placeholder="e.g. 1000">' +
-                          '<span class="ww-pu-suffix">MVA</span></div></label>' +
-                          '<label class="ww-cc-field"><span>Calculated Current Base</span>' +
-                          '<input type="text" id="perUnitCalculatedCurrentBase" readonly tabindex="-1" value="' +
-                          wwPerUnitEditorResolvedCurrentBaseText(state) + '"></label>'
-                        : "") +
-                    (showDirect
-                        ? '<label class="ww-cc-field" style="margin-top:14px;"><span>Current Base</span><div class="ww-pu-value-suffix-group">' +
-                          '<input type="number" step="any" id="perUnitDirectCurrentBaseValue" value="' +
-                          (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 2.10">' +
-                          '<span class="ww-pu-suffix">kA</span></div></label>'
-                        : "") +
-                    (showDirect ? wwPerUnitBaseSideFieldHtml("perUnitCurrentBaseSide", state.currentBaseReferenceSide) :
-                        showMva ? '<p class="hint">Base reference side: Primary</p>' : "") +
-                    (showNone
-                        ? '<p class="hint" style="margin-top:10px;">Current channels will show "Base required" in Per Unit mode until a current base is configured.</p>'
-                        : "") +
-                '</div>' +
-
-                // Section 10/14: structurally present, deliberately
-                // empty -- a scalable place for future Per-Unit
-                // capabilities without another modal redesign. Reuses
-                // the SAME <details>/.chevron disclosure convention
-                // already established for the Channel Sidebar's own
-                // collapsible groups (summary markers are already
-                // globally hidden page-wide).
-                '<details class="ww-pu-advanced ww-pu-section">' +
-                    '<summary><span class="chevron">&#9656;</span> Advanced options</summary>' +
-                    '<div class="ww-pu-advanced-body">' +
-                    '<p class="hint">No additional Per-Unit options are available for this recording yet.</p>' +
-                    '</div>' +
-                '</details>';
-
-            wwWirePerUnitProfileFieldsEvents();
-            document.getElementById("perUnitDeleteProfileBtn").hidden = !state.configured;
-        }
-
-        async function wwApplyPerUnitProfileEditor() {
-            const state = perUnitEditorState;
-            if (!state) return;
-            const errorEl = document.getElementById("perUnitProfileError");
-            errorEl.hidden = true;
-
-            const body = {
-                voltage_base_value: state.voltageBaseValue,
-                voltage_reference_mode: state.voltageReferenceMode,
-                voltage_reference_override: state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : null,
-                current_base_mode: state.currentBaseMode,
-                apparent_power_base_value: state.currentBaseMode === "derived" ? state.apparentPowerBaseValue : null,
-                direct_current_base_value: state.currentBaseMode === "direct" ? state.directCurrentBaseValue : null,
-                current_base_reference_side: state.currentBaseMode === "derived" ? "primary" : state.currentBaseMode === "direct" ? state.currentBaseReferenceSide : "unknown",
-            };
-
-            let response;
-            try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/per-unit/sources/" + encodeURIComponent(state.sourceId),
-                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-                );
-            } catch (error) {
-                errorEl.textContent = "Could not reach the backend. Check your connection and try again.";
-                errorEl.hidden = false;
-                return;
-            }
-
-            if (!response.ok) {
-                let detail = {};
-                try { detail = (await response.json()).detail || {}; } catch (error) { /* handled by generic message below */ }
-                errorEl.textContent = detail.message || "Could not save this Per-Unit configuration.";
-                errorEl.hidden = false;
-                return;
-            }
-
-            // UAT fix (Manage Per-Unit Bases modal-close): a confirmed
-            // successful save closes the modal FIRST, matching the
-            // already-correct wwSaveMgDrawer() pattern for the newer
-            // Measurement Group drawer ("persist -> close -> non-
-            // critical refreshes"). wwClosePerUnitProfilesModal() itself
-            // resets perUnitEditorState to null and hides the overlay,
-            // so the modal-only re-sync calls that used to run here
-            // (wwRenderPerUnitSourceSelect()/wwRenderPerUnitProfileEditor(),
-            // and re-deriving perUnitEditorState from the saved response)
-            // are genuinely redundant now -- both only ever wrote into
-            // this modal's own DOM, which wwOpenPerUnitProfilesModal()
-            // already rebuilds from fresh backend state on next open.
-            // ww.perUnitSourceConfigs/wwUpdateUnitModeWarningBadge()/
-            // the channel refresh are workspace-wide state consumed
-            // OUTSIDE this modal (the unit-mode badge, currently
-            // displayed waveforms) and are retained unchanged.
-            const saved = await response.json();
-            wwClosePerUnitProfilesModal();
-            ww.perUnitSourceConfigs.set(saved.source_id, saved);
-            wwUpdateUnitModeWarningBadge();
-            await wwRefreshDisplayedChannelsForPerUnitChange(state.sourceId);
-        }
-
-        async function wwDeletePerUnitProfileEditor() {
-            const state = perUnitEditorState;
-            if (!state || !state.configured) return;
-            if (!window.confirm("Clear this recording's Per-Unit configuration? Its channels will show \"Base required\" until reconfigured.")) return;
-            let response;
-            try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/per-unit/sources/" + encodeURIComponent(state.sourceId),
-                    { method: "DELETE" }
-                );
-            } catch (error) {
-                return;
-            }
-            if (!response.ok) return;
-            // UAT fix (Manage Per-Unit Bases modal-close): same "close
-            // on confirmed success" fix as wwApplyPerUnitProfileEditor()
-            // above -- see that function's own comment for why the
-            // modal-only re-sync calls this used to run are dropped.
-            wwClosePerUnitProfilesModal();
-            ww.perUnitSourceConfigs.delete(state.sourceId);
-            void wwFetchPerUnitSourceConfigs();
-            wwUpdateUnitModeWarningBadge();
-            await wwRefreshDisplayedChannelsForPerUnitChange(state.sourceId);
         }
 
         // A base/reference change can affect the CURRENTLY displayed
@@ -36876,41 +36224,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '</div>';
             html += '</div>';
 
-            // PU-UI-001 Slice A: Per-unit Configuration section — always shown
-            // so the Source Default link (D-005: contextual access, advanced
-            // only, not prominently) is accessible even after all PU issues are
-            // resolved (Gap 1: a fully-configured recording must still be able
-            // to access, edit and clear an existing Source Default). Issue
-            // counts and the "Review affected groups" button are conditional.
-            // Never shows green success state (§8).
+            // PU-UI-001 Final: Per-unit Configuration section — only shown
+            // when there are PU issues requiring engineer attention.
             const groups = ww.measurementGroups.get(s.source_id) || [];
             const voltageGroups = groups.filter(function(g) { return g.kind === "voltage"; });
             const baseRequiredGroups = voltageGroups.filter(function(g) { return g.pu_status === "base_required"; });
             const conflictGroups = voltageGroups.filter(function(g) { return g.pu_status === "conflict"; });
             const hasPuIssues = baseRequiredGroups.length > 0 || conflictGroups.length > 0;
-            html += '<div class="ww-rd-section ww-rd-pu-config-section">';
-            html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
-            if (baseRequiredGroups.length > 0) {
-                const n = baseRequiredGroups.length;
-                html += '<div class="ww-rd-pu-config-issue">' +
-                    n + ' voltage group' + (n === 1 ? '' : 's') +
-                    ' need' + (n === 1 ? 's' : '') + ' a nominal voltage base</div>';
-            }
-            if (conflictGroups.length > 0) {
-                const n = conflictGroups.length;
-                html += '<div class="ww-rd-pu-config-issue">' +
-                    n + ' voltage group' + (n === 1 ? '' : 's') +
-                    ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
-            }
             if (hasPuIssues) {
+                html += '<div class="ww-rd-section ww-rd-pu-config-section">';
+                html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
+                if (baseRequiredGroups.length > 0) {
+                    const n = baseRequiredGroups.length;
+                    html += '<div class="ww-rd-pu-config-issue">' +
+                        n + ' voltage group' + (n === 1 ? '' : 's') +
+                        ' need' + (n === 1 ? 's' : '') + ' a nominal voltage base</div>';
+                }
+                if (conflictGroups.length > 0) {
+                    const n = conflictGroups.length;
+                    html += '<div class="ww-rd-pu-config-issue">' +
+                        n + ' voltage group' + (n === 1 ? '' : 's') +
+                        ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
+                }
                 html += '<button class="ww-rd-pu-review-btn" ' +
                     'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
+                html += '</div>';
             }
-            html += '<button class="ww-rd-pu-source-default-link" ' +
-                'data-source-id="' + escapeHtml(s.source_id) + '" ' +
-                'onclick="wwOpenPerUnitProfilesModal(this.dataset.sourceId)">' +
-                'Configure Source Default…</button>';
-            html += '</div>';
 
             // UX-3 (migrated from Recording Events): Time Reference section —
             // shown only when the recorder clock time is unverified and the
@@ -45817,21 +45156,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcListErrors.clear();
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelsPage();
-                // Phase 5C (DEC-049): "Start New Workspace" also resets
-                // Unit Mode and clears every source's own Per-Unit
-                // configuration mirror -- the backend side is already
-                // handled by this SAME DELETE /api/v1/workspaces/{id}
-                // call (per_unit_registry.remove_workspace()); this just
-                // keeps the frontend's own toolbar/state in sync, same
-                // policy as ww.calculatedChannels immediately above.
+                // "Start New Workspace" also resets Unit Mode and clears
+                // Measurement Groups state -- backend side already handled
+                // by the DELETE /api/v1/workspaces/{id} call; this keeps
+                // the frontend's own toolbar/state in sync, same policy
+                // as ww.calculatedChannels immediately above.
                 // Plain "Clear workspace" (the else branch below)
                 // deliberately leaves both alone.
                 ww.unitMode = "engineering";
-                ww.perUnitSourceConfigs.clear();
                 ww.measurementGroups.clear();
                 wwSyncUnitModeControls();
                 wwUpdateUnitModeWarningBadge();
-                wwClosePerUnitProfilesModal();
                 wwCloseMeasurementGroupsModal();
                 // Slice 1 of waveform time synchronization: "Start New
                 // Workspace" also clears every source's own alignment
@@ -45840,7 +45175,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // (synchronization_registry.remove_workspace(), see
                 // app.api.v1.workspaces.delete_workspace); this just keeps
                 // the frontend's own mirror/UI in sync, same policy as
-                // ww.perUnitSourceConfigs immediately above. Plain "Clear
+                // ww.measurementGroups immediately above. Plain "Clear
                 // workspace" (the else branch below) deliberately leaves
                 // it alone -- the still-selected source's own offset
                 // remains meaningful, same reasoning as ww.sourceTiming.
@@ -67799,26 +67134,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             await wwApplyUnitMode("per_unit");
         });
 
-        // Phase 5C: "Manage Per-Unit Bases" modal wiring -- same
-        // Apply/Cancel/close/Escape/backdrop-click convention as Custom
-        // Groups.
-        document.getElementById("perUnitSourceSelect").addEventListener("change", (event) => {
-            wwPerUnitSourceSelectChange(event.target.value);
-        });
-        document.getElementById("perUnitProfilesApplyBtn").addEventListener("click", () => wwApplyPerUnitProfileEditor());
-        document.getElementById("perUnitDeleteProfileBtn").addEventListener("click", () => wwDeletePerUnitProfileEditor());
-        document.getElementById("perUnitProfilesCloseBtn").addEventListener("click", wwClosePerUnitProfilesModal);
-        document.getElementById("perUnitProfilesCloseFooterBtn").addEventListener("click", wwClosePerUnitProfilesModal);
-        document.getElementById("perUnitProfilesOverlay").addEventListener("click", (event) => {
-            if (event.target.id === "perUnitProfilesOverlay") wwClosePerUnitProfilesModal(); // click on backdrop
-        });
-        document.addEventListener("keydown", (event) => {
-            if (event.key !== "Escape") return;
-            if (!document.getElementById("perUnitProfilesOverlay").hidden) wwClosePerUnitProfilesModal();
-        });
         // Slice 6 (DEC-050): Measurement Group configuration workspace
         // wiring -- same Apply/Cancel/close/Escape/backdrop-click
-        // convention as Custom Groups/legacy Per-Unit modal above. The
+        // convention as Custom Groups. The
         // Edit drawer gets its OWN independent Escape/backdrop handling
         // (closing the drawer must never also close the modal behind
         // it, and vice versa).
