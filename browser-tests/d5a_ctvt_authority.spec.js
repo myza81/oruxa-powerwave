@@ -84,21 +84,35 @@ for (const kind of ["impedance", "distance"]) {
   const { name } = PANELS[kind];
 
   test.describe(`D5A authoritative CT/VT -- ${name}`, () => {
-    test("a nominal-only VT gives the specific message, read-only values, a Configure button and keeps Related Waveforms", async ({ page }) => {
+    test("a nominal-only VT is a valid auto-derived VT: shown normally, no warning, the calculation runs", async ({ page }) => {
       const s = await seed(page);
       await putCt(page, s, MANUAL_CT);
-      await putVt(page, s, NOMINAL_ONLY);
+      await putVt(page, s, NOMINAL_ONLY);                   // nominal 132 kV, no stored VT
       await openPanel(page, kind, s.contextId);
       await needConversion(page, kind);
 
       const block = page.locator(`#ww${name}CtVtAuthority`);
       await expect(block).toBeVisible();
       await expect(block.locator("input, select, textarea")).toHaveCount(0);               // never an editor
+      await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("132 kV / 110 V");
+      await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("Auto-derived");
       await expect(block.locator('[data-ctvt-value="current"]')).toContainText("1200 A / 1 A");
-      await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("not configured");
-      await expect(block.locator('[data-ctvt-code="VT_AUTHORITY_MISSING"]')).toContainText("display-only");
-      await expect(block.locator('[data-ctvt-code="VT_AUTHORITY_MISSING"]')).toContainText(`'${s.voltage.display_name}'`);
-      await expect(page.locator(`#ww${name}StatusRow`)).toContainText("VT is not configured for");
+      await expect(block.locator("[data-ctvt-code]")).toHaveCount(0);                      // nothing to confirm or fix
+      for (const word of ["display-only", "assumed", "provisional", "unverified"]) await expect(block).not.toContainText(word);
+      await expect(page.locator(`#ww${name}StatusRow`)).toBeHidden();                       // computed
+      expect(await page.evaluate((k) => wwCtVtBasisParams(k).vt_primary, kind)).toBe("132000");
+    });
+
+    test("a missing CT blocks with the specific message, a Configure button and keeps Related Waveforms", async ({ page }) => {
+      const s = await seed(page);
+      await putVt(page, s, MANUAL_VT);                      // CT is never derived: it stays unconfigured
+      await openPanel(page, kind, s.contextId);
+      await needConversion(page, kind);
+
+      const block = page.locator(`#ww${name}CtVtAuthority`);
+      await expect(block.locator('[data-ctvt-value="current"]')).toContainText("not configured");
+      await expect(block.locator('[data-ctvt-code="CT_AUTHORITY_MISSING"]')).toContainText(`CT is not configured for '${s.current.display_name}'`);
+      await expect(page.locator(`#ww${name}StatusRow`)).toContainText("CT is not configured for");
       await expect(page.locator(`#ww${name}StatusRow`)).not.toContainText("Valid VT and CT ratios are required");
       await expect(block.locator("[data-ctvt-configure]")).toHaveCount(2);
 
@@ -111,23 +125,25 @@ for (const kind of ["impedance", "distance"]) {
       }).toPass({ timeout: 8000 });
     });
 
-    test("Configure in Recording Details opens the voltage group; after saving VT the calculation runs with no typing", async ({ page }) => {
+    test("Configure in Recording Details opens the voltage group; a saved manual VT then takes precedence over the auto-derived one", async ({ page }) => {
       const s = await seed(page);
       await putCt(page, s, MANUAL_CT);
       await putVt(page, s, NOMINAL_ONLY);
       await openPanel(page, kind, s.contextId);
       await needConversion(page, kind);
       const block = page.locator(`#ww${name}CtVtAuthority`);
+      await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("Auto-derived");
       await block.locator('[data-ctvt-configure="voltage"]').click();
       await expect(page.locator("#pageRecordingDetails")).toBeVisible();
       expect(await page.evaluate(() => wwRdState.selectedGroupId)).toBe(s.voltage.id);
 
-      await putVt(page, s, MANUAL_VT);                      // the Edit -> Save the message asked for
+      await putVt(page, s, { vt_primary_v: 66000, vt_secondary_v: 110 });      // the engineer's own VT (Edit -> Save)
       await page.locator("#mainNavAnalysisBtn").click();
       await expect(page.locator(PANELS[kind].panel)).toBeVisible();
-      await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("132 kV / 110 V", { timeout: 10000 });
+      await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("66 kV / 110 V", { timeout: 10000 });
       await expect(block.locator('[data-ctvt-value="voltage"]')).toContainText("Manual");
-      await expect(block.locator('[data-ctvt-code="VT_AUTHORITY_MISSING"]')).toHaveCount(0);
+      await expect(block.locator('[data-ctvt-value="voltage"]')).not.toContainText("Auto-derived");
+      await expect(block.locator("[data-ctvt-code]")).toHaveCount(0);
     });
 
     test("an undeclared measurement side needs an explicit Recording basis, then sends the authoritative ratios", async ({ page }) => {

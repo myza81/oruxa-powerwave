@@ -61,14 +61,19 @@ def test_the_panels_keep_no_local_ratio_state_and_send_only_the_authoritative_pl
         assert "wwCtVtBasisParams" in body and "vt_primary" not in body and "ct_primary" not in body
 
 
-def test_nominal_derived_values_are_never_used_as_a_ratio():
+def test_the_frontend_never_derives_a_vt_itself():
+    """The auto-derived VT is the BACKEND's (owner decision 2026-11-21); the page only displays and sends what the
+    API reports as consumable, and never calls a valid derived VT assumed, provisional, unverified or display-only."""
     code = _code_only(_block())
-    for forbidden in ("auto_nominal", "vt_effective", "nominal_voltage"):
-        assert forbidden not in code
-    # the only nominal reference is the display-only note inside the ratio blocker; no request value is built from it
-    blocker = re.search(r"function wwCtVtRatioBlocker.*?\n        }\n", code, re.S).group(0)
-    assert "ignored_nominal_kv" in blocker and "ignored_nominal_kv" not in code.replace(blocker, "")
+    for forbidden in ("vt_effective", "nominal_voltage", "* 1000", "110"):
+        assert forbidden not in code.replace("110 V secondary", "")
     assert "vt_primary: String(voltage.primary)" in code
+    for word in ("display-only", "assumed", "provisional"):
+        assert word not in code.lower()
+    assert "Auto-derived" in code
+    # the nominal appears only inside the not-usable explanation, never in a request value
+    blocker = re.search(r"function wwCtVtRatioBlocker.*?\n        }\n", code, re.S).group(0)
+    assert "nominal_ll_kv" in blocker and "nominal_ll_kv" not in code.replace(blocker, "")
 
 
 def test_correction_goes_through_recording_details_only():
@@ -128,7 +133,7 @@ process.stdout.write(JSON.stringify({{ plan, params, message }}));
 
 def _quantity(**over):
     base = dict(ratio_status="configured", ratio_consumable=True, primary=132000.0, secondary=110.0, authority="manual",
-                side="primary", side_status="recording_declared", declared_basis="primary", ignored_nominal_kv=None, reason=None)
+                side="primary", side_status="recording_declared", declared_basis="primary", nominal_ll_kv=None, nominal_refused_reason=None, reason=None)
     base.update(over)
     return base
 
@@ -163,14 +168,36 @@ def test_authoritative_ratios_are_sent_only_when_conversion_needs_them(kind):
 
 
 @pytest.mark.parametrize("kind", ["impedance", "distance"])
-def test_a_nominal_only_vt_is_never_sent_and_the_message_names_the_group(kind):
-    vt = _quantity(ratio_status="not_configured", ratio_consumable=False, primary=None, secondary=None,
-                   authority="auto_nominal", ignored_nominal_kv=275.0)
+def test_an_auto_derived_vt_is_used_like_any_other_valid_vt(kind):
+    vt = _quantity(primary=275000.0, secondary=110.0, authority="auto_nominal", nominal_ll_kv=275.0)
     out = _plan(_report(vt, _ct_q()), "primary", "secondary", groups=GROUPS, kind=kind)
-    assert out["params"] == {"recording_basis": "primary", "impedance_basis": "secondary"}      # no ratio at all
+    assert out["plan"]["blockers"] == [] and out["plan"]["warnings"] == [] and out["message"] is None
+    assert out["params"] == {"recording_basis": "primary", "impedance_basis": "secondary", "vt_primary": "275000",
+                             "vt_secondary": "110", "ct_primary": "1200", "ct_secondary": "1"}
+
+
+@pytest.mark.parametrize("kind", ["impedance", "distance"])
+@pytest.mark.parametrize("reason,fragment", [
+    ("manual_conflict", "cannot be derived from its nominal voltage (275 kV): it conflicts with the channel evidence. "
+                        "Resolve the nominal voltage in Recording Details, or enter the VT."),
+    ("base_not_accepted", "cannot be derived from its nominal voltage (275 kV): the voltage base has not been accepted. "
+                          "Accept it in Recording Details, or enter the VT."),
+])
+def test_a_nominal_that_cannot_be_used_explains_why_and_sends_no_ratio(kind, reason, fragment):
+    vt = _quantity(ratio_status="not_configured", ratio_consumable=False, primary=None, secondary=None, authority="not_configured",
+                   nominal_ll_kv=275.0, nominal_refused_reason=reason)
+    out = _plan(_report(vt, _ct_q()), "primary", "secondary", groups=GROUPS, kind=kind)
+    assert out["params"] == {"recording_basis": "primary", "impedance_basis": "secondary"}
+    assert [b["code"] for b in out["plan"]["blockers"]] == ["VT_NOMINAL_NOT_USABLE"]
+    assert out["message"] == "The VT of 'KPDN1 VOLTAGE' " + fragment
+
+
+def test_no_vt_and_no_nominal_asks_for_the_nominal_or_the_vt():
+    vt = _quantity(ratio_status="not_configured", ratio_consumable=False, primary=None, secondary=None, authority="not_configured")
+    out = _plan(_report(vt, _ct_q()), "primary", "secondary", groups=GROUPS)
     assert [b["code"] for b in out["plan"]["blockers"]] == ["VT_AUTHORITY_MISSING"]
-    assert out["message"] == ("VT is not configured for 'KPDN1 VOLTAGE'. The 275 kV / 110 V shown in Recording Details is derived "
-                              "from the nominal voltage and is display-only. Open Recording Details → VT → Edit → Save to confirm it.")
+    assert out["message"] == ("VT is not configured for 'KPDN1 VOLTAGE'. Set the nominal voltage, or the VT primary kV and secondary V, "
+                              "in Recording Details.")
 
 
 @pytest.mark.parametrize("override,code,fragment", [
@@ -367,18 +394,41 @@ def test_a_configured_recording_calculates_without_typing_and_matches_the_author
     assert dist["status"] == "computed" and dist["impedance_basis"] == "secondary"
 
 
-def test_a_nominal_only_vt_blocks_with_the_specific_message_and_keeps_the_waveform_channels(client):
+def test_a_nominal_only_vt_calculates_with_no_confirmation(client):
+    """Owner decision 2026-11-21: nominal kV / 110 V is a valid VT; no Edit -> Save is needed."""
     ws = "ctvt-fe-nominal"
     src, ctx = _bay(client, ws, groups=False)
     _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB", "VC"), f"vg-{src}")
     _group(client, ws, src, KIND_CURRENT, ("IA", "IB", "IC"), f"ig-{src}")
     _ct(client, ws, f"ig-{src}", CT_P, CT_S, note="CT nameplate")
-    client.app.state.voltage_group_config_registry.update_fields(ws, f"vg-{src}", nominal_voltage_ll_kv=132.0, update_nominal=True)
+    client.app.state.voltage_group_config_registry.update_fields(ws, f"vg-{src}", nominal_voltage_ll_kv=110.0, update_nominal=True)
+    report = _api_report(client, ws, ctx, analysis="impedance", phase="A")
+    assert report["voltage"]["authority"] == "auto_nominal" and report["voltage"]["ratio_consumable"] is True
+    groups = {src: client.get(f"/api/v1/workspaces/{ws}/sources/{src}/measurement-groups").json()}
+    out = _plan(report, "primary", "secondary", groups=groups)
+    assert out["plan"]["blockers"] == [] and out["message"] is None
+    assert (out["params"]["vt_primary"], out["params"]["vt_secondary"]) == ("110000", "110")
+    body = _imp(client, ws, ctx, **out["params"]).json()
+    assert body["status"] == "computed" and body["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3)
+
+
+def test_a_refused_nominal_blocks_with_its_reason_and_keeps_the_waveform_channels(client):
+    ws = "ctvt-fe-nominal-refused"
+    src, ctx = _bay(client, ws, groups=False)
+    _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB", "VC"), f"vg-{src}")
+    _group(client, ws, src, KIND_CURRENT, ("IA", "IB", "IC"), f"ig-{src}")
+    _ct(client, ws, f"ig-{src}", CT_P, CT_S, note="CT nameplate")
+    reg = client.app.state.voltage_group_config_registry
+    reg.update_fields(ws, f"vg-{src}", nominal_voltage_ll_kv=132.0, update_nominal=True)
+    config = reg.get(ws, f"vg-{src}")
+    config.manual_conflict_detected = True
+    reg.upsert(config)
     report = _api_report(client, ws, ctx, analysis="impedance", phase="A")
     groups = {src: client.get(f"/api/v1/workspaces/{ws}/sources/{src}/measurement-groups").json()}
     out = _plan(report, "primary", "secondary", groups=groups)
     assert out["params"] == {"recording_basis": "primary", "impedance_basis": "secondary"}
-    assert out["message"].startswith(f"VT is not configured for 'vg-{src}'. The 132 kV / 110 V shown in Recording Details is derived")
+    assert out["message"] == (f"The VT of 'vg-{src}' cannot be derived from its nominal voltage (132 kV): it conflicts with the "
+                              "channel evidence. Resolve the nominal voltage in Recording Details, or enter the VT.")
     body = _imp(client, ws, ctx, **out["params"]).json()                    # the page still asks, so waveforms stay visible
     assert body["status"] == "needs_configuration" and body["reason_code"] == "invalid_ratio"
     assert body["voltage_channel_ref"]["channel_name"] == "ZBAY_VA" and body["current_channel_ref"]["channel_name"] == "ZBAY_IA"

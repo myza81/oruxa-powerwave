@@ -97,15 +97,15 @@ test("VE-01: auto_nominal VT values are shown immediately when nominal kV is kno
     await expect(section).toContainText("275");
 });
 
-// ---- VE-02: auto_nominal shows "Based on nominal voltage" note ---------------
+// ---- VE-02: auto_nominal shows "Auto-derived from nominal voltage" note ---------------
 
-test("VE-02: auto_nominal state shows 'Based on nominal voltage' note", async ({ page }) => {
+test("VE-02: auto_nominal state shows 'Auto-derived from nominal voltage' note", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {});
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
-    await expect(section).toContainText("Based on nominal voltage");
+    await expect(section).toContainText("Auto-derived from nominal voltage");
 });
 
 // ---- VE-03: auto_nominal shows "Suggested" label is NOT present -------------
@@ -147,9 +147,9 @@ test("VE-05: Edit button prefills primary kV and secondary V from auto_nominal e
     expect(parseFloat(secondaryVal)).toBeCloseTo(110, 1);
 });
 
-// ---- VE-06: manual VT shown without "Based on nominal voltage" note ---------
+// ---- VE-06: manual VT shown without "Auto-derived from nominal voltage" note ---------
 
-test("VE-06: manual VT shows values and no 'Based on nominal voltage' note", async ({ page }) => {
+test("VE-06: manual VT shows values and no 'Auto-derived from nominal voltage' note", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -164,7 +164,7 @@ test("VE-06: manual VT shows values and no 'Based on nominal voltage' note", asy
     });
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
     await expect(section).toContainText("275");
-    await expect(section).not.toContainText("Based on nominal voltage");
+    await expect(section).not.toContainText("Auto-derived from nominal voltage");
     await expect(section).not.toContainText("Not configured");
 });
 
@@ -206,12 +206,12 @@ test("VE-08: unresolved nominal (no effective values) shows 'Not configured'", a
     });
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
     await expect(section).toContainText("Not configured");
-    await expect(section).not.toContainText("Based on nominal voltage");
+    await expect(section).not.toContainText("Auto-derived from nominal voltage");
 });
 
 // ---- VE-09: Apply saves as manual — no note shown after save ----------------
 
-test("VE-09: applying VT saves as manual and 'Based on nominal voltage' note disappears", async ({ page }) => {
+test("VE-09: applying VT saves as manual and 'Auto-derived from nominal voltage' note disappears", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -244,7 +244,7 @@ test("VE-09: applying VT saves as manual and 'Based on nominal voltage' note dis
     await expect(page.locator("#wwRdDetailsBody #wwRdVtEditBtn")).toBeVisible({ timeout: 5000 });
 
     const section = page.locator("#wwRdDetailsBody .ww-rd-section", { hasText: "Voltage Transformer" });
-    await expect(section).not.toContainText("Based on nominal voltage");
+    await expect(section).not.toContainText("Auto-derived from nominal voltage");
     await expect(section).toContainText("275");
 });
 
