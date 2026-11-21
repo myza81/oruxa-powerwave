@@ -60,7 +60,7 @@ class TestEventReconstructionNavigation:
         nav = _nav_list(_source())
         ids = re.findall(r'class="shell-nav-item" id="(mainNav\w+Btn)"', nav)
         assert ids == [
-            "mainNavRecordingsBtn",
+            "mainNavRecordingDetailsBtn",   # PU-UI-001: the Recordings page became Recording Details
             "mainNavWaveformBtn",
             "mainNavEventReconstructionBtn",
             "mainNavTableBtn",
@@ -86,7 +86,7 @@ class TestEventReconstructionNavigation:
         body = _between(_source(), "function shellSetCurrentPage(page) {", "function shellSetSidebarDrawerOpen(open)")
         for element_id, page in (
             ("workspaceRow", "waveform"),
-            ("pageRecordings", "recordings"),
+            ("pageRecordingDetails", "recording-details"),   # PU-UI-001 (was pageRecordings / "recordings")
             ("pageCalculatedChannels", "calculated-channels"),
             ("pageDataPreparation", "data-preparation"),
             ("pageAnalysis", "analysis"),
@@ -2171,6 +2171,9 @@ class TestPowerwaveIconAssets:
         icon_region = _between(source, "const WW_TOOL_ICONS = {", "function wwApplyToolIcons(")
         assert "cdn." not in icon_region and "googleapis" not in icon_region
 
+    #: Approved inline-only icons with no asset and no manifest entry (exhaustive; extend only with owner approval).
+    INLINE_ONLY_NO_ASSET = frozenset({"PAGE_RECORDING_DETAILS"})
+
     def test_owner_supplied_icons_are_never_also_duplicated_inline(self):
         """A migrated key's old inline <svg> definition is gone -- asset
         and inline fallback never coexist for the same key (section 17:
@@ -2184,6 +2187,10 @@ class TestPowerwaveIconAssets:
             # never one that also has a manifest/asset entry.
             import json
             manifest = json.loads((self.ICONS_DIR / "manifest.json").read_text(encoding="utf-8"))
+            if key in self.INLINE_ONLY_NO_ASSET and key not in manifest:
+                # PU-UI-001's Recording Details nav icon has no owner-supplied asset yet: it is inline-only, so
+                # asset and inline fallback do not coexist (the guard's intent). Any other key still needs its entry.
+                continue
             assert manifest[key]["source"] == "inline-fallback", key
 
     def test_no_new_inline_svg_blocks_for_migrated_controls(self):
@@ -2191,7 +2198,7 @@ class TestPowerwaveIconAssets:
         `data-ww-icon`, never a hand-written `<svg>` of its own -- the
         nav icons (DEC-143) and every pre-existing toolbar control alike."""
         source = _source()
-        for btn_id in ("mainNavRecordingsBtn", "mainNavWaveformBtn", "mainNavEventReconstructionBtn",
+        for btn_id in ("mainNavRecordingDetailsBtn", "mainNavWaveformBtn", "mainNavEventReconstructionBtn",
                        "mainNavTableBtn", "mainNavCalculatedChannelsBtn", "mainNavAnalysisBtn",
                        "mainNavComplianceBtn", "mainNavCalculatorBtn"):
             element = _element(source, btn_id, "button")

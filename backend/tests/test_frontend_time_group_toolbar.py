@@ -907,7 +907,7 @@ class TestGlobalDuplicatesRemoved:
             "layoutModeGroupedBtn",
             "timeModeAbsoluteBtn",
             "wwUnitEngineeringBtn",
-            "recordingsUploadBtn",
+            "wwRdUploadBtn",   # PU-UI-001: successor of the Recordings page's recordingsUploadBtn
         ):
             assert f'id="{still_global_id}"' in source, f"expected still-global control id={still_global_id} to remain"
 
