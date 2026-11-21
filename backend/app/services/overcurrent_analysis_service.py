@@ -78,6 +78,7 @@ from app.services.analysis_input_resolution_service import resolve_analysis_inpu
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.errors import ImportServiceError
 from app.services.workspace_registry import WorkspaceRegistry
 
 _REQUIREMENT_BY_PHASE = {
@@ -162,11 +163,41 @@ def _waveform_form_eligible_for_rms(candidate: _CurrentCandidate, reference_freq
 def _short_circuit(
     status: str, *, engineering_context_id: str, phase: str, analysis_time: float,
     reason_code: str | None, message: str,
+    channel_ref: ChannelRef | None = None, measured_rms_current_unit: str | None = None,
 ) -> OvercurrentAnalysisResult:
+    """`channel_ref`/`measured_rms_current_unit` are given ONLY by a configuration block where the current channel
+    DID resolve (identity is not a result), so its signal stays plottable; no number is ever attached."""
     return OvercurrentAnalysisResult(
         status=status, engineering_context_id=engineering_context_id, phase=phase,
         analysis_time=analysis_time, reason_code=reason_code, message=message,
+        channel_ref=channel_ref, measured_rms_current_unit=measured_rms_current_unit,
     )
+
+
+def _identify_current_channel(
+    requirement, role_key: str, *, workspace_id: str, engineering_context_id: str,
+    context_registry: EngineeringContextRegistry, source_registry: WorkspaceRegistry,
+    calculated_channel_registry: CalculatedChannelRegistry,
+) -> tuple[ChannelRef | None, str | None]:
+    """(channel_ref, unit) of the current channel this phase would use, or (None, None) when it does not resolve.
+    Read-only and best-effort: used only to keep a blocked result's channel identifiable, never to change its
+    status, so a missing context or unreadable channel simply yields no identity."""
+    try:
+        resolution = resolve_analysis_inputs(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_kind=requirement.analysis_kind, mode=requirement.mode,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calculated_channel_registry,
+        )
+    except ImportServiceError:
+        return None, None
+    if resolution.status != STATUS_RESOLVED:
+        return None, None
+    candidate = _fetch_current_candidate(
+        resolution.resolved_roles[role_key], workspace_id=workspace_id,
+        source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+    )
+    return (candidate.channel_ref, candidate.unit) if candidate is not None else (None, None)
 
 
 def compute_overcurrent_analysis(
@@ -230,10 +261,16 @@ def compute_overcurrent_analysis(
         )
     if recording_basis == "primary":
         if ct_primary is None or ct_secondary is None or not ct_values_valid(ct_primary, ct_secondary):
+            blocked_ref, blocked_unit = _identify_current_channel(
+                requirement, role_key, workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+                context_registry=context_registry, source_registry=source_registry,
+                calculated_channel_registry=calculated_channel_registry,
+            )
             return _short_circuit(
                 STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
                 analysis_time=analysis_time, reason_code=REASON_INVALID_CT_VALUES,
                 message="CT primary and CT secondary current must both be finite numbers greater than zero.",
+                channel_ref=blocked_ref, measured_rms_current_unit=blocked_unit,
             )
 
     resolution = resolve_analysis_inputs(
@@ -312,6 +349,7 @@ def compute_overcurrent_analysis(
                 f"The resolved current channel's unit {candidate.unit!r} could not be "
                 "normalized to amperes -- Overcurrent requires a recognized current unit."
             ),
+            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit,
         )
     multiple_of_pickup, expected_operating_time_seconds = evaluate_multiple_and_operating_time(
         characteristic.constants, tms, relay_secondary_current, pickup_current_secondary,
@@ -333,6 +371,7 @@ def compute_overcurrent_analysis(
                 f"The resolved current channel's unit {candidate.unit!r} could not be "
                 "normalized to amperes -- Overcurrent requires a recognized current unit."
             ),
+            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit,
         )
     duration_result = continuous_duration_above_pickup(
         candidate.time, relay_secondary_values, analysis_time, reference_frequency_hz, pickup_current_secondary,
