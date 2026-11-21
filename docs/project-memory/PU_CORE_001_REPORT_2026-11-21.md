@@ -252,15 +252,12 @@ There are **no numerical or architectural correctness defects** to correct. All 
 
 ## Phase 8 — Broad Test Suite Results
 
-**Run:** 2026-11-21, worktree `.local-data/pu-core-001`, branch `chore/pu-core-001-verification`  
-**Command:** `pytest tests/ -q --tb=no -x` (ignoring browser integration tests)  
-**Result:** Suite halted at the first pre-existing B/Obsolete failure — `test_compliance_trace_api::TestNothingIsGuessed::test_a_base_that_is_not_applied_yet_plots_nothing`
+*Superseded:* an earlier revision here reported only a partial `-x` run. The authoritative result is the complete integrated run below.
 
-**Before the first failure:** ~2,300 tests ran (approximately 17% of the full non-browser suite), all passing or skipped. Zero regressions introduced.
+**Run:** 2026-11-21, worktree `.local-data/pu-core-001`, branch `chore/pu-core-001-verification` (contains F3 `c593a0b`, the 33 math tests and the 7 corrected tests), no `-x`, browser suites excluded.  
+**Result:** 13,397 tests — **12,968 passed, 7 failed, 422 skipped, 27 warnings, 0 errors** (JUnit XML).
 
-**New failures introduced by PU-CORE-001 work:** None. Phase 3's 33 math tests all pass (verified independently). The F3 fix (c593a0b) does not regress any test.
-
-**Pre-existing failures hit:** 1 of 7 known B/Obsolete failures (the `-x` flag stops on the first). All 7 are documented in Phase 6; the remaining 6 are frontend static-file checks that run after backend tests in the suite order.
+**The 7 failures** are stale frontend static-file tests (navigation rename etc.) in `test_frontend_event_reconstruction.py` (4), `test_frontend_playback.py`, `test_frontend_split_view_toolbar_cleanup.py`, `test_frontend_time_group_toolbar.py`. They fail identically on baseline `c593a0b` (7 failed / 317 passed across those files) and the branch changes no frontend file, so they are not regressions. They are a different set from the 7 tests classified in Phase 6, all of which now pass. See PU_CORE_001_RELEASE_GATE_2026-11-21.md for details.
 
 ---
 
