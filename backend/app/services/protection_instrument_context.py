@@ -60,6 +60,10 @@ class TransformerContext:
     reason: str | None = None
     side: str = "unknown"
     side_status: str = SIDE_UNKNOWN
+    provenance_note: str | None = None
+    # Voltage only: a nominal kV exists on the group but no VT does. Reported so the display-only
+    # nominal is visibly NOT used; never a ratio.
+    ignored_nominal_kv: float | None = None
 
     @property
     def ratio_consumable(self) -> bool:
@@ -94,19 +98,53 @@ def _valid_pair(primary: float | None, secondary: float | None) -> bool:
     )
 
 
+def _declared_side(workspace_id: str, ref: ChannelRef, source_registry: WorkspaceRegistry) -> tuple[str, str | None]:
+    """(side, provider_type) as the recording declares it; anything else is 'unknown'."""
+    if ref.kind != "source":
+        return "unknown", None
+    active = source_registry.get(workspace_id, ref.source_id)
+    if active is None:
+        return "unknown", None
+    channel = next((c for c in active.metadata.analog_channels if c.name == ref.channel_name), None)
+    side = channel.measurement_side if channel is not None else "unknown"
+    return (side if side in ("primary", "secondary") else "unknown"), active.metadata.provider_type
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelFacts:
+    """What the recording and Recording Details say about ONE channel."""
+
+    ref: ChannelRef
+    quantity: str
+    group_id: str | None
+    group_kind: str | None
+    declared_side: str
+    provider_type: str | None
+
+
+def resolve_channel_facts(
+    workspace_id: str,
+    ref: ChannelRef,
+    quantity: str,
+    *,
+    group_registry: MeasurementGroupRegistry,
+    source_registry: WorkspaceRegistry,
+) -> ChannelFacts:
+    group_id = group_registry.group_for_channel(workspace_id, ref) if ref.kind == "source" else None
+    group = group_registry.get(workspace_id, group_id) if group_id is not None else None
+    side, provider_type = _declared_side(workspace_id, ref, source_registry)
+    return ChannelFacts(
+        ref=ref, quantity=quantity, group_id=group.id if group else None, group_kind=group.kind if group else None,
+        declared_side=side, provider_type=provider_type,
+    )
+
+
 def _resolve_side(
     workspace_id: str, refs: tuple[ChannelRef, ...], source_registry: WorkspaceRegistry,
 ) -> tuple[str, str]:
     sides: set[str] = set()
     for ref in refs:
-        side = "unknown"
-        if ref.kind == "source":
-            active = source_registry.get(workspace_id, ref.source_id)
-            if active is not None:
-                channel = next((c for c in active.metadata.analog_channels if c.name == ref.channel_name), None)
-                if channel is not None:
-                    side = channel.measurement_side
-        sides.add(side if side in ("primary", "secondary") else "unknown")
+        sides.add(_declared_side(workspace_id, ref, source_registry)[0])
     if sides == {"primary"}:
         return "primary", SIDE_DECLARED
     if sides == {"secondary"}:
@@ -134,15 +172,17 @@ def resolve_transformer_context(
     side, side_status = _resolve_side(workspace_id, refs, source_registry)
     kind = KIND_VOLTAGE if quantity == QUANTITY_VOLTAGE else KIND_CURRENT
 
-    def blocked(status: str, reason: str, group_ids: tuple[str, ...] = (), authority: str = "not_configured"):
+    def blocked(status: str, reason: str, group_ids: tuple[str, ...] = (), authority: str = "not_configured",
+                ignored_nominal_kv: float | None = None):
         return TransformerContext(
             quantity=quantity, ratio_status=status, group_ids=group_ids, authority=authority,
-            reason=reason, side=side, side_status=side_status,
+            reason=reason, side=side, side_status=side_status, ignored_nominal_kv=ignored_nominal_kv,
         )
 
     group_ids: list[str] = []
     pairs: list[tuple[float, float]] = []
     authority = "not_configured"
+    note: str | None = None
     for ref in refs:
         label = ref.channel_name if ref.kind == "source" else f"calculated:{ref.calculated_channel_id}"
         group_id = group_registry.group_for_channel(workspace_id, ref) if ref.kind == "source" else None
@@ -153,13 +193,19 @@ def resolve_transformer_context(
             config = voltage_config_registry.get(workspace_id, group.id)
             primary, secondary = (config.vt_primary_v, config.vt_secondary_v) if config else (None, None)
             authority = config.vt_authority if config else "not_configured"
+            note = (config.vt_provenance_note if config else None) or note
         else:
             config = current_config_registry.get(workspace_id, group.id)
             primary, secondary = (config.ct_primary_a, config.ct_secondary_a) if config else (None, None)
             authority = config.ct_authority if config else "not_configured"
+            note = (config.ct_provenance_note if config else None) or note
         group_ids.append(group.id)
         if config is None or authority == "not_configured":
-            return blocked(RATIO_NOT_CONFIGURED, f"group {group.id} has no {quantity} transformer ratio", tuple(group_ids))
+            nominal = getattr(config, "nominal_voltage_ll_kv", None) if quantity == QUANTITY_VOLTAGE else None
+            nominal = float(nominal) if isinstance(nominal, (int, float)) and not isinstance(nominal, bool) \
+                and math.isfinite(nominal) and nominal > 0 else None
+            return blocked(RATIO_NOT_CONFIGURED, f"group {group.id} has no {quantity} transformer ratio",
+                           tuple(group_ids), ignored_nominal_kv=nominal)
         if authority not in CONSUMABLE_AUTHORITIES:
             return blocked(RATIO_UNTRUSTED_AUTHORITY, f"group {group.id} ratio authority {authority!r} is not consumable",
                            tuple(group_ids), authority)
@@ -174,6 +220,7 @@ def resolve_transformer_context(
     return TransformerContext(
         quantity=quantity, ratio_status=RATIO_CONFIGURED, group_ids=tuple(dict.fromkeys(group_ids)),
         primary=first[0], secondary=first[1], authority=authority, side=side, side_status=side_status,
+        provenance_note=note,
     )
 
 
