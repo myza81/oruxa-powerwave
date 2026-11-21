@@ -146,7 +146,14 @@ details in §3 below.
 
 ## 4. Test results
 
-**Targeted regression suite (Steps B, C, E):**
+**Step C regression fix (commit `1c92716`):**
+Full backend suite run discovered that `wwSyncOffsetToMsDisplay` and
+`wwSyncMsToOffsetSeconds` were accidentally removed in Step C: they were
+defined inside the MG modal section even though an inline comment marked
+them as shared utilities. Restored immediately before the Event Reconstruction
+formatting section where they are called.
+
+**Targeted regression suite (Steps B, C, E + fix):**
 
 | File | Tests | Result |
 |------|-------|--------|
@@ -157,10 +164,17 @@ details in §3 below.
 | test_frontend_per_unit_settings.py | 29 | 29 pass |
 | test_frontend_per_unit_source_default_voltage_reference.py | 36 | 36 pass |
 | test_frontend_per_unit_source_default_voltage_traceability.py | 39 | 39 pass |
-| **Total** | **186** | **186 pass** |
+| test_frontend_synchronization.py | (subset) | pass |
+| test_frontend_time_group_sync.py | (subset) | pass |
+| **Total (9 files)** | **204** | **204 pass** |
 
-Full backend suite: running at time of report (background). The 7-file targeted
-run is authoritative for all surfaces touched by this work.
+**Pre-existing failures in full suite (not caused by this work):**
+- `test_frontend_time_group_toolbar.py::TestGlobalDuplicatesRemoved::test_deferred_global_controls_are_still_present_and_untouched`:
+  checks for `id="recordingsUploadBtn"` which was absent before Step B.
+- `test_per_unit_atomic_updates.py::test_voltage_valid_save_and_omitted_fields[body0/body1]`:
+  backend numerical test expecting waveform values in PU form; unrelated to
+  frontend changes; test file unchanged since before Step B; likely related to
+  the BEN wide-scaling investigation (`BEN_WIDE_SCALING_ROOT_CAUSE_2026-11-16.md`).
 
 Browser tests: not run as part of Steps B–E (no frontend logic was changed,
 only markup/function removal and navigation wiring). Owner UAT required.
