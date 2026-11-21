@@ -18341,6 +18341,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return null;
         }
 
+        // ---- Shared ms <-> seconds utilities ----
+        // Event Reconstruction's correction feature (wwErFormatCorrection /
+        // wwErSetCorrection) uses these for millisecond display/edit.
+        // They originate from the Synchronise Sources UI (now removed) but
+        // are genuinely shared utility functions, not modal-only.
+
+        function wwSyncOffsetToMsDisplay(offsetSeconds) {
+            return (offsetSeconds * 1000).toFixed(3);
+        }
+
+        function wwSyncMsToOffsetSeconds(ms) {
+            return ms / 1000;
+        }
+
         // ---- Formatting ----
 
         function wwErFormatCorrection(correctionS) {
