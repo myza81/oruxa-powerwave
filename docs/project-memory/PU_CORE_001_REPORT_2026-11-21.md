@@ -313,7 +313,7 @@ Practically: in a workspace where all V/I channels are assigned to MeasurementGr
 
 The **calculated-result-owned manual-base model** (live API: `PUT /api/v1/workspaces/{workspace_id}/calculated-channels/{id}/per-unit-config`, called from the frontend's "PU configuration…" menu item on calculated Current channels) is the intended post-SD path for cross-group calculated Current channels.
 
-Note: `set_manual_assignment_for_calculated_channel()` in `PerUnitRegistry` (H2) is dead code — it was a DEC-049-era Voltage assignment path with no live API endpoint, superseded by the MG-based DEC-050 approach.
+Note (H2, corrected): `set_manual_assignment_for_calculated_channel()` in `PerUnitRegistry` is legacy compatibility functionality with no identified production or API caller — not simply dead code. Tests deliberately exercise it and the associated `legacy_manual` branch in `calculated_current_per_unit.py`. Owner decision (Option A): retain both unchanged and defer to Phase C Source Default retirement.
 
 ### 6. Numerical outputs that would change if SD were retired
 

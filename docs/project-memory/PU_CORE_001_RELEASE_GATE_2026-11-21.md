@@ -160,7 +160,7 @@ The group registries are optional parameters (default `None`); omitting any sile
 
 No production path omits the registries. Existing HTTP tests (`test_group_aware_per_unit_endpoints.py::TestDec051PrecedenceAcrossMigratedEndpoints`) prove, across all four endpoints, that a grouped-but-unresolved channel stays `base_required` even when a Source Default would convert it. What no test pinned was the structural risk of a future call site omitting the optional arguments, so `tests/test_pu_core_001_dispatch_registry_guard.py` was added: an AST guard that fails if any production call to the guarded functions drops one of the four keywords (with a self-test proving it detects an omission).
 
-The only remaining production Source Default read for a *calculated* result is `calculated_current_per_unit.py:167` (the `legacy_manual` branch). It is reachable only for state written by `set_manual_assignment_for_calculated_channel()`, which has no callers (H2 dead code), so it is unreachable in practice.
+The only remaining production Source Default read for a *calculated* result is `calculated_current_per_unit.py:167` (the `legacy_manual` branch). It is reachable only for state written by `set_manual_assignment_for_calculated_channel()` (H2). That method has no production or API caller, so the branch is unreachable from production, but it is legacy compatibility functionality, not dead code: tests deliberately exercise it (`test_per_unit_registry.py`, `test_current_effective_base_graphs.py`, `test_per_unit_reference_safety.py`), including a reference-side safety test and a subnormal-base test that must be preserved.
 
 ---
 
@@ -183,7 +183,7 @@ Impact: Affects only `reference_compatibility` metadata and `base_reference_side
 | Item | Status | Decision needed |
 |------|--------|-----------------|
 | H1 — 7 obsolete PU tests | Done (corrected, passing, coverage preserved) | None |
-| H2 — Dead code `set_manual_assignment_for_calculated_channel()` | Deferred per owner | None |
+| H2 — Legacy compatibility `set_manual_assignment_for_calculated_channel()` + `legacy_manual` branch (no identified production caller) | Owner Option A: retained unchanged, deferred to Phase C Source Default retirement; safety/subnormal tests preserved | None |
 | H3 — Ephemeral Source Default | No persistence, per owner | None |
 | H4 — RD-0B conflict gate | Preserved unchanged | None |
 | 7 stale frontend tests (non-PU, baseline) | Not edited (Codex frontend overlap) | Who repairs them, and when |
