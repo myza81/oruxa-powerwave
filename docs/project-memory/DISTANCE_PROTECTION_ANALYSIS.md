@@ -579,7 +579,7 @@ DistanceAnalysisResultOut / ManualDistanceResultOut
 │   reference_frequency_hz, window_seconds
 ├── (Manual only) loop_label
 ├── recording_basis, impedance_basis, vt_primary/secondary, ct_primary/secondary
-├── algorithm_version          "distance_protection_v1" | "distance_protection_manual_v1"
+├── algorithm_version          "distance_protection_v2" | "distance_protection_manual_v1"
 ├── (Recording only) v1_channel_ref / v2_channel_ref / i1_channel_ref / i2_channel_ref  (nullable)
 ├── voltage_unit, current_unit
 ├── resistance_ohm / reactance_ohm / magnitude_ohm / angle_deg   (nullable)
@@ -744,3 +744,7 @@ carrying its own direction; the four manual slots below are only the form's *sta
   for the Va-Vb loop subtraction.
 - [DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)
   — the approval record.
+
+## D5A-UNIT-001 correction (recorded mode)
+
+Recorded loop impedance is now computed from voltage in volts and current in amperes (shared unit layer), so zone comparisons use physically correct ohms regardless of channel units (V/kV, A/kA). Results carry `algorithm_version` `distance_protection_v2`; historical recorded results for mixed-scale recordings (e.g. kV voltage with A current) differed and are no longer valid. Zone-geometry engine identity is unchanged (`ZONE_GEOMETRY_ENGINE_VERSION`). See [D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md](D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md).

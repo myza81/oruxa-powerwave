@@ -38,7 +38,7 @@ Each consumed quantity is converted **directly to the output side**, then Z is f
 
 ## 4. Independent test-oracle results
 
-`tests/test_d5a2b1_independent_side_conversion.py` — **84 tests**, expected values hand-derived (VT 110000:110, CT 1000:5, 66 kV / 400 A, Z = 165 Ω primary / 33 Ω secondary at +30°):
+`tests/test_d5a2b1_independent_side_conversion.py` — **70 tests** (84 when this slice was delivered; the 14 legacy-unit tests moved to `test_d5a_unit001_recorded_unit_normalisation.py` when D5A-UNIT-001 was corrected), expected values hand-derived (VT 110000:110, CT 1000:5, 66 kV / 400 A, Z = 165 Ω primary / 33 Ω secondary at +30°):
 
 - All 8 voltage-side × current-side × output-side combinations through `/impedance`, `/impedance-locus`, `/distance-protection` (loops AB, BC, CA) and `/distance-protection-locus`, including exactly which ratios are applied.
 - Conversion in both directions, same-side identity, no fabricated value for an unusable ratio, kV normalisation, no double scaling, floor semantics.
@@ -49,7 +49,7 @@ Each consumed quantity is converted **directly to the output side**, then Z is f
 
 - All pre-existing protection, engineering-context and phasor tests pass unchanged (see commit report for counts).
 - Legacy calls return hand-derived values and equal the strict result for same-side inputs (rel 1e-9/1e-12); `side_conversion` is `null`; missing `recording_basis` still yields the identical `422` shape (compared against a missing `impedance_basis`).
-- **Classified defect D5A-UNIT-001 (not changed, pinned):** the legacy path does not normalise units, so mixed-scale pairs are wrong by 10^±3 (kV/A → 0.165 Ω, V/kA → 165 000 Ω for a true 165 Ω), for Impedance and Distance alike, and a Distance zone can report the wrong state. Manual and strict modes are correct. Full impact assessment and recommended correction: `D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md`. The legacy mixed-side error (33 000 / 6 600 Ω vs 165 / 33 Ω) is also pinned.
+- **Defect D5A-UNIT-001 — since CORRECTED (commit `303d307`):** the legacy path did not normalise units, so mixed-scale pairs were wrong by 10^±3 (kV/A → 0.165 Ω, V/kA → 165 000 Ω for a true 165 Ω). The legacy recorded paths now normalise to volts and amperes; see `D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md`. The legacy mixed-side error (33 000 / 6 600 Ω vs 165 / 33 Ω) remains pinned: it is a different limitation that only strict mode resolves.
 
 ## 6. Changes per protection module
 
@@ -66,7 +66,7 @@ New: `domain/side_conversion.py`, `services/independent_side_service.py`, `schem
 
 - Strict mode requires **both** sides (both quantities are consumed).
 - Strict ratios come only from Recording Details; a conflicting complete request ratio **blocks** rather than being silently ignored or preferred.
-- Strict mode normalises units; legacy does not (see §5).
+- Strict and (since D5A-UNIT-001) legacy modes both normalise units.
 - An unresolved channel in strict mode reports the compute path's natural status, with `side_conversion` null.
 
 ## 7. Remaining measurement-side authority / data-model questions

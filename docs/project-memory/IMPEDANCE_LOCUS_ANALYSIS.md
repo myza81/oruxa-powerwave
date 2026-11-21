@@ -582,3 +582,7 @@ its THIRD real implementation:
   the separate, fifth analyzer that reuses this feature's own
   `compute_impedance_point()`/`convert_impedance_basis()`/R-X-plot
   coordinate transform exactly as anticipated above.
+
+## D5A-UNIT-001 correction (recorded mode)
+
+Recorded `Z = V/I` is now computed from voltage in volts and current in amperes (shared unit layer), so kV/A and V/kA recordings give the same ohms as V/A and kV/kA. Previously raw channel magnitudes were divided, which was wrong by 10^±3 for mixed scales. Recorded results carry `algorithm_version` `impedance_locus_v2`; historical recorded results for mixed-scale recordings differed and are no longer valid. Unsupported units return `needs_configuration` (`unsupported_voltage_unit` / `unsupported_current_unit`). See [D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md](D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md).
