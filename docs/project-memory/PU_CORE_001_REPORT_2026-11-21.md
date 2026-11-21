@@ -264,6 +264,99 @@ There are **no numerical or architectural correctness defects** to correct. All 
 
 ---
 
+---
+
+## Addendum: Backend SSOT — DEC-049 Writer and Fallback Inventory
+
+*Added after owner review of initial report.*
+
+### 1. Is `PUT /per-unit/sources/{source_id}` reachable by active production clients?
+
+**API endpoint:** Exists and is functional (`app/api/v1/per_unit.py`, line 116).
+
+**Frontend:** Zero calls in `frontend/index.html`. Grep for `/per-unit/sources` returns no matches. The Source Default modal was removed in PU-UI-001 Step B — that was the only frontend UI that called this endpoint.
+
+**Conclusion: Not reachable from any active production UI client. Reachable only via direct API calls (curl, test clients, automated tooling).**
+
+### 2. How can Source Default be populated after frontend modal retirement?
+
+Only via direct `PUT /api/v1/workspaces/{workspace_id}/per-unit/sources/{source_id}`. No UI mechanism exists. For automated or test workflows the endpoint is still functional.
+
+### 3. Recording-channel scenarios that still use DEC-049 fallback
+
+Per DEC-051: **grouped channels never fall back to SD.** Only ungrouped channels use SD.
+
+| Channel state | PU authority |
+|---------------|-------------|
+| In a confirmed/suggested MG with engineer-approved base | DEC-050 (never SD) |
+| In a MG with no base configured | `base_required` (never SD) |
+| **Not in any MG, SD profile set** | **DEC-049 SD fallback** |
+| Not in any MG, no SD profile | `base_required` |
+
+Practically: in a workspace where all V/I channels are assigned to MeasurementGroups, DEC-049 is a dead path for recording channels.
+
+### 4. Calculated-channel operations that still depend on DEC-049
+
+| Operation | Current DEC-049 dependency |
+|-----------|---------------------------|
+| Unary ops (reverse_polarity, rms, abs, multiply_constant) on ungrouped source channel | Inherits ungrouped source channel's SD base |
+| `OP_LINE_TO_LINE_VOLTAGE` | Inherits input group's base directly — **no SD dependency** |
+| Cross-group add/subtract Current | Falls back to SD or `base_required`; manual-base API (`PUT /{id}/per-unit-config`) is the SD-independent alternative |
+| Cross-group add/subtract Voltage (generic) | Returns `base_required` — **already unavailable without SD** |
+
+### 5. Can their base be represented without DEC-049?
+
+| Scenario | Alternative | Available? |
+|----------|-------------|-----------|
+| Ungrouped recording V/I channel | Assign to a MeasurementGroup | YES (UI-supported) |
+| Calculated Current (cross-group) | `PUT /calculated-channels/{id}/per-unit-config` manual base | YES — **live frontend feature** |
+| Calculated Voltage (`OP_LINE_TO_LINE_VOLTAGE`) | Already uses input group's base | YES (no change needed) |
+| Calculated Voltage (generic cross-group sub/add) | `base_required` today; retirement makes no change | N/A |
+| Unary ops on ungrouped channel | Assign the source channel to an MG | YES |
+
+The **calculated-result-owned manual-base model** (live API: `PUT /api/v1/workspaces/{workspace_id}/calculated-channels/{id}/per-unit-config`, called from the frontend's "PU configuration…" menu item on calculated Current channels) is the intended post-SD path for cross-group calculated Current channels.
+
+Note: `set_manual_assignment_for_calculated_channel()` in `PerUnitRegistry` (H2) is dead code — it was a DEC-049-era Voltage assignment path with no live API endpoint, superseded by the MG-based DEC-050 approach.
+
+### 6. Numerical outputs that would change if SD were retired
+
+Retirement affects only channels currently dependent on a configured SD profile:
+
+| Channel | Current state with SD | After SD retirement |
+|---------|----------------------|---------------------|
+| Ungrouped V/I recording channel with SD profile set | `configured` — PU active | `base_required` — PU unavailable; waveform reverts to engineering units |
+| Cross-group calculated Current channel whose input's SD provided the base | `configured` via SD inheritance | `base_required` unless manual-base API used |
+| All grouped recording channels | Unaffected (DEC-051) | No change |
+| Calculated Voltage (`OP_LINE_TO_LINE_VOLTAGE`) | Already uses group base | No change |
+| Calculated Voltage (generic cross-group) | Already `base_required` | No change |
+
+### 7. Proposed smallest safe migration
+
+**Stop for owner review before implementing Phase C.**
+
+**Phase A — Operational (no code change):** Ensure all relevant V/I recording channels are assigned to MeasurementGroups in active workspaces. The natural PU-UI-001 workflow already encourages this (auto-detect at import, RD group management panel). After this, the DEC-049 SD fallback for recording channels is a dead path.
+
+**Phase B — Documentation:** For cross-group calculated Current channels, document that `PUT /calculated-channels/{id}/per-unit-config` (the "PU configuration…" menu item) is the intended base-configuration path. This replaces the SD-inheritance approach.
+
+**Phase C — Backend (requires owner approval):** When owner confirms no active use of `PUT /per-unit/sources/{source_id}`:
+- Deprecate then remove the SD write endpoint
+- Remove the `PerUnitRegistry.set()` recording-channel write path
+- Remove `set_manual_assignment_for_calculated_channel()` dead code (H2)
+- The DEC-051 fallback branch in `resolve_per_unit()` becomes dead code and can be removed
+
+### 8. Remaining SSOT exceptions
+
+After the F3 fix and with Phase A complete, the remaining DEC-049 coexistence points are:
+
+| Exception | Description | Status |
+|-----------|-------------|--------|
+| SD endpoint still active | `PUT /per-unit/sources/{source_id}` has no UI client but is callable | Acceptable pending Phase C |
+| Ungrouped-channel SD fallback | Recording channels without MG membership use SD | Expected; resolved by Phase A |
+| Cross-group Voltage fallback | Generic add/subtract Voltage returns `base_required` both with and without SD | No action; behavior unchanged |
+| Dead code: `set_manual_assignment_for_calculated_channel()` | No API endpoint; superseded by MG model | Defer removal (H2) |
+
+---
+
 ## Appendix: Mathematical Verification Constants
 
 ```python

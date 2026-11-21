@@ -191,7 +191,7 @@ class TestUnitModeSwitchingUnchanged:
         wiring = _function_body(
             source,
             'document.getElementById("wwUnitPerUnitBtn").addEventListener',
-            '// Phase 5C: "Manage Per-Unit Bases" modal wiring',
+            '// Waveform toolbar refinement (owner ticket)',
         )
         assert 'await wwApplyUnitMode("per_unit");' in wiring
         assert "wwOpenChannelPerUnitModal" not in wiring

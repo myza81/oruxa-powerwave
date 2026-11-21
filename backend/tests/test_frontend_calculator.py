@@ -36,7 +36,7 @@ class TestCalculatorTopLevelNav:
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
         labels = [
-            "Recordings",
+            "Recording Details",  # was "Recordings" (renamed in PU-UI-001)
             "Waveform",
             "Table",
             "Calculated Channels",
