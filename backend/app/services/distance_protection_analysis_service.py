@@ -41,11 +41,6 @@ from app.domain.distance_protection import (
     evaluate_manual_distance,
     evaluate_zones,
 )
-from app.domain.engineering_units import (
-    ENGINEERING_QUANTITY_CURRENT,
-    ENGINEERING_QUANTITY_VOLTAGE,
-    convert_value_to_canonical,
-)
 from app.domain.impedance import MIN_CURRENT_A, convert_impedance_basis, impedance_ratio_valid
 from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
 from app.domain.side_conversion import (
@@ -54,6 +49,8 @@ from app.domain.side_conversion import (
     REASON_UNSUPPORTED_VOLTAGE_UNIT,
     SideBlock,
     SidePlan,
+    normalise_to_amperes,
+    normalise_to_volts,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -170,10 +167,10 @@ def _strict_distance_result(
     if (not plan.validated or set(plan.voltage_refs) != {v1_role.channel_ref, v2_role.channel_ref}
             or set(plan.current_refs) != {i1_role.channel_ref, i2_role.channel_ref}):
         return refuse(REASON_CHANNEL_MISMATCH, "The validated channels do not match the channels this analysis consumed.")
-    volts = [convert_value_to_canonical(r.magnitude_rms, ENGINEERING_QUANTITY_VOLTAGE, r.unit) for r in (v1_role, v2_role)]
+    volts = [normalise_to_volts(r.magnitude_rms, r.unit) for r in (v1_role, v2_role)]
     if any(v is None for v in volts):
         return refuse(REASON_UNSUPPORTED_VOLTAGE_UNIT, "A voltage unit cannot be normalized to volts.", "voltage")
-    amps = [convert_value_to_canonical(r.magnitude_rms, ENGINEERING_QUANTITY_CURRENT, r.unit) for r in (i1_role, i2_role)]
+    amps = [normalise_to_amperes(r.magnitude_rms, r.unit) for r in (i1_role, i2_role)]
     if any(a is None for a in amps):
         return refuse(REASON_UNSUPPORTED_CURRENT_UNIT, "A current unit cannot be normalized to amperes.", "current")
 
@@ -282,9 +279,24 @@ def _distance_analysis_from_diagram(
             message="Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
         )
 
+    # D5A-UNIT-001: the loop impedance is formed only from consistent SI quantities. Normalise every leg to volts /
+    # amperes through the shared unit layer (the 1 mA floor is then judged in amperes) and refuse an unrecognised unit
+    # instead of dividing raw magnitudes and labelling the result ohms.
+    volts = [normalise_to_volts(r.magnitude_rms, r.unit) for r in (v1_role, v2_role)]
+    if any(v is None for v in volts):
+        return _short_circuit(
+            DISTANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_VOLTAGE_UNIT,
+            message="A voltage unit cannot be normalized to volts; loop impedance in ohms is not available.",
+        )
+    amps = [normalise_to_amperes(r.magnitude_rms, r.unit) for r in (i1_role, i2_role)]
+    if any(a is None for a in amps):
+        return _short_circuit(
+            DISTANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_CURRENT_UNIT,
+            message="A current unit cannot be normalized to amperes; loop impedance in ohms is not available.",
+        )
     point = compute_loop_impedance(
-        v1_role.magnitude_rms, v1_role.angle_deg_absolute, v2_role.magnitude_rms, v2_role.angle_deg_absolute,
-        i1_role.magnitude_rms, i1_role.angle_deg_absolute, i2_role.magnitude_rms, i2_role.angle_deg_absolute,
+        volts[0], v1_role.angle_deg_absolute, volts[1], v2_role.angle_deg_absolute,
+        amps[0], i1_role.angle_deg_absolute, amps[1], i2_role.angle_deg_absolute,
     )
     if point is None:
         return DistanceAnalysisResult(

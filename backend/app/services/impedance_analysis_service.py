@@ -39,11 +39,6 @@ from app.domain.impedance import (
     evaluate_manual_impedance,
     impedance_ratio_valid,
 )
-from app.domain.engineering_units import (
-    ENGINEERING_QUANTITY_CURRENT,
-    ENGINEERING_QUANTITY_VOLTAGE,
-    convert_value_to_canonical,
-)
 from app.domain.impedance import MIN_CURRENT_A
 from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
 from app.domain.side_conversion import (
@@ -52,6 +47,8 @@ from app.domain.side_conversion import (
     REASON_UNSUPPORTED_VOLTAGE_UNIT,
     SideBlock,
     SidePlan,
+    normalise_to_amperes,
+    normalise_to_volts,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -166,10 +163,10 @@ def _strict_impedance_result(
     if (not plan.validated or set(plan.voltage_refs) != {voltage_role.channel_ref}
             or set(plan.current_refs) != {current_role.channel_ref}):
         return refuse(REASON_CHANNEL_MISMATCH, "The validated channels do not match the channels this analysis consumed.")
-    voltage = convert_value_to_canonical(voltage_role.magnitude_rms, ENGINEERING_QUANTITY_VOLTAGE, voltage_role.unit)
+    voltage = normalise_to_volts(voltage_role.magnitude_rms, voltage_role.unit)
     if voltage is None:
         return refuse(REASON_UNSUPPORTED_VOLTAGE_UNIT, f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts.", "voltage")
-    current = convert_value_to_canonical(current_role.magnitude_rms, ENGINEERING_QUANTITY_CURRENT, current_role.unit)
+    current = normalise_to_amperes(current_role.magnitude_rms, current_role.unit)
     if current is None:
         return refuse(REASON_UNSUPPORTED_CURRENT_UNIT, f"Current unit {current_role.unit!r} cannot be normalized to amperes.", "current")
 
@@ -258,8 +255,23 @@ def _impedance_analysis_from_diagram(
             message="Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
         )
 
+    # D5A-UNIT-001: Z = V / I only in consistent SI quantities. The recorded magnitudes are in the channels' own
+    # units (V/kV, A/kA, ...), so normalise to volts and amperes through the shared unit layer first. The low-current
+    # floor (1 mA) is therefore judged in amperes. An unrecognised unit is refused, never divided raw and labelled ohms.
+    voltage = normalise_to_volts(voltage_role.magnitude_rms, voltage_role.unit)
+    if voltage is None:
+        return _short_circuit(
+            IMPEDANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_VOLTAGE_UNIT,
+            message=f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts; impedance in ohms is not available.",
+        )
+    current = normalise_to_amperes(current_role.magnitude_rms, current_role.unit)
+    if current is None:
+        return _short_circuit(
+            IMPEDANCE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_CURRENT_UNIT,
+            message=f"Current unit {current_role.unit!r} cannot be normalized to amperes; impedance in ohms is not available.",
+        )
     point = compute_impedance_point(
-        voltage_role.magnitude_rms, voltage_role.angle_deg_absolute, current_role.magnitude_rms, current_role.angle_deg_absolute,
+        voltage, voltage_role.angle_deg_absolute, current, current_role.angle_deg_absolute,
     )
     if point is None:
         return ImpedanceAnalysisResult(

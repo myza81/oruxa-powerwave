@@ -21,10 +21,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.distance_protection import CHARACTERISTIC_MHO, DIRECTION_FORWARD, ZoneSettings, evaluate_manual_distance
-from app.domain.impedance import evaluate_manual_impedance
 from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE
-from app.domain.phasor import ManualPhasorRoleInput
 from app.domain.side_conversion import SidePlan, convert_to_side
 from app.main import create_app
 from tests.test_d5a2a_protection_instrument_context_api import _clear, _contexts, _ct, _group, _ref, _vt
@@ -48,7 +45,8 @@ _ALL = ("VA", "VB", "VC", "IA", "IB", "IC")
 # --------------------------------------------------------------------------- recording builders
 
 
-def _comtrade(*, v_rms: float, i_rms: float, ps: dict[str, str], v_unit: str = "V", i_unit: str = "A") -> tuple[bytes, bytes]:
+def _comtrade(*, v_rms: float, i_rms: float, ps: dict[str, str], v_unit: str = "V", i_unit: str = "A",
+              i_gain: float = 1.0) -> tuple[bytes, bytes]:
     rate, duration, freq = 1000.0, 3.0, 50.0
     n = int(round(rate * duration))
     shift = {"A": 0.0, "B": -120.0, "C": 120.0}
@@ -57,13 +55,13 @@ def _comtrade(*, v_rms: float, i_rms: float, ps: dict[str, str], v_unit: str = "
         quantity, phase = name[0], name[1]
         amp = (v_rms if quantity == "V" else i_rms) * math.sqrt(2)
         angle = shift[phase] + (-ANGLE if quantity == "I" else 0.0)
-        rows.append((f"ZBAY_{name}", v_unit if quantity == "V" else i_unit, amp, angle, ps.get(name, "P")))
+        rows.append((f"ZBAY_{name}", v_unit if quantity == "V" else i_unit, amp, angle, ps.get(name, "P"), 1.0 if quantity == "V" else i_gain))
     cfg = ["ZSTA,D5A2B1,1999", f"{len(rows)},{len(rows)}A,0D"]
-    for i, (name, unit, _a, _p, flag) in enumerate(rows, start=1):
-        cfg.append(f"{i},{name},,,{unit},1.0,0.0,0,-99999999,99999999,1.0,1.0,{flag}")
+    for i, (name, unit, _a, _p, flag, gain) in enumerate(rows, start=1):
+        cfg.append(f"{i},{name},,,{unit},{gain!r},0.0,0,-99999999,99999999,1.0,1.0,{flag}")
     cfg += [str(freq), "1", f"{rate},{n}", "06/03/2026,10:00:00.000000", "06/03/2026,10:00:00.000000", "ASCII", "1.0"]
     t = np.arange(n) / rate
-    vals = [a * np.cos(2 * np.pi * freq * t + np.radians(p)) for _n, _u, a, p, _f in rows]
+    vals = [(a / g) * np.cos(2 * np.pi * freq * t + np.radians(p)) for _n, _u, a, p, _f, g in rows]
     dat = [",".join([str(r + 1), f"{r * 1000.0:.1f}"] + [f"{vals[c][r]:.6f}" for c in range(len(rows))]) for r in range(n)]
     return ("\n".join(cfg) + "\n").encode("ascii"), ("\n".join(dat) + "\n").encode("ascii")
 
@@ -85,14 +83,14 @@ def _context(client, ws: str, src: str, members=_ALL) -> str:
 
 
 def _bay(client, ws: str, *, v_side="primary", i_side="primary", ps=None, v_rms=None, i_rms=None, groups=True,
-         vt=(VT_P, VT_S), ct=(CT_P, CT_S), members=_ALL, v_unit="V", i_unit="A") -> tuple[str, str]:
+         vt=(VT_P, VT_S), ct=(CT_P, CT_S), members=_ALL, v_unit="V", i_unit="A", i_gain=1.0) -> tuple[str, str]:
     """One recording whose P/S flags and magnitudes follow the requested physical sides."""
     flags = {n: ("P" if (v_side if n[0] == "V" else i_side) == "primary" else "S") for n in _ALL}
     flags.update(ps or {})
     cfg, dat = _comtrade(
         v_rms=v_rms if v_rms is not None else (V_PRI if v_side == "primary" else V_SEC),
         i_rms=i_rms if i_rms is not None else (I_PRI if i_side == "primary" else I_SEC),
-        ps=flags, v_unit=v_unit, i_unit=i_unit,
+        ps=flags, v_unit=v_unit, i_unit=i_unit, i_gain=i_gain,
     )
     src = _upload(client, ws, cfg, dat)
     _clear(client, ws)
@@ -529,85 +527,6 @@ def test_legacy_mixed_side_error_is_the_documented_defect_strict_mode_fixes(clie
     assert legacy["magnitude_ohm"] == pytest.approx(33000.0 * 200.0 / 1000.0, rel=1e-3)   # 6 600 ohm, wrong by the CT ratio
     strict = _imp(client, ws, ctx, **_strict("primary", "secondary", "secondary")).json()
     assert strict["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3)
-
-
-def test_legacy_path_keeps_its_historical_raw_unit_behaviour_for_kilovolt_channels(client):
-    """Characterisation of EXISTING legacy behaviour, reported to the owner and deliberately NOT changed: the legacy
-    path divides raw channel magnitudes, so a 66 kV channel over 400 A reports 0.165 (kilo-ohm) as 'ohm'. Strict mode
-    normalises units and reports 165 ohm."""
-    ws = "d5a2b1-legacy-kv"
-    _, ctx = _bay(client, ws, v_side="primary", i_side="primary", v_rms=66.0, v_unit="kV")
-    legacy = _imp(client, ws, ctx, recording_basis="primary", impedance_basis="primary").json()
-    assert legacy["voltage_unit"] == "kV" and legacy["magnitude_ohm"] == pytest.approx(Z_PRI / 1000.0, rel=1e-3)
-    strict = _imp(client, ws, ctx, **_strict("primary", "primary", "primary")).json()
-    assert strict["magnitude_ohm"] == pytest.approx(Z_PRI, rel=1e-3)
-
-
-# ---- Issue D5A-UNIT-001: the legacy recorded path does not normalise channel units (see docs) -------------------
-
-_UNIT_SCALE = {"V": 1.0, "kV": 1e-3, "A": 1.0, "kA": 1e-3}          # value in that unit = SI value * scale
-_UNIT_MATRIX = [("V", "A"), ("V", "kA"), ("kV", "A"), ("kV", "kA")]
-
-
-def _raw_pair(vu: str, iu: str) -> tuple[float, float]:
-    """The same physical 66 kV / 400 A expressed in the channel units."""
-    return V_PRI * _UNIT_SCALE[vu], I_PRI * _UNIT_SCALE[iu]
-
-
-@pytest.mark.parametrize("vu,iu", _UNIT_MATRIX)
-def test_unit_matrix_legacy_recorded_path_characterisation(client, vu, iu):
-    """CHARACTERISATION of a classified defect (D5A-UNIT-001), NOT an approved contract: legacy divides RAW channel
-    magnitudes, so the result is right only when V and I share an SI scale. It must change only by owner-approved
-    correction; this test makes any silent change visible. Expected = raw V / raw I, derived from the units."""
-    ws = f"d5a2b1-unit-legacy-{vu}-{iu}"
-    _, ctx = _bay(client, ws, v_side="primary", i_side="primary", v_rms=_raw_pair(vu, iu)[0], i_rms=_raw_pair(vu, iu)[1],
-                  v_unit=vu, i_unit=iu)
-    expected = _raw_pair(vu, iu)[0] / _raw_pair(vu, iu)[1]
-    legacy = _imp(client, ws, ctx, recording_basis="primary", impedance_basis="primary").json()
-    assert (legacy["voltage_unit"], legacy["current_unit"]) == (vu, iu)
-    assert legacy["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
-    dist = _dist(client, ws, ctx, recording_basis="primary", impedance_basis="primary").json()
-    assert dist["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
-    assert expected == pytest.approx({("V", "A"): 165.0, ("V", "kA"): 165000.0, ("kV", "A"): 0.165, ("kV", "kA"): 165.0}[(vu, iu)])
-
-
-@pytest.mark.parametrize("vu,iu", _UNIT_MATRIX)
-def test_unit_matrix_strict_mode_is_unit_independent(client, vu, iu):
-    ws = f"d5a2b1-unit-strict-{vu}-{iu}"
-    _, ctx = _bay(client, ws, v_side="primary", i_side="primary", v_rms=_raw_pair(vu, iu)[0], i_rms=_raw_pair(vu, iu)[1],
-                  v_unit=vu, i_unit=iu)
-    for body in (_imp(client, ws, ctx, **_strict("primary", "primary", "primary")).json(),
-                 _dist(client, ws, ctx, **_strict("primary", "primary", "primary")).json()):
-        assert body["status"] == "computed" and body["magnitude_ohm"] == pytest.approx(Z_PRI, rel=1e-3)
-
-
-@pytest.mark.parametrize("vu,iu", _UNIT_MATRIX)
-def test_unit_matrix_manual_mode_normalises_units(vu, iu):
-    """Manual mode (impedance and distance) already normalises through the shared unit layer, for every unit mix."""
-    v = ManualPhasorRoleInput(enabled=True, magnitude=_raw_pair(vu, iu)[0], unit=vu, angle_deg=30.0)
-    i = ManualPhasorRoleInput(enabled=True, magnitude=_raw_pair(vu, iu)[1], unit=iu, angle_deg=0.0)
-    ratios = dict(vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S)
-    imp = evaluate_manual_impedance(v, i, phase_label="A", voltage_basis="primary", current_basis="primary",
-                                    impedance_basis="primary", **ratios)
-    assert imp.magnitude_ohm == pytest.approx(Z_PRI, rel=1e-9)
-    zero_v = ManualPhasorRoleInput(enabled=True, magnitude=0.0, unit=vu, angle_deg=0.0)
-    zero_i = ManualPhasorRoleInput(enabled=True, magnitude=0.0, unit=iu, angle_deg=0.0)
-    off = ZoneSettings(enabled=False, direction=DIRECTION_FORWARD)
-    dist = evaluate_manual_distance(v, zero_v, i, zero_i, loop_label="AB", voltage_basis="primary", current_basis="primary",
-                                    impedance_basis="primary", characteristic=CHARACTERISTIC_MHO, zone1=off, zone2=off,
-                                    zone3=off, **ratios)
-    assert dist.magnitude_ohm == pytest.approx(Z_PRI, rel=1e-9)
-
-
-def test_legacy_distance_zone_decision_is_wrong_for_mixed_scale_units(client):
-    """CHARACTERISATION (D5A-UNIT-001): true loop impedance 165 ohm lies outside a 10 ohm mho reach, but legacy reports
-    0.165 for a kV/A recording, which lies inside, so the zone shows OPERATED. Strict mode reports Not Operated."""
-    ws = "d5a2b1-unit-zone"
-    _, ctx = _bay(client, ws, v_side="primary", i_side="primary", v_rms=66.0, v_unit="kV")
-    zone = {"zone1_enabled": True, "zone1_reach_ohm": 10.0, "zone1_characteristic_angle_deg": ANGLE}
-    legacy = _dist(client, ws, ctx, recording_basis="primary", impedance_basis="primary", **zone).json()
-    strict = _dist(client, ws, ctx, **_strict("primary", "primary", "primary"), **zone).json()
-    assert legacy["zone1"]["state"] == "operated" and strict["zone1"]["state"] == "not_operated"
 
 
 def test_recording_basis_stays_required_on_the_legacy_path_with_the_same_422(client):

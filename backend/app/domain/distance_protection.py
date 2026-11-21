@@ -109,7 +109,11 @@ from app.domain.engineering_units import ENGINEERING_QUANTITY_CURRENT, ENGINEERI
 
 #: Bump ONLY when the calculation/interpretation itself changes -- never
 #: for an unrelated refactor. Included unconditionally in every result.
-ALGORITHM_VERSION = "distance_protection_v1"
+ALGORITHM_VERSION = "distance_protection_v2"
+
+#: The zone-GEOMETRY engine identity (Mho/Quadrilateral outlines and Operated tests). The D5A-UNIT-001 correction changed
+#: how the recorded loop impedance is computed, not these geometries, so the relay-conformance goldens keep stamping v1.
+ZONE_GEOMETRY_ENGINE_VERSION = "distance_protection_v1"
 
 #: Bumped only if Manual Distance Protection's own composition changes --
 #: independent of `ALGORITHM_VERSION`, mirroring every other analyzer's

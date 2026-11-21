@@ -74,7 +74,7 @@ from app.domain.engineering_units import ENGINEERING_QUANTITY_CURRENT, ENGINEERI
 
 #: Bump ONLY when the calculation/interpretation itself changes -- never
 #: for an unrelated refactor. Included unconditionally in every result.
-ALGORITHM_VERSION = "impedance_locus_v1"
+ALGORITHM_VERSION = "impedance_locus_v2"
 
 #: See module docstring's own "Low-current guardrail" section for the
 #: full rationale -- a numerical-validity floor, never a relay pickup

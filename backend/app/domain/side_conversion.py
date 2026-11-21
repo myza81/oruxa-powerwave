@@ -18,6 +18,11 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.engineering_units import (
+    ENGINEERING_QUANTITY_CURRENT,
+    ENGINEERING_QUANTITY_VOLTAGE,
+    scale_to_canonical,
+)
 
 SIDE_PRIMARY = "primary"
 SIDE_SECONDARY = "secondary"
@@ -45,6 +50,21 @@ REASON_REQUEST_CT_CONFLICTS = "request_ct_conflicts_with_authority"
 REASON_UNSUPPORTED_VOLTAGE_UNIT = "unsupported_voltage_unit"
 REASON_UNSUPPORTED_CURRENT_UNIT = "unsupported_current_unit"
 REASON_CHANNEL_MISMATCH = "side_plan_channel_mismatch"
+
+
+def _normalise(magnitude: float, quantity: str, unit: str | None) -> float | None:
+    """Magnitude in the quantity's canonical calculation unit, or None when the UNIT cannot be normalised.
+    Decided by the shared unit layer only; a non-finite magnitude passes through for the caller's own guardrails."""
+    scale = scale_to_canonical(quantity, unit)
+    return None if scale is None else magnitude * scale
+
+
+def normalise_to_volts(magnitude: float, unit: str | None) -> float | None:
+    return _normalise(magnitude, ENGINEERING_QUANTITY_VOLTAGE, unit)
+
+
+def normalise_to_amperes(magnitude: float, unit: str | None) -> float | None:
+    return _normalise(magnitude, ENGINEERING_QUANTITY_CURRENT, unit)
 
 
 def ratio_valid(ratio: float | None) -> bool:

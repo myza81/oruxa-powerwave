@@ -51,7 +51,9 @@ full architecture.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
@@ -870,6 +872,28 @@ def get_overcurrent_analysis(
 # ---------------------------------------------------------------------------
 
 
+# --- D5A-2B1 / D5A-UNIT-001: OpenAPI wording for the recorded Impedance and Distance mode-selection parameters. ---
+_DOC_IMPEDANCE_BASIS = (
+    "Required in BOTH modes. The requested OUTPUT side of the impedance ('primary' or 'secondary'); independent of the "
+    "sides the samples were recorded on."
+)
+_DOC_RECORDING_BASIS = (
+    "LEGACY mode only. Required whenever neither voltage_side nor current_side is supplied (omitting it then returns the "
+    "historical 422). The single side ('primary'/'secondary') that BOTH the recorded voltage and current already represent. "
+    "In independent-side mode it is ignored and never used to infer a missing side."
+)
+_DOC_VOLTAGE_SIDE = (
+    "STRICT independent-side mode. Supplying voltage_side or current_side selects strict mode, which then requires BOTH. "
+    "An assertion ('primary'/'secondary') validated against the recording's per-channel P/S declarations: an undeclared, "
+    "mixed or contradicted side blocks with a reason_code, and strict mode never falls back to legacy. Never inferred from "
+    "recording_basis or from a CT/VT ratio; ratios come from Recording Details Measurement Groups."
+)
+_DOC_CURRENT_SIDE = (
+    "STRICT independent-side mode; see voltage_side. The side ('primary'/'secondary') the recorded current represents, "
+    "independent of the voltage side."
+)
+
+
 def _side_plan(
     request: Request, *, analysis: str, workspace_id: str, engineering_context_id: str, phase: str | None, loop: str | None,
     voltage_side: str | None, current_side: str | None, recording_basis: str | None, impedance_basis: str,
@@ -918,10 +942,10 @@ def get_impedance_analysis(
     request: Request,
     phase: str,
     analysis_time: float,
-    impedance_basis: str,
-    recording_basis: str | None = None,
-    voltage_side: str | None = None,
-    current_side: str | None = None,
+    impedance_basis: Annotated[str, Query(description=_DOC_IMPEDANCE_BASIS)],
+    recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
+    voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
+    current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -976,10 +1000,10 @@ def get_impedance_locus(
     start_time: float,
     end_time: float,
     point_count: int,
-    impedance_basis: str,
-    recording_basis: str | None = None,
-    voltage_side: str | None = None,
-    current_side: str | None = None,
+    impedance_basis: Annotated[str, Query(description=_DOC_IMPEDANCE_BASIS)],
+    recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
+    voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
+    current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -1303,10 +1327,10 @@ def get_distance_protection_analysis(
     loop: str,
     analysis_time: float,
     characteristic: str,
-    impedance_basis: str,
-    recording_basis: str | None = None,
-    voltage_side: str | None = None,
-    current_side: str | None = None,
+    impedance_basis: Annotated[str, Query(description=_DOC_IMPEDANCE_BASIS)],
+    recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
+    voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
+    current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -1384,10 +1408,10 @@ def get_distance_protection_locus(
     end_time: float,
     point_count: int,
     characteristic: str,
-    impedance_basis: str,
-    recording_basis: str | None = None,
-    voltage_side: str | None = None,
-    current_side: str | None = None,
+    impedance_basis: Annotated[str, Query(description=_DOC_IMPEDANCE_BASIS)],
+    recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
+    voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
+    current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
