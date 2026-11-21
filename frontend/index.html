@@ -52835,6 +52835,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             } else {
                 text = "CT is not configured for " + groupText + ". Set primary and secondary A in Recording Details.";
+                // A CT held by ANOTHER Current group of the same recording is a common cause: say so.
+                const sourceId = groups.target ? groups.target.sourceId : null;
+                const own = new Set((ctx.group_ids || []));
+                const other = (sourceId ? (ww.measurementGroups.get(sourceId) || []) : []).find((g) => g.kind === "current" && !own.has(g.id) &&
+                    g.current_config && g.current_config.ct_primary_a != null && g.current_config.ct_secondary_a != null);
+                if (other) {
+                    const channels = wwCtVtQuantityChannels(report, quantity).map((c) => c.channel.channel_name).filter(Boolean);
+                    text += " A CT of " + wwCtVtNumberText(other.current_config.ct_primary_a) + " A / " +
+                        wwCtVtNumberText(other.current_config.ct_secondary_a) + " A is configured on '" + other.display_name + "', but " +
+                        (channels.length ? channels.join(", ") : "this analysis's current channel") + " belongs to " + groupText + ".";
+                }
             }
             return { code, quantity, text, target: groups.target };
         }
