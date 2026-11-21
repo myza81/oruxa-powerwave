@@ -36362,7 +36362,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 html += '</div>'; // .ww-rd-field-grid
                 if (vtEffAuthority === 'auto_nominal') {
-                    html += '<div class="ww-rd-field-sub" style="color:var(--text-dim);margin-top:4px">Based on nominal voltage. Edit to save a manual value.</div>';
+                    html += '<div class="ww-rd-field-sub" style="color:var(--text-dim);margin-top:4px">Auto-derived from nominal voltage (110 V secondary default).</div>';
                 }
             }
             html += '</div>'; // .ww-rd-section
@@ -52717,10 +52717,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // `protection-instrument-context` API and shown read-only; there is
         // deliberately NO VT/CT editor here (the correction path is
         // wwNavigateToRdForGroup()). Only ratios the API marks
-        // `ratio_consumable` (authority manual / recording_metadata) are ever
-        // sent: a nominal-derived VT (`auto_nominal`, `ignored_nominal_kv`) is
-        // display-only and is never used as a conversion ratio, and a partial
-        // VT/CT set is never sent. Manual mode keeps its own inputs.
+        // `ratio_consumable` are ever sent, and never a partial VT/CT set. A VT
+        // Recording Details derives from the accepted nominal voltage
+        // (authority `auto_nominal`, nominal kV over a 110 V secondary) is valid
+        // configuration (owner decision 2026-11-21): it is shown like any other
+        // VT, labelled "Auto-derived", and needs no confirmation. Manual mode
+        // keeps its own inputs.
         //
         // Measurement side: the recorded analyses take ONE `recording_basis`
         // for voltage and current. Conversion is therefore refused when the
@@ -52760,7 +52762,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return wwCtVtNumberText(ctx.primary) + " A / " + wwCtVtNumberText(ctx.secondary) + " A";
         }
-        const WW_CTVT_AUTHORITY_LABELS = { manual: "Manual", recording_metadata: "Recording metadata" };
+        const WW_CTVT_AUTHORITY_LABELS = {
+            manual: "Manual", recording_metadata: "Recording metadata", auto_nominal: "Auto-derived", mixed: "Mixed sources",
+        };
 
         // The channels this analysis resolved for one quantity (V* roles are voltage), with the
         // Measurement Group each one belongs to.
@@ -52815,11 +52819,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 code = tag + "_CONFLICT";
                 text = "Phases use groups with different " + tag + " ratios (" + groups.names.join(", ") + "). Align them in Recording Details.";
             } else if (tag === "VT") {
-                text = ctx.ignored_nominal_kv !== null && ctx.ignored_nominal_kv !== undefined
-                    ? "VT is not configured for " + groupText + ". The " + wwCtVtNumberText(ctx.ignored_nominal_kv) +
-                      " kV / 110 V shown in Recording Details is derived from the nominal voltage and is display-only. " +
-                      "Open Recording Details → VT → Edit → Save to confirm it."
-                    : "VT is not configured for " + groupText + ". Set primary kV and secondary V in Recording Details.";
+                // Reached only when no VT is stored AND none could be derived from the nominal voltage.
+                const nominal = ctx.nominal_ll_kv !== null && ctx.nominal_ll_kv !== undefined ? wwCtVtNumberText(ctx.nominal_ll_kv) + " kV" : null;
+                code = "VT_NOMINAL_NOT_USABLE";
+                if (nominal && ctx.nominal_refused_reason === "manual_conflict") {
+                    text = "The VT of " + groupText + " cannot be derived from its nominal voltage (" + nominal +
+                        "): it conflicts with the channel evidence. Resolve the nominal voltage in Recording Details, or enter the VT.";
+                } else if (nominal && ctx.nominal_refused_reason === "base_not_accepted") {
+                    text = "The VT of " + groupText + " cannot be derived from its nominal voltage (" + nominal +
+                        "): the voltage base has not been accepted. Accept it in Recording Details, or enter the VT.";
+                } else {
+                    code = "VT_AUTHORITY_MISSING";
+                    text = "VT is not configured for " + groupText +
+                        ". Set the nominal voltage, or the VT primary kV and secondary V, in Recording Details.";
+                }
             } else {
                 text = "CT is not configured for " + groupText + ". Set primary and secondary A in Recording Details.";
             }
