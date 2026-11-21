@@ -1,5 +1,7 @@
 # D5A — Frontend hand-off: consume authoritative CT/VT in Impedance Locus and Distance Protection
 
+> **Superseded in part (DEC-215, 2026-11-21):** a nominal-derived (`auto_nominal`) VT is now valid, consumable engineering configuration. Statements below that call it display-only / not consumable describe the earlier D5A rule. See [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
+
 **For:** Codex (Waveform Analysis redesign) and the owner · **From:** Claude (backend / API, and — per the §7 update — this Impedance/Distance frontend change) · **Status:** backend fix committed separately; frontend change implemented in its own commit, pending owner review.
 **Approved direction (owner):** retrieve the authoritative Measurement Group CT/VT, display it **read-only**, and navigate to Recording Details for corrections. No competing CT/VT editor. `auto_nominal` is never an authoritative ratio.
 

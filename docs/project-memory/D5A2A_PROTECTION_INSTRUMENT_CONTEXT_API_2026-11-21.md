@@ -1,5 +1,7 @@
 # D5A-2A — Protection Instrument Context API and Authority Diagnostics
 
+> **Superseded in part (DEC-215, 2026-11-21):** a nominal-derived (`auto_nominal`) VT is now valid, consumable engineering configuration. Statements below that call it display-only / not consumable describe the earlier D5A rule. See [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
+
 **Branch:** `feature/d5a-1-ctvt-authority` · Read-only. No conversion, persistence, override, frontend or PU change.
 
 ## 1. Endpoint

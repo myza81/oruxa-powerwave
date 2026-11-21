@@ -1,5 +1,7 @@
 # D5A-2B1 — Recorded Impedance and Distance: Independent Measurement-Side Conversion
 
+> **Superseded in part (DEC-215, 2026-11-21):** a nominal-derived (`auto_nominal`) VT is now valid, consumable engineering configuration. Statements below that call it display-only / not consumable describe the earlier D5A rule. See [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
+
 **Branch:** `feature/d5a-1-ctvt-authority` · Backend only · Opt-in · Overcurrent, PU, CT/VT calibration, frontend and Source Default untouched.
 
 ## 1. API contract and mode selection

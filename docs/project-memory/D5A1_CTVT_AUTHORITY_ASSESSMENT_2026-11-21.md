@@ -1,5 +1,7 @@
 # D5A-1 — CT/VT Engineering Authority and Protection-Analysis Data Flow
 
+> **Superseded in part (DEC-215, 2026-11-21):** a nominal-derived (`auto_nominal`) VT is now valid, consumable engineering configuration. Statements below that call it display-only / not consumable describe the earlier D5A rule. See [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
+
 **Date:** 2026-11-21 · **Branch:** `feature/d5a-1-ctvt-authority` · **Start commit:** `77fc74a` (code identical to the verified PU baseline `229fba1`)
 
 Final principle: **CT/VT ratios are configuration data, not proof of the physical measurement side.**

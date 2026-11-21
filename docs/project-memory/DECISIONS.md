@@ -29544,3 +29544,25 @@ dropdown exposed even when the engine had already detected L-L/L-N automatically
 a standalone "Configuration source" field that combined provenance of independent
 properties into a misleading single label. This principle prevents this class of
 rework in future feature development.
+
+
+## DEC-215 — A nominal-derived VT is valid engineering configuration (supersedes the D5A "display-only" rule)
+
+Date: 2026-11-21. Owner decision.
+
+Decision:
+
+- When Recording Details derives a VT primary value from the accepted nominal voltage and defaults the secondary to 110 V,
+  both values are immediately valid for every consuming analysis module (consistent with the Per-Unit nominal-voltage policy).
+- No engineer confirmation or Edit → Save is required. The UI does not call a valid derived VT "assumed", "provisional",
+  "unverified" or "display-only"; an "Auto-derived" provenance label is optional and used.
+- Precedence is unchanged (manual > recording_metadata > auto_nominal > not_configured) and a change of nominal voltage or VT
+  refreshes the dependent analyzers.
+- Provenance stays `auto_nominal`; it is never relabelled `manual` or `recording_metadata`.
+- Existing checks are not bypassed: invalid values, genuine conflicts (`manual_conflict_detected`), a base that is `needs_review`
+  or `unavailable`, incompatible measurement sides and double conversion.
+- A CT is never derived from equipment rated current, MVA or capacity; it is configured independently.
+
+Supersedes: the D5A-1 "F5 / D4" position and the D5A-2A rule that `auto_nominal` is display-only and never consumable.
+
+Implementation and rationale: [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
