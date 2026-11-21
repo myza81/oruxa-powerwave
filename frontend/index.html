@@ -12444,6 +12444,10 @@
                                                 <option value="primary">Primary</option>
                                             </select>
                                         </label>
+                                        <!-- D5A-OC-001: read-only CT from the Recording Details Measurement Group that owns the
+                                             phase's current channel (never an editor; Recording input source only). Filled by
+                                             wwCtVtRender(). The CT inputs below are Manual input source only. -->
+                                        <div class="ww-ctvt-authority ww-oc-field-full" id="wwOvercurrentCtVtAuthority" role="status" aria-live="polite" hidden></div>
                                         <label class="ww-phasor-field ww-oc-ct-field" id="wwOvercurrentCtPrimaryField" hidden>
                                             <span class="ww-phasor-field-label">CT Primary (A)</span>
                                             <input type="number" id="wwOvercurrentCtPrimaryInput" min="0" step="1">
@@ -50561,6 +50565,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 tms: 0.10,
                 pickupCurrentSecondary: 1.0,
                 recordingBasis: "secondary",
+                // True once the user chose the Recording basis; until then it may be
+                // pre-selected from the channel's declared side (wwCtVtApplyPreselection).
+                recordingBasisExplicit: false,
+                // Manual input source only: the recorded path takes its CT exclusively from
+                // Recording Details (D5A-OC-001), never from these.
                 ctPrimary: null,
                 ctSecondary: null,
             },
@@ -50829,6 +50838,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // itself), which the caller (a Recording-lifecycle consumer
             // callback) is already implicitly reporting about.
             wwOvercurrentMountPlaybackControls(null);
+            // No context: nothing to read a CT for, and any in-flight read is now stale.
+            wwCtVtReset("overcurrent");
+            wwCtVtRender("overcurrent");
             const statusRow = document.getElementById("wwOvercurrentStatusRow");
             if (statusRow) statusRow.hidden = true;
             const emptyState = document.getElementById("wwOvercurrentEmptyState");
@@ -50876,6 +50888,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const ctx = wwOvercurrentState.contexts.find((c) => c.id === contextId);
             wwOvercurrentState.lastLoadedContextId = contextId;
+            // Re-read the authoritative CT every time the context is (re)loaded: this is also the path
+            // taken when returning from Recording Details, so a saved CT is picked up immediately.
+            wwCtVtRefresh("overcurrent", true);
 
             const anchorDisplaySourceId = wwOvercurrentAnchorDisplaySourceIdForContext(ctx);
             wwOvercurrentState.anchorDisplaySourceId = anchorDisplaySourceId;
@@ -51045,15 +51060,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
                 : desiredTime;
 
-            const params = new URLSearchParams({
+            // D5A-OC-001: `recording_basis`, and `ct_primary`/`ct_secondary` only when a primary recording
+            // must be converted AND Recording Details holds a usable CT for this phase's own channel. The
+            // relay-secondary semantics of the request are unchanged.
+            const params = new URLSearchParams(Object.assign({
                 phase: wwOvercurrentState.phase, analysis_time: String(analysisTimeForApi),
                 characteristic_id: s.characteristicId, tms: String(s.tms),
-                pickup_current_secondary: String(s.pickupCurrentSecondary), recording_basis: s.recordingBasis,
-            });
-            if (s.recordingBasis === "primary" && s.ctPrimary !== null && s.ctSecondary !== null) {
-                params.set("ct_primary", String(s.ctPrimary));
-                params.set("ct_secondary", String(s.ctSecondary));
-            }
+                pickup_current_secondary: String(s.pickupCurrentSecondary),
+            }, wwCtVtBasisParams("overcurrent")));
 
             wwOvercurrentState.playbackTransportGeneration = myGeneration;
             wwOvercurrentPlaybackFetchInFlight = true;
@@ -51107,11 +51121,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const alertEl = document.getElementById("wwOvercurrentAlert");
             if (!statusRow || !valuesList || !alertEl) return;
 
-            if (!result || result.status !== "computed") {
+            // D5A-OC-001: a configuration blocker (CT unusable for a primary recording, a Recording
+            // basis that contradicts the channel's declared side, ...) withholds the result even when
+            // the backend could compute one, so a number that depends on a wrong or missing CT/side
+            // is never shown. Related Waveforms stay available (identity is not a result).
+            const configurationBlocked = wwCtVtPlanFor("overcurrent").blockers.length > 0;
+            if (!result || result.status !== "computed" || configurationBlocked) {
                 statusRow.hidden = false;
-                statusRow.textContent = (result && result.message) || "Overcurrent could not be computed for this selection.";
+                statusRow.textContent = wwCtVtResultMessage("overcurrent", result) ||
+                    (result && result.message) || "Overcurrent could not be computed for this selection.";
                 statusRow.className = "ww-phasor-status-row" +
-                    (result && (result.status === "ambiguous" || result.status === "needs_configuration") ? " ww-phasor-status--needs-configuration" : "");
+                    (configurationBlocked || (result && (result.status === "ambiguous" || result.status === "needs_configuration"))
+                        ? " ww-phasor-status--needs-configuration" : "");
                 valuesList.innerHTML = "";
                 alertEl.hidden = true;
                 wwOvercurrentRenderChart(null, null, null);
@@ -51175,8 +51196,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // own "analyzer decides WHAT is relevant" architecture --
             // no new UI/text was invented for this.
             if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
+            // A result blocked by configuration (D5A-OC-001) still identifies the resolved channel, so
+            // its waveform stays plottable; one that never resolved a channel has none to show.
             const result = wwOvercurrentState.latestResult;
-            if (!result || result.status !== "computed" || !result.channel_ref) return [];
+            if (!result || !result.channel_ref) return [];
             // "Ia"/"Ib"/"Ic" -- the SAME role-key casing convention
             // Phasor's own WW_PHASOR_DIAGRAM_ROLE_ORDER already
             // established, so a role never reads as two different
@@ -51206,9 +51229,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Calculator mode result -- keyed off the ONE `inputSource` flag
         // (Analysis Input Source, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md).
         function wwOvercurrentActiveResult() {
-            return wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL
-                ? wwOvercurrentState.manual.latestResult
-                : wwOvercurrentState.latestResult;
+            if (wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) return wwOvercurrentState.manual.latestResult;
+            // A recorded result withheld by a configuration blocker is never plotted (D5A-OC-001).
+            return wwCtVtPlanFor("overcurrent").blockers.length > 0 ? null : wwOvercurrentState.latestResult;
         }
 
         // Curve geometry depends ONLY on characteristic/TMS -- cached and
@@ -52139,19 +52162,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // ---- Settings wiring helpers ----
 
-        // CT Primary/Secondary are shared, never duplicated between
-        // Recording and Manual mode (task §5). Their FIELDS follow only
-        // the ACTIVE input source's own basis: Recording's
-        // `settings.recordingBasis`, or (Manual) `manual.inputBasis` for
-        // Direct Current -- Equipment Loading always yields a PRIMARY
-        // current, so it always needs the CT ratio. The hidden Recording
-        // basis never shows the CT fields in Manual (2026-10-16). Only
-        // visibility depends on this; the CT values stay in
-        // `settings` either way.
+        // CT Primary/Secondary INPUTS are Manual input source only
+        // (D5A-OC-001). Recording mode reads the CT of the Measurement
+        // Group owning the phase's own current channel from Recording
+        // Details and shows it read-only (wwCtVtRender), so it never
+        // shows an editor, whatever its Recording basis. In Manual the
+        // fields follow `manual.inputBasis` for Direct Current --
+        // Equipment Loading always yields a PRIMARY current, so it always
+        // needs the CT ratio. Only visibility depends on this; the Manual
+        // CT values stay in `settings` (cleared by a workspace reset).
         function wwOvercurrentCtFieldsNeeded() {
-            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
-                return wwOvercurrentState.settings.recordingBasis === "primary";
-            }
+            // D5A-OC-001: Recording mode never edits a CT here -- it reads the Measurement Group's CT
+            // (read-only block, wwCtVtRender). The fields are Manual input source only.
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return false;
             return wwOvercurrentState.manual.inputMethod === WW_OC_INPUT_METHOD_LOADING ||
                 wwOvercurrentState.manual.inputBasis === "primary";
         }
@@ -52162,6 +52185,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const secondaryField = document.getElementById("wwOvercurrentCtSecondaryField");
             if (primaryField) primaryField.hidden = !isPrimary;
             if (secondaryField) secondaryField.hidden = !isPrimary;
+            wwCtVtRender("overcurrent");
         }
 
         // Any discrete RELAY SETTINGS change (characteristic/pickup/TMS/
@@ -52178,6 +52202,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
                 wwOvercurrentRequestManualAnalysis();
             } else {
+                // Phase and basis are part of what the authoritative CT depends on (cached by key).
+                wwCtVtRefresh("overcurrent", false);
                 wwOvercurrentRequestExactPlaybackFetch();
             }
         }
@@ -52214,6 +52240,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentSyncInputSourceButtons();
             wwOvercurrentUpdateManualSectionVisibility();
             wwOvercurrentUpdateRecordingSectionVisibility();
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING) wwCtVtRefresh("overcurrent", false);
             wwOvercurrentUpdateCtFieldsVisibility();
             wwOvercurrentPushRelatedWaveformRoles();
             if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
@@ -52580,6 +52607,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.latestResult = null;
             wwOvercurrentState.curveCache = null;
             wwOvercurrentState.requestGeneration += 1;
+            // D5A-OC-001: nothing CT-related survives a workspace reset -- not the authoritative report
+            // (and any read still in flight), the Recording basis choice, nor a Manual-mode CT.
+            wwCtVtReset("overcurrent");
+            wwOvercurrentState.settings.recordingBasis = "secondary";
+            wwOvercurrentState.settings.recordingBasisExplicit = false;
+            wwOvercurrentState.settings.ctPrimary = null;
+            wwOvercurrentState.settings.ctSecondary = null;
+            for (const id of ["wwOvercurrentCtPrimaryInput", "wwOvercurrentCtSecondaryInput"]) {
+                const input = document.getElementById(id);
+                if (input) input.value = "";
+            }
+            const basisSelect = document.getElementById("wwOvercurrentBasisSelect");
+            if (basisSelect) basisSelect.value = "secondary";
             wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 };
             // Chart axis-mode/grid display preferences are session-local
             // conveniences, not workspace data -- reset alongside the
@@ -52724,6 +52764,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // VT, labelled "Auto-derived", and needs no confirmation. Manual mode
         // keeps its own inputs.
         //
+        // D5A-OC-001: the RECORDED Overcurrent analysis uses the same plan / refresh / render machinery
+        // with ONE quantity (current). Its output is always relay-secondary amperes, so a conversion is
+        // needed exactly when the Recording basis is primary, and the only CT it may use is that of the
+        // Measurement Group owning the phase's own current channel. It is stricter than Impedance /
+        // Distance in one respect (`strictSides`): a Recording basis that contradicts the channel's
+        // declared side is a BLOCKER, because acting on it would apply a CT ratio to a secondary current
+        // or skip it for a primary one. Manual mode keeps its own CT inputs.
+        //
         // Measurement side: the recorded analyses take ONE `recording_basis`
         // for voltage and current. Conversion is therefore refused when the
         // two sides differ or are mixed, and an undeclared side is never
@@ -52734,14 +52782,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // backend's own needs_configuration result (which still carries the
         // resolved channel references for Related Waveforms).
         function wwCtVtPanel(kind) {
+            if (kind === "overcurrent") {
+                return {
+                    kind: "overcurrent", analysis: "overcurrent", prefix: "wwOvercurrent", state: wwOvercurrentState,
+                    title: "CT from Recording Details", basisSelectId: "wwOvercurrentBasisSelect", strictSides: true,
+                    scope: () => ({ phase: wwOvercurrentState.phase }), rerun: () => wwOvercurrentHandleSettingsChanged(),
+                };
+            }
             if (kind === "distance") {
                 return {
                     kind: "distance", analysis: "distance_protection", prefix: "wwDistance", state: wwDistanceState,
+                    title: "CT / VT from Recording Details", basisSelectId: "wwDistanceRecordingBasisSelect", strictSides: false,
                     scope: () => ({ loop: wwDistanceState.loop }), rerun: () => wwDistanceHandleSettingsChanged(),
                 };
             }
             return {
                 kind: "impedance", analysis: "impedance", prefix: "wwImpedance", state: wwImpedanceState,
+                title: "CT / VT from Recording Details", basisSelectId: "wwImpedanceRecordingBasisSelect", strictSides: false,
                 scope: () => ({ phase: wwImpedanceState.phase }), rerun: () => wwImpedanceHandleSettingsChanged(),
             };
         }
@@ -52853,15 +52910,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Pure: what the recorded request may carry and what the user must be told.
         // `status` is the report-load state; `settings` supplies recordingBasis, outputBasis and
         // whether the user chose the Recording basis explicitly.
-        function wwCtVtComputePlan(report, status, error, settings) {
-            const conversionNeeded = settings.recordingBasis !== settings.outputBasis;
+        function wwCtVtComputePlan(report, status, error, settings, strict) {
+            // The output basis is the analysis's own; Overcurrent has none (relay-secondary amperes).
+            const conversionNeeded = settings.recordingBasis !== (settings.outputBasis || "secondary");
             const plan = {
                 conversionNeeded, status, ratios: null, suggestedBasis: null, basisState: "unknown",
                 blockers: [], warnings: [], notes: [], confirmBasisNeeded: false,
             };
             if (status === "idle") return plan;
             if (status !== "ready" || !report) {
-                if (conversionNeeded) {
+                // Strict: until the report is read, a Recording basis the user has not chosen may still be
+                // pre-selected from the declared side, so no result is shown on an unconfirmed basis.
+                if (conversionNeeded || (strict && status === "loading" && !settings.recordingBasisExplicit)) {
                     plan.blockers.push(status === "error"
                         ? { code: "CONTEXT_UNAVAILABLE", quantity: null, target: null,
                             text: "The CT/VT configuration could not be read from Recording Details" + (error ? " (" + error + ")" : "") +
@@ -52873,22 +52933,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const voltage = report.voltage;
             const current = report.current;
-            const vSide = voltage ? voltage.side_status : "unknown";
-            const cSide = current ? current.side_status : "unknown";
-            if (vSide === "mixed" || cSide === "mixed") plan.basisState = "mixed";
-            else if (voltage && current && voltage.declared_basis && current.declared_basis) {
-                plan.basisState = voltage.declared_basis === current.declared_basis ? "declared" : "differs";
+            const present = [voltage, current].filter(Boolean);
+            if (present.some((q) => q.side_status === "mixed")) plan.basisState = "mixed";
+            else if (present.length && present.every((q) => q.declared_basis)) {
+                plan.basisState = present.every((q) => q.declared_basis === present[0].declared_basis) ? "declared" : "differs";
             }
-            if (plan.basisState === "declared") plan.suggestedBasis = voltage.declared_basis;
+            if (plan.basisState === "declared") plan.suggestedBasis = present[0].declared_basis;
 
             // Contradictions with a declared side are shown, never overridden.
             for (const [quantity, ctx] of [["voltage", voltage], ["current", current]]) {
                 if (ctx && ctx.declared_basis && ctx.declared_basis !== settings.recordingBasis) {
-                    plan.warnings.push({
-                        code: "RECORDING_BASIS_CONTRADICTS_" + quantity.toUpperCase(),
+                    const contradiction = {
+                        code: "RECORDING_BASIS_CONTRADICTS_" + quantity.toUpperCase(), quantity, target: null,
                         text: "The recording declares the " + quantity + " as " + ctx.declared_basis + ", but the Recording basis is " +
                             settings.recordingBasis + ".",
-                    });
+                    };
+                    if (strict) {
+                        contradiction.text += " No result is shown until the Recording basis matches.";
+                        plan.blockers.push(contradiction);
+                    } else {
+                        plan.warnings.push(contradiction);
+                    }
                 }
             }
             const sideText = plan.basisState === "mixed"
@@ -52899,6 +52964,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : null;
             if (!conversionNeeded) {
                 if (sideText) plan.warnings.push({ code: plan.basisState === "mixed" ? "SIDES_MIXED" : "SIDES_DIFFER", text: sideText });
+                if (strict && plan.basisState === "unknown" && settings.recordingBasisExplicit) {
+                    plan.notes.push({ code: "BASIS_UNVERIFIED", text: "Recording basis chosen by you (" + settings.recordingBasis +
+                        "); the recording does not declare it — unverified." });
+                }
                 return plan;
             }
 
@@ -52907,7 +52976,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (sideText) {
                 plan.blockers.push({
                     code: plan.basisState === "mixed" ? "SIDES_MIXED" : "SIDES_DIFFER", quantity: null, target: null,
-                    text: sideText + " This single-basis analysis cannot convert them; Independent-side mode is required.",
+                    text: sideText + (strict ? "" : " This single-basis analysis cannot convert them; Independent-side mode is required."),
                 });
             } else if (plan.basisState === "unknown") {
                 if (settings.recordingBasisExplicit) {
@@ -52917,23 +52986,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     plan.confirmBasisNeeded = true;
                     plan.blockers.push({
                         code: "BASIS_UNDECLARED", quantity: null, target: null,
-                        text: "The recording does not declare whether the voltage/current channels are primary or secondary — " +
-                            "choose the Recording basis explicitly.",
+                        text: "The recording does not declare whether the " + (voltage && current ? "voltage/current channels are" : "current channel is") +
+                            " primary or secondary — choose the Recording basis explicitly.",
                     });
                 }
             }
             if (plan.blockers.length === 0) {
-                plan.ratios = {
-                    vt_primary: String(voltage.primary), vt_secondary: String(voltage.secondary),
-                    ct_primary: String(current.primary), ct_secondary: String(current.secondary),
-                };
+                plan.ratios = {};
+                if (voltage) Object.assign(plan.ratios, { vt_primary: String(voltage.primary), vt_secondary: String(voltage.secondary) });
+                if (current) Object.assign(plan.ratios, { ct_primary: String(current.primary), ct_secondary: String(current.secondary) });
             }
             return plan;
         }
         function wwCtVtPlanFor(kind) {
             const panel = wwCtVtPanel(kind);
             const st = wwCtVtStateOf(panel);
-            return wwCtVtComputePlan(st.report, st.status, st.error, panel.state.settings);
+            return wwCtVtComputePlan(st.report, st.status, st.error, panel.state.settings, panel.strictSides);
         }
         // Folds everything a request depends on into the locus-cache signature.
         function wwCtVtSignature(kind) {
@@ -52944,7 +53012,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // The legacy request parameters, from the authoritative plan only.
         function wwCtVtBasisParams(kind) {
             const s = wwCtVtPanel(kind).state.settings;
-            const params = { recording_basis: s.recordingBasis, impedance_basis: s.outputBasis };
+            const params = { recording_basis: s.recordingBasis };
+            if (s.outputBasis !== undefined) params.impedance_basis = s.outputBasis;     // Overcurrent has no output basis
             const plan = wwCtVtPlanFor(kind);
             wwCtVtStateOf(wwCtVtPanel(kind)).requestedSignature = wwCtVtSignature(kind);
             if (plan.ratios) Object.assign(params, plan.ratios);
@@ -52952,7 +53021,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
         // A blocked recorded result is explained by the specific configuration warning, not the generic one.
         function wwCtVtResultMessage(kind, result) {
-            if (!result || result.reason_code !== "invalid_ratio") return null;
+            if (!result) return null;
+            // Overcurrent also explains a result it withholds although the backend computed one.
+            const blockedByConfiguration = wwCtVtPanel(kind).strictSides
+                ? result.reason_code === "invalid_ct_values" || result.status === "computed"
+                : result.reason_code === "invalid_ratio";
+            if (!blockedByConfiguration) return null;
             const plan = wwCtVtPlanFor(kind);
             return plan.blockers.length ? plan.blockers.map((b) => b.text).join(" ") : null;
         }
@@ -53012,10 +53086,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCtVtApplyPreselection(panel) {
             const s = panel.state.settings;
             if (s.recordingBasisExplicit) return;
-            const plan = wwCtVtComputePlan(wwCtVtStateOf(panel).report, wwCtVtStateOf(panel).status, "", s);
+            const plan = wwCtVtComputePlan(wwCtVtStateOf(panel).report, wwCtVtStateOf(panel).status, "", s, panel.strictSides);
             if (!plan.suggestedBasis || s.recordingBasis === plan.suggestedBasis) return;
             s.recordingBasis = plan.suggestedBasis;
-            const el = document.getElementById(panel.prefix + "RecordingBasisSelect");
+            const el = document.getElementById(panel.basisSelectId);
             if (el) el.value = s.recordingBasis;
         }
         function wwCtVtReset(kind) {
@@ -53039,7 +53113,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const plan = wwCtVtPlanFor(kind);
             const html = [];
-            html.push('<div class="ww-ctvt-title">CT / VT from Recording Details</div>');
+            html.push('<div class="ww-ctvt-title">' + escapeHtml(panel.title) + '</div>');
             if (st.status === "ready" && st.report) {
                 for (const [quantity, tag] of [["voltage", "VT"], ["current", "CT"]]) {
                     const ctx = st.report[quantity];
@@ -53049,7 +53123,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         ? wwCtVtRatioText(quantity, ctx) + " <span class=\"ww-ctvt-source\">(" +
                           escapeHtml(WW_CTVT_AUTHORITY_LABELS[ctx.authority] || ctx.authority) +
                           (groups.names.length ? ", " + escapeHtml(groups.names.join(", ")) : "") + ")</span>"
-                        : '<span class="ww-ctvt-missing">not configured</span>';
+                        : (panel.strictSides && !plan.conversionNeeded
+                            // Overcurrent only needs a CT to convert a PRIMARY recording; say so rather than warn.
+                            ? 'not configured <span class="ww-ctvt-source">(not needed for a secondary recording)</span>'
+                            : '<span class="ww-ctvt-missing">not configured</span>');
                     const canNavigate = groups.target && groups.target.sourceId;
                     html.push('<div class="ww-ctvt-row" data-ctvt-quantity="' + quantity + '">' +
                         '<span class="ww-ctvt-label">' + tag + '</span>' +
@@ -66087,9 +66164,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("wwOvercurrentBasisSelect").addEventListener("change", (event) => {
             wwOvercurrentState.settings.recordingBasis = event.target.value;
+            wwCtVtNoteRecordingBasisChosen("overcurrent");
             wwOvercurrentUpdateCtFieldsVisibility();
             wwOvercurrentHandleSettingsChanged();
         });
+        document.getElementById("wwOvercurrentCtVtAuthority").addEventListener("click", (event) => wwCtVtHandleClick("overcurrent", event));
         document.getElementById("wwOvercurrentCtPrimaryInput").addEventListener("change", (event) => {
             const value = parseFloat(event.target.value);
             wwOvercurrentState.settings.ctPrimary = Number.isFinite(value) ? value : null;
