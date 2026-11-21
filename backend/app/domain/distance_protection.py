@@ -98,6 +98,7 @@ from app.domain.impedance import (
     convert_impedance_basis,
     impedance_ratio_valid,
 )
+from app.domain.side_conversion import SideConversionInfo
 from app.domain.phasor import (
     ManualPhasorRoleInput,
     convert_manual_magnitude_to_secondary,
@@ -640,6 +641,7 @@ class DistanceAnalysisResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+    side_conversion: SideConversionInfo | None = None
 
     def __post_init__(self) -> None:
         _fill_standard_slots(self)

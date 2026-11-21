@@ -11,6 +11,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.side_conversion import SideConversionOut
 
 DistanceStatus = Literal["computed", "needs_configuration", "missing", "ambiguous", "not_eligible"]
 ZoneState = Literal["operated", "not_operated"]
@@ -74,6 +75,7 @@ class DistanceAnalysisResultOut(BaseModel):
     traces, independent of this result's own `status` (mirrors
     `ImpedanceAnalysisResultOut`'s own precedent)."""
 
+    side_conversion: SideConversionOut | None = None
     status: DistanceStatus
     engineering_context_id: str
     loop: str
@@ -123,6 +125,7 @@ class DistanceLocusPointOut(BaseModel):
 
 
 class DistanceLocusOut(BaseModel):
+    side_conversion: SideConversionOut | None = None
     engineering_context_id: str
     loop: str
     points: list[DistanceLocusPointOut]

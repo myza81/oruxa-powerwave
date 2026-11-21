@@ -41,8 +41,20 @@ from app.domain.distance_protection import (
     evaluate_manual_distance,
     evaluate_zones,
 )
-from app.domain.impedance import convert_impedance_basis, impedance_ratio_valid
+from app.domain.engineering_units import (
+    ENGINEERING_QUANTITY_CURRENT,
+    ENGINEERING_QUANTITY_VOLTAGE,
+    convert_value_to_canonical,
+)
+from app.domain.impedance import MIN_CURRENT_A, convert_impedance_basis, impedance_ratio_valid
 from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
+from app.domain.side_conversion import (
+    REASON_CHANNEL_MISMATCH,
+    REASON_UNSUPPORTED_CURRENT_UNIT,
+    REASON_UNSUPPORTED_VOLTAGE_UNIT,
+    SideBlock,
+    SidePlan,
+)
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.phasor_analysis_service import compute_phasor_diagram, evaluate_prepared_phasor_diagram, prepare_phasor_diagram
@@ -88,6 +100,7 @@ def compute_distance_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    side_plan: SidePlan | SideBlock | None = None,
 ) -> DistanceAnalysisResult:
     """Selected-time-only Recording-mode Distance Protection for ONE
     fault loop (`AB`/`BC`/`CA`). `recording_basis` describes the basis
@@ -101,6 +114,13 @@ def compute_distance_analysis(
     stable key); the standard `zone1`..`zone4` keywords are the same collection
     spelled the manual form's way."""
     evaluated_zones = collect_zones(zones, zone1, zone2, zone3, zone4)
+    if isinstance(side_plan, SideBlock):
+        return _blocked_distance_result(
+            side_plan, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
+            recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            characteristic=characteristic, zones=evaluated_zones,
+        )
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz_override=reference_frequency_hz_override,
@@ -110,7 +130,75 @@ def compute_distance_analysis(
         diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
         recording_basis=recording_basis, impedance_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-        characteristic=characteristic, zones=evaluated_zones,
+        characteristic=characteristic, zones=evaluated_zones, side_plan=side_plan,
+    )
+
+
+def _blocked_distance_result(
+    block: SideBlock, *, engineering_context_id: str, loop: str, analysis_time: float, recording_basis, impedance_basis,
+    vt_primary, vt_secondary, ct_primary, ct_secondary, characteristic: str, zones,
+) -> DistanceAnalysisResult:
+    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback."""
+    return DistanceAnalysisResult(
+        status=DISTANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, loop=loop,
+        analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
+        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        characteristic=characteristic, zones=evaluate_zones(None, characteristic=characteristic, zones=zones),
+        reason_code=block.code, message=block.message, side_conversion=block.info,
+    )
+
+
+def _strict_distance_result(
+    plan: SidePlan, roles, *, diagram: PhasorDiagramResult, engineering_context_id: str, loop: str, analysis_time: float,
+    recording_basis, impedance_basis, vt_primary, vt_secondary, ct_primary, ct_secondary, characteristic: str, zones,
+) -> DistanceAnalysisResult:
+    """Independent-side conversion: every leg goes directly to `impedance_basis`, then the loop quantities
+    (V1 - V2, I1 - I2) and Z = Vloop / Iloop are formed once."""
+    v1_role, v2_role, i1_role, i2_role = roles
+    echo = dict(
+        engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
+        recording_basis=recording_basis, impedance_basis=impedance_basis,
+        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        characteristic=characteristic, zones=zones,
+    )
+
+    def refuse(code: str, message: str, quantity: str | None = None) -> DistanceAnalysisResult:
+        block = SideBlock(code=code, message=message, quantity=quantity, voltage_side=plan.voltage_side,
+                          current_side=plan.current_side, output_side=plan.output_side)
+        return _blocked_distance_result(block, **echo)
+
+    if (not plan.validated or set(plan.voltage_refs) != {v1_role.channel_ref, v2_role.channel_ref}
+            or set(plan.current_refs) != {i1_role.channel_ref, i2_role.channel_ref}):
+        return refuse(REASON_CHANNEL_MISMATCH, "The validated channels do not match the channels this analysis consumed.")
+    volts = [convert_value_to_canonical(r.magnitude_rms, ENGINEERING_QUANTITY_VOLTAGE, r.unit) for r in (v1_role, v2_role)]
+    if any(v is None for v in volts):
+        return refuse(REASON_UNSUPPORTED_VOLTAGE_UNIT, "A voltage unit cannot be normalized to volts.", "voltage")
+    amps = [convert_value_to_canonical(r.magnitude_rms, ENGINEERING_QUANTITY_CURRENT, r.unit) for r in (i1_role, i2_role)]
+    if any(a is None for a in amps):
+        return refuse(REASON_UNSUPPORTED_CURRENT_UNIT, "A current unit cannot be normalized to amperes.", "current")
+
+    common = dict(
+        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
+        v1_channel_ref=v1_role.channel_ref, v2_channel_ref=v2_role.channel_ref,
+        i1_channel_ref=i1_role.channel_ref, i2_channel_ref=i2_role.channel_ref,
+        voltage_unit=v1_role.unit, current_unit=i1_role.unit, side_conversion=plan.info,
+    )
+    point = compute_loop_impedance(
+        plan.scale_voltage(volts[0]), v1_role.angle_deg_absolute, plan.scale_voltage(volts[1]), v2_role.angle_deg_absolute,
+        plan.scale_current(amps[0]), i1_role.angle_deg_absolute, plan.scale_current(amps[1]), i2_role.angle_deg_absolute,
+        min_current=MIN_CURRENT_A * plan.current_scale,
+    )
+    if point is None:
+        return DistanceAnalysisResult(
+            status=DISTANCE_STATUS_NEEDS_CONFIGURATION,
+            **{**echo, "zones": evaluate_zones(None, characteristic=characteristic, zones=zones)}, **common,
+            reason_code=REASON_LOOP_CURRENT_TOO_SMALL, message="Loop current too small for reliable impedance calculation.",
+        )
+    return DistanceAnalysisResult(
+        status=DISTANCE_STATUS_COMPUTED, **{**echo, "zones": evaluate_zones(point, characteristic=characteristic, zones=zones)},
+        **common, resistance_ohm=point.resistance_ohm, reactance_ohm=point.reactance_ohm,
+        magnitude_ohm=point.magnitude_ohm, angle_deg=point.angle_deg,
+        message="Distance protection loop impedance computed.",
     )
 
 
@@ -128,6 +216,7 @@ def _distance_analysis_from_diagram(
     ct_secondary: float | None,
     characteristic: str,
     zones: Sequence[NamedZone],
+    side_plan: SidePlan | None = None,
 ) -> DistanceAnalysisResult:
     """DEC-114: the `diagram`-consuming remainder of
     `compute_distance_analysis()`'s own work, factored out so a locus
@@ -173,6 +262,14 @@ def _distance_analysis_from_diagram(
             v1_channel_ref=v1_ref, v2_channel_ref=v2_ref, i1_channel_ref=i1_ref, i2_channel_ref=i2_ref,
             characteristic=characteristic, zones=evaluate_zones(None, characteristic=characteristic, zones=zones),
             reason_code=reason, message="One or more required phasors are not available for this fault loop.",
+        )
+
+    if side_plan is not None:
+        return _strict_distance_result(
+            side_plan, roles, diagram=diagram, engineering_context_id=engineering_context_id, loop=loop,
+            analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            characteristic=characteristic, zones=zones,
         )
 
     needs_ratios = recording_basis != impedance_basis
@@ -249,6 +346,7 @@ def compute_distance_locus(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    side_plan: SidePlan | SideBlock | None = None,
 ) -> list[DistanceLocusPoint]:
     """The static loop-impedance locus/trajectory -- deterministic,
     independent of Playback speed, mirrors `app.services.
@@ -278,6 +376,12 @@ def compute_distance_locus(
         step = (end_time - start_time) / (count - 1)
         sample_times = [start_time + i * step for i in range(count)]
 
+    if isinstance(side_plan, SideBlock):
+        return [
+            DistanceLocusPoint(analysis_time=t, status=DISTANCE_STATUS_NEEDS_CONFIGURATION, reason_code=side_plan.code)
+            for t in sample_times
+        ]
+
     prepared = prepare_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
         reference_frequency_hz_override=reference_frequency_hz_override,
@@ -291,7 +395,7 @@ def compute_distance_locus(
             diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=t,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            characteristic=characteristic, zones=evaluated_zones,
+            characteristic=characteristic, zones=evaluated_zones, side_plan=side_plan,
         )
         points.append(DistanceLocusPoint(
             analysis_time=t, status=result.status,

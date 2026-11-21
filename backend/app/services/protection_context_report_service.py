@@ -84,6 +84,35 @@ def _role_plan(analysis: str, phase: str | None, loop: str | None) -> tuple[tupl
     return tuple((key, _DIAGRAM_REQUIREMENTS_BY_ROLE[key]) for key in keys)
 
 
+def resolve_analysis_roles(
+    *,
+    workspace_id: str,
+    engineering_context_id: str,
+    analysis: str,
+    phase: str | None,
+    loop: str | None,
+    context_registry: EngineeringContextRegistry,
+    source_registry: WorkspaceRegistry,
+    calculated_channel_registry: CalculatedChannelRegistry,
+) -> tuple[list[tuple[str, ChannelRef]], list[tuple[str, str, str | None]]]:
+    """(resolved (role_key, ref) pairs, unresolved (role_key, status, reason) triples), mirroring
+    each analysis's own compute-path resolution."""
+    resolved: list[tuple[str, ChannelRef]] = []
+    unresolved: list[tuple[str, str, str | None]] = []
+    for role_key, requirement in _role_plan(analysis, phase, loop):
+        resolution = resolve_analysis_inputs(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_kind=requirement.analysis_kind, mode=requirement.mode, context_registry=context_registry,
+            source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        )
+        if resolution.status == STATUS_RESOLVED:
+            resolved.append((role_key, resolution.resolved_roles[role_key]))
+        else:
+            unresolved.append((role_key, resolution.status,
+                               resolution.reason_code or resolution.missing_role_reasons.get(role_key)))
+    return resolved, unresolved
+
+
 def build_protection_context_report(
     *,
     workspace_id: str,
@@ -99,20 +128,11 @@ def build_protection_context_report(
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
 ) -> ProtectionContextReport:
-    plan = _role_plan(analysis, phase, loop)
-    resolved: list[tuple[str, ChannelRef]] = []
-    unresolved: list[tuple[str, str, str | None]] = []
-    for role_key, requirement in plan:
-        resolution = resolve_analysis_inputs(
-            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
-            analysis_kind=requirement.analysis_kind, mode=requirement.mode, context_registry=context_registry,
-            source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
-        )
-        if resolution.status == STATUS_RESOLVED:
-            resolved.append((role_key, resolution.resolved_roles[role_key]))
-        else:
-            unresolved.append((role_key, resolution.status,
-                               resolution.reason_code or resolution.missing_role_reasons.get(role_key)))
+    resolved, unresolved = resolve_analysis_roles(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis=analysis,
+        phase=phase, loop=loop, context_registry=context_registry, source_registry=source_registry,
+        calculated_channel_registry=calculated_channel_registry,
+    )
 
     def quantity_of(role_key: str) -> str:
         return QUANTITY_VOLTAGE if role_key.startswith("V") else QUANTITY_CURRENT

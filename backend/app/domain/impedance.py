@@ -63,6 +63,7 @@ import math
 from dataclasses import dataclass, field
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.side_conversion import SideConversionInfo
 from app.domain.phasor import (
     ManualPhasorRoleInput,
     convert_manual_magnitude_to_secondary,
@@ -261,6 +262,7 @@ class ImpedanceAnalysisResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+    side_conversion: SideConversionInfo | None = None
 
 
 @dataclass(frozen=True, slots=True)

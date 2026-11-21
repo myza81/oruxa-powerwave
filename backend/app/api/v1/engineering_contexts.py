@@ -52,6 +52,7 @@ full architecture.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from app.domain.calculated_channel import ChannelRef
@@ -125,6 +126,8 @@ from app.services.engineering_context_service import (
 )
 from app.services.distance_protection_analysis_service import compute_distance_analysis, compute_distance_locus, compute_distance_manual
 from app.services.errors import ImportServiceError
+from app.schemas.side_conversion import SideConversionOut
+from app.services.independent_side_service import resolve_side_plan
 from app.services.impedance_analysis_service import compute_impedance_analysis, compute_impedance_locus, compute_impedance_manual
 from app.services.overcurrent_analysis_service import (
     CurveComputationError,
@@ -867,6 +870,29 @@ def get_overcurrent_analysis(
 # ---------------------------------------------------------------------------
 
 
+def _side_plan(
+    request: Request, *, analysis: str, workspace_id: str, engineering_context_id: str, phase: str | None, loop: str | None,
+    voltage_side: str | None, current_side: str | None, recording_basis: str | None, impedance_basis: str,
+    vt_primary: float | None, vt_secondary: float | None, ct_primary: float | None, ct_secondary: float | None,
+    context_registry, source_registry, calc_registry,
+):
+    """D5A-2B1 mode selection. None = LEGACY single-recording_basis path (neither new parameter supplied; the
+    historical required-ness of `recording_basis` is preserved). A SideBlock/SidePlan = strict independent-side
+    path, which never reads `recording_basis` and never falls back to legacy."""
+    state = request.app.state
+    plan = resolve_side_plan(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis=analysis, phase=phase, loop=loop,
+        voltage_side=voltage_side, current_side=current_side, impedance_basis=impedance_basis,
+        request_vt=(vt_primary, vt_secondary), request_ct=(ct_primary, ct_secondary),
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        group_registry=state.measurement_group_registry, voltage_config_registry=state.voltage_group_config_registry,
+        current_config_registry=state.current_group_config_registry,
+    )
+    if plan is None and recording_basis is None:
+        raise RequestValidationError([{"type": "missing", "loc": ("query", "recording_basis"), "msg": "Field required", "input": None}])
+    return plan
+
+
 def _impedance_result_to_out(result) -> ImpedanceAnalysisResultOut:
     return ImpedanceAnalysisResultOut(
         status=result.status, engineering_context_id=result.engineering_context_id, phase=result.phase,
@@ -881,6 +907,7 @@ def _impedance_result_to_out(result) -> ImpedanceAnalysisResultOut:
         resistance_ohm=result.resistance_ohm, reactance_ohm=result.reactance_ohm,
         magnitude_ohm=result.magnitude_ohm, angle_deg=result.angle_deg,
         warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+        side_conversion=SideConversionOut.from_domain(result.side_conversion),
     )
 
 
@@ -888,10 +915,13 @@ def _impedance_result_to_out(result) -> ImpedanceAnalysisResultOut:
 def get_impedance_analysis(
     workspace_id: str,
     engineering_context_id: str,
+    request: Request,
     phase: str,
     analysis_time: float,
-    recording_basis: str,
     impedance_basis: str,
+    recording_basis: str | None = None,
+    voltage_side: str | None = None,
+    current_side: str | None = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -917,12 +947,20 @@ def get_impedance_analysis(
     persisted."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
+        side_plan = _side_plan(
+            request, analysis="impedance", workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            phase=phase, loop=None,
+            voltage_side=voltage_side, current_side=current_side, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            context_registry=context_registry, source_registry=source_registry, calc_registry=calc_registry,
+        )
         result = compute_impedance_analysis(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
             reference_frequency_hz_override=reference_frequency_hz,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            side_plan=side_plan,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -933,12 +971,15 @@ def get_impedance_analysis(
 def get_impedance_locus(
     workspace_id: str,
     engineering_context_id: str,
+    request: Request,
     phase: str,
     start_time: float,
     end_time: float,
     point_count: int,
-    recording_basis: str,
     impedance_basis: str,
+    recording_basis: str | None = None,
+    voltage_side: str | None = None,
+    current_side: str | None = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -960,6 +1001,13 @@ def get_impedance_locus(
     caller renders only `computed` points as the path."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
+        side_plan = _side_plan(
+            request, analysis="impedance", workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            phase=phase, loop=None,
+            voltage_side=voltage_side, current_side=current_side, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            context_registry=context_registry, source_registry=source_registry, calc_registry=calc_registry,
+        )
         points = compute_impedance_locus(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase,
             start_time=start_time, end_time=end_time, point_count=point_count,
@@ -967,11 +1015,13 @@ def get_impedance_locus(
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            side_plan=side_plan,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return ImpedanceLocusOut(
         engineering_context_id=engineering_context_id, phase=phase,
+        side_conversion=SideConversionOut.from_domain(side_plan.info if side_plan is not None else None),
         points=[
             ImpedanceLocusPointOut(
                 analysis_time=p.analysis_time, status=p.status, resistance_ohm=p.resistance_ohm, reactance_ohm=p.reactance_ohm,
@@ -1241,6 +1291,7 @@ def _distance_result_to_out(result) -> DistanceAnalysisResultOut:
         zone4=_zone_result_to_out(result.zone4) if result.zone4 is not None else None,
         zones=[_zone_result_to_out(z) for z in result.zones],
         warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+        side_conversion=SideConversionOut.from_domain(result.side_conversion),
     )
 
 
@@ -1248,11 +1299,14 @@ def _distance_result_to_out(result) -> DistanceAnalysisResultOut:
 def get_distance_protection_analysis(
     workspace_id: str,
     engineering_context_id: str,
+    request: Request,
     loop: str,
     analysis_time: float,
-    recording_basis: str,
-    impedance_basis: str,
     characteristic: str,
+    impedance_basis: str,
+    recording_basis: str | None = None,
+    voltage_side: str | None = None,
+    current_side: str | None = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -1299,6 +1353,13 @@ def get_distance_protection_analysis(
     zone4 = _zone_settings(zone4_enabled, zone4_reach_ohm, zone4_reactive_reach_ohm, zone4_resistive_reach_forward_ohm, zone4_resistive_reach_reverse_ohm, zone4_characteristic_angle_deg, zone4_delay_s, DIRECTION_REVERSE)
     named_zones = _request_zones(zones, characteristic, impedance_basis, (zone1, zone2, zone3, zone4))
     try:
+        side_plan = _side_plan(
+            request, analysis="distance_protection", workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            phase=None, loop=loop,
+            voltage_side=voltage_side, current_side=current_side, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            context_registry=context_registry, source_registry=source_registry, calc_registry=calc_registry,
+        )
         result = compute_distance_analysis(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
             reference_frequency_hz_override=reference_frequency_hz,
@@ -1306,6 +1367,7 @@ def get_distance_protection_analysis(
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             characteristic=characteristic, zones=named_zones,
             context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            side_plan=side_plan,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -1316,13 +1378,16 @@ def get_distance_protection_analysis(
 def get_distance_protection_locus(
     workspace_id: str,
     engineering_context_id: str,
+    request: Request,
     loop: str,
     start_time: float,
     end_time: float,
     point_count: int,
-    recording_basis: str,
-    impedance_basis: str,
     characteristic: str,
+    impedance_basis: str,
+    recording_basis: str | None = None,
+    voltage_side: str | None = None,
+    current_side: str | None = None,
     vt_primary: float | None = None,
     vt_secondary: float | None = None,
     ct_primary: float | None = None,
@@ -1369,6 +1434,13 @@ def get_distance_protection_locus(
     zone4 = _zone_settings(zone4_enabled, zone4_reach_ohm, zone4_reactive_reach_ohm, zone4_resistive_reach_forward_ohm, zone4_resistive_reach_reverse_ohm, zone4_characteristic_angle_deg, zone4_delay_s, DIRECTION_REVERSE)
     named_zones = _request_zones(zones, characteristic, impedance_basis, (zone1, zone2, zone3, zone4))
     try:
+        side_plan = _side_plan(
+            request, analysis="distance_protection", workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            phase=None, loop=loop,
+            voltage_side=voltage_side, current_side=current_side, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            context_registry=context_registry, source_registry=source_registry, calc_registry=calc_registry,
+        )
         points = compute_distance_locus(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop,
             start_time=start_time, end_time=end_time, point_count=point_count,
@@ -1377,11 +1449,13 @@ def get_distance_protection_locus(
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             characteristic=characteristic, zones=named_zones,
             context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            side_plan=side_plan,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return DistanceLocusOut(
         engineering_context_id=engineering_context_id, loop=loop,
+        side_conversion=SideConversionOut.from_domain(side_plan.info if side_plan is not None else None),
         points=[
             DistanceLocusPointOut(
                 analysis_time=p.analysis_time, status=p.status, resistance_ohm=p.resistance_ohm, reactance_ohm=p.reactance_ohm,

@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.side_conversion import SideConversionOut
 
 ImpedanceStatus = Literal["computed", "needs_configuration", "missing", "ambiguous", "not_eligible"]
 
@@ -22,6 +23,7 @@ class ImpedanceAnalysisResultOut(BaseModel):
     docstring in `app.domain.impedance` for the root-cause record this
     fixes)."""
 
+    side_conversion: SideConversionOut | None = None
     status: ImpedanceStatus
     engineering_context_id: str
     phase: str
@@ -61,6 +63,7 @@ class ImpedanceLocusPointOut(BaseModel):
 
 
 class ImpedanceLocusOut(BaseModel):
+    side_conversion: SideConversionOut | None = None
     engineering_context_id: str
     phase: str
     points: list[ImpedanceLocusPointOut]

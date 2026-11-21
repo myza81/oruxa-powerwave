@@ -39,7 +39,20 @@ from app.domain.impedance import (
     evaluate_manual_impedance,
     impedance_ratio_valid,
 )
+from app.domain.engineering_units import (
+    ENGINEERING_QUANTITY_CURRENT,
+    ENGINEERING_QUANTITY_VOLTAGE,
+    convert_value_to_canonical,
+)
+from app.domain.impedance import MIN_CURRENT_A
 from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
+from app.domain.side_conversion import (
+    REASON_CHANNEL_MISMATCH,
+    REASON_UNSUPPORTED_CURRENT_UNIT,
+    REASON_UNSUPPORTED_VOLTAGE_UNIT,
+    SideBlock,
+    SidePlan,
+)
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.phasor_analysis_service import compute_phasor_diagram, evaluate_prepared_phasor_diagram, prepare_phasor_diagram
@@ -87,6 +100,7 @@ def compute_impedance_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    side_plan: SidePlan | SideBlock | None = None,
 ) -> ImpedanceAnalysisResult:
     """Selected-time-only Recording-mode Impedance for ONE phase
     (`Za`/`Zb`/`Zc`). `recording_basis` describes the basis the
@@ -101,6 +115,12 @@ def compute_impedance_analysis(
     V/I` is returned directly with zero ratio dependency, exactly
     matching the task's own golden-example convention (section 22: "same
     basis," no CT/VT involved at all)."""
+    if isinstance(side_plan, SideBlock):
+        return _blocked_impedance_result(
+            side_plan, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
+            recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        )
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz_override=reference_frequency_hz_override,
@@ -110,6 +130,69 @@ def compute_impedance_analysis(
         diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
         recording_basis=recording_basis, impedance_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        side_plan=side_plan,
+    )
+
+
+def _blocked_impedance_result(
+    block: SideBlock, *, engineering_context_id: str, phase: str, analysis_time: float, recording_basis, impedance_basis,
+    vt_primary, vt_secondary, ct_primary, ct_secondary,
+) -> ImpedanceAnalysisResult:
+    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback."""
+    return ImpedanceAnalysisResult(
+        status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+        analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
+        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        reason_code=block.code, message=block.message, side_conversion=block.info,
+    )
+
+
+def _strict_impedance_result(
+    plan: SidePlan, voltage_role, current_role, *, diagram: PhasorDiagramResult, engineering_context_id: str, phase: str,
+    analysis_time: float, recording_basis, impedance_basis, vt_primary, vt_secondary, ct_primary, ct_secondary,
+) -> ImpedanceAnalysisResult:
+    """Independent-side conversion: each quantity goes directly to `impedance_basis`, then Z = V / I once."""
+    echo = dict(
+        engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
+        recording_basis=recording_basis, impedance_basis=impedance_basis,
+        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+    )
+
+    def refuse(code: str, message: str, quantity: str | None = None) -> ImpedanceAnalysisResult:
+        block = SideBlock(code=code, message=message, quantity=quantity, voltage_side=plan.voltage_side,
+                          current_side=plan.current_side, output_side=plan.output_side)
+        return _blocked_impedance_result(block, **echo)
+
+    if (not plan.validated or set(plan.voltage_refs) != {voltage_role.channel_ref}
+            or set(plan.current_refs) != {current_role.channel_ref}):
+        return refuse(REASON_CHANNEL_MISMATCH, "The validated channels do not match the channels this analysis consumed.")
+    voltage = convert_value_to_canonical(voltage_role.magnitude_rms, ENGINEERING_QUANTITY_VOLTAGE, voltage_role.unit)
+    if voltage is None:
+        return refuse(REASON_UNSUPPORTED_VOLTAGE_UNIT, f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts.", "voltage")
+    current = convert_value_to_canonical(current_role.magnitude_rms, ENGINEERING_QUANTITY_CURRENT, current_role.unit)
+    if current is None:
+        return refuse(REASON_UNSUPPORTED_CURRENT_UNIT, f"Current unit {current_role.unit!r} cannot be normalized to amperes.", "current")
+
+    common = dict(
+        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
+        voltage_channel_ref=voltage_role.channel_ref, voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
+        current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
+        side_conversion=plan.info,
+    )
+    # The low-current floor keeps judging the RECORDED current (scaled to the output side) exactly as legacy does.
+    point = compute_impedance_point(
+        plan.scale_voltage(voltage), voltage_role.angle_deg_absolute, plan.scale_current(current),
+        current_role.angle_deg_absolute, min_current=MIN_CURRENT_A * plan.current_scale,
+    )
+    if point is None:
+        return ImpedanceAnalysisResult(
+            status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, **echo, **common,
+            reason_code=REASON_CURRENT_TOO_SMALL, message="Current too small for reliable impedance calculation.",
+        )
+    return ImpedanceAnalysisResult(
+        status=IMPEDANCE_STATUS_COMPUTED, **echo, **common,
+        resistance_ohm=point.resistance_ohm, reactance_ohm=point.reactance_ohm,
+        magnitude_ohm=point.magnitude_ohm, angle_deg=point.angle_deg, message="Impedance computed.",
     )
 
 
@@ -125,6 +208,7 @@ def _impedance_analysis_from_diagram(
     vt_secondary: float | None,
     ct_primary: float | None,
     ct_secondary: float | None,
+    side_plan: SidePlan | None = None,
 ) -> ImpedanceAnalysisResult:
     """DEC-114: the `diagram`-consuming remainder of
     `compute_impedance_analysis()`'s own work, factored out so a locus
@@ -156,6 +240,13 @@ def _impedance_analysis_from_diagram(
     if voltage_role.status != ROLE_STATUS_AVAILABLE or current_role.status != ROLE_STATUS_AVAILABLE:
         status, reason = _worse_role_status(voltage_role, current_role)
         return _short_circuit(status, reason_code=reason, message="One or both required phasors are not available for this phase.")
+
+    if side_plan is not None:
+        return _strict_impedance_result(
+            side_plan, voltage_role, current_role, diagram=diagram, engineering_context_id=engineering_context_id,
+            phase=phase, analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        )
 
     needs_ratios = recording_basis != impedance_basis
     if needs_ratios and not (
@@ -224,6 +315,7 @@ def compute_impedance_locus(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    side_plan: SidePlan | SideBlock | None = None,
 ) -> list[ImpedanceLocusPoint]:
     """The static locus/trajectory (task's own section 18-19) --
     deterministic, independent of Playback speed: sampled once, on
@@ -263,6 +355,12 @@ def compute_impedance_locus(
         step = (end_time - start_time) / (count - 1)
         sample_times = [start_time + i * step for i in range(count)]
 
+    if isinstance(side_plan, SideBlock):
+        return [
+            ImpedanceLocusPoint(analysis_time=t, status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, reason_code=side_plan.code)
+            for t in sample_times
+        ]
+
     prepared = prepare_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
         reference_frequency_hz_override=reference_frequency_hz_override,
@@ -276,6 +374,7 @@ def compute_impedance_locus(
             diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=t,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            side_plan=side_plan,
         )
         points.append(ImpedanceLocusPoint(
             analysis_time=t, status=result.status,
