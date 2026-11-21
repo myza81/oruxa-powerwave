@@ -8,6 +8,18 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 
 ---
 
+## D5A-OC-001 — recorded Overcurrent CT authority (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-oc-001-overcurrent-ct-authority` (branched from `uat/dev-d5a-20261121` @ `082b2a6`).
+NOT pushed, deployed or merged. Awaiting owner DEV UAT.
+
+**Next action:** owner DEV UAT using the checklist in
+[D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md) §7, and a decision on OC-1..OC-3
+there (notably whether a basis contradicting a declared side should reject, as implemented, or only warn like Impedance/Distance).
+D5A-2B2 (engineer-confirmed measurement side) remains un-started.
+
+---
+
 ## RD-1 Slice B — Recording Details workspace skeleton (2026-11-18)
 
 **Status:** Committed locally on `feature/vlt-ref-001-voltage-reference-safety`. NOT pushed, deployed, or merged. Awaiting owner UAT.

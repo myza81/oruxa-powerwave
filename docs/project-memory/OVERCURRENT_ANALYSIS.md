@@ -1667,7 +1667,7 @@ source and method:
 
 | Input Source | Input Method / Basis         | CT Primary / Secondary |
 |--------------|------------------------------|------------------------|
-| Recording    | Recording basis Primary      | Visible                |
+| Recording    | Recording basis Primary      | ~~Visible~~ Hidden — superseded by D5A-OC-001 (below): the CT is read-only from Recording Details |
 | Recording    | Recording basis Secondary    | Hidden                 |
 | Manual       | Direct Current, Primary      | Visible                |
 | Manual       | Direct Current, Secondary    | Hidden                 |
@@ -1689,6 +1689,22 @@ Tests:
   walks all five CT cases on one recording, checks that the CT 800/1 values
   survive every hide, and checks the 141 MVA / 150 % / 132 kV reference case
   (925.1 A primary, 1.156 A secondary).
+
+## Recorded CT is read from Recording Details (D5A-OC-001, 2026-11-22)
+
+Details, mathematics and tests: [D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md).
+
+- **Recording input source** no longer has CT inputs. The CT of the Measurement Group that owns the
+  phase's own current channel is read through `GET .../protection-instrument-context?analysis=overcurrent&phase=…`
+  and shown read-only (value, group, provenance) with **Configure in Recording Details**. Only a
+  `ratio_consumable` CT (`manual` / `recording_metadata`) is sent, as the unchanged `ct_primary` /
+  `ct_secondary` request parameters, and only for a **primary** recording.
+- **Manual input source** keeps its CT inputs and requests exactly as before. A CT typed in Manual mode is
+  never used for a recording, and is cleared with the workspace.
+- A Recording basis that contradicts the channel's declared side is **rejected** (no result shown); an
+  undeclared side is chosen by the engineer and stays marked "unverified". The CT ratio never decides the side.
+- A result blocked by configuration still carries `channel_ref` / `measured_rms_current_unit`, so Related
+  Waveforms stay available. Every calculation, curve, pickup and unit rule is unchanged.
 
 ## Not yet implemented (future slices)
 

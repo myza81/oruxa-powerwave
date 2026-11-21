@@ -9,6 +9,21 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## D5A-OC-001 — recorded Overcurrent reads its CT from Recording Details (2026-11-22)
+
+[FACT] Implemented locally on `feature/d5a-oc-001-overcurrent-ct-authority` (from the accepted D5A UAT commit `082b2a6`).
+NOT pushed, merged or deployed; awaiting owner DEV UAT.
+
+- Recording input source: the CT of the Measurement Group owning the phase's own current channel is read through
+  `protection-instrument-context?analysis=overcurrent` and shown read-only with **Configure in Recording Details**. The recorded
+  CT inputs are gone; Manual mode keeps its own inputs. The relay-secondary mathematics is unchanged.
+- A Recording basis that contradicts the channel's declared side is rejected (Impedance/Distance still only warn); an undeclared
+  side stays an explicit, "unverified" engineer choice. D5A-2B2 is not started.
+- A blocked recorded result keeps its channel identity, so Related Waveforms stay available.
+
+Details, mathematics, owner decisions OC-1..OC-4 and the DEV UAT checklist:
+[D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md).
+
 ## RD-0B — Voltage-reference safety (2026-11-18)
 
 [FACT] RD-0B committed locally as `5e9113f` on `feature/vlt-ref-001-voltage-reference-safety`.
