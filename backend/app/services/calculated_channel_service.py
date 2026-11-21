@@ -1769,9 +1769,22 @@ def _resolve_effective_per_unit_for_calculated_channel(
             explicit_voltage_reference=channel.voltage_representation,
         )
     # Context-free historical service callers cannot certify recorded sides.
+    # Mirrors waveform_service._resolve_effective_per_unit(): for the group-aware
+    # Voltage path, use the Voltage group config's base_reference_side (not the
+    # Source Default profile's), identified by profile_id != per_unit_profile.source_id.
+    _voltage_group_config = None
+    if (
+        channel.engineering_type == VOLTAGE
+        and voltage_config_registry is not None
+        and workspace_id is not None
+        and resolution.profile_id is not None
+        and not (per_unit_profile is not None and resolution.profile_id == per_unit_profile.source_id)
+    ):
+        _voltage_group_config = voltage_config_registry.get(workspace_id, resolution.profile_id)
     resolution = apply_source_reference(resolution, channel.engineering_type,
         group_config=current_config_registry.get(workspace_id, resolution.profile_id) if current_config_registry and resolution.profile_id else None,
-        profile=per_unit_profile)
+        profile=per_unit_profile,
+        voltage_group_config=_voltage_group_config)
     return resolve_conversion_eligibility(resolution, channel.unit, channel.engineering_type, channel.values)
 
 
