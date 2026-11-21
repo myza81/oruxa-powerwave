@@ -35,7 +35,8 @@ class TransformerContextOut(BaseModel):
     side: str
     side_status: str
     declared_basis: str | None
-    ignored_nominal_kv: float | None
+    nominal_ll_kv: float | None
+    nominal_refused_reason: str | None
 
     @classmethod
     def from_domain(cls, ctx: TransformerContext) -> "TransformerContextOut":
@@ -45,7 +46,8 @@ class TransformerContextOut(BaseModel):
             authority=ctx.authority,
             ratio_origin="recording_details_measurement_group" if ctx.ratio_consumable else None,
             provenance_note=ctx.provenance_note, reason=ctx.reason, side=ctx.side, side_status=ctx.side_status,
-            declared_basis=ctx.declared_basis, ignored_nominal_kv=ctx.ignored_nominal_kv,
+            declared_basis=ctx.declared_basis, nominal_ll_kv=ctx.nominal_ll_kv,
+            nominal_refused_reason=ctx.nominal_refused_reason,
         )
 
 

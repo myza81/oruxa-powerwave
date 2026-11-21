@@ -31,7 +31,7 @@ KNOWN_ANALYSES = (ANALYSIS_OVERCURRENT, ANALYSIS_IMPEDANCE, ANALYSIS_DISTANCE)
 CHANNEL_UNRESOLVED = "CHANNEL_UNRESOLVED"
 CT_AUTHORITY_MISSING = "CT_AUTHORITY_MISSING"
 VT_AUTHORITY_MISSING = "VT_AUTHORITY_MISSING"
-VT_NOMINAL_DISPLAY_ONLY = "VT_NOMINAL_DISPLAY_ONLY"
+VT_NOMINAL_NOT_USABLE = "VT_NOMINAL_NOT_USABLE"
 REQUEST_CT_INCOMPLETE = "REQUEST_CT_INCOMPLETE"
 REQUEST_VT_INCOMPLETE = "REQUEST_VT_INCOMPLETE"
 REQUEST_CT_INVALID = "REQUEST_CT_INVALID"
@@ -148,11 +148,11 @@ def build_diagnostics(
                 {"ratio_status": ctx.ratio_status, "reason": ctx.reason, "authority": ctx.authority,
                  "group_ids": ",".join(ctx.group_ids) or None},
             ))
-        if quantity == "voltage" and ctx.ignored_nominal_kv is not None:
+        if quantity == "voltage" and ctx.nominal_refused_reason is not None:
             out.append(Diagnostic(
-                VT_NOMINAL_DISPLAY_ONLY, SEVERITY_INFO,
-                "A nominal voltage is configured but no VT ratio; nominal-derived VT is display-only and was not used.",
-                quantity, {"nominal_ll_kv": ctx.ignored_nominal_kv},
+                VT_NOMINAL_NOT_USABLE, SEVERITY_WARNING,
+                "A nominal voltage is configured but no VT could be derived from it (the nominal is not an accepted value).",
+                quantity, {"nominal_ll_kv": ctx.nominal_ll_kv, "reason": ctx.nominal_refused_reason},
             ))
         if ctx.ratio_status != RATIO_NO_CHANNELS:
             if ctx.side_status == SIDE_UNKNOWN:
