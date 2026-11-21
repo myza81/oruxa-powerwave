@@ -24,6 +24,7 @@ from app.domain.reference_side import ReferenceSide, configured_base_side
 
 from dataclasses import dataclass
 
+from app.domain.auto_nominal_vt import AUTHORITY_AUTO_NOMINAL, derive_auto_nominal_vt
 from app.domain.current_group_config import (
     METHOD_EQUIPMENT_RATING,
     STATUS_CONFIGURED as _CURRENT_STATUS_CONFIGURED,
@@ -118,20 +119,14 @@ def _build_voltage_view(
         _vt_effective_primary_v = config.vt_primary_v if config is not None else None
         _vt_effective_secondary_v = config.vt_secondary_v if config is not None else None
         _vt_effective_authority = _vt_stored_authority
-    elif (
-        config is not None
-        and _vt_stored_authority == "not_configured"
-        and not config.manual_conflict_detected
-        and config.base_authority not in ("needs_review", "unavailable")
-        and config.nominal_voltage_ll_kv is not None
-        and isinstance(config.nominal_voltage_ll_kv, (int, float))
-        and not isinstance(config.nominal_voltage_ll_kv, bool)
-        and config.nominal_voltage_ll_kv > 0
-        and config.nominal_voltage_ll_kv == config.nominal_voltage_ll_kv  # not NaN
-    ):
-        _vt_effective_primary_v = config.nominal_voltage_ll_kv * 1000.0
-        _vt_effective_secondary_v = 110.0
-        _vt_effective_authority = "auto_nominal"
+    elif _vt_stored_authority == "not_configured":
+        # Owner decision (D5A, 2026-11-21): the nominal-derived VT is valid engineering configuration;
+        # the ONE definition lives in app.domain.auto_nominal_vt (shared with the protection resolver).
+        _derived = derive_auto_nominal_vt(config)
+        if _derived.derived:
+            _vt_effective_primary_v = _derived.primary_v
+            _vt_effective_secondary_v = _derived.secondary_v
+            _vt_effective_authority = AUTHORITY_AUTO_NOMINAL
 
     view = VoltageGroupConfigView(
         nominal_voltage_ll_kv=config.nominal_voltage_ll_kv if config is not None else None,
