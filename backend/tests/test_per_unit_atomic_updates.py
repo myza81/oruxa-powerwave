@@ -85,9 +85,9 @@ def test_voltage_rejection_preserves_complete_state(client, configured, body, st
 
 
 @pytest.mark.parametrize("body,nominal,mode,override", [
-    ({"nominal_voltage_ll_kv": 132}, 132, "auto", None),
-    ({"nominal_voltage_ll_kv": 132, "reference_mode": "manual", "reference_override": "line_to_line"},
-     132, "manual", "line_to_line"),
+    ({"nominal_voltage_ll_kv": 275}, 275, "auto", None),
+    ({"nominal_voltage_ll_kv": 275, "reference_mode": "manual", "reference_override": "line_to_line"},
+     275, "manual", "line_to_line"),
     ({"reference_mode": "manual", "reference_override": "line_to_ground"}, 275, "manual", "line_to_ground"),
     ({}, 275, "auto", None),
     ({"nominal_voltage_ll_kv": None}, 275, "auto", None),

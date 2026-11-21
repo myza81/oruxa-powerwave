@@ -156,15 +156,23 @@ class TestNoSuggestGroupsControlInRecordingDetails:
         source = _source()
         assert ".ww-rd-suggest-btn" not in source
 
-    def test_mg_modal_suggest_button_still_exists_for_compliance(self):
-        """The MG modal's own measurementGroupsSuggestBtn remains — it is
-        the legitimate Compliance-side access point and must NOT be removed
-        as a side-effect of removing the RD-specific button."""
+    def test_pu_config_banner_exists_for_compliance_access(self):
+        """The Waveform PU config banner button ('Configure in Recording Details')
+        is the legitimate compliance-side access point for PU base configuration,
+        replacing the former MG modal's suggest button."""
         source = _source()
-        assert 'id="measurementGroupsSuggestBtn"' in source
+        assert 'id="wwPuConfigBannerBtn"' in source
+        assert "wwNavigateToRdForPuConfiguration" in source
 
-    def test_mg_modal_suggest_function_still_exists_for_compliance(self):
-        """wwSuggestMeasurementGroups() remains — it services the Compliance
-        page's own group management workflow via the MG modal."""
+    def test_navigate_to_rd_for_pu_configuration_routes_to_recording_details_groups(self):
+        """wwNavigateToRdForPuConfiguration() is the navigation function that
+        routes compliance-side PU configuration access to Recording Details
+        with the groups panel pre-selected — it replaces wwSuggestMeasurementGroups()."""
         source = _source()
-        assert "async function wwSuggestMeasurementGroups()" in source
+        body = _function_body(
+            source,
+            "function wwNavigateToRdForPuConfiguration(sourceId)",
+            "function wwNavigateToRdForGroup(sourceId, groupId)",
+        )
+        assert 'shellSetCurrentPage("recording-details")' in body
+        assert '"groups"' in body

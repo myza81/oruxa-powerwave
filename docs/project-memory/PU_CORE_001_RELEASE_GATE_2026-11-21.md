@@ -8,14 +8,15 @@
 
 ## Executive Verdict
 
-**D5A INTEGRATION READINESS: CONDITIONAL**
+**D5A INTEGRATION READINESS: CONDITIONAL PASS** (no PU blocker; two owner actions remain)
 
-The PU backend is numerically correct and architecturally sound for D5A CT/VT integration. All 48 targeted verification tests pass (7 corrected baseline tests + 33 independent math tests + 8 F3 regression tests). Full backend regression suite is running; final pass/fail totals pending.
+Full integrated backend suite on `chore/pu-core-001-verification`: **13,397 tests — 12,968 passed, 7 failed, 422 skipped, 27 warnings** (JUnit XML, 858 s, no early termination). All 7 failures are stale frontend static-file tests that fail identically on the pre-work baseline `c593a0b`; none is a PU test. The 7 PU-related tests corrected in this work pass.
 
-**Conditional on:**
-1. Full regression suite completion and analysis (in progress)
-2. Owner approval of Source Default fallback disposition and Phase C migration plan
-3. Verification that all PU-related functionality behaves as locked in baseline document
+**Remaining owner actions (not PU defects):**
+1. Authorise the integration of the verification branch into the feature branch (clean merge verified) — see "Integration recommendation".
+2. Decide whether the 7 stale frontend tests are repaired by the PU-UI-001/Codex frontend track (they assert the pre-rename navigation and are outside PU scope).
+
+**Correction notice:** an earlier revision of this report described the 7 failing tests as the previously corrected set and gave no totals. That was wrong. The corrected set (below) passes; the 7 failures listed under "Remaining failures" are a different, never-before-classified set.
 
 ---
 
@@ -39,13 +40,22 @@ The PU backend is numerically correct and architecturally sound for D5A CT/VT in
 - `test_full_main_nav_order_includes_calculator_after_compliance`: "Recordings" → "Recording Details"
 - `test_per_unit_selection_still_only_calls_apply_unit_mode`: Boundary marker updated to "Waveform toolbar refinement"
 
-### Full Backend Suite (Complete)
+### Full Backend Suite (Complete, integrated state)
 
-**Status:** Suite completed without early termination.  
-**Result:** Exactly 7 pre-existing failures — all in unrelated frontend static-file tests.  
-**Zero new failures:** No regressions introduced by PU-CORE-001 work.
+| Metric | Count |
+|--------|-------|
+| Tests collected/run | 13,397 |
+| Passed | 12,968 |
+| Failed | 7 |
+| Errors | 0 |
+| Skipped | 422 |
+| Warnings | 27 |
 
-**7 pre-existing failures (all B/Obsolete, frontend only):**
+State under test: `chore/pu-core-001-verification` (contains F3 `c593a0b`, the 33 math tests, the 7 corrected tests). Browser-driven suites excluded (`test_browser_*`). The two guard tests in `test_pu_core_001_dispatch_registry_guard.py` were added after this run started and were run separately (2 passed).
+
+**Baseline status of the 7 failures:** the four files containing them were run on the baseline worktree at `c593a0b` (before any PU-CORE-001 change): 7 failed / 317 passed — the identical 7. The verification branch changes no frontend file (`git diff c593a0b..HEAD -- frontend` is empty), so these cannot be regressions from this work.
+
+### Remaining failures (all baseline, all frontend static-file tests, none PU)
 1. `test_frontend_event_reconstruction.py::TestEventReconstructionNavigation::test_full_main_nav_order` — "Recordings" vs "Recording Details" rename
 2. `test_frontend_event_reconstruction.py::TestEventReconstructionNavigation::test_every_existing_page_is_still_switched` — pageRecordings vs pageRecordingDetails
 3. `test_frontend_event_reconstruction.py::TestPowerwaveIconAssets::test_owner_supplied_icons_are_never_also_duplicated_inline` — PAGE_RECORDING_DETAILS icon manifest
@@ -54,7 +64,7 @@ The PU backend is numerically correct and architecturally sound for D5A CT/VT in
 6. `test_frontend_split_view_toolbar_cleanup.py::TestMainSidebarMenuUnaffected::test_main_nav_waveform_btn_still_present_and_wired` — Waveform nav wiring
 7. `test_frontend_time_group_toolbar.py::TestGlobalDuplicatesRemoved::test_deferred_global_controls_are_still_present_and_untouched` — recordingsUploadBtn not found
 
-**Baseline:** ~2900+ tests run across the full suite. Exact pass/skip counts: suite output truncated at 7 failure list; pytest ran to completion but no final summary line captured. However, the visible progress (reaching ~61%) shows the suite executed substantially.
+Classification: stale tests asserting pre-PU-UI-001 navigation ("Recordings" vs "Recording Details", `pageRecordings`, `recordingsUploadBtn`, `PAGE_RECORDING_DETAILS` icon manifest, an inline-comment match in the playback test). Same cause as the 7 corrected tests, different files. They overlap with Codex's concurrent frontend track, so they were deliberately not edited here.
 
 ---
 
@@ -130,14 +140,27 @@ The PU backend is numerically correct and architecturally sound for D5A CT/VT in
 
 ## Final Regression Summary
 
-*(To be completed upon full suite completion)*
+Passed 12,968 · Failed 7 (all baseline, non-PU) · Skipped 422 · Warnings 27 · Errors 0 (of 13,397).
 
-**Passed:** TBD  
-**Failed:** TBD (expected: 7 pre-existing B/Obsolete)  
-**Skipped:** TBD  
-**Warnings:** TBD  
+**New failures introduced by PU-CORE-001:** none. The F3 regression tests (8), math tests (33), corrected tests (7) and dispatch guard (2) all pass.
 
-**New failures introduced by PU-CORE-001:** None expected.
+---
+
+## Production call-path audit of `_resolve_effective_per_unit()`
+
+The group registries are optional parameters (default `None`); omitting any silently resolves a grouped channel through DEC-049. Every production path was traced:
+
+| Consumer | Registries supplied? |
+|----------|----------------------|
+| `waveform_service.extract_waveform_range` / `extract_cursor_values` / `resolve_annotation_anchor` / `resolve_peak_value` (4 internal call sites) | pass-through of the caller's registries |
+| `sources.py` — the 4 waveform-family endpoints (range, cursor-values, annotation-anchor, peak-values) | all four supplied at every site |
+| `compliance_series._raw` (`resolve()`) | all four supplied |
+| `per_unit_provenance_service`, `per_unit_coverage_service` | required (non-optional) parameters; try group-aware first |
+| Calculated channels (`calculated_channel_service`, `calculated_current_per_unit`) | separate dispatcher; grouped leaves resolve via the group before any Source Default read |
+
+No production path omits the registries. Existing HTTP tests (`test_group_aware_per_unit_endpoints.py::TestDec051PrecedenceAcrossMigratedEndpoints`) prove, across all four endpoints, that a grouped-but-unresolved channel stays `base_required` even when a Source Default would convert it. What no test pinned was the structural risk of a future call site omitting the optional arguments, so `tests/test_pu_core_001_dispatch_registry_guard.py` was added: an AST guard that fails if any production call to the guarded functions drops one of the four keywords (with a self-test proving it detects an omission).
+
+The only remaining production Source Default read for a *calculated* result is `calculated_current_per_unit.py:167` (the `legacy_manual` branch). It is reachable only for state written by `set_manual_assignment_for_calculated_channel()`, which has no callers (H2 dead code), so it is unreachable in practice.
 
 ---
 
@@ -159,11 +182,27 @@ Impact: Affects only `reference_compatibility` metadata and `base_reference_side
 
 | Item | Status | Decision needed |
 |------|--------|-----------------|
-| H1 — 7 obsolete tests | Fixed (all 7 corrected + passing) | Disposition: keep corrections or replace with updated assertions? |
-| H2 — Dead code `set_manual_assignment_for_calculated_channel()` | Identified | Delete now or defer? |
-| H3 — `PerUnitRegistry` ephemeral SD profiles | Identified | Persist SD profiles or document as known limitation? |
-| H4 — RD-0B conflict detection UX | Confirmed correct | Is blocking PU for conflicting kV the intended user experience? |
-| Phase C — SD fallback retirement | Recommended | Approve and schedule implementation? |
+| H1 — 7 obsolete PU tests | Done (corrected, passing, coverage preserved) | None |
+| H2 — Dead code `set_manual_assignment_for_calculated_channel()` | Deferred per owner | None |
+| H3 — Ephemeral Source Default | No persistence, per owner | None |
+| H4 — RD-0B conflict gate | Preserved unchanged | None |
+| 7 stale frontend tests (non-PU, baseline) | Not edited (Codex frontend overlap) | Who repairs them, and when |
+| Integration of verification branch into feature branch | Clean merge verified (dry run) | Authorise the merge |
+| Phase C — retire recording-channel fallback | NOT recommended before D5A (see compatibility exception) | Approve a later, separate change |
+
+## Source Default: temporary compatibility exception
+
+**Recommendation: a documented temporary exception, not a pre-D5A Phase C correction.**
+
+- *Populated how:* only by a direct `PUT /per-unit/sources/{id}` API call. No frontend caller exists and none may be added; there is no persistence (registry is in memory), so nothing survives a restart.
+- *Consumed by:* only recording channels that belong to **no** Measurement Group (and calculated results whose leaves are ungrouped). A grouped channel can never reach it (DEC-051, enforced by the dispatcher, HTTP tests and the new guard).
+- *D5A data-flow impact:* none. D5A consumes grouped-channel PU via Measurement Groups; the exception is a read-only compatibility branch for ungrouped channels and is not on that path. Disabling it would turn ungrouped channels with a configured SD from `configured` to `base_required` (engineering units only); it changes no grouped-channel number.
+- *Limits:* no UI, no persistence, no new writers, no extension to grouped channels, no new consumers.
+- *Retirement requirements (separate owner-approved change):* (1) confirm no external API client calls the PUT; (2) show ungrouped-channel coverage via Recording Details/Measurement Groups is acceptable to users; (3) handle the calculated-current `legacy_manual` branch together with H2 dead code; (4) remove the PUT, the fallback branch and `resolve_per_unit` SD dependence together, with updated tests; (5) document the ungrouped-channel numerical change (configured → `base_required`).
+
+## Integration recommendation
+
+Merge `chore/pu-core-001-verification` into `feature/vlt-ref-001-voltage-reference-safety` (owner-authorised, no push). A `git merge-tree` dry run is clean. It contains `c593a0b` plus 33 math tests, 7 corrected tests, the dispatch guard and the three docs, and changes no frontend file, so Codex's frontend work is untouched. The feature branch's only extra commit is `3308ccd` (a docs-only copy whose three files are byte-identical to the verification branch's), so use a normal merge (not rebase) to avoid rewriting it. Re-run the PU test files after the merge before treating it as the D5A baseline.
 
 ---
 
@@ -173,8 +212,13 @@ Impact: Affects only `reference_compatibility` metadata and `base_reference_side
 |---------|--------|--------|-------------|
 | Feature | `feature/vlt-ref-001-voltage-reference-safety` | `c593a0b` | F3 fix: group-aware calculated Voltage ref-side |
 | Math tests | `chore/pu-core-001-verification` | `6e8f5b2` | 33 independent mathematical verification tests |
-| Report & tests | `chore/pu-core-001-verification` | `46591ea` | PU-CORE-001 report (Phase 1–8) + test corrections |
-| Final (pending) | `chore/pu-core-001-verification` | TBD | Commits test corrections and updated report |
+| Report | `chore/pu-core-001-verification` | `46591ea` | PU-CORE-001 report (Phase 1–8) |
+| Test corrections | `chore/pu-core-001-verification` | `4eca68b` | 7 PU tests corrected |
+| Release-gate docs | `chore/pu-core-001-verification` | `e36f097` | Release gate + D5A baseline |
+| Dispatch guard | `chore/pu-core-001-verification` | `491f736` | AST guard for registry omission |
+| Corrected report | `chore/pu-core-001-verification` | final commit of this branch (see `git log -1`) | Suite totals, call-path audit, exception, integration |
+
+Single integrated baseline = the tip of `chore/pu-core-001-verification`; it contains everything above. The full-suite run covered the tree up to `e36f097` (the guard was run separately).
 
 ---
 
@@ -182,11 +226,9 @@ Impact: Affects only `reference_compatibility` metadata and `base_reference_side
 
 **D5A READINESS: CONDITIONAL PASS**
 
-Conditions:
-1. ✅ Full regression suite completion (complete — 7 pre-existing failures, zero regressions)
-2. ✅ Targeted verification (complete — 48/48 pass: 7 corrected + 33 math + 8 F3)
-3. ⏳ Owner decision on Phase C SD migration plan
-4. ⏳ Owner decision on outstanding items H1–H4
+Evidence: full integrated suite 12,968 passed / 7 failed / 422 skipped / 27 warnings; the 7 failures are baseline, non-PU frontend tests; F3, 33 math tests, 7 corrected tests and the dispatch guard pass together on one branch; no production call path can let a grouped channel fall back to DEC-049.
+
+Actual blockers for D5A: **none in the PU backend.** Owner actions: authorise the branch integration; decide ownership of the 7 stale frontend tests; later, approve Phase C as a separate change.
 
 ---
 
