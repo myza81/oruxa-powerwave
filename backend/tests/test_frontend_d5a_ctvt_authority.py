@@ -217,6 +217,21 @@ def test_each_unusable_ct_state_gets_its_own_actionable_message(override, code, 
     assert "vt_primary" not in out["params"] and "ct_primary" not in out["params"]
 
 
+def test_a_ct_held_by_another_current_group_is_pointed_out():
+    ct = _ct_q(ratio_status="not_configured", ratio_consumable=False, primary=None, secondary=None)
+    report = _report(_quantity(), ct)
+    groups = {"s1": [
+        {"id": "g1", "display_name": "KPDN1 VOLTAGE", "kind": "voltage"},
+        {"id": "g2", "display_name": "KPDN1 CURRENT", "kind": "current", "current_config": {"ct_primary_a": None, "ct_secondary_a": None}},
+        {"id": "g3", "display_name": "KPDN1 CURRENT 2", "kind": "current", "current_config": {"ct_primary_a": 1200, "ct_secondary_a": 1}},
+    ]}
+    out = _plan(report, "primary", "secondary", groups=groups)
+    assert out["message"] == ("CT is not configured for 'KPDN1 CURRENT'. Set primary and secondary A in Recording Details. "
+                              "A CT of 1200 A / 1 A is configured on 'KPDN1 CURRENT 2', but Ia belongs to 'KPDN1 CURRENT'.")
+    none = _plan(report, "primary", "secondary", groups={"s1": groups["s1"][:2]})
+    assert none["message"] == "CT is not configured for 'KPDN1 CURRENT'. Set primary and secondary A in Recording Details."
+
+
 def test_a_channel_outside_any_group_is_named():
     ct = _ct_q(ratio_status="no_group", ratio_consumable=False, primary=None, secondary=None)
     report = _report(_quantity(), ct)
