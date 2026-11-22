@@ -19,7 +19,7 @@ parameter itself.
 | Level | Key | Stored (engineer decision only) |
 |---|---|---|
 | 1 — Recording | `(workspace_id, source_id)` | optional correction `{side, note, set_at}` |
-| 2 — Bay (Engineering Context) | `(workspace_id, engineering_context_id)` | optional override `{side, set_at}` |
+| 2 — Bay (Engineering Context) **within one recording** | `(workspace_id, engineering_context_id, source_id)` | optional override `{side, set_at}` |
 
 Evidence is **never stored here**: the recording's per-channel P/S marker stays on the source's channels, untouched. A bay with no
 override stores nothing (no duplicated per-bay default). Registry: `MeasurementSideRegistry`; in memory only; same lifetime as the
@@ -77,8 +77,9 @@ and `BAY_VOLTAGE_CURRENT_SIDES_DIFFER` / `CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER`
 | `GET /measurement-side` | every recording's Level 1 state and every bay's Level 2 state (no channel detail) |
 | `GET /sources/{source_id}/measurement-side` | Level 1: `recording_derived` evidence, `engineer_correction`, `effective_side`, `authority`, `bay_ids`, diagnostics, per-channel resolution |
 | `PUT /sources/{source_id}/measurement-side` | body `{side: "primary"\|"secondary"\|null, note?}` |
-| `GET /engineering-contexts/{id}/measurement-side` | Level 2: `inherited_recording_side`, `override {side,set_at,active}`, `status`, `effective_side`, `voltage_side`, `current_side`, group ids, diagnostics, per-channel resolution |
-| `PUT /engineering-contexts/{id}/measurement-side` | body `{side: "primary"\|"secondary"}` (null rejected: no reset) |
+| `GET /engineering-contexts/{id}/measurement-side` | the bay with **one association per recording** that contributes voltage/current channels (each as below); nothing is shared or inherited across recordings |
+| `GET /sources/{source_id}/engineering-contexts/{id}/measurement-side` | Level 2 for the bay **within that recording**: `inherited_recording_side` (that recording's own Level 1), `override {side,set_at,active}`, `status`, `effective_side`, `voltage_side`, `current_side`, `reference_sides`, `strict_usable`, `group_ownership`, diagnostics, per-channel resolution |
+| `PUT /sources/{source_id}/engineering-contexts/{id}/measurement-side` | body `{side: "primary"\|"secondary"}` (null rejected: no reset); never touches another recording's channels of the same bay |
 | `GET /measurement-side/channel?source_id=&channel_name=` | the shared resolver for one channel; never an error for an unresolvable channel |
 
 Errors: `404 source_not_found` / `engineering_context_not_found`, `409 bay_membership_unconfirmed` / `bay_has_no_measurement_channels`, `422` for an invalid side.
@@ -86,9 +87,10 @@ Existing endpoints are unchanged (no field added, removed or re-typed).
 
 ## 6. Lifecycle and isolation
 
-Cleared with: the workspace (`DELETE /workspaces/{id}`), the source (`DELETE …/sources/{id}` removes its Level 1 correction and
-prunes overrides of bays it emptied), the bay (`DELETE …/engineering-contexts/{id}`). A bay that spans several sources survives a
-source removal with its override. A re-upload gets a new `source_id` and therefore starts with no correction. Everything is keyed by
+Cleared with: the workspace (`DELETE /workspaces/{id}`), the source (`DELETE …/sources/{id}` removes its Level 1 correction and every bay
+override scoped to that recording), the bay (`DELETE …/engineering-contexts/{id}` removes every recording's override of it), or the membership
+(a `PATCH` that removes a recording's channels from the bay releases that recording's override). A bay that spans several sources survives a
+source removal, keeping the other recordings' overrides. A re-upload gets a new `source_id` and therefore starts with no correction. Everything is keyed by
 `workspace_id`; ids never resolve across workspaces. No persistence of any kind.
 
 ## 7. Verification
@@ -117,10 +119,11 @@ Full backend regression: 13,448 passed / 405 skipped / 0 failed / 0 errors (13,8
    each quantity normalised independently. Only disagreement within one quantity is a conflict.
 2. **Partial evidence** — *ANSWERED (B2A-2):* `recording_default` is inferred (`inferred`, not `strict_usable`); strict consumers need reliable evidence or an
    engineer-confirmed Recording/Bay setting.
-3. **Bay spanning recordings with different Level 1 sides** has no single inherited value, so selecting a side is always a manual override (nothing to clear to).
+3. **Bay spanning recordings with different Level 1 sides** — *RESOLVED in D5A-2B2B (owner safety refinement):* a Level 2 setting belongs to the bay within one
+   recording; each recording is interpreted separately and nothing is inherited across them.
 4. **Unconfirmed bays** — *ANSWERED (B2A-3):* approved; Level 1 and inheritance continue to work without confirming bays.
 5. **Providers without P/S evidence (BEN, CSV/Excel)** — *ANSWERED (B2A-4):* approved; never inferred from ratios or magnitude.
-6. **Calculated channels** are not resolved by this slice (`CALCULATED_CHANNEL_NOT_RESOLVED`); their side follows their inputs and belongs to the PU / consumer slices.
-7. **A CT/VT group spanning two bays with different sides** is not diagnosed here (groups never carry a side); decide whether the Recording Details UI should flag it.
+6. **Calculated channels** are not resolved by this slice (`CALCULATED_CHANNEL_NOT_RESOLVED`); deferred to D5A-2B2C — the open lineage questions are listed in the D5A-2B2B document §7.
+7. **A CT/VT group spanning two bays with different sides** — *RESOLVED in D5A-2B2B:* diagnosed (`GroupOwnership`, see the D5A-2B2B document); the future consumer blocks.
 8. An engineer value winning over a declaration — *ANSWERED (B2A-5):* approved; warning + `overridden_declarations`, consumable, UI must disclose.
 9. The old D5A-2B2 rule "a confirmed side never feeds PU" (proposal §6/Q4) is superseded: PU is a planned consumer of the effective side.

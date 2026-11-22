@@ -29645,3 +29645,17 @@ D5A-OC-001 owner UAT: PASSED (2026-11-22).
 - A recording that declares Primary voltage and Secondary current is `voltage_current_differ` (info), not `mixed`; only disagreement within one quantity is a conflict.
 - Contradicted declarations are always disclosed with the correction, even when a bay setting takes over the channel.
 - A small **Confirm bay** link (existing Engineering Context status `PATCH`) satisfies B2A-3 for bays created as `suggested` at upload. [PROPOSAL, awaiting owner review]
+
+### Amendment 3 (2026-11-22) — owner review of D5A-2B2B
+
+Owner decisions:
+
+- **UI placement:** Level 1 (recording-wide Primary/Secondary) lives in Recording Information; Level 2 (one Primary/Secondary for the selected bay) lives in **Group Details**, keeping the Engineering Context
+  authority. No separate Voltage and Current Measurement Group side settings, no per-phase settings, no Reset, segmented control retained.
+- **Confirm bay: APPROVED with safeguards.** It is an explicit, reviewed action (the engineer sees the bay's channels and phase evidence), changes the bay's status only through the existing Engineering Context lifecycle,
+  and never silently validates uncertain engineering evidence. Analysis bay availability and membership are unchanged (verified).
+- **Multi-recording Engineering Context (safety):** a bay-level setting is scoped to the bay **within one recording** (`context, source`). A change for one recording never reinterprets another; each Level 1 reaches only its own
+  non-overridden associations; no single value is inherited across recordings with different sides.
+- **CT/VT Measurement Group spanning bays:** explicit diagnostics (`GroupOwnership`). A transformer ratio or side interpretation is never borrowed from an unrelated bay; where bays sharing a group differ in side or are unresolved,
+  conversion authority is ambiguous and a future consumer must block. CT/VT numerical formulas are unchanged.
+- **Calculated channels** stay deferred to D5A-2B2C; the lineage / reference-side questions are recorded in [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md) §7, and no side is assigned to a calculated channel merely because its inputs share a recording.

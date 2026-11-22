@@ -11,7 +11,9 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 ## D5A-2B2B — Recording Details measurement-side UI (2026-11-22)
 
 **Status:** committed locally on `feature/d5a-2b2b-recording-details-side-ui` (stacked on `feature/d5a-2b2a-measurement-side-config`; worktree `.local-data/d5a-2b2a`).
-NOT pushed, merged or deployed. **Stopped for owner review.** Recording Info gains a Level 1 selector and one selector per bay, rendered from the D5A-2B2A API;
+NOT pushed, merged or deployed. **Stopped for owner review / DEV UAT authorisation.** Owner review of 2026-11-22 applied (DEC-216 Amendment 3): Level 1 stays in Recording Info, **Level 2 moved to Group Details**
+(one setting per bay within the selected recording), Confirm bay is an explicit reviewed status-only action, bay settings are **scoped per recording** (a multi-recording Engineering Context never shares a value),
+and a CT/VT group spanning bays is diagnosed (ambiguous sides block conversion). Calculated-channel side resolution stays deferred to D5A-2B2C (open questions in the document below).
 PU, Overcurrent, Impedance and Distance numerics and their existing controls are untouched. Details, verification and decisions: [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
 
 **Next action:** owner review/UAT of the UI and the open points in §5/§6 of that document. Then (each only when authorised) the PU migration slice, D5A-2B2C (consumer
