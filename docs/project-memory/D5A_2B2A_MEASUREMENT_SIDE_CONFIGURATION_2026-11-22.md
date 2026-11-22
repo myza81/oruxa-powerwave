@@ -32,7 +32,7 @@ Effective side of one Voltage/Current channel — first match wins:
 | 1 | bay override (bay membership `confirmed`/`manual` only) | `engineer_bay_override` |
 | 2 | recording correction | `engineer_recording_correction` |
 | 3 | the channel's own original P/S declaration | `recording_channel_declared` |
-| 4 | recording default: the consistent declaration of the recording's *other* channels | `recording_default` |
+| 4 | recording default: the consistent declaration of the recording's *other* channels — **inferred** (`inferred: true`, not `strict_usable`) | `recording_default` |
 | 5 | nothing | `unresolved` (`effective_side: "unknown"`, `usable: false`) |
 
 Recording-derived (Level 1) evidence is `consistent` (every declaring channel agrees), `mixed` (declarations differ → **no** default), or
@@ -64,8 +64,11 @@ reported (`voltage_group_ids`, `current_group_ids`); they never change the side 
 `BAY_HAS_NO_VOLTAGE_CURRENT_MEMBERS`, `BAY_RECORDINGS_DISAGREE`, `CONSUMED_CHANNELS_SIDES_DIFFER`, `CONSUMED_CHANNEL_SIDE_UNRESOLVED`,
 `SOURCE_NOT_FOUND`, `CHANNEL_NOT_FOUND`, `CHANNEL_NOT_VOLTAGE_OR_CURRENT`, `CALCULATED_CHANNEL_NOT_RESOLVED`.
 Severity is `info` / `warning` / `conflict`. A set of channels (a bay, or what a calculation consumes) resolves to one side only when
-**every** channel agrees; different sides give `status: conflict`, any unresolved channel gives `unresolved` — never a manufactured
-single interpretation. Per-channel sides remain available in both cases.
+**every** channel agrees. Channels that disagree **within one quantity** give `status: conflict`; any unresolved channel gives `unresolved` — never a
+manufactured single interpretation, and per-channel sides remain available. **Voltage on one side and current on the other is not a conflict
+(owner decision B2A-1)**: the set is `resolved`, `side` is null, `voltage_side`/`current_side` are set, `reference_sides` is `voltage_current_differ`
+and `BAY_VOLTAGE_CURRENT_SIDES_DIFFER` / `CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER` are `info`.
+`usable` means every channel has a concrete side; `strict_usable` additionally requires that none is merely inferred (B2A-2).
 
 ## 5. API (additive; `/api/v1/workspaces/{workspace_id}`)
 
@@ -90,7 +93,7 @@ source removal with its override. A re-upload gets a new `source_id` and therefo
 
 ## 7. Verification
 
-`tests/test_d5a2b2a_measurement_side_config.py` — 62 tests, expected sides/authorities stated by hand from the owner's rules.
+`tests/test_d5a2b2a_measurement_side_config.py` — 66 tests, expected sides/authorities stated by hand from the owner's rules.
 Mutation checks (each fails the suite): removing clear-on-equal (2), dropping the Level 1 correction tier (8), dropping the channel-declaration
 tier (13), a fabricated recording default (4), treating mixed evidence as consistent (4), applying an unconfirmed bay override (2).
 The "existing results unchanged" test snapshots Overcurrent, Impedance (legacy and strict), the protection-instrument context, PU coverage, the
@@ -108,17 +111,16 @@ Full backend regression: 13,448 passed / 405 skipped / 0 failed / 0 errors (13,8
 | **D5A-2B2C** | Consumer migration and removal of duplicate recorded-mode selectors: Overcurrent "Recording current basis", Impedance/Distance recorded voltage/current-side selectors. Backend enforcement: a recorded request cannot silently override Recording Details; unresolved/contradictory side blocks. One consistent safety policy replaces today's Overcurrent strict-block vs Impedance/Distance warning-only inconsistency. Cross-consumer regression of one recording through PU, Overcurrent, Impedance and Distance. Output-side (primary/secondary impedance) controls and Manual mode stay |
 | **D5A-2B2D** | Legacy retirement |
 
-## 9. Limitations needing an owner decision before the frontend / PU stages
+## 9. Limitations (original nine; owner answers of 2026-11-22 in the right-hand column)
 
-1. **Voltage and current on different sides in one bay is reported as a `conflict`** (per the owner's rule), yet Impedance/Distance legitimately
-   normalise V and I independently. Decide whether, for those consumers, a bay-level V/I difference blocks or only warns when each channel's side
-   is individually resolved (per-channel sides are available either way).
-2. **Partial evidence**: an undeclared V/I channel takes the consistent default of its siblings (`recording_default`, with an info diagnostic). Decide
-   whether strict consumers may accept `recording_default` or require `recording_channel_declared` / an engineer value.
+1. **Voltage and current on different sides in one bay** — *ANSWERED (B2A-1):* not a conflict; `info` diagnostic, `reference_sides: voltage_current_differ`,
+   each quantity normalised independently. Only disagreement within one quantity is a conflict.
+2. **Partial evidence** — *ANSWERED (B2A-2):* `recording_default` is inferred (`inferred`, not `strict_usable`); strict consumers need reliable evidence or an
+   engineer-confirmed Recording/Bay setting.
 3. **Bay spanning recordings with different Level 1 sides** has no single inherited value, so selecting a side is always a manual override (nothing to clear to).
-4. **Unconfirmed bays** (`suggested`/`needs_review`) cannot take a bay setting. The UI must offer promotion to confirmed before the control is enabled.
-5. **Providers without P/S evidence (BEN, CSV/Excel)** resolve `unresolved` until an engineer sets Level 1 — by design, nothing is guessed.
+4. **Unconfirmed bays** — *ANSWERED (B2A-3):* approved; Level 1 and inheritance continue to work without confirming bays.
+5. **Providers without P/S evidence (BEN, CSV/Excel)** — *ANSWERED (B2A-4):* approved; never inferred from ratios or magnitude.
 6. **Calculated channels** are not resolved by this slice (`CALCULATED_CHANNEL_NOT_RESOLVED`); their side follows their inputs and belongs to the PU / consumer slices.
 7. **A CT/VT group spanning two bays with different sides** is not diagnosed here (groups never carry a side); decide whether the Recording Details UI should flag it.
-8. An engineer value silently winning over a declaration is reported as a `warning` diagnostic, not a block. Confirm that is the intended strictness.
+8. An engineer value winning over a declaration — *ANSWERED (B2A-5):* approved; warning + `overridden_declarations`, consumable, UI must disclose.
 9. The old D5A-2B2 rule "a confirmed side never feeds PU" (proposal §6/Q4) is superseded: PU is a planned consumer of the effective side.

@@ -29613,3 +29613,27 @@ Decision:
   D5A-2B2D legacy retirement. Manual mode and its CT/VT inputs stay untouched throughout.
 
 Implementation, API and open questions for the owner: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+
+### Amendment 1 (2026-11-22) — owner decisions B2A-1..B2A-5 after review of D5A-2B2A
+
+The D5A-2B2A report was accepted. The owner decided:
+
+- **B2A-1 — voltage and current on different sides is NOT a conflict.** Primary voltage with Secondary current is mathematically valid and is
+  normalised independently where a calculation needs it. `BAY_VOLTAGE_CURRENT_SIDES_DIFFER` is now an `info` diagnostic on a *resolved* bay
+  (`effective_side` is null, `voltage_side`/`current_side` are set, `reference_sides: "voltage_current_differ"`). Only channels that disagree
+  *within one quantity* are a `conflict`, per-channel evidence is preserved (never collapsed to a false single value), and a calculation stays
+  blocked wherever the conversion engine cannot safely handle the combination. `resolve_consumed_side()` mirrors this
+  (`CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER`, info). No numerical behaviour changed.
+- **B2A-2 — a sibling-derived recording default is inferred evidence.** It is displayed (`inferred: true`, diagnostic `CHANNEL_SIDE_INFERRED`)
+  but `strict_usable` is false; strict side-dependent calculations need the channel's own declaration or an engineer-confirmed Recording/Bay
+  setting. Confirming the same side the partial evidence implies is therefore kept as an engineer correction (it is not redundant when some channels
+  declare nothing).
+- **B2A-3 — confirm a bay before a manual bay override** (unchanged, approved). File-wide Level 1 and normal inheritance work without confirming any bay;
+  `BAY_MEMBERSHIP_UNCONFIRMED` is informational.
+- **B2A-4 — recordings without a trustworthy P/S declaration** (BEN, CSV/Excel, …) need an engineer's Level 1 value before strict conversions. The side is
+  never inferred from a CT/VT ratio or from magnitude (tested).
+- **B2A-5 — an explicit engineer correction supersedes an incorrect declaration** and is consumable by the future strict path. The original evidence,
+  effective side, authority, timestamp and a visible warning (`ENGINEER_CORRECTION_OVERRIDES_DECLARATION`, plus a structured
+  `overridden_declarations` list) are preserved; the warning alone never blocks. The UI must disclose the contradicted source evidence.
+
+D5A-OC-001 owner UAT: PASSED (2026-11-22).

@@ -25,8 +25,12 @@ lifecycle clean-up with workspace/source/bay. Precedence, ownership, diagnostics
 the shared resolver; recorded-mode side selectors are removed in D5A-2B2C (output-side settings and Manual mode stay); the backend must enforce the
 same authority and block on unresolved/contradictory sides; no analyzer may add its own side configuration.
 
-**Next action:** owner review of the 9 limitations in the slice document §9, then D5A-2B2B (Recording Details UI), the PU migration slice, D5A-2B2C
-(consumer migration), D5A-2B2D (legacy retirement). Do not start any of them unprompted.
+**Owner review of D5A-2B2A: ACCEPTED (2026-11-22)** with decisions B2A-1..B2A-5 (DEC-216 Amendment 1), applied as a small backend refinement
+(V/I on different sides = resolved + info; `inferred` / `strict_usable`; `overridden_declarations`). Open from the original nine: #3 (a bay spanning
+recordings has no single inherited value), #6 (calculated channels), #7 (a CT/VT group spanning two bays with different sides is not diagnosed).
+
+**Next action:** D5A-2B2B (Recording Details UI) is authorised; then the PU migration slice, D5A-2B2C (consumer migration), D5A-2B2D (legacy retirement)
+only when the owner authorises each.
 
 ---
 
