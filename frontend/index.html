@@ -1450,6 +1450,107 @@
             word-break: break-all;
         }
 
+        /* UI-REC-001-CSS-START: Recording Info tab of the third column (cards, pill control, header/tab chrome).
+           Presentation only. Scoped to #wwRdDetailsPanel / .ww-rd-details-body--info so Group Details keeps its own layout. */
+        #wwRdDetailsPanel .ww-rd-recording-action-bar { padding: 12px 18px; min-height: 58px; }
+        #wwRdDetailsPanel .ww-rd-recording-context-name { font-size: 1.2rem; font-weight: 700; gap: 10px; letter-spacing: -0.01em; }
+        #wwRdDetailsPanel .ww-rd-recording-context-name .ww-rd-group-badge {
+            font-size: 0.68rem; font-weight: 600; padding: 4px 11px; border-radius: 999px;
+            background: var(--accent-wash); color: var(--text-dim); letter-spacing: 0.01em;
+        }
+        #wwRdDetailsPanel .ww-rd-analyze-btn { padding: 11px 18px; border-radius: 999px; font-size: 0.85rem; }
+        #wwRdDetailsPanel .ww-rd-tabs { padding: 0 18px; gap: 6px; }
+        #wwRdDetailsPanel .ww-rd-tab {
+            padding: 11px 14px 12px; font-size: 0.85rem; font-weight: 600;
+            color: color-mix(in srgb, var(--text) 45%, var(--text-dim)); border-bottom-width: 3px;
+        }
+        #wwRdDetailsPanel .ww-rd-tab[aria-selected="true"] { color: var(--accent); font-weight: 700; }
+
+        .ww-rd-details-body--info { background: var(--bg); padding: 16px 18px 20px; }
+        .ww-rd-info-card {
+            background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 14px; min-width: 0;
+        }
+        .ww-rd-info-card > .ww-rd-section-heading { margin-bottom: 8px; }
+        .ww-rd-info-card .ww-rd-section-heading { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+
+        /* Metadata: two columns separated by a thin vertical divider; reflows to one column when narrow. */
+        .ww-rd-info-meta { padding: 14px 0; container-type: inline-size; }
+        .ww-rd-info-meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        .ww-rd-info-meta-grid > .ww-rd-config-table { padding: 0 22px; margin: 0; align-content: start; }
+        .ww-rd-info-meta-grid > .ww-rd-config-table + .ww-rd-config-table { border-left: 1px solid var(--panel-border); }
+        .ww-rd-info-meta .ww-rd-config-table {
+            grid-template-columns: 8.6em minmax(0, 1fr); gap: 7px 14px; font-size: 0.8rem; line-height: 1.35;
+        }
+        .ww-rd-info-meta .ww-rd-config-label { color: var(--text-dim); }
+        .ww-rd-info-meta .ww-rd-config-value,
+        .ww-rd-info-meta .ww-rd-info-filename {
+            color: var(--text); font-family: inherit; font-size: inherit; font-weight: 400;
+            overflow: visible; text-overflow: clip; overflow-wrap: break-word; word-break: normal;
+        }
+        .ww-rd-info-meta .ww-rd-info-filename { overflow-wrap: anywhere; }
+        @container (max-width: 720px) {
+            .ww-rd-info-meta-grid { grid-template-columns: minmax(0, 1fr); }
+            .ww-rd-info-meta-grid > .ww-rd-config-table { padding: 8px 20px; }
+            .ww-rd-info-meta-grid > .ww-rd-config-table + .ww-rd-config-table { border-left: none; border-top: 1px solid var(--panel-border); margin-top: 8px; padding-top: 14px; }
+        }
+
+        /* Cards with a leading icon tile: Measurement Side and Per-unit Configuration. */
+        .ww-rd-info-icon {
+            flex: none; width: 40px; height: 40px; border-radius: 10px; display: inline-flex;
+            align-items: center; justify-content: center;
+            background: var(--accent-wash); color: var(--accent);
+        }
+        .ww-rd-info-icon svg { width: 22px; height: 22px; }
+        .ww-rd-info-card--side {
+            display: flex; align-items: flex-start; gap: 18px;
+            background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+            border-color: color-mix(in srgb, var(--accent) 30%, var(--panel-border));
+        }
+        .ww-rd-info-card-body { flex: 1 1 auto; min-width: 0; }
+        .ww-rd-info-card--side .ww-rd-side-note { font-size: 0.8rem; margin: 0 0 12px; color: var(--text-dim); }
+        .ww-rd-info-card--side .ww-rd-side-rows { gap: 8px; }
+        .ww-rd-side-row--recording { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+        .ww-rd-side-row--recording .ww-rd-provenance { font-size: 0.74rem; }
+        .ww-rd-side-group--pill {
+            display: inline-grid; grid-template-columns: 1fr 1fr; width: min(100%, 22rem); padding: 3px;
+            gap: 2px; border: 1px solid var(--panel-border); border-radius: 999px; background: var(--panel);
+            box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent);
+        }
+        .ww-rd-side-group--pill .ww-rd-side-btn {
+            font-size: 0.85rem; font-weight: 600; line-height: 1; padding: 10px 14px; border: none; border-radius: 999px;
+            background: transparent; color: var(--text); box-shadow: none; text-align: center;
+        }
+        .ww-rd-side-group--pill .ww-rd-side-btn + .ww-rd-side-btn { border-left: none; }
+        .ww-rd-side-group--pill .ww-rd-side-btn:hover:not(:disabled):not(.ww-rd-side-btn--active) { background: var(--hover-tint); color: var(--text); }
+        .ww-rd-side-group--pill .ww-rd-side-btn--active { background: var(--accent); color: #fff; box-shadow: none; }
+        .ww-rd-side-group--pill .ww-rd-side-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .ww-rd-pu-config-section .ww-rd-info-card-head { display: flex; align-items: center; gap: 18px; margin-bottom: 12px; }
+        .ww-rd-pu-config-section .ww-rd-section-heading { margin: 0; }
+        .ww-rd-pu-config-body { padding-left: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+        .ww-rd-pu-config-body .ww-rd-pu-config-issue {
+            display: flex; align-items: center; gap: 10px; align-self: stretch; margin: 0;
+            padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; color: var(--warn);
+            background: color-mix(in srgb, var(--warn) 11%, var(--panel));
+        }
+        .ww-rd-pu-config-body .ww-rd-pu-config-issue::before { content: none; }
+        .ww-rd-pu-config-icon { flex: none; width: 20px; height: 20px; }
+        .ww-rd-pu-config-body .ww-rd-pu-review-btn {
+            margin: 0; padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 999px;
+            border: 1px solid var(--panel-border); background: var(--panel); color: var(--accent);
+            box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent);
+        }
+        .ww-rd-pu-config-body .ww-rd-pu-review-btn:hover { background: var(--accent-wash); }
+        @media (max-width: 692px) {
+            .ww-rd-details-body--info { padding: 12px; }
+            .ww-rd-info-card { padding: 14px; }
+            .ww-rd-info-card--side { gap: 12px; }
+            .ww-rd-pu-config-body { padding-left: 0; }
+            #wwRdDetailsPanel .ww-rd-recording-context-name { font-size: 1.05rem; }
+        }
+        /* UI-REC-001-CSS-END */
+
         .recordings-header {
             display: flex;
             align-items: center;
@@ -36098,6 +36199,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             // Update tabpanel aria-labelledby to reflect active tab
             body.setAttribute("aria-labelledby", isRecording ? "wwRdTabRecordingInfo" : "wwRdTabGroupDetails");
+            body.classList.toggle("ww-rd-details-body--info", isRecording); // UI-REC-001: card surface for Recording Info only
             if (isRecording) {
                 if (!s) {
                     body.innerHTML = '<p class="ww-rd-placeholder">' +
@@ -36124,6 +36226,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             body.innerHTML = wwRdBuildDetailsHtml(g);
         }
+
+        // UI-REC-001: card icons for Per-unit Configuration (stroke icons, colour from the surrounding tile).
+        const WW_RD_ICON_SCALE = '<span class="ww-rd-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>' +
+            '<path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg></span>';
+        const WW_RD_ICON_WARNING = '<svg class="ww-rd-pu-config-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
 
         // Slice C-1: build Recording Information HTML from a SourceSummaryOut.
         // Uses only fields verified present in backend/app/schemas/source.py.
@@ -36181,25 +36290,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // --- Recorder ---
             const recorder = (s.recorder_name && s.recorder_name.trim()) ? s.recorder_name : null;
 
-            let html = '<div class="ww-rd-details-section">';
-            html += '<div class="ww-rd-config-table">';
-            if (station) html += row("Station", station);
-            if (recorder) html += row("Recorder", recorder);
-            if (showOrig) html += row("Original file", origFileDisplay, true);
-            html += row("Format", fmtLabel);
-            html += row(fileSizeLabel, fileSizeDisplay);
-            html += row("Start time", startTimeDisplay || "—");
+            // UI-REC-001: metadata card (two columns, vertical divider), then the Measurement Side and
+            // Per-unit Configuration cards. Presentation only: every value and condition is unchanged.
+            const left = [];
+            const right = [];
+            if (station) left.push(row("Station", station));
+            if (recorder) left.push(row("Recorder", recorder));
+            if (showOrig) left.push(row("Original file", origFileDisplay, true));
+            left.push(row("Format", fmtLabel));
+            left.push(row(fileSizeLabel, fileSizeDisplay));
+            right.push(row("Start time", startTimeDisplay || "—"));
             if (triggerTimeDisplay && triggerTimeDisplay !== startTimeDisplay) {
-                html += row("Trigger time", triggerTimeDisplay);
+                right.push(row("Trigger time", triggerTimeDisplay));
             }
-            html += row("Duration", duration);
-            html += row("Sample rate", ratesDisplay);
-            html += row("Nominal frequency", nomFreq);
-            html += row("Channels", chCount);
-            html += '</div>';
-            html += '</div>';
+            right.push(row("Duration", duration));
+            right.push(row("Sample rate", ratesDisplay));
+            right.push(row("Nominal frequency", nomFreq));
+            right.push(row("Channels", chCount));
 
-            // D5A-2B2B: recording-level and per-bay measurement side (backend is the only authority).
+            let html = '<div class="ww-rd-info-card ww-rd-info-meta" data-ww-info="metadata"><div class="ww-rd-info-meta-grid">' +
+                '<div class="ww-rd-config-table">' + left.join("") + '</div>' +
+                '<div class="ww-rd-config-table">' + right.join("") + '</div>' +
+                '</div></div>';
+
+            // D5A-2B2B: recording-level measurement side (backend is the only authority).
             html += wwRdSideSectionHtml(s);
 
             // PU-UI-001 Final: Per-unit Configuration section — only shown
@@ -36210,23 +36324,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const conflictGroups = voltageGroups.filter(function(g) { return g.pu_status === "conflict"; });
             const hasPuIssues = baseRequiredGroups.length > 0 || conflictGroups.length > 0;
             if (hasPuIssues) {
-                html += '<div class="ww-rd-section ww-rd-pu-config-section">';
-                html += '<div class="ww-rd-section-heading">Per-unit Configuration</div>';
+                const issues = [];
                 if (baseRequiredGroups.length > 0) {
                     const n = baseRequiredGroups.length;
-                    html += '<div class="ww-rd-pu-config-issue">' +
-                        n + ' voltage group' + (n === 1 ? '' : 's') +
-                        ' need' + (n === 1 ? 's' : '') + ' a nominal voltage base</div>';
+                    issues.push(n + ' voltage group' + (n === 1 ? ' needs' : 's need') + ' a nominal voltage base.');
                 }
                 if (conflictGroups.length > 0) {
                     const n = conflictGroups.length;
-                    html += '<div class="ww-rd-pu-config-issue">' +
-                        n + ' voltage group' + (n === 1 ? '' : 's') +
-                        ' ha' + (n === 1 ? 's a' : 've') + ' configuration conflict' + (n === 1 ? '' : 's') + '</div>';
+                    issues.push(n + ' voltage group' + (n === 1 ? ' has a configuration conflict.' : 's have configuration conflicts.'));
                 }
-                html += '<button class="ww-rd-pu-review-btn" ' +
-                    'onclick="wwRdReviewAffectedGroups()">Review affected groups</button>';
-                html += '</div>';
+                html += '<div class="ww-rd-info-card ww-rd-pu-config-section">' +
+                    '<div class="ww-rd-info-card-head">' + WW_RD_ICON_SCALE +
+                    '<div class="ww-rd-section-heading">Per-unit Configuration</div></div>' +
+                    '<div class="ww-rd-pu-config-body">' +
+                    issues.map(function(text) {
+                        return '<div class="ww-rd-pu-config-issue">' + WW_RD_ICON_WARNING + '<span>' + escapeHtml(text) + '</span></div>';
+                    }).join("") +
+                    '<button type="button" class="ww-rd-pu-review-btn" onclick="wwRdReviewAffectedGroups()">Review affected groups</button>' +
+                    '</div></div>';
             }
 
             // UX-3 (migrated from Recording Events): Time Reference section —
@@ -36235,7 +36350,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // document-level change listener handles .recording-time-reference
             // selects from any page; no additional wiring needed here.
             if (s.time_basis === "unknown" && (s.start_time || s.trigger_time)) {
-                html += '<div class="ww-rd-section">';
+                html += '<div class="ww-rd-info-card">';
                 html += '<div class="ww-rd-section-heading">Time Reference</div>';
                 html += '<div class="ww-rd-time-reference-body">';
                 html += wwTimeReferenceControl(s);
@@ -36274,6 +36389,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //     newer view (sequence guards), and every response is checked against the workspace and recording
         //     that are still on screen.
         // ------------------------------------------------------------------
+        // UI-REC-001: icon of the Measurement Side card (kept in the block so the block renders on its own).
+        const WW_RD_ICON_LAYERS = '<span class="ww-rd-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>' +
+            '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></span>';
         const wwRdSide = {
             workspaceId: null, sourceId: null,
             status: "idle",          // "idle" | "loading" | "ready" | "error"
@@ -36556,6 +36675,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // ---- rendering -----------------------------------------------------------------------------
         function wwRdSideSegmentHtml(kind, targetId, active, disabled, label) {
+            // Level 1 (Recording Info) uses the pill presentation of UI-REC-001; Level 2 keeps its own.
             const buttons = ["primary", "secondary"].map(function(value) {
                 const isActive = value === active;
                 const focusKey = kind === "recording" ? "recording:" + value : "bay:" + targetId + ":" + value;
@@ -36566,7 +36686,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     ' data-ww-side-value="' + value + '" data-ww-side-focus="' + escapeHtml(focusKey) + '"' +
                     (disabled ? ' disabled' : '') + '>' + wwRdSideLabel(value) + '</button>';
             }).join("");
-            return '<span class="ww-rd-side-group" role="radiogroup" aria-label="' + escapeHtml(label) + '">' + buttons + '</span>';
+            return '<span class="ww-rd-side-group' + (kind === "recording" ? ' ww-rd-side-group--pill' : '') +
+                '" role="radiogroup" aria-label="' + escapeHtml(label) + '">' + buttons + '</span>';
         }
 
         function wwRdSideProvenanceHtml(cls, text) {
@@ -36584,7 +36705,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 prov = wwRdSideProvenanceHtml("suggested", "Inferred from the recording's declared channels (" +
                     derived.undeclared_channels + " declare no side). Select it to confirm.");
             } else if (rec.effective_side) {
-                prov = wwRdSideProvenanceHtml("auto", "From recording");
+                prov = ""; // detected from the recording: nothing to explain (UI-REC-001)
             } else if (derived.status === "voltage_current_differ") {
                 // Legitimate (B2A-1): not a conflict. There is simply no single recording-wide side.
                 prov = wwRdSideProvenanceHtml("auto", "Recorded: voltage " + wwRdSideLabel(derived.voltage_side).toLowerCase() +
@@ -36606,9 +36727,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         (overridden.length === 1 ? "" : "s") + ". The side set here is used; the original declarations are kept.") +
                     '</span>';
             }
-            return '<div class="ww-rd-side-row" data-ww-side-row="recording">' +
-                '<span class="ww-rd-side-row-label">Recording</span>' +
-                '<span class="ww-rd-side-row-control">' + wwRdSideSegmentHtml("recording", "", active, false, "Recording measurement side") + '</span>' +
+            return '<div class="ww-rd-side-row ww-rd-side-row--recording" data-ww-side-row="recording">' +
+                wwRdSideSegmentHtml("recording", "", active, false, "Recording measurement side") +
                 prov + notice + '</div>';
         }
 
@@ -36677,10 +36797,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 inner = rec ? '<div class="ww-rd-side-rows">' + wwRdSideRecordingRowHtml(rec) + '</div>' + wwRdSideMessageHtml()
                     : '<p class="ww-rd-placeholder">Measurement side is not available for this recording.</p>';
             }
-            return '<div class="ww-rd-section" id="wwRdSideSection" data-ww-side-source="' + escapeHtml(sourceId) + '">' +
-                '<div class="ww-rd-section-heading">Measurement side</div>' +
-                '<p class="ww-rd-side-note">Whether the recorded voltage and current are Primary or Secondary values.</p>' +
-                inner + '</div>';
+            return '<div class="ww-rd-info-card ww-rd-info-card--side" id="wwRdSideSection" data-ww-side-source="' + escapeHtml(sourceId) + '">' +
+                WW_RD_ICON_LAYERS +
+                '<div class="ww-rd-info-card-body">' +
+                '<div class="ww-rd-section-heading">Measurement Side</div>' +
+                '<p class="ww-rd-side-note">Measurement side values for voltage and current.</p>' +
+                inner + '</div></div>';
         }
 
         function wwRdSideOwnershipNotice(group, bays) {
