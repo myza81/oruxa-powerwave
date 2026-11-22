@@ -56,6 +56,7 @@ from app.services.measurement_group_service import (
     generate_suggested_groups_for_source,
     update_group,
 )
+from app.services.measurement_side_registry import MeasurementSideRegistry
 from app.services.measurement_group_view_service import MeasurementGroupView, build_group_view, build_group_views_for_source
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.auto_base_service import reconfigure_auto_base_after_membership_change
@@ -111,6 +112,10 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
     return request.app.state.current_group_config_registry
+
+
+def get_measurement_side_registry(request: Request) -> MeasurementSideRegistry:
+    return request.app.state.measurement_side_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -366,6 +371,7 @@ def delete_measurement_group(
     group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
 ) -> None:
     """Idempotent. A group that exists but belongs to a DIFFERENT
     source is rejected with 404 (never silently deleted through the
@@ -386,6 +392,8 @@ def delete_measurement_group(
         workspace_id, measurement_group_id, registry=group_registry,
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
     )
+    # D5A-UI-002: the group's own measurement-side override is released with it.
+    measurement_side_registry.clear_group(workspace_id, source_id, measurement_group_id)
 
 
 @router.put("/{measurement_group_id}/voltage-config", response_model=MeasurementGroupOut)

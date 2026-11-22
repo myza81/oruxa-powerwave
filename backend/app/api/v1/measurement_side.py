@@ -1,6 +1,6 @@
 """D5A-2B2A: additive REST contract for the unified measurement-side configuration (Recording Details).
 
-Level 1 (recording) and Level 2 (bay) configuration plus the shared per-channel resolution. Every response
+Level 1 (recording) and Level 2 (Measurement Group) configuration plus the shared per-channel resolution. Every response
 is derived on demand from the shared resolver in `app.services.measurement_side_service`; nothing here
 converts a value, touches Per-Unit, or changes any analysis result.
 """
@@ -10,10 +10,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.schemas.measurement_side import (
-    BayMeasurementSideOut,
-    BaySideUpdateRequest,
     ChannelMeasurementSideOut,
-    ContextMeasurementSideOut,
+    GroupMeasurementSideOut,
+    GroupSideUpdateRequest,
     RecordingMeasurementSideOut,
     RecordingSideUpdateRequest,
     WorkspaceMeasurementSideOut,
@@ -22,13 +21,11 @@ from app.schemas.source import ErrorOut
 from app.services.errors import ImportServiceError
 from app.services.measurement_side_service import (
     SideAuthority,
-    build_bay_view,
-    build_context_view,
-    context_names,
+    build_group_view,
     build_recording_view,
     build_workspace_views,
     resolve_effective_measurement_side,
-    set_bay_side,
+    set_group_side,
     set_recording_side,
 )
 
@@ -36,9 +33,8 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["measuremen
 
 _STATUS_BY_ERROR_CODE = {
     "source_not_found": status.HTTP_404_NOT_FOUND,
-    "engineering_context_not_found": status.HTTP_404_NOT_FOUND,
-    "bay_membership_unconfirmed": status.HTTP_409_CONFLICT,
-    "bay_has_no_measurement_channels": status.HTTP_409_CONFLICT,
+    "measurement_group_not_found": status.HTTP_404_NOT_FOUND,
+    "group_has_no_measurement_channels": status.HTTP_409_CONFLICT,
 }
 
 
@@ -62,14 +58,13 @@ def _http_error(exc: ImportServiceError) -> HTTPException:
 
 @router.get("/measurement-side", response_model=WorkspaceMeasurementSideOut)
 def get_workspace_measurement_side(workspace_id: str, request: Request) -> WorkspaceMeasurementSideOut:
-    """Every recording's Level 1 state and every bay's Level 2 state (no per-channel detail)."""
+    """Every recording's Level 1 state and every Measurement Group's Level 2 state (no per-channel detail)."""
     workspace_id = _validate_workspace_id(workspace_id)
-    recordings, bays = build_workspace_views(workspace_id, deps=_deps(request))
-    names = context_names(workspace_id, deps=_deps(request))
+    recordings, groups = build_workspace_views(workspace_id, deps=_deps(request))
     return WorkspaceMeasurementSideOut(
         workspace_id=workspace_id,
         recordings=[RecordingMeasurementSideOut.from_view(v, include_channels=False) for v in recordings],
-        bays=[BayMeasurementSideOut.from_view(v, include_channels=False, bay_names=names) for v in bays],
+        groups=[GroupMeasurementSideOut.from_view(v, include_channels=False) for v in groups],
     )
 
 
@@ -108,45 +103,30 @@ def get_channel_measurement_side(
     return ChannelMeasurementSideOut.from_domain(resolution)
 
 
-@router.get("/engineering-contexts/{engineering_context_id}/measurement-side", response_model=ContextMeasurementSideOut)
-def get_context_measurement_side(workspace_id: str, engineering_context_id: str, request: Request) -> ContextMeasurementSideOut:
-    """A bay with one association per recording that contributes voltage/current channels. Nothing is shared or
-    inherited across those recordings."""
+@router.get("/sources/{source_id}/measurement-groups/{measurement_group_id}/measurement-side",
+            response_model=GroupMeasurementSideOut)
+def get_group_measurement_side(
+    workspace_id: str, source_id: str, measurement_group_id: str, request: Request,
+) -> GroupMeasurementSideOut:
+    """One Voltage or Current Measurement Group of one recording."""
     workspace_id = _validate_workspace_id(workspace_id)
-    deps = _deps(request)
     try:
-        view = build_context_view(workspace_id, engineering_context_id, deps=deps)
+        view = build_group_view(workspace_id, source_id, measurement_group_id, deps=_deps(request))
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
-    return ContextMeasurementSideOut.from_view(view, include_channels=True, bay_names=context_names(workspace_id, deps=deps))
+    return GroupMeasurementSideOut.from_view(view, include_channels=True)
 
 
-@router.get("/sources/{source_id}/engineering-contexts/{engineering_context_id}/measurement-side",
-            response_model=BayMeasurementSideOut)
-def get_bay_measurement_side(
-    workspace_id: str, source_id: str, engineering_context_id: str, request: Request,
-) -> BayMeasurementSideOut:
-    """The bay WITHIN ONE recording."""
+@router.put("/sources/{source_id}/measurement-groups/{measurement_group_id}/measurement-side",
+            response_model=GroupMeasurementSideOut)
+def put_group_measurement_side(
+    workspace_id: str, source_id: str, measurement_group_id: str, body: GroupSideUpdateRequest, request: Request,
+) -> GroupMeasurementSideOut:
+    """Level 2: one Primary/Secondary choice for ONE Measurement Group (all its phases). Choosing the side the group
+    already has without an override clears it. The bay's other group, and other recordings, are untouched."""
     workspace_id = _validate_workspace_id(workspace_id)
-    deps = _deps(request)
     try:
-        view = build_bay_view(workspace_id, engineering_context_id, source_id, deps=deps)
+        view = set_group_side(workspace_id, source_id, measurement_group_id, body.side, deps=_deps(request))
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
-    return BayMeasurementSideOut.from_view(view, include_channels=True, bay_names=context_names(workspace_id, deps=deps))
-
-
-@router.put("/sources/{source_id}/engineering-contexts/{engineering_context_id}/measurement-side",
-            response_model=BayMeasurementSideOut)
-def put_bay_measurement_side(
-    workspace_id: str, source_id: str, engineering_context_id: str, body: BaySideUpdateRequest, request: Request,
-) -> BayMeasurementSideOut:
-    """Level 2: one Primary/Secondary choice for the bay within ONE recording. Choosing the side that recording
-    already gives the bay (its Level 1) clears the override. Other recordings of the same bay are untouched."""
-    workspace_id = _validate_workspace_id(workspace_id)
-    deps = _deps(request)
-    try:
-        view = set_bay_side(workspace_id, engineering_context_id, source_id, body.side, deps=deps)
-    except ImportServiceError as exc:
-        raise _http_error(exc) from exc
-    return BayMeasurementSideOut.from_view(view, include_channels=True, bay_names=context_names(workspace_id, deps=deps))
+    return GroupMeasurementSideOut.from_view(view, include_channels=True)

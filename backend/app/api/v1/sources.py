@@ -45,7 +45,7 @@ from app.services.current_group_config_registry import CurrentGroupConfigRegistr
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.engineering_context_service import prune_engineering_contexts_for_source
 from app.services.measurement_side_registry import MeasurementSideRegistry
-from app.services.measurement_side_service import prune_orphan_bay_overrides
+from app.services.measurement_side_service import prune_orphan_group_overrides
 from app.services.errors import (
     AmbiguousSourceUploadError,
     ChannelNotAnalogError,
@@ -832,10 +832,10 @@ def delete_source(
         workspace_id=workspace_id, source_id=source_id, registry=engineering_context_registry,
         calculated_channel_registry=calc_registry,
     )
-    # D5A-2B2A: the recording's own correction goes with it; a bay override survives only while its bay does.
+    # D5A-2B2A: the recording's own correction and every group override scoped to it go with it.
     measurement_side_registry.remove_source(workspace_id, source_id)
-    prune_orphan_bay_overrides(workspace_id, side_registry=measurement_side_registry,
-                               context_registry=engineering_context_registry)
+    prune_orphan_group_overrides(workspace_id, side_registry=measurement_side_registry,
+                                 group_registry=measurement_group_registry)
 
 
 @router.put("/{source_id}/time-reference", response_model=SourceSummaryOut)

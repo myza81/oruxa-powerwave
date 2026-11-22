@@ -1,4 +1,4 @@
-"""D5A-2B2A: unified measurement-side configuration (pure domain).
+"""D5A-2B2A / D5A-UI-002: unified measurement-side configuration (pure domain).
 
 One authoritative interpretation of "is this recorded Voltage/Current channel on the Primary or the
 Secondary side of its instrument transformer", shared by every consumer. Two levels of configuration:
@@ -6,12 +6,14 @@ Secondary side of its instrument transformer", shared by every consumer. Two lev
 * Level 1 -- the Recording (source): a recording-wide default, resolved automatically from the
   recording's own per-channel P/S evidence when that evidence is consistent, and correctable by an
   engineer. The engineer's value is stored SEPARATELY from the evidence; the evidence is never altered.
-* Level 2 -- the Bay (Engineering Context): an optional engineer override of Level 1, one value for the
-  whole bay (never per phase). A bay with no override simply follows Level 1; nothing is stored for it.
+* Level 2 -- the Measurement Group (a Voltage or a Current group of ONE recording): an optional engineer
+  override of Level 1, one value for the whole group (never per phase). A group with no override simply
+  follows Level 1; nothing is stored for it. The Voltage and the Current group of the same bay are two groups
+  and therefore two independent settings: Primary voltage with Secondary current is legitimate.
 
 Channel precedence (first match wins):
 
-    1. bay override            (engineer, confirmed bay membership only)    -> `engineer_bay_override`
+    1. group override          (engineer, the channel's Measurement Group)  -> `engineer_group_override`
     2. recording correction    (engineer)                                   -> `engineer_recording_correction`
     3. the channel's own P/S   (original recording evidence)                -> `recording_channel_declared`
     4. recording default       (consistent evidence of the OTHER channels)  -> `recording_default`
@@ -19,9 +21,12 @@ Channel precedence (first match wins):
 
 Contradictory evidence is never hidden: a recording whose channels declare different sides has NO
 recording-derived default (so it cannot be used to conceal the mix), each channel keeps its own
-declaration, and a bay that ends up with different effective sides is reported as a conflict instead of
+declaration, and a group that ends up with different effective sides is reported as a conflict instead of
 being given a single manufactured interpretation. An engineer value that disagrees with a channel's
 declaration wins, and the declaration it overrides stays visible (`declared_side`, diagnostics).
+
+Engineering Context membership plays no part in the side: the Measurement Group is the unit that owns both the
+CT/VT ratio and the side, so the two can never disagree about which channels they cover.
 
 No CT/VT ratio, no Per-Unit base and no conversion lives here, and nothing is inferred from channel
 names. Per-phase settings are intentionally not modelled.
@@ -41,7 +46,7 @@ QUANTITY_VOLTAGE = "voltage"
 QUANTITY_CURRENT = "current"
 
 # --- Channel / recording-level authority (what decided the effective side) ---
-AUTH_BAY_OVERRIDE = "engineer_bay_override"
+AUTH_GROUP_OVERRIDE = "engineer_group_override"
 AUTH_RECORDING_CORRECTION = "engineer_recording_correction"
 AUTH_CHANNEL_DECLARED = "recording_channel_declared"
 AUTH_RECORDING_DEFAULT = "recording_default"
@@ -56,16 +61,11 @@ EVIDENCE_MIXED = "mixed"
 # sides. Legitimate (B2A-1): there is simply no single recording-wide side, so each channel keeps its own.
 EVIDENCE_QUANTITY_SPLIT = "voltage_current_differ"
 
-# --- Aggregate resolution status (bay / consumed-channel set) ---
+# --- Aggregate resolution status (group / consumed-channel set) ---
 STATUS_RESOLVED = "resolved"
 STATUS_CONFLICT = "conflict"
 STATUS_UNRESOLVED = "unresolved"
 STATUS_NOT_APPLICABLE = "not_applicable"
-
-# --- Bay membership reliability ---
-MEMBERSHIP_NONE = "none"
-MEMBERSHIP_CONFIRMED = "confirmed"
-MEMBERSHIP_UNCONFIRMED = "unconfirmed"
 
 SEVERITY_INFO = "info"
 SEVERITY_WARNING = "warning"
@@ -77,17 +77,10 @@ DIAG_RECORDING_EVIDENCE_MIXED = "RECORDING_MIXED_SIDE_EVIDENCE"
 DIAG_RECORDING_QUANTITY_SPLIT = "RECORDING_VOLTAGE_CURRENT_SIDES_DIFFER"
 DIAG_RECORDING_EVIDENCE_PARTIAL = "RECORDING_PARTIAL_SIDE_EVIDENCE"
 DIAG_RECORDING_CORRECTION_OVERRIDES = "ENGINEER_CORRECTION_OVERRIDES_DECLARATION"
-DIAG_BAY_OVERRIDE_OVERRIDES = "BAY_OVERRIDE_OVERRIDES_DECLARATION"
-DIAG_BAY_MIXED_WITHIN_QUANTITY = "BAY_MIXED_SIDES_WITHIN_QUANTITY"
-DIAG_BAY_VOLTAGE_CURRENT_DIFFER = "BAY_VOLTAGE_CURRENT_SIDES_DIFFER"
-DIAG_BAY_UNRESOLVED = "BAY_SIDE_UNRESOLVED"
-DIAG_BAY_MEMBERSHIP_UNCONFIRMED = "BAY_MEMBERSHIP_UNCONFIRMED"
-DIAG_BAY_OVERRIDE_INACTIVE = "BAY_OVERRIDE_INACTIVE_UNCONFIRMED_MEMBERSHIP"
-DIAG_BAY_NO_MEASUREMENT_MEMBERS = "BAY_HAS_NO_VOLTAGE_CURRENT_MEMBERS"
-DIAG_BAY_INHERITANCE_AMBIGUOUS = "BAY_RECORDINGS_DISAGREE"
-DIAG_GROUP_SPANS_BAYS = "GROUP_SPANS_BAYS"
-DIAG_GROUP_SPANS_BAYS_AMBIGUOUS = "GROUP_SPANS_BAYS_AMBIGUOUS"
-DIAG_CONSUMED_GROUP_AMBIGUOUS = "CONSUMED_GROUP_SPANS_BAYS_AMBIGUOUS"
+DIAG_GROUP_OVERRIDE_OVERRIDES = "GROUP_OVERRIDE_OVERRIDES_DECLARATION"
+DIAG_GROUP_MIXED_SIDES = "GROUP_MIXED_SIDES"
+DIAG_GROUP_UNRESOLVED = "GROUP_SIDE_UNRESOLVED"
+DIAG_GROUP_NO_MEMBERS = "GROUP_HAS_NO_VOLTAGE_CURRENT_MEMBERS"
 DIAG_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND"
 DIAG_CHANNEL_NOT_MEASUREMENT = "CHANNEL_NOT_VOLTAGE_OR_CURRENT"
 DIAG_CALCULATED_CHANNEL = "CALCULATED_CHANNEL_NOT_RESOLVED"
@@ -234,26 +227,23 @@ def recording_correction_to_store(selected: str | None, derivation: RecordingSid
     return selected
 
 
-def bay_override_to_store(selected: str, inherited_recording_side: str | None) -> str | None:
-    """Selecting the side the bay already inherits from Level 1 clears the override (it follows Level 1 again);
-    anything else is a manual override. With no single inherited value there is nothing to clear to."""
+def group_override_is_redundant(selected: str, without_override: Sequence["ChannelSideResolution"]) -> bool:
+    """True when the group, with NO override, already resolves every channel to `selected` on RELIABLE evidence (a
+    channel's own declaration or an engineer's recording correction). Then the selection is the inherited side and
+    nothing is stored (the group follows Level 1 again). If any channel would instead be inferred, unresolved or
+    different, the selection is kept: dropping it would silently change the effective side or hide a contradiction."""
     if not side_configurable(selected):
         raise ValueError("Measurement side must be 'primary' or 'secondary'.")
-    return None if inherited_recording_side is not None and selected == inherited_recording_side else selected
+    return bool(without_override) and all(r.strict_usable and r.side == selected for r in without_override)
 
 
 @dataclass(frozen=True, slots=True)
-class BaySideState:
-    """What applies to one channel from its bay. `override_side` is set only when the override is ACTIVE
-    (confirmed membership); `membership` is `none` when the channel is in no bay."""
+class GroupSideState:
+    """What applies to one channel from its Measurement Group (`override_side` is None when the group follows
+    Level 1, or the channel is in no group)."""
 
-    context_id: str | None = None
-    membership: str = MEMBERSHIP_NONE
-    stored_override_side: str | None = None
-
-    @property
-    def override_side(self) -> str | None:
-        return self.stored_override_side if self.membership == MEMBERSHIP_CONFIRMED else None
+    group_id: str | None = None
+    override_side: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,9 +255,8 @@ class ChannelSideResolution:
     declared_side: str
     recording_side: str | None
     recording_authority: str
-    context_id: str | None = None
-    membership: str = MEMBERSHIP_NONE
-    bay_override_side: str | None = None
+    group_id: str | None = None
+    group_override_side: str | None = None
     diagnostics: tuple[SideDiagnostic, ...] = ()
     source_id: str | None = None
 
@@ -284,31 +273,24 @@ class ChannelSideResolution:
     @property
     def strict_usable(self) -> bool:
         """A side strict side-dependent calculations may act on: reliable evidence (the channel's own declaration)
-        or an engineer-confirmed Recording / Bay setting. An inferred default is not enough."""
+        or an engineer-confirmed Recording / Group setting. An inferred default is not enough."""
         return self.usable and not self.inferred
 
 
 def resolve_channel_side(
-    evidence: ChannelSideEvidence, recording: RecordingSideState, bay: BaySideState | None = None,
+    evidence: ChannelSideEvidence, recording: RecordingSideState, group: GroupSideState | None = None,
 ) -> ChannelSideResolution:
-    bay = bay or BaySideState()
+    group = group or GroupSideState()
     diags: list[SideDiagnostic] = []
-    if bay.membership == MEMBERSHIP_UNCONFIRMED:
-        diags.append(SideDiagnostic(
-            DIAG_BAY_MEMBERSHIP_UNCONFIRMED, SEVERITY_INFO,
-            "This channel's bay membership is suggested or needs review, so no bay setting is applied to it; "
-            "it follows its recording.",
-            {"engineering_context_id": bay.context_id},
-        ))
     declared = evidence.declared_side
-    override = bay.override_side
+    override = group.override_side
     if override is not None:
-        side, authority = override, AUTH_BAY_OVERRIDE
+        side, authority = override, AUTH_GROUP_OVERRIDE
         if declared not in (SIDE_UNKNOWN, override):
             diags.append(SideDiagnostic(
-                DIAG_BAY_OVERRIDE_OVERRIDES, SEVERITY_WARNING,
-                "The bay setting overrides the side this channel declares; the declaration is retained.",
-                {"declared_side": declared, "bay_side": override},
+                DIAG_GROUP_OVERRIDE_OVERRIDES, SEVERITY_WARNING,
+                "The group setting overrides the side this channel declares; the declaration is retained.",
+                {"declared_side": declared, "group_side": override},
             ))
     elif recording.engineer_side is not None:
         side, authority = recording.engineer_side, AUTH_RECORDING_CORRECTION
@@ -325,7 +307,7 @@ def resolve_channel_side(
         diags.append(SideDiagnostic(
             DIAG_CHANNEL_INFERRED, SEVERITY_INFO,
             "This channel declares no side; the side shown is inferred from the recording's other channels. Strict "
-            "side-dependent calculations need reliable evidence or an engineer-confirmed recording/bay setting.",
+            "side-dependent calculations need reliable evidence or an engineer-confirmed recording/group setting.",
             {"inferred_side": side},
         ))
     else:
@@ -333,14 +315,14 @@ def resolve_channel_side(
     return ChannelSideResolution(
         channel_name=evidence.channel_name, quantity=evidence.quantity, side=side, authority=authority,
         declared_side=declared, recording_side=recording.effective_side, recording_authority=recording.authority,
-        context_id=bay.context_id, membership=bay.membership, bay_override_side=override,
+        group_id=group.group_id, group_override_side=override,
         diagnostics=tuple(diags), source_id=evidence.source_id,
     )
 
 
 @dataclass(frozen=True, slots=True)
 class SideSetResolution:
-    """Aggregate of several channels' effective sides (a bay, or the channels a calculation consumes)."""
+    """Aggregate of several channels' effective sides (a group, or the channels a calculation consumes)."""
 
     status: str
     side: str | None
@@ -349,8 +331,6 @@ class SideSetResolution:
     authority: str
     diagnostics: tuple[SideDiagnostic, ...] = ()
     inferred_channels: tuple[str, ...] = ()
-    #: Measurement Groups of the consumed channels whose transformer ownership is ambiguous (see `GroupOwnership`).
-    ownership_ambiguous_groups: tuple[str, ...] = ()
 
     @property
     def usable(self) -> bool:
@@ -358,16 +338,10 @@ class SideSetResolution:
         return self.status == STATUS_RESOLVED
 
     @property
-    def conversion_authority(self) -> str:
-        """`ambiguous` when a consumed channel's CT/VT group spans bays whose sides differ or are unresolved: a
-        side conversion through that group's ratio must be blocked, never guessed."""
-        return "ambiguous" if self.ownership_ambiguous_groups else "unambiguous"
-
-    @property
     def strict_usable(self) -> bool:
-        """`usable`, no side merely inferred and no ambiguous transformer ownership: safe for a strict
-        side-dependent calculation."""
-        return self.usable and not self.inferred_channels and not self.ownership_ambiguous_groups
+        """`usable` and no side merely inferred: safe for a strict side-dependent calculation. (Whether a CT/VT
+        ratio may be applied is the consuming slice's own check of the consumed channel's Measurement Group.)"""
+        return self.usable and not self.inferred_channels
 
     @property
     def reference_sides(self) -> str | None:
@@ -385,8 +359,8 @@ def _uniform(resolutions: Sequence[ChannelSideResolution]) -> str | None:
 
 def resolve_side_set(
     resolutions: Sequence[ChannelSideResolution], *,
-    mixed_code: str = DIAG_BAY_MIXED_WITHIN_QUANTITY, vi_code: str = DIAG_BAY_VOLTAGE_CURRENT_DIFFER,
-    unresolved_code: str = DIAG_BAY_UNRESOLVED,
+    mixed_code: str = DIAG_GROUP_MIXED_SIDES, vi_code: str = DIAG_CONSUMED_VI_DIFFER,
+    unresolved_code: str = DIAG_GROUP_UNRESOLVED,
 ) -> SideSetResolution:
     """A single side only when EVERY channel agrees; different sides are a conflict (never merged) and any
     unresolved channel keeps the set unresolved -- nothing is guessed."""
@@ -437,55 +411,3 @@ def resolve_side_set(
     authority = next(iter(authorities)) if len(authorities) == 1 else "mixed"
     side = None if vi_differ else next(iter(concrete_all))
     return SideSetResolution(STATUS_RESOLVED, side, voltage_side, current_side, authority, tuple(diags), inferred)
-
-
-# --------------------------------------------------------------------------- CT/VT group ownership
-
-OWNERSHIP_NO_BAY = "no_bay"
-OWNERSHIP_SINGLE_BAY = "single_bay"
-OWNERSHIP_SPANS_BAYS = "spans_bays"
-OWNERSHIP_SPANS_BAYS_AMBIGUOUS = "spans_bays_ambiguous"
-
-
-@dataclass(frozen=True, slots=True)
-class GroupOwnership:
-    """Which bays (Engineering Contexts) the channels of ONE Voltage/Current Measurement Group belong to.
-
-    A group is a CT/VT ownership unit with a single ratio. A group whose channels sit in several bays is not wrong
-    by itself (a busbar VT legitimately serves several feeders) but its ratio must never be borrowed by an
-    unrelated bay: when those bays' sides differ, or any is unresolved, conversion authority is ambiguous."""
-
-    group_id: str
-    kind: str
-    display_name: str
-    status: str
-    bay_ids: tuple[str, ...] = ()
-    diagnostics: tuple[SideDiagnostic, ...] = ()
-
-    @property
-    def conversion_authority_ambiguous(self) -> bool:
-        return self.status == OWNERSHIP_SPANS_BAYS_AMBIGUOUS
-
-
-def classify_group_ownership(
-    group_id: str, kind: str, display_name: str, sides_by_bay: Mapping[str, Sequence[str]],
-) -> GroupOwnership:
-    """`sides_by_bay`: for each bay holding at least one of the group's channels, those channels' effective sides
-    (`unknown` for an unresolved one). Channels in no bay are simply absent (they follow their recording)."""
-    bays = tuple(sides_by_bay)
-    if not bays:
-        return GroupOwnership(group_id, kind, display_name, OWNERSHIP_NO_BAY)
-    if len(bays) == 1:
-        return GroupOwnership(group_id, kind, display_name, OWNERSHIP_SINGLE_BAY, bays)
-    concrete = {side for sides in sides_by_bay.values() for side in sides if side in CONFIGURABLE_SIDES}
-    unresolved = any(side not in CONFIGURABLE_SIDES for sides in sides_by_bay.values() for side in sides)
-    detail = {"group_id": group_id, "bays": ",".join(bays)}
-    if len(concrete) > 1 or unresolved:
-        return GroupOwnership(group_id, kind, display_name, OWNERSHIP_SPANS_BAYS_AMBIGUOUS, bays, (SideDiagnostic(
-            DIAG_GROUP_SPANS_BAYS_AMBIGUOUS, SEVERITY_CONFLICT,
-            f"This {kind} group has channels in several bays whose measurement sides differ or are unresolved; its "
-            "transformer ratio is not borrowed across them and a conversion through it is blocked.", detail),))
-    return GroupOwnership(group_id, kind, display_name, OWNERSHIP_SPANS_BAYS, bays, (SideDiagnostic(
-        DIAG_GROUP_SPANS_BAYS, SEVERITY_WARNING,
-        f"This {kind} group has channels in several bays that share one measurement side; its transformer ratio "
-        "is the group's own.", detail),))

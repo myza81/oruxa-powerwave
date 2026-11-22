@@ -1,70 +1,56 @@
-"""D5A-2B2A: the shared effective measurement-side authority (service layer).
+"""D5A-2B2A / D5A-UI-002: the shared effective measurement-side authority (service layer).
 
 `resolve_effective_measurement_side()` is the ONE place a recorded channel's Primary/Secondary side is
 decided. Every consumer (Per-Unit, Overcurrent, Impedance, Distance, phasor/power) must call it, or
 `resolve_consumed_side()` for the set of channels a calculation consumes, instead of interpreting a
 recording's P/S marker or a request parameter itself. It is stateless: nothing is cached, so a change at
-Recording or bay level is visible to every consumer on its next call.
+Recording or Group level is visible to every consumer on its next call.
 
 Ownership model -- no name parsing anywhere:
   * a channel belongs to exactly ONE source (its `ChannelRef`);
-  * a channel belongs to at most ONE bay: the Engineering Context that lists it (registry invariant);
-  * a bay setting applies only when that context's membership is `confirmed` or `manual`; a `suggested` /
-    `needs_review` context is ambiguous ownership, so the channel simply follows its recording;
-  * a channel in no bay follows its recording;
-  * a bay may hold channels of SEVERAL recordings, each possibly on a different side, so a bay setting belongs
-    to the bay WITHIN ONE RECORDING (the bay's "association" with that source): it never reinterprets another
-    recording's channels of the same bay, and nothing is inherited across recordings.
+  * a channel belongs to at most ONE Measurement Group (registry invariant), and a group belongs to exactly ONE
+    source and is either a Voltage or a Current group;
+  * the Level 2 setting belongs to that Measurement Group -- the same unit that owns the CT/VT ratio -- so a bay's
+    Voltage group and Current group are independent, and Engineering Context membership plays no part;
+  * a channel in no group follows its recording.
 
-The CT/VT group a channel belongs to is reported alongside (read from the Measurement Group registry) but
-never changes the side; the ratio itself stays with the existing CT/VT authority. A group whose channels sit
-in several bays is diagnosed (`GroupOwnership`): when those bays' sides differ or are unresolved the group's
-ratio is never borrowed across them and conversion authority is ambiguous.
+The group's side never changes a ratio and no ratio changes a side; the CT/VT conversion itself stays with the
+existing CT/VT authority.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
 
 from app.domain.calculated_channel import ChannelRef
-from app.domain.engineering_context import EngineeringContext
-from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE, kind_for_engineering_type
+from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE, MeasurementGroup, kind_for_engineering_type
 from app.domain.measurement_side_config import (
     AUTH_NOT_APPLICABLE,
     AUTH_UNRESOLVED,
-    DIAG_BAY_INHERITANCE_AMBIGUOUS,
-    DIAG_BAY_MEMBERSHIP_UNCONFIRMED,
-    DIAG_BAY_NO_MEASUREMENT_MEMBERS,
-    DIAG_BAY_OVERRIDE_INACTIVE,
     DIAG_CALCULATED_CHANNEL,
     DIAG_CHANNEL_NOT_FOUND,
     DIAG_CHANNEL_NOT_MEASUREMENT,
-    DIAG_CONSUMED_GROUP_AMBIGUOUS,
     DIAG_CONSUMED_MIXED,
     DIAG_CONSUMED_VI_DIFFER,
     DIAG_CONSUMED_UNRESOLVED,
+    DIAG_GROUP_NO_MEMBERS,
     DIAG_SOURCE_NOT_FOUND,
-    MEMBERSHIP_CONFIRMED,
-    MEMBERSHIP_NONE,
-    MEMBERSHIP_UNCONFIRMED,
     QUANTITY_CURRENT,
     QUANTITY_VOLTAGE,
-    SEVERITY_CONFLICT,
     SEVERITY_INFO,
     SEVERITY_WARNING,
     SIDE_UNKNOWN,
-    BaySideState,
-    GroupOwnership,
+    STATUS_RESOLVED,
     ChannelSideEvidence,
     ChannelSideResolution,
+    GroupSideState,
     RecordingSideState,
     SideDiagnostic,
     SideSetResolution,
-    bay_override_to_store,
-    classify_group_ownership,
     derive_recording_side,
+    group_override_is_redundant,
     normalise_declared_side,
     recording_correction_to_store,
     resolve_channel_side,
@@ -72,19 +58,16 @@ from app.domain.measurement_side_config import (
     resolve_side_set,
 )
 from app.domain.source import ActiveSource
-from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import (
-    BayHasNoMeasurementChannelsError,
-    BayMembershipUnconfirmedError,
-    EngineeringContextNotFoundError,
+    GroupHasNoMeasurementChannelsError,
+    MeasurementGroupNotFoundError,
     SourceNotFoundError,
 )
 from app.services.measurement_group_registry import MeasurementGroupRegistry
-from app.services.measurement_side_registry import BaySideOverride, MeasurementSideRegistry, RecordingSideCorrection
+from app.services.measurement_side_registry import GroupSideOverride, MeasurementSideRegistry, RecordingSideCorrection
 from app.services.workspace_registry import WorkspaceRegistry
 
 NOTE_MAX_LENGTH = 500
-_CONFIRMED_CONTEXT_STATUSES = ("confirmed", "manual")
 _QUANTITY_BY_KIND = {KIND_VOLTAGE: QUANTITY_VOLTAGE, KIND_CURRENT: QUANTITY_CURRENT}
 
 
@@ -93,15 +76,14 @@ class SideAuthority:
     """The registries the shared resolver reads. Build once per request with `from_app_state`."""
 
     source_registry: WorkspaceRegistry
-    context_registry: EngineeringContextRegistry
     group_registry: MeasurementGroupRegistry
     side_registry: MeasurementSideRegistry
 
     @classmethod
     def from_app_state(cls, state) -> "SideAuthority":
         return cls(
-            source_registry=state.workspace_registry, context_registry=state.engineering_context_registry,
-            group_registry=state.measurement_group_registry, side_registry=state.measurement_side_registry,
+            source_registry=state.workspace_registry, group_registry=state.measurement_group_registry,
+            side_registry=state.measurement_side_registry,
         )
 
 
@@ -134,25 +116,12 @@ def _recording_state(workspace_id: str, source_id: str, active: ActiveSource,
     return state, evidence
 
 
-def _membership(context: EngineeringContext | None) -> str:
-    if context is None:
-        return MEMBERSHIP_NONE
-    return MEMBERSHIP_CONFIRMED if context.status in _CONFIRMED_CONTEXT_STATUSES else MEMBERSHIP_UNCONFIRMED
-
-
-def _bay_state(workspace_id: str, ref: ChannelRef, deps: SideAuthority,
-               contexts: dict[str, EngineeringContext | None] | None = None) -> BaySideState:
-    context_id = deps.context_registry.context_for_channel(workspace_id, ref)
-    if context_id is None:
-        return BaySideState()
-    if contexts is not None and context_id in contexts:
-        context = contexts[context_id]
-    else:
-        context = deps.context_registry.get(workspace_id, context_id)
-        if contexts is not None:
-            contexts[context_id] = context
-    override = deps.side_registry.get_bay(workspace_id, context_id, ref.source_id)
-    return BaySideState(context_id, _membership(context), override.side if override else None)
+def _group_state(workspace_id: str, ref: ChannelRef, deps: SideAuthority) -> GroupSideState:
+    group_id = deps.group_registry.group_for_channel(workspace_id, ref)
+    if group_id is None:
+        return GroupSideState()
+    override = deps.side_registry.get_group(workspace_id, ref.source_id, group_id)
+    return GroupSideState(group_id, override.side if override else None)
 
 
 # --------------------------------------------------------------------------- the shared resolver
@@ -188,7 +157,7 @@ def resolve_effective_measurement_side(
     ref = ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
     return resolve_channel_side(
         ChannelSideEvidence(channel_name, quantity, normalise_declared_side(channel.measurement_side), source_id),
-        state, _bay_state(workspace_id, ref, deps),
+        state, _group_state(workspace_id, ref, deps),
     )
 
 
@@ -203,30 +172,14 @@ def resolve_effective_side_for_ref(workspace_id: str, ref: ChannelRef, *, deps: 
 
 def resolve_consumed_side(workspace_id: str, refs: Iterable[ChannelRef], *, deps: SideAuthority) -> SideSetResolution:
     """The side of the channels one calculation consumes: usable only when every channel resolves to the SAME
-    side. Different sides, or any unresolved channel, are reported (never merged or guessed) so the consumer
-    blocks."""
-    refs = list(refs)
+    side (or each quantity is uniform: Primary voltage with Secondary current). Different sides within a quantity,
+    or any unresolved channel, are reported (never merged or guessed) so the consumer blocks.
+
+    This answers the SIDE only. Whether a CT/VT ratio may be applied to a consumed channel is the consuming slice's
+    own check of that channel's Measurement Group (matching sides alone do not establish shared conversion authority)."""
     resolutions = [resolve_effective_side_for_ref(workspace_id, r, deps=deps) for r in refs]
-    resolved = resolve_side_set(resolutions, mixed_code=DIAG_CONSUMED_MIXED, vi_code=DIAG_CONSUMED_VI_DIFFER,
-                                unresolved_code=DIAG_CONSUMED_UNRESOLVED)
-    # Transformer ownership: a consumed channel whose CT/VT group spans bays on different (or unresolved) sides has
-    # ambiguous conversion authority -- the side is still reported, but a conversion through that group is blocked.
-    ambiguous: dict[str, GroupOwnership] = {}
-    for ref in refs:
-        if ref.kind != "source":
-            continue
-        group_id = deps.group_registry.group_for_channel(workspace_id, ref)
-        if group_id is not None and group_id not in ambiguous:
-            ownership = build_group_ownership(workspace_id, group_id, deps=deps)
-            if ownership is not None and ownership.conversion_authority_ambiguous:
-                ambiguous[group_id] = ownership
-    if not ambiguous:
-        return resolved
-    notes = tuple(SideDiagnostic(DIAG_CONSUMED_GROUP_AMBIGUOUS, SEVERITY_CONFLICT,
-                                 f"The {o.kind} group {o.display_name!r} spans bays on different or unresolved "
-                                 "sides; its transformer ratio must not be used for a side conversion.",
-                                 {"group_id": gid, "bays": ",".join(o.bay_ids)}) for gid, o in ambiguous.items())
-    return replace(resolved, diagnostics=resolved.diagnostics + notes, ownership_ambiguous_groups=tuple(ambiguous))
+    return resolve_side_set(resolutions, mixed_code=DIAG_CONSUMED_MIXED, vi_code=DIAG_CONSUMED_VI_DIFFER,
+                            unresolved_code=DIAG_CONSUMED_UNRESOLVED)
 
 
 # --------------------------------------------------------------------------- views
@@ -238,38 +191,23 @@ class RecordingSideView:
     state: RecordingSideState
     correction: RecordingSideCorrection | None
     channels: tuple[ChannelSideResolution, ...]
-    bay_ids: tuple[str, ...]
+    group_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class BaySideView:
-    """One bay (Engineering Context) WITHIN ONE recording: the unit a Level 2 setting belongs to."""
+class GroupSideView:
+    """One Voltage or Current Measurement Group of one recording: the unit a Level 2 setting belongs to."""
 
-    context_id: str
+    group_id: str
     source_id: str
+    kind: str
     display_name: str
-    context_status: str
-    membership: str
-    override: BaySideOverride | None
-    override_active: bool
-    inherited_recording_side: str | None
+    override: GroupSideOverride | None
+    #: The side the group's channels would have WITHOUT its override (null when that is not one side).
+    inherited_side: str | None
+    recording_side: str | None
     resolution: SideSetResolution
-    voltage_group_ids: tuple[str, ...]
-    current_group_ids: tuple[str, ...]
-    group_ownership: tuple[GroupOwnership, ...]
     channels: tuple[ChannelSideResolution, ...]
-    diagnostics: tuple[SideDiagnostic, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ContextSideView:
-    """An Engineering Context with one association per recording that contributes voltage/current channels."""
-
-    context_id: str
-    display_name: str
-    context_status: str
-    membership: str
-    associations: tuple[BaySideView, ...]
     diagnostics: tuple[SideDiagnostic, ...]
 
 
@@ -280,156 +218,73 @@ def _require_source(workspace_id: str, source_id: str, deps: SideAuthority) -> A
     return active
 
 
-def _require_context(workspace_id: str, context_id: str, deps: SideAuthority) -> EngineeringContext:
-    context = deps.context_registry.get(workspace_id, context_id)
-    if context is None:
-        raise EngineeringContextNotFoundError(
-            f"No Engineering Context '{context_id}' in workspace '{workspace_id}'.")
-    return context
+def _require_group(workspace_id: str, source_id: str, group_id: str, deps: SideAuthority) -> MeasurementGroup:
+    group = deps.group_registry.get(workspace_id, group_id)
+    if group is None or group.source_id != source_id:
+        raise MeasurementGroupNotFoundError(f"No measurement group '{group_id}' in this source.")
+    return group
 
 
 def build_recording_view(workspace_id: str, source_id: str, *, deps: SideAuthority) -> RecordingSideView:
     active = _require_source(workspace_id, source_id, deps)
     state, evidence = _recording_state(workspace_id, source_id, active, deps)
-    contexts: dict[str, EngineeringContext | None] = {}
     channels: list[ChannelSideResolution] = []
-    bay_ids: dict[str, None] = {}
+    group_ids: dict[str, None] = {}
     for item in evidence:
         ref = ChannelRef(kind="source", source_id=source_id, channel_name=item.channel_name)
-        bay = _bay_state(workspace_id, ref, deps, contexts)
-        if bay.context_id:
-            bay_ids[bay.context_id] = None
-        channels.append(resolve_channel_side(item, state, bay))
+        group = _group_state(workspace_id, ref, deps)
+        if group.group_id:
+            group_ids[group.group_id] = None
+        channels.append(resolve_channel_side(item, state, group))
     return RecordingSideView(source_id, state, deps.side_registry.get_recording(workspace_id, source_id),
-                             tuple(channels), tuple(bay_ids))
+                             tuple(channels), tuple(group_ids))
 
 
-def _bay_members(context: EngineeringContext, workspace_id: str, deps: SideAuthority, source_id: str | None = None):
-    """(ref, active source, evidence) for each Voltage/Current SOURCE member whose recording exists; limited to one
-    recording when `source_id` is given."""
-    out = []
-    for member in context.members:
-        ref = member.channel_ref
-        if ref.kind != "source" or (source_id is not None and ref.source_id != source_id):
-            continue
-        active = deps.source_registry.get(workspace_id, ref.source_id)
-        if active is None:
-            continue
-        channel = next((c for c in active.metadata.analog_channels if c.name == ref.channel_name), None)
+def _group_evidence(group: MeasurementGroup, active: ActiveSource) -> list[ChannelSideEvidence]:
+    """The original declarations of the Voltage/Current channels of this group that exist in its recording."""
+    by_name = {c.name: c for c in active.metadata.analog_channels}
+    out: list[ChannelSideEvidence] = []
+    for ref in group.channel_refs:
+        channel = by_name.get(ref.channel_name) if ref.kind == "source" and ref.source_id == group.source_id else None
         quantity = _quantity_of(channel.engineering_type) if channel is not None else None
         if channel is not None and quantity is not None:
-            out.append((ref, active,
-                        ChannelSideEvidence(ref.channel_name, quantity, normalise_declared_side(channel.measurement_side),
-                                            ref.source_id)))
+            out.append(ChannelSideEvidence(channel.name, quantity, normalise_declared_side(channel.measurement_side),
+                                           group.source_id))
     return out
 
 
-def build_group_ownership(workspace_id: str, group_id: str, *, deps: SideAuthority) -> GroupOwnership | None:
-    """Which bays hold the channels of one Voltage/Current Measurement Group, and whether its transformer ownership
-    is ambiguous. Read-only; changes no ratio and no side."""
-    group = deps.group_registry.get(workspace_id, group_id)
-    if group is None:
-        return None
-    sides_by_bay: dict[str, list[str]] = {}
-    for ref in group.channel_refs:
-        if ref.kind != "source":
-            continue
-        context_id = deps.context_registry.context_for_channel(workspace_id, ref)
-        if context_id is None:
-            continue                                   # not in a bay: follows its recording, no ownership claim
-        resolution = resolve_effective_measurement_side(workspace_id, ref.source_id, ref.channel_name, deps=deps)
-        sides_by_bay.setdefault(context_id, []).append(resolution.side if resolution.usable else SIDE_UNKNOWN)
-    return classify_group_ownership(group.id, group.kind, group.display_name, sides_by_bay)
-
-
-def build_bay_view(workspace_id: str, context_id: str, source_id: str, *, deps: SideAuthority) -> BaySideView:
-    """The bay within ONE recording. Raises when the bay has no voltage/current channel of that recording."""
-    context = _require_context(workspace_id, context_id, deps)
-    _require_source(workspace_id, source_id, deps)
-    members = _bay_members(context, workspace_id, deps, source_id)
-    if not members:
-        raise BayHasNoMeasurementChannelsError(
-            "This bay has no recorded voltage or current channel in this recording.")
-    membership = _membership(context)
-    stored = deps.side_registry.get_bay(workspace_id, context_id, source_id)
-    recording_state = _recording_state(workspace_id, source_id, members[0][1], deps)[0]
-    bay = BaySideState(context_id, membership, stored.side if stored else None)
-    channels = [resolve_channel_side(evidence, recording_state, bay) for _ref, _active, evidence in members]
-    voltage_groups: dict[str, None] = {}
-    current_groups: dict[str, None] = {}
-    ownership: dict[str, GroupOwnership] = {}
-    for ref, _active, _evidence in members:
-        group_id = deps.group_registry.group_for_channel(workspace_id, ref)
-        group = deps.group_registry.get(workspace_id, group_id) if group_id is not None else None
-        if group is None:
-            continue
-        (voltage_groups if group.kind == KIND_VOLTAGE else current_groups)[group.id] = None
-        if group.id not in ownership:
-            found = build_group_ownership(workspace_id, group.id, deps=deps)
-            if found is not None:
-                ownership[group.id] = found
+def build_group_view(workspace_id: str, source_id: str, group_id: str, *, deps: SideAuthority) -> GroupSideView:
+    """One Measurement Group. Raises when the group is not in that recording."""
+    group = _require_group(workspace_id, source_id, group_id, deps)
+    active = _require_source(workspace_id, source_id, deps)
+    recording_state, _evidence = _recording_state(workspace_id, source_id, active, deps)
+    stored = deps.side_registry.get_group(workspace_id, source_id, group_id)
+    evidence = _group_evidence(group, active)
+    channels = [resolve_channel_side(e, recording_state, GroupSideState(group_id, stored.side if stored else None))
+                for e in evidence]
+    without = [resolve_channel_side(e, recording_state, GroupSideState(group_id, None)) for e in evidence]
     resolution = resolve_side_set(channels)
-    diags: list[SideDiagnostic] = list(resolution.diagnostics)
-    for item in ownership.values():
-        diags.extend(item.diagnostics)
-    if membership == MEMBERSHIP_UNCONFIRMED:
-        if not any(d.code == DIAG_BAY_MEMBERSHIP_UNCONFIRMED for d in diags):
-            diags.append(SideDiagnostic(DIAG_BAY_MEMBERSHIP_UNCONFIRMED, SEVERITY_INFO,
-                                        "The bay's membership is suggested or needs review; it follows its recording "
-                                        "until the bay is confirmed.",
-                                        {"engineering_context_id": context_id}))
-        if stored is not None:
-            diags.append(SideDiagnostic(DIAG_BAY_OVERRIDE_INACTIVE, SEVERITY_WARNING,
-                                        "A stored bay setting is inactive until the bay's membership is confirmed.",
-                                        {"bay_side": stored.side}))
-    ambiguous = tuple(gid for gid, item in ownership.items() if item.conversion_authority_ambiguous)
-    resolution = replace(resolution, ownership_ambiguous_groups=ambiguous)
-    return BaySideView(
-        context_id=context_id, source_id=source_id, display_name=context.display_name, context_status=context.status,
-        membership=membership, override=stored,
-        override_active=stored is not None and membership == MEMBERSHIP_CONFIRMED,
-        inherited_recording_side=recording_state.effective_side, resolution=resolution,
-        voltage_group_ids=tuple(voltage_groups), current_group_ids=tuple(current_groups),
-        group_ownership=tuple(ownership.values()), channels=tuple(channels), diagnostics=tuple(diags),
+    inherited = resolve_side_set(without)
+    diagnostics = list(resolution.diagnostics)
+    if not evidence:
+        diagnostics.append(SideDiagnostic(DIAG_GROUP_NO_MEMBERS, SEVERITY_INFO,
+                                          "This group has no recorded voltage or current channel."))
+    return GroupSideView(
+        group_id=group.id, source_id=source_id, kind=group.kind, display_name=group.display_name, override=stored,
+        inherited_side=inherited.side if inherited.status == STATUS_RESOLVED else None,
+        recording_side=recording_state.effective_side, resolution=resolution, channels=tuple(channels),
+        diagnostics=tuple(diagnostics),
     )
 
 
-def _context_source_ids(context: EngineeringContext, workspace_id: str, deps: SideAuthority) -> list[str]:
-    return list(dict.fromkeys(ref.source_id for ref, _a, _e in _bay_members(context, workspace_id, deps)))
-
-
-def build_context_view(workspace_id: str, context_id: str, *, deps: SideAuthority) -> ContextSideView:
-    context = _require_context(workspace_id, context_id, deps)
-    associations = tuple(build_bay_view(workspace_id, context_id, sid, deps=deps)
-                         for sid in _context_source_ids(context, workspace_id, deps))
-    diags: list[SideDiagnostic] = []
-    if not associations:
-        diags.append(SideDiagnostic(DIAG_BAY_NO_MEASUREMENT_MEMBERS, SEVERITY_INFO,
-                                    "This bay has no recorded voltage or current channel."))
-    resolved = {a.resolution.side for a in associations if a.resolution.side is not None}
-    if len(associations) > 1 and (len(resolved) > 1 or any(a.resolution.side is None for a in associations)):
-        # Never a single inherited value across recordings: each one is interpreted separately.
-        diags.append(SideDiagnostic(DIAG_BAY_INHERITANCE_AMBIGUOUS, SEVERITY_INFO,
-                                    "This bay's recordings are not on one measurement side; each recording is "
-                                    "interpreted separately."))
-    return ContextSideView(context_id, context.display_name, context.status, _membership(context), associations,
-                           tuple(diags))
-
-
-def context_names(workspace_id: str, *, deps: SideAuthority) -> dict[str, str]:
-    """display_name of every Engineering Context in the workspace (for labelling group ownership)."""
-    return {c.id: c.display_name for c in deps.context_registry.list_for_workspace(workspace_id)}
-
-
-def build_workspace_views(workspace_id: str, *, deps: SideAuthority) -> tuple[list[RecordingSideView], list[BaySideView]]:
-    """Every recording, and every (bay, recording) association."""
+def build_workspace_views(workspace_id: str, *, deps: SideAuthority) -> tuple[list[RecordingSideView], list[GroupSideView]]:
+    """Every recording, and every Measurement Group of those recordings."""
     sources = deps.source_registry.list_for_workspace(workspace_id)
     recordings = [build_recording_view(workspace_id, a.metadata.source_id, deps=deps) for a in sources]
-    associations: list[BaySideView] = []
-    for context in deps.context_registry.list_for_workspace(workspace_id):
-        for source_id in _context_source_ids(context, workspace_id, deps):
-            associations.append(build_bay_view(workspace_id, context.id, source_id, deps=deps))
-    return recordings, associations
+    known = {a.metadata.source_id for a in sources}
+    groups = [build_group_view(workspace_id, g.source_id, g.id, deps=deps)
+              for g in deps.group_registry.list_for_workspace(workspace_id) if g.source_id in known]
+    return recordings, groups
 
 
 # --------------------------------------------------------------------------- mutations
@@ -452,41 +307,36 @@ def set_recording_side(workspace_id: str, source_id: str, side: str | None, note
     return build_recording_view(workspace_id, source_id, deps=deps)
 
 
-def set_bay_side(workspace_id: str, context_id: str, source_id: str, side: str, *, deps: SideAuthority) -> BaySideView:
-    """Level 2 override for the bay WITHIN ONE recording. Selecting the side that recording's Level 1 already gives
-    the bay clears the override. Another recording's channels of the same bay are never touched."""
-    context = _require_context(workspace_id, context_id, deps)
-    _require_source(workspace_id, source_id, deps)
-    if _membership(context) != MEMBERSHIP_CONFIRMED:
-        raise BayMembershipUnconfirmedError(
-            "This bay's membership is only suggested or needs review; confirm it before setting its side.")
-    members = _bay_members(context, workspace_id, deps, source_id)
-    if not members:
-        raise BayHasNoMeasurementChannelsError(
-            "This bay has no recorded voltage or current channel in this recording.")
-    inherited = _recording_state(workspace_id, source_id, members[0][1], deps)[0].effective_side
-    keep = bay_override_to_store(side, inherited)
-    if keep is None:
-        deps.side_registry.clear_bay(workspace_id, context_id, source_id)
+def set_group_side(workspace_id: str, source_id: str, group_id: str, side: str, *, deps: SideAuthority) -> GroupSideView:
+    """Level 2 override for ONE Measurement Group of one recording. Selecting the side the group already has without
+    an override -- on reliable evidence for every channel -- clears the override (it follows Level 1 again). Any other
+    selection is kept, so a contradiction between the engineer and the recording's declarations is never lost. The
+    other group of the same bay, and every other recording, are untouched."""
+    group = _require_group(workspace_id, source_id, group_id, deps)
+    active = _require_source(workspace_id, source_id, deps)
+    evidence = _group_evidence(group, active)
+    if not evidence:
+        raise GroupHasNoMeasurementChannelsError("This group has no recorded voltage or current channel in this recording.")
+    recording_state, _e = _recording_state(workspace_id, source_id, active, deps)
+    without = [resolve_channel_side(e, recording_state, GroupSideState(group_id, None)) for e in evidence]
+    if group_override_is_redundant(side, without):
+        deps.side_registry.clear_group(workspace_id, source_id, group_id)
     else:
-        deps.side_registry.set_bay(workspace_id, context_id, source_id,
-                                   BaySideOverride(keep, datetime.now(timezone.utc)))
-    return build_bay_view(workspace_id, context_id, source_id, deps=deps)
+        deps.side_registry.set_group(workspace_id, source_id, group_id, GroupSideOverride(side, datetime.now(timezone.utc)))
+    return build_group_view(workspace_id, source_id, group_id, deps=deps)
 
 
 # --------------------------------------------------------------------------- lifecycle
 
 
-def prune_orphan_bay_overrides(workspace_id: str, *, side_registry: MeasurementSideRegistry,
-                               context_registry: EngineeringContextRegistry) -> list[tuple[str, str]]:
-    """Drop a bay override whose Engineering Context no longer exists, or that no longer holds any channel of the
-    recording the override was scoped to (the context was deleted, emptied, or its membership edited)."""
+def prune_orphan_group_overrides(workspace_id: str, *, side_registry: MeasurementSideRegistry,
+                                 group_registry: MeasurementGroupRegistry) -> list[tuple[str, str]]:
+    """Drop a group override whose Measurement Group no longer exists (deleted, or its recording was removed). A group
+    that merely changed members keeps its identity and its override."""
     removed: list[tuple[str, str]] = []
-    for context_id, source_id in side_registry.bay_keys(workspace_id):
-        context = context_registry.get(workspace_id, context_id)
-        holds = context is not None and any(
-            m.channel_ref.kind == "source" and m.channel_ref.source_id == source_id for m in context.members)
-        if not holds:
-            side_registry.clear_bay(workspace_id, context_id, source_id)
-            removed.append((context_id, source_id))
+    for source_id, group_id in side_registry.group_keys(workspace_id):
+        group = group_registry.get(workspace_id, group_id)
+        if group is None or group.source_id != source_id:
+            side_registry.clear_group(workspace_id, source_id, group_id)
+            removed.append((source_id, group_id))
     return removed
