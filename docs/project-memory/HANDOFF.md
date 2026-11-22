@@ -8,6 +8,17 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 
 ---
 
+## D5A-UI-003 — Restore original typography and spacing in Recording Details (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-ui-003-restore-typography-spacing` (from the deployed DEV build `d2ecc69`). NOT pushed, merged or deployed.
+**Stopped for owner visual review.** CSS only: the UI-REC-001 / D5A-UI-002 blocks no longer restate font size, weight, line height or enlarged spacing, so
+the application's own `.ww-rd-*` values apply again; the approved cards, icon tiles, pills and Voltage/Current layouts are unchanged. A static test guards it.
+Details and the original / deployed / corrected values: [D5A_UI_003_RESTORE_TYPOGRAPHY_SPACING_2026-11-22.md](D5A_UI_003_RESTORE_TYPOGRAPHY_SPACING_2026-11-22.md).
+
+**Next action:** owner review. D5A-2B2C, D5A-2B2D and the PU migration start only after authorisation.
+
+---
+
 ## D5A-UI-002 — Group Details redesign and Measurement-Group-level side (2026-11-22)
 
 **Status:** committed locally on `feature/d5a-ui-002-group-details-group-side` (after `feature/ui-rec-001-recording-info-redesign`, from the DEV-UAT baseline `a1e8d68`).
