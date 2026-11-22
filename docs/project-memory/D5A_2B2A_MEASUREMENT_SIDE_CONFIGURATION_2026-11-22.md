@@ -1,5 +1,7 @@
 # D5A-2B2A — Unified measurement-side configuration and shared resolver
 
+> **Superseded in part (2026-11-22):** Level 2 is now per Measurement Group, not per bay — see [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md) and DEC-216 Amendment 4. The bay-level API, bay overlay, Confirm-bay review and group-spans-bays diagnostics described below no longer exist.
+
 **Branch:** `feature/d5a-2b2a-measurement-side-config`, from the accepted D5A UAT baseline `a2b55eb`
 (`origin/uat/dev-d5a-20261121`). **Not pushed, merged or deployed.** Backend only.
 **Supersedes:** [D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md](D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md)

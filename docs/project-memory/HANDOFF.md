@@ -8,6 +8,18 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 
 ---
 
+## D5A-UI-002 — Group Details redesign and Measurement-Group-level side (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-ui-002-group-details-group-side` (after `feature/ui-rec-001-recording-info-redesign`, from the DEV-UAT baseline `a1e8d68`).
+NOT pushed, merged or deployed. **Stopped for owner UI/UAT review.** Level 2 measurement side is now **per Measurement Group** (Voltage and Current groups are
+independent; Engineering Context membership/status no longer gates or carries a side) — DEC-216 Amendment 4; the per-bay Level 2 of D5A-2B2A/2B2B is superseded.
+Group Details shows one selected group (voltage or current sections) in the approved card design; Recording Info was redesigned in UI-REC-001 (separate slice report).
+No calculation, PU, CT/VT, Overcurrent, Impedance or Distance change. Details: [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md).
+
+**Next action:** owner review. D5A-2B2C (consumer migration, with the CT/VT-authority safeguard above), D5A-2B2D and the PU migration start only after authorisation.
+
+---
+
 ## D5A-2B2B — Recording Details measurement-side UI (2026-11-22)
 
 **Status:** committed locally on `feature/d5a-2b2b-recording-details-side-ui` (stacked on `feature/d5a-2b2a-measurement-side-config`; worktree `.local-data/d5a-2b2a`).

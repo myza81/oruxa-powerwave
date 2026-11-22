@@ -29661,3 +29661,19 @@ Owner decisions:
 - **Calculated channels** stay deferred to D5A-2B2C; the lineage / reference-side questions are recorded in [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md) §7, and no side is assigned to a calculated channel merely because its inputs share a recording.
 - **Owner acceptance (2026-11-22): D5A-2B2B APPROVED for DEV UAT.** Confirmed: one overview entry per (bay, recording); a group spanning bays with one shared side may remain warning-only at this stage.
 - **D5A-2B2C safeguard (owner, 2026-11-22):** matching measurement sides alone do not establish valid shared CT/VT conversion authority (two Primary-referenced bays may have different CT ratios). The consumer integration must verify the CT/VT authority of the *actual consumed channel* and its Measurement Group. Shared busbar VT arrangements remain supported; genuinely ambiguous transformer ownership must not produce an invented conversion. No production-code change is required for this in D5A-2B2B.
+
+### Amendment 4 (2026-11-22) — Level 2 belongs to the Measurement Group (D5A-UI-002)
+
+Owner decision (supersedes the per-(recording, bay) Level 2 of the original decision and Amendments 1–3 wherever they differ):
+
+- **Level 2 is the selected Measurement Group's own override**, keyed `(workspace_id, source_id, measurement_group_id)`; one value covers all phases of that group.
+  A bay's Voltage group and Current group are separate groups with independent settings; Primary voltage with Secondary current is legitimate and never a conflict.
+- Precedence: **group override > recording correction > channel's own declaration > recording default (inferred, not strict) > unresolved**. Original declarations,
+  engineer provenance and warnings are retained; nothing is inferred from CT/VT ratios or magnitudes.
+- **Engineering Context membership and status no longer gate or carry a side.** The bay-level API, the bay overlay, the Confirm-bay review inside Group Details and
+  the group-spans-bays side diagnostics are retired (the group owns both the side and the ratio). Engineering Context confirmation itself is unchanged.
+- Selecting the side a group already has on reliable evidence clears the override (no Reset); selections that would hide an inference or a contradiction are kept.
+- Group Details shows one selected group at a time (voltage or current sections only) with the approved card design; Recording Info is unchanged.
+- The D5A-2B2C safeguard stands: matching sides do not establish shared CT/VT conversion authority; the consumer verifies the consumed channel's own group.
+
+Details, API and verification: [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md).

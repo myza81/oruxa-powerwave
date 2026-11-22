@@ -1,5 +1,7 @@
 # D5A-2B2B — Recording Details: measurement side (frontend and owner-review refinements)
 
+> **Superseded in part (2026-11-22):** Level 2 is now per Measurement Group, not per bay — see [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md) and DEC-216 Amendment 4. The bay-level API, bay overlay, Confirm-bay review and group-spans-bays diagnostics described below no longer exist.
+
 **Branch:** `feature/d5a-2b2b-recording-details-side-ui` (stacked on `feature/d5a-2b2a-measurement-side-config`, from the accepted D5A UAT baseline
 `a2b55eb`). **Not pushed, merged or deployed.** PU, Overcurrent, Impedance and Distance numerical behaviour and their existing input controls are untouched.
 Authority and API: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md),
