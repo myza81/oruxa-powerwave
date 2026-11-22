@@ -16,6 +16,20 @@ function recording({ side = "P", prefix = "PULU", station = "PULU" } = {}) {
   });
 }
 
+// Uploads one more recording and returns its row (found by the source id that is new after the upload).
+async function upload(page, files, stem) {
+  const ids = () => page.locator("#wwRdRecordingList .ww-rd-recording-item").evaluateAll((els) => els.map((e) => e.getAttribute("data-source-id")));
+  const known = await ids();
+  await page.locator("#wwRdUploadBtn").click();
+  await page.locator("#uploadModalFile_0").setInputFiles({ name: `${stem}.cfg`, mimeType: "application/octet-stream", buffer: files.cfg });
+  await page.locator("#uploadModalFile_1").setInputFiles({ name: `${stem}.dat`, mimeType: "application/octet-stream", buffer: files.dat });
+  await page.locator("#uploadModalSubmitBtn").click();
+  await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(known.length + 1, { timeout: 10000 });
+  const fresh = (await ids()).find((id) => !known.includes(id));
+  return page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${fresh}"]`);
+}
+
 async function seed(page, opts) {
   await page.goto("/index.html");
   await page.locator("#mainNavRecordingDetailsBtn").click();
@@ -122,6 +136,54 @@ test("Per-unit Configuration card shows the real warning, and Review affected gr
   // Existing behaviour, unchanged: filter the group list to the voltage groups that need attention.
   await card.locator(".ww-rd-pu-review-btn").click();
   await expect(page.locator('#wwRdGroupKindFilter button[data-kind="voltage"]')).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the Per-unit Configuration card is there on the first Recording Info load, with no loop and no request of its own", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  const files = recording();
+  await page.locator("#wwRdUploadBtn").click();
+  await page.locator("#uploadModalFile_0").setInputFiles({ name: "PULU_260306_180409317.cfg", mimeType: "application/octet-stream", buffer: files.cfg });
+  await page.locator("#uploadModalFile_1").setInputFiles({ name: "PULU_260306_180409317.dat", mimeType: "application/octet-stream", buffer: files.dat });
+  await page.locator("#uploadModalSubmitBtn").click();
+  await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+  await page.reload();                                  // a first load: nothing cached in the page
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.evaluate(() => {                           // count how often the details are drawn
+    window.__rdDraws = 0;
+    const original = window.wwRdRenderDetails;
+    window.wwRdRenderDetails = function () { window.__rdDraws += 1; return original.apply(this, arguments); };
+  });
+  await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+  // No tab switch, no second click: the card appears as soon as the groups are known.
+  const card = page.locator("#wwRdDetailsBody .ww-rd-pu-config-section");
+  await expect(card).toBeVisible();
+  await expect(card.locator(".ww-rd-pu-config-issue")).toHaveText("1 voltage group needs a nominal voltage base.");
+  const requests = [];
+  page.on("request", (r) => { if (r.method() === "GET" && r.url().includes("/api/v1/")) requests.push(r.url()); });
+  const draws = await page.evaluate(() => window.__rdDraws);
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => window.__rdDraws)).toBe(draws);        // settled: no re-render loop
+  expect(draws).toBeLessThanOrEqual(6);
+  expect(requests.filter((u) => /measurement-groups$|measurement-side$/.test(u))).toEqual([]);   // and nothing is re-requested
+  await expect(page.locator("#wwRdSideSection")).toHaveCount(1);                      // no duplicated sections
+  await expect(page.locator("#wwRdDetailsBody .ww-rd-pu-config-section")).toHaveCount(1);
+});
+
+test("groups arriving late never pull the engineer out of Group Details or onto another recording", async ({ page }) => {
+  await seed(page);
+  const second = await upload(page, recording({ prefix: "BRAVO1" }), "side_b");
+  let held = false;
+  await page.route("**/measurement-groups", async (route) => {
+    if (route.request().method() === "GET" && !held) { held = true; await new Promise((r) => setTimeout(r, 1200)); }
+    await route.continue();
+  });
+  await second.click();                                  // groups for this recording are slow
+  await page.locator("#wwRdTabGroupDetails").click();    // the engineer moves to Group Details meanwhile
+  await page.waitForTimeout(1800);
+  await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
+  await expect(body(page)).toHaveClass(/ww-rd-details-body--group/);
+  await expect(body(page).locator(".ww-rd-info-card")).toHaveCount(0);
 });
 
 test("header and tabs keep their behaviour; Group Details keeps its own layout", async ({ page }) => {

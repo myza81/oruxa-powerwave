@@ -36166,7 +36166,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             await wwFetchMeasurementGroupsForSource(sourceId);
             wwRdState.groupsLoading = false;
             wwRdRenderGroups();       // render fetched groups
-            // Don't overwrite details here: user may have already selected a group
+            // The Per-unit Configuration card of Recording Info needs these groups, so Recording Info is drawn once more
+            // now that they are known (no request, no loop: a local re-render). Group Details is never overwritten (the
+            // engineer may already have selected a group), nor another recording's view, nor a control being used.
+            if (wwRdState.selectedSourceId === sourceId && wwRdState.detailsView === "recording") {
+                const body = document.getElementById("wwRdDetailsBody");
+                if (!(body && document.activeElement && body.contains(document.activeElement))) wwRdRenderDetails();
+            }
         }
 
         function wwRdRenderGroups() {
