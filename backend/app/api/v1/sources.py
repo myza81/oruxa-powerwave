@@ -44,6 +44,8 @@ from app.services.calculated_channel_service import remove_calculated_channels_f
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.engineering_context_service import prune_engineering_contexts_for_source
+from app.services.measurement_side_registry import MeasurementSideRegistry
+from app.services.measurement_side_service import prune_orphan_bay_overrides
 from app.services.errors import (
     AmbiguousSourceUploadError,
     ChannelNotAnalogError,
@@ -116,6 +118,10 @@ def get_per_unit_registry(request: Request) -> PerUnitRegistry:
 
 def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry:
     return request.app.state.measurement_group_registry
+
+
+def get_measurement_side_registry(request: Request) -> MeasurementSideRegistry:
+    return request.app.state.measurement_side_registry
 
 
 def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
@@ -762,6 +768,7 @@ def delete_source(
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
@@ -825,6 +832,10 @@ def delete_source(
         workspace_id=workspace_id, source_id=source_id, registry=engineering_context_registry,
         calculated_channel_registry=calc_registry,
     )
+    # D5A-2B2A: the recording's own correction goes with it; a bay override survives only while its bay does.
+    measurement_side_registry.remove_source(workspace_id, source_id)
+    prune_orphan_bay_overrides(workspace_id, side_registry=measurement_side_registry,
+                               context_registry=engineering_context_registry)
 
 
 @router.put("/{source_id}/time-reference", response_model=SourceSummaryOut)

@@ -1374,3 +1374,20 @@ class InvalidComplianceAlignmentError(ImportServiceError):
     non-finite origin, or a measurement with no samples to align to (DEC-170)."""
 
     code = "invalid_compliance_alignment"
+
+
+# ---- D5A-2B2A: unified measurement-side configuration ----
+
+
+class BayMembershipUnconfirmedError(ImportServiceError):
+    """A bay-level measurement side was requested for an Engineering Context whose membership is only
+    suggested or needs review, so the bay's channels are not reliably established."""
+
+    code = "bay_membership_unconfirmed"
+
+
+class BayHasNoMeasurementChannelsError(ImportServiceError):
+    """A bay-level measurement side was requested for an Engineering Context that has no recorded
+    Voltage/Current channel for it to apply to."""
+
+    code = "bay_has_no_measurement_channels"

@@ -116,6 +116,7 @@ from app.schemas.source import ErrorOut
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.measurement_side_registry import MeasurementSideRegistry
 from app.services.engineering_context_service import (
     create_context,
     delete_context,
@@ -174,6 +175,10 @@ def get_workspace_registry(request: Request) -> WorkspaceRegistry:
 
 def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
     return request.app.state.engineering_context_registry
+
+
+def get_measurement_side_registry(request: Request) -> MeasurementSideRegistry:
+    return request.app.state.measurement_side_registry
 
 
 def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
@@ -366,11 +371,14 @@ def delete_engineering_context(
     workspace_id: str,
     engineering_context_id: str,
     registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
 ) -> None:
     """Idempotent -- a context that does not exist at all is a
-    successful no-op, matching `delete_context()`'s own contract."""
+    successful no-op, matching `delete_context()`'s own contract.
+    D5A-2B2A: the bay's own measurement-side override is released with it."""
     workspace_id = _validate_workspace_id(workspace_id)
     delete_context(workspace_id, engineering_context_id, registry=registry)
+    measurement_side_registry.clear_bay(workspace_id, engineering_context_id)
 
 
 def _resolution_to_out(result: AnalysisInputResolution) -> AnalysisInputResolutionOut:
