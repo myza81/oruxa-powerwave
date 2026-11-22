@@ -73,4 +73,4 @@ New: `domain/side_conversion.py`, `services/independent_side_service.py`, `schem
 
 ## 7. Remaining measurement-side authority / data-model questions
 
-See `D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md`. Until D5A-2B2, an undeclared recorded side cannot be used in strict mode.
+The D5A-2B2 proposal (`D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md`) is **superseded** by DEC-216; the shared authority is delivered by [D5A-2B2A](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md). Strict mode does not yet read it (consumer migration is D5A-2B2C), so until then an undeclared recorded side still cannot be used in strict mode.

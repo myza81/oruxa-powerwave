@@ -1,5 +1,11 @@
 # D5A-2B2 — Engineer-Confirmed Measurement-Side Data Model (PROPOSAL ONLY)
 
+> **SUPERSEDED (2026-11-22) — do not implement.** The owner replaced this group-level data model with the unified measurement-side
+> architecture of [DEC-216](DECISIONS.md#dec-216--recording-details-is-the-single-authority-for-recorded-measurement-side-d5a-2b2-unified-model):
+> one Primary/Secondary value per recording (Level 1) and an optional per-bay override (Level 2), resolved by one shared resolver.
+> Delivered by D5A-2B2A: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+> In particular the rule "a confirmed side never feeds PU" (§6, Q4) no longer holds. Kept below as the historical record.
+
 No storage, API or frontend is introduced by D5A-2B1. This is a design for owner review.
 
 ## 1. Why it is needed

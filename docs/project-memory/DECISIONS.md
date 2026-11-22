@@ -29566,3 +29566,50 @@ Decision:
 Supersedes: the D5A-1 "F5 / D4" position and the D5A-2A rule that `auto_nominal` is display-only and never consumable.
 
 Implementation and rationale: [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
+
+
+## DEC-216 — Recording Details is the single authority for recorded measurement side (D5A-2B2 unified model)
+
+Date: 2026-11-22. Owner decision. **Supersedes** the D5A-2B2 data-model proposal of 2026-11-21
+([D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md](D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md)), which is not to be implemented.
+
+Decision:
+
+- **One authoritative interpretation** of whether a recorded Voltage/Current channel is Primary or Secondary, shared by every consumer
+  (Per-Unit, Overcurrent, Impedance Locus, Distance Protection, phasor/power).
+- **Level 1 — Recording:** one Primary/Secondary value per recording, resolved automatically from consistent trustworthy source metadata and
+  correctable by an engineer. Recording-derived evidence and engineer corrections keep separate provenance.
+- **Level 2 — Bay (Engineering Context):** one optional Primary/Secondary override per bay (never per phase). A bay follows Level 1 unless
+  manually overridden; a manual override survives Level 1 changes; selecting the value the bay already inherits clears the override
+  automatically; there is no Reset control; no per-bay default is stored.
+- **Conflict safety:** original per-channel COMTRADE evidence is preserved separately from engineer corrections and never silently discarded;
+  a file-wide value never conceals a genuinely mixed recording; irreconcilable evidence within a bay is reported as a conflict, not merged.
+  No per-phase setting is introduced.
+- **Single source of truth:** `resolve_effective_measurement_side()` returns the effective side, authority/provenance and diagnostics.
+  No analyzer may introduce its own measurement-side configuration or interpretation.
+- **Recording Details is the single source of truth for recorded measurement side**, for PU and also Overcurrent, Impedance Locus, Distance
+  Protection and other recording-based calculations (owner requirement, 2026-11-22):
+  1. recorded analysis modules obtain their side only through the shared resolver;
+  2. editable recorded-mode measurement-input-side selectors are removed in D5A-2B2C (Overcurrent "Recording current basis"; Impedance and
+     Distance recorded voltage/current-side selectors that duplicate Recording Details);
+  3. an analysis page may show the resolved side, bay, provenance and CT/VT ratio read-only;
+  4. calculation OUTPUT-side settings (e.g. Primary/Secondary impedance output) are legitimate and stay — they are not a declaration of the
+     recording's side;
+  5. Manual analysis mode and its independently entered CT/VT and other settings are unaffected;
+  6. the backend enforces the same authority — a recorded request cannot silently override Recording Details;
+  7. unresolved or contradictory side blocks the calculation that depends on it instead of guessing;
+  8. when conversion is required, the authoritative CT/VT ratio of the consumed channel's Measurement Group is used, once, and never when
+     unnecessary;
+  9. a Recording- or bay-level change reaches every consumer with no stale analyzer-level selection or cached result (the resolver is stateless);
+  10. the same recording is regression-tested across PU, Overcurrent, Impedance and Distance for identical side authority.
+- **PU (future behaviour, a later slice):** the separate PU Base Reference Side input is retired; a compatible denominator is selected or derived
+  from the effective side (primary measurement + primary base → direct; secondary measurement + primary base → the secondary denominator from the
+  authoritative CT/VT; conversion needed but CT/VT unavailable → block; a legitimately configured secondary base is never reinterpreted as primary).
+  Primary and secondary measurements of the same physical condition must give equivalent PU. Nominal L-L voltage, the L-L/L-N reference
+  distinction, derived Ibase, DEC-211, DEC-213, calculated-channel policy and DEC-215 are preserved; a manual Current base's reference side is
+  reviewed before any assumption. Raw waveforms are never modified and CT/VT conversion is never applied twice.
+- **Phasing:** D5A-2B2A (backend authority, delivered) → D5A-2B2B Recording Details UI → PU migration → D5A-2B2C consumer migration and selector
+  removal (including one consistent safety policy for today's Overcurrent strict-block vs Impedance/Distance warning-only inconsistency) →
+  D5A-2B2D legacy retirement. Manual mode and its CT/VT inputs stay untouched throughout.
+
+Implementation, API and open questions for the owner: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).

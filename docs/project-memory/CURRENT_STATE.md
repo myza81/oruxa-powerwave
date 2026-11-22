@@ -9,6 +9,19 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## D5A-2B2A — unified measurement-side configuration (2026-11-22)
+
+[FACT] Implemented locally on `feature/d5a-2b2a-measurement-side-config` (from `a2b55eb`); NOT pushed, merged or deployed; backend only.
+
+- [FACT] The backend has one shared resolver for a recorded channel's Primary/Secondary side (precedence: bay override > recording correction >
+  channel declaration > recording default > unresolved), Level 1 per recording and Level 2 per bay (Engineering Context), with engineer decisions held in an
+  in-memory registry separate from the recording's original P/S evidence, and additive API endpoints for the future Recording Details UI.
+- [FACT] No PU, Overcurrent, Impedance or Distance consumer reads it yet; their results are unchanged (snapshot-tested). The existing recorded-mode side
+  selectors still exist until D5A-2B2C.
+- [DECISION] DEC-216: Recording Details is the single authority for recorded measurement side; the old D5A-2B2 group-level proposal is superseded.
+
+Details and open owner questions: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+
 ## D5A-OC-001 — recorded Overcurrent reads its CT from Recording Details (2026-11-22)
 
 [FACT] Implemented locally on `feature/d5a-oc-001-overcurrent-ct-authority` (from the accepted D5A UAT commit `082b2a6`).
@@ -18,7 +31,7 @@ NOT pushed, merged or deployed; awaiting owner DEV UAT.
   `protection-instrument-context?analysis=overcurrent` and shown read-only with **Configure in Recording Details**. The recorded
   CT inputs are gone; Manual mode keeps its own inputs. The relay-secondary mathematics is unchanged.
 - A Recording basis that contradicts the channel's declared side is rejected (Impedance/Distance still only warn); an undeclared
-  side stays an explicit, "unverified" engineer choice. D5A-2B2 is not started.
+  side stays an explicit, "unverified" engineer choice. D5A-2B2 was redesigned as DEC-216; its backend authority is delivered in D5A-2B2A (above).
 - A blocked recorded result keeps its channel identity, so Related Waveforms stay available.
 
 Details, mathematics, owner decisions OC-1..OC-4 and the DEV UAT checklist:

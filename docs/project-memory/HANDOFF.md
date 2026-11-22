@@ -8,6 +8,28 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 
 ---
 
+## D5A-2B2A — unified measurement-side configuration and shared resolver (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-2b2a-measurement-side-config` (worktree `.local-data/d5a-2b2a`, from the accepted D5A UAT baseline
+`a2b55eb`). NOT pushed, merged or deployed. Backend only; no PU, Overcurrent, Impedance or Distance result changes. Awaiting owner review.
+
+**The old D5A-2B2 proposal is SUPERSEDED** ([DEC-216](DECISIONS.md#dec-216--recording-details-is-the-single-authority-for-recorded-measurement-side-d5a-2b2-unified-model));
+do not implement `D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md`.
+
+**What exists:** Level 1 (per recording) and Level 2 (per bay = Engineering Context) Primary/Secondary configuration; the stateless
+`resolve_effective_measurement_side()` / `resolve_consumed_side()` authority (`app/services/measurement_side_service.py`); additive
+endpoints `GET/PUT …/sources/{id}/measurement-side`, `GET/PUT …/engineering-contexts/{id}/measurement-side`, `GET …/measurement-side[/channel]`;
+lifecycle clean-up with workspace/source/bay. Precedence, ownership, diagnostics, limitations: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+
+**Standing owner requirement for every later slice:** Recording Details is the single source of truth for recorded measurement side. Consumers call
+the shared resolver; recorded-mode side selectors are removed in D5A-2B2C (output-side settings and Manual mode stay); the backend must enforce the
+same authority and block on unresolved/contradictory sides; no analyzer may add its own side configuration.
+
+**Next action:** owner review of the 9 limitations in the slice document §9, then D5A-2B2B (Recording Details UI), the PU migration slice, D5A-2B2C
+(consumer migration), D5A-2B2D (legacy retirement). Do not start any of them unprompted.
+
+---
+
 ## D5A-OC-001 — recorded Overcurrent CT authority (2026-11-22)
 
 **Status:** committed locally on `feature/d5a-oc-001-overcurrent-ct-authority` (branched from `uat/dev-d5a-20261121` @ `082b2a6`).
@@ -17,7 +39,7 @@ NOT pushed, deployed or merged. Owner decisions OC-1..OC-3 APPROVED (2026-11-22)
 **Next action:** owner authorisation to deploy to DEV, then owner DEV UAT using the checklist in
 [D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md) §7.
 Known inconsistency recorded for the future measurement-side integration phase: a side contradiction rejects for Overcurrent but only
-warns for Impedance/Distance (unchanged here). D5A-2B2 (engineer-confirmed measurement side) remains un-started.
+warns for Impedance/Distance (unchanged here). D5A-2B2 (engineer-confirmed measurement side) was redesigned as DEC-216 and its backend authority delivered in D5A-2B2A (above).
 
 ---
 
