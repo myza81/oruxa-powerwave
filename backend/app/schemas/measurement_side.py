@@ -94,6 +94,16 @@ def _overridden(channels, *, authorities: tuple[str, ...]) -> list[OverriddenDec
             for c in channels if c.authority in authorities and c.declared_side not in ("unknown", c.side)]
 
 
+def _contradicted_by_correction(channels, engineer_side: str | None) -> list[OverriddenDeclarationOut]:
+    """Every channel whose own declaration the recording-level correction contradicts, whether or not a bay setting
+    later takes over that channel: the contradiction is a property of the correction, so it is always disclosed."""
+    if engineer_side is None:
+        return []
+    return [OverriddenDeclarationOut(source_id=c.source_id, channel_name=c.channel_name or "",
+                                     declared_side=c.declared_side, effective_side=engineer_side)
+            for c in channels if c.declared_side not in ("unknown", engineer_side)]
+
+
 class RecordingCorrectionOut(BaseModel):
     side: str
     note: str | None
@@ -125,7 +135,7 @@ class RecordingMeasurementSideOut(BaseModel):
             engineer_correction=(RecordingCorrectionOut(side=view.correction.side, note=view.correction.note,
                                                         set_at=view.correction.set_at) if view.correction else None),
             effective_side=state.effective_side, authority=state.authority, bay_ids=list(view.bay_ids),
-            overridden_declarations=_overridden(view.channels, authorities=(AUTH_RECORDING_CORRECTION,)),
+            overridden_declarations=_contradicted_by_correction(view.channels, state.engineer_side),
             diagnostics=[SideDiagnosticOut.from_domain(x) for x in state.diagnostics],
             channels=([ChannelMeasurementSideOut.from_domain(c) for c in view.channels]
                       if include_channels else None),

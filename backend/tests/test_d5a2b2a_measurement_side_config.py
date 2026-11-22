@@ -780,6 +780,11 @@ def test_explicit_correction_is_consumable_and_fully_disclosed(client):
     assert (consumed.status, consumed.side, consumed.strict_usable) == ("resolved", "secondary", True)
     # The original evidence is still reported untouched.
     assert body["recording_derived"]["side"] == "primary" and {c["declared_side"] for c in body["channels"]} == {"primary"}
+    # The correction's contradiction stays disclosed even when a bay setting later takes over every channel.
+    _set_bay(client, ws, bay, "primary")
+    pinned = _rec(client, ws, src)
+    assert {c["authority"] for c in pinned["channels"]} == {AUTH_BAY_OVERRIDE}
+    assert len(pinned["overridden_declarations"]) == 6
 
 
 # =========================================================================== API contract
