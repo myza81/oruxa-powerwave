@@ -11,12 +11,13 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 ## D5A-OC-001 — recorded Overcurrent CT authority (2026-11-22)
 
 **Status:** committed locally on `feature/d5a-oc-001-overcurrent-ct-authority` (branched from `uat/dev-d5a-20261121` @ `082b2a6`).
-NOT pushed, deployed or merged. Awaiting owner DEV UAT.
+NOT pushed, deployed or merged. Owner decisions OC-1..OC-3 APPROVED (2026-11-22). Full regression passed on the final tree
+(backend 13,386 passed / 405 skipped / 0 failed; affected browser specs 194 passed / 0 failed).
 
-**Next action:** owner DEV UAT using the checklist in
-[D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md) §7, and a decision on OC-1..OC-3
-there (notably whether a basis contradicting a declared side should reject, as implemented, or only warn like Impedance/Distance).
-D5A-2B2 (engineer-confirmed measurement side) remains un-started.
+**Next action:** owner authorisation to deploy to DEV, then owner DEV UAT using the checklist in
+[D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md) §7.
+Known inconsistency recorded for the future measurement-side integration phase: a side contradiction rejects for Overcurrent but only
+warns for Impedance/Distance (unchanged here). D5A-2B2 (engineer-confirmed measurement side) remains un-started.
 
 ---
 

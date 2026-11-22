@@ -1,7 +1,7 @@
 # D5A-OC-001 — Recorded Overcurrent takes its CT from Recording Details
 
-**Status:** implemented on `feature/d5a-oc-001-overcurrent-ct-authority`, branched from the accepted D5A UAT commit
-`082b2a6` (`uat/dev-d5a-20261121`). **Not pushed, merged or deployed.** Awaiting owner DEV UAT.
+**Status:** implemented and fully regression-verified on `feature/d5a-oc-001-overcurrent-ct-authority`, branched from the accepted D5A UAT
+commit `082b2a6` (`uat/dev-d5a-20261121`). Owner decisions OC-1..OC-3 approved (§4). **Not pushed, merged or deployed.** Awaiting owner authorisation for DEV deployment and UAT.
 **Scope:** recorded Overcurrent only. Impedance, Distance, PU and physical calibration are untouched. D5A-2B2
 (engineer-confirmed measurement-side storage) is **not** started.
 
@@ -61,6 +61,19 @@ Hand-derived oracle used by the tests: CT 1000:5; 400 A primary and 2 A secondar
 | OC-3 | A workspace reset also clears the Manual-mode CT values and the Recording basis. | "No CT survives a workspace reset." Other relay settings (curve, TMS, pickup) are unchanged. |
 | OC-4 | Impedance/Distance behaviour is not touched. | Scope. |
 
+**Owner decisions (recorded 2026-11-22): OC-1, OC-2 and OC-3 are APPROVED as implemented.**
+
+- **OC-1** — a requested Recording basis that contradicts a *reliably declared* measurement side is rejected.
+- **OC-2** — "Checking…" is shown where needed to avoid presenting a potentially incorrect number.
+- **OC-3** — a workspace reset clears the Manual CT and the recorded basis selection.
+- The existing Impedance/Distance side-conflict behaviour (warn-only) is **not altered** in this slice.
+
+**Recorded inconsistency, for the future measurement-side integration phase (not fixed here):** a declared-side contradiction is
+a hard blocker for Overcurrent (`strictSides: true`) but only a warning for Impedance and Distance
+(`strictSides: false`, the shared D5A behaviour accepted at `082b2a6`). The measurement-side integration phase (with D5A-2B2,
+engineer-confirmed side storage) must decide one consistent policy across the three analyzers, with owner approval, and change the
+accepted Impedance/Distance behaviour only then.
+
 ## 5. Limitations (deliberate or inherent)
 
 - **Declared sides only.** If the recording's own side declaration is wrong, the engineer cannot override it until D5A-2B2 (engineer-confirmed side) — they can still choose a basis only where the recording is silent.
@@ -77,6 +90,21 @@ Hand-derived oracle used by the tests: CT 1000:5; 400 A primary and 2 A secondar
 | Static + Node (real helper block) | `backend/tests/test_frontend_d5a_oc_001_ct_authority.py` | What a request may carry, every blocker message and its group, side preselection / rejection / "unverified", loading and error handling, signature changes, stale-read discard, reset, rendering, Configure navigation, and that Impedance/Distance plans are unchanged. |
 | Browser | `browser-tests/d5a_oc_ct_authority.spec.js` | 11 end-to-end cases on a real backend, including return from Recording Details, side rejection, reset and the stale-read race. |
 | Updated deliberately | `test_frontend_overcurrent_analysis.py`, `overcurrent_analysis.spec.js` | Pinned the old rule that Recording mode shows CT inputs when the basis is Primary. |
+
+### Final regression results (final tree `5c2af2a` plus this documentation commit; baseline `082b2a6`)
+
+| Layer | Result |
+|---|---|
+| Backend, full suite (`pytest`, whole `backend/`) | **13,386 passed, 405 skipped, 0 failed**, exit 0. The earlier single failure (the old "computed-only" Related Waveforms rule) is the corrected legacy test. |
+| Browser, affected specs on isolated ports (`overcurrent_analysis`, `d5a_oc_ct_authority`, `analysis_related_waveforms`, `d5a_ctvt_authority`, all five `distance_*`, `impedance_analysis`) | **194 passed, 0 failed** (11.9 min), including the two corrected layout tests. |
+
+- **Baseline comparison.** Only two pre-existing backend test files and three pre-existing browser specs were modified; every
+  other pre-existing test is untouched and passes. The baseline tree `082b2a6` was not re-run in this verification.
+- **Legitimate coverage preserved.** Each changed legacy assertion was replaced by an equivalent or stronger one: the Recording-mode
+  CT inputs became a read-only-block check plus an explicit "CT inputs are hidden in Recording" assertion; the CT Primary/Secondary
+  overlap and within-card checks moved to Manual input source, where those inputs still exist; fixtures that now need a CT
+  configure it through the same API Recording Details saves through. No assertion was deleted without a replacement.
+- **Scope not run.** The rest of the browser suite (other pages) was not run; backend tests cover the unchanged areas.
 
 ## 7. Proposed DEV UAT checklist
 
