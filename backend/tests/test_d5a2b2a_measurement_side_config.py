@@ -105,14 +105,44 @@ def _set_rec(client, ws, src, side, note=None):
     return resp.json()
 
 
-def _bay_view(client, ws, ctx):
+def _context_view(client, ws, ctx):
     resp = client.get(f"{_contexts(ws)}/{ctx}/measurement-side")
     assert resp.status_code == 200, resp.text
     return resp.json()
 
 
-def _set_bay(client, ws, ctx, side):
-    return client.put(f"{_contexts(ws)}/{ctx}/measurement-side", json={"side": side})
+def _only_source(client, ws, ctx):
+    """The single recording a bay contributes channels from (most bays); ambiguous bays must name theirs."""
+    associations = _context_view(client, ws, ctx)["associations"]
+    assert len(associations) == 1, "this bay spans several recordings: name the one you mean"
+    return associations[0]["source_id"]
+
+
+def _assoc_url(ws, ctx, src):
+    return f"/api/v1/workspaces/{ws}/sources/{src}/engineering-contexts/{ctx}/measurement-side"
+
+
+def _bay_view(client, ws, ctx, src=None):
+    """The bay within one recording (the unit a Level 2 setting belongs to)."""
+    resp = client.get(_assoc_url(ws, ctx, src or _only_source(client, ws, ctx)))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _set_bay(client, ws, ctx, side, src=None):
+    if src is None:
+        found = client.get(f"{_contexts(ws)}/{ctx}/measurement-side")
+        src = _only_source(client, ws, ctx) if found.status_code == 200 else "no-such-recording"
+    return client.put(_assoc_url(ws, ctx, src), json={"side": side})
+
+
+def _multi_bay(client, ws, name, parts, *, status="manual"):
+    """One Engineering Context holding channels of several recordings: parts = [(source_id, ("VA", "IA")), ...]."""
+    members = [{"channel_ref": _ref(src, f"ZBAY_{n}"), "phase": n[1], "phase_source": "engineer_confirmed"}
+               for src, names in parts for n in names]
+    resp = client.post(_contexts(ws), json={"display_name": name, "status": status, "members": members})
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
 
 
 def _chan(client, ws, src, name):
@@ -361,7 +391,7 @@ def test_selecting_the_inherited_value_clears_the_override_so_the_bay_follows_ag
     assert (cleared["override"], cleared["effective_side"], cleared["authority"]) == (None, "primary", AUTH_CHANNEL_DECLARED)
     _set_rec(client, ws, src, "secondary")
     assert _bay_view(client, ws, bay)["effective_side"] == "secondary"      # proof it follows Level 1 again
-    assert client.app.state.measurement_side_registry.get_bay(ws, bay) is None
+    assert client.app.state.measurement_side_registry.get_bay(ws, bay, src) is None
 
 
 def test_no_duplicate_per_bay_default_is_stored(client):
@@ -448,23 +478,67 @@ def test_bays_from_different_recordings_have_independent_sides(client):
     assert _rec(client, ws, s2)["engineer_correction"] is None             # the other source is untouched
 
 
-def test_a_bay_spanning_recordings_with_different_sides_is_a_legitimate_mixed_reference(client):
+def test_one_bay_in_two_recordings_keeps_each_recordings_own_side(client):
+    """Owner safety refinement: KPDN1 is Primary in recording A and Secondary in recording B, in ONE Engineering
+    Context. A Level 2 change for A never reinterprets B; nothing is inherited across the two."""
     ws = _ws()
-    volts = _source(client, ws, v="primary", i="primary", stem="volts")
-    amps = _source(client, ws, v="secondary", i="secondary", stem="amps")
-    ctx = client.post(_contexts(ws), json={"display_name": "split", "status": "manual", "members": [
-        {"channel_ref": _ref(volts, "ZBAY_VA"), "phase": "A", "phase_source": "engineer_confirmed"},
-        {"channel_ref": _ref(amps, "ZBAY_IA"), "phase": "A", "phase_source": "engineer_confirmed"}]}).json()["id"]
-    view = _bay_view(client, ws, ctx)
-    assert (view["status"], view["effective_side"], view["voltage_side"], view["current_side"]) == (
-        "resolved", None, "primary", "secondary")
-    assert (view["reference_sides"], view["strict_usable"]) == ("voltage_current_differ", True)
-    assert next(d for d in view["diagnostics"] if d["code"] == "BAY_VOLTAGE_CURRENT_SIDES_DIFFER")["severity"] == "info"
-    assert view["inherited_recording_side"] is None and set(view["source_ids"]) == {volts, amps}
-    assert _chan(client, ws, volts, "VA")["effective_side"] == "primary"   # per-channel evidence kept, not collapsed
-    resolved = _set_bay(client, ws, ctx, "secondary").json()               # nothing single to inherit: a manual override
-    assert (resolved["status"], resolved["effective_side"], resolved["override"]["side"]) == ("resolved", "secondary", "secondary")
-    assert resolved["reference_sides"] == "uniform"
+    a = _source(client, ws, v="primary", i="primary", stem="a")
+    b = _source(client, ws, v="secondary", i="secondary", stem="b")
+    kpdn1 = _multi_bay(client, ws, "KPDN1", [(a, ("VA", "IA")), (b, ("VA", "IA"))])
+    ctx = _context_view(client, ws, kpdn1)
+    assert [x["source_id"] for x in ctx["associations"]] == [a, b]
+    assert [x["effective_side"] for x in ctx["associations"]] == ["primary", "secondary"]
+    assert [x["inherited_recording_side"] for x in ctx["associations"]] == ["primary", "secondary"]   # no shared value
+    assert "BAY_RECORDINGS_DISAGREE" in {d["code"] for d in ctx["diagnostics"]}
+
+    changed = _set_bay(client, ws, kpdn1, "secondary", src=a).json()        # Level 2 for recording A only
+    assert (changed["source_id"], changed["effective_side"], changed["override"]["side"]) == (a, "secondary", "secondary")
+    other = _bay_view(client, ws, kpdn1, src=b)
+    assert (other["effective_side"], other["override"], other["authority"]) == ("secondary", None, AUTH_CHANNEL_DECLARED)
+    assert _chan(client, ws, a, "VA")["authority"] == AUTH_BAY_OVERRIDE
+    assert _chan(client, ws, b, "VA")["authority"] == AUTH_CHANNEL_DECLARED   # B's channels were not reinterpreted
+
+    flipped = _set_bay(client, ws, kpdn1, "primary", src=b).json()          # and Level 2 for B only
+    assert (flipped["effective_side"], flipped["override"]["side"]) == ("primary", "primary")
+    assert _bay_view(client, ws, kpdn1, src=a)["effective_side"] == "secondary"
+
+    # clear-on-equal compares with THAT recording's Level 1 (A: Primary), whatever B says
+    cleared = _set_bay(client, ws, kpdn1, "primary", src=a).json()
+    assert (cleared["override"], cleared["effective_side"]) == (None, "primary")
+    assert _bay_view(client, ws, kpdn1, src=b)["override"]["side"] == "primary"        # B keeps its own choice
+
+
+def test_each_recordings_level1_reaches_only_its_own_non_overridden_bays(client):
+    ws = _ws()
+    a = _source(client, ws, v="primary", i="primary", stem="a")
+    b = _source(client, ws, v="secondary", i="secondary", stem="b")
+    k1 = _multi_bay(client, ws, "KPDN1", [(a, ("VA", "IA")), (b, ("VA", "IA"))])
+    k2 = _multi_bay(client, ws, "KPDN2", [(a, ("VB", "IB")), (b, ("VB", "IB"))])
+    _set_bay(client, ws, k1, "secondary", src=a)                             # K1/A pinned (A's Level 1 is Primary)
+    eff = lambda ctx, src: _bay_view(client, ws, ctx, src=src)["effective_side"]  # noqa: E731
+    assert (eff(k1, a), eff(k2, a), eff(k1, b), eff(k2, b)) == ("secondary", "primary", "secondary", "secondary")
+
+    _set_rec(client, ws, a, "secondary")                                     # A's Level 1 changes
+    assert (eff(k1, a), eff(k2, a)) == ("secondary", "secondary")            # K2/A follows; K1/A keeps its override
+    assert _bay_view(client, ws, k1, src=a)["override"]["side"] == "secondary"
+    assert (eff(k1, b), eff(k2, b)) == ("secondary", "secondary")            # B untouched
+    assert _rec(client, ws, b)["engineer_correction"] is None
+
+    _set_rec(client, ws, b, "primary")                                       # B's Level 1 changes
+    assert (eff(k1, b), eff(k2, b)) == ("primary", "primary")                # both of B's bays follow B
+    assert (eff(k1, a), eff(k2, a)) == ("secondary", "secondary")            # A's are untouched by B
+    assert _bay_view(client, ws, k1, src=b)["inherited_recording_side"] == "primary"
+
+
+def test_a_bay_setting_names_a_recording_the_bay_actually_holds(client):
+    ws = _ws()
+    a, b = _source(client, ws, stem="a"), _source(client, ws, stem="b")
+    only_a = _bay(client, ws, a, ("VA", "IA"))
+    resp = client.put(_assoc_url(ws, only_a, b), json={"side": "secondary"})
+    assert (resp.status_code, resp.json()["detail"]["code"]) == (409, "bay_has_no_measurement_channels")
+    assert client.get(_assoc_url(ws, only_a, b)).status_code == 409
+    assert client.put(_assoc_url(ws, only_a, "nope"), json={"side": "secondary"}).status_code == 404
+    assert client.app.state.measurement_side_registry.count() == 0
 
 
 # =========================================================================== genuine mixed sides
@@ -575,10 +649,10 @@ def test_bay_without_voltage_or_current_channels_cannot_take_a_side(client):
     empty = client.post(_contexts(ws), json={"display_name": "empty", "status": "manual", "members": []})
     assert empty.status_code == 201, empty.text
     ctx = empty.json()["id"]
-    view = _bay_view(client, ws, ctx)
-    assert (view["status"], view["effective_side"]) == ("not_applicable", None)
-    assert "BAY_HAS_NO_VOLTAGE_CURRENT_MEMBERS" in _codes(view)
-    resp = _set_bay(client, ws, ctx, "primary")
+    view = _context_view(client, ws, ctx)
+    assert view["associations"] == [] and "BAY_HAS_NO_VOLTAGE_CURRENT_MEMBERS" in _codes(view)
+    existing = client.get(f"/api/v1/workspaces/{ws}/measurement-side").json()["recordings"][0]["source_id"]
+    resp = client.put(_assoc_url(ws, ctx, existing), json={"side": "primary"})
     assert resp.status_code == 409 and resp.json()["detail"]["code"] == "bay_has_no_measurement_channels"
 
 
@@ -653,23 +727,36 @@ def test_removing_a_source_removes_its_correction_and_a_reupload_starts_clean(cl
     assert (body["engineer_correction"], body["effective_side"], body["authority"]) == (None, "primary", AUTH_CHANNEL_DECLARED)
 
 
-def test_bay_override_follows_the_life_of_its_bay(client):
+def test_bay_override_follows_the_life_of_its_bay_and_its_recording(client):
     ws = _ws()
     s1, s2 = _source(client, ws, stem="a"), _source(client, ws, stem="b")
     survivor = _bay(client, ws, s1, ("VA", "IA"))
-    spanning = client.post(_contexts(ws), json={"display_name": "span", "status": "manual", "members": [
-        {"channel_ref": _ref(s1, "ZBAY_VB"), "phase": "B", "phase_source": "engineer_confirmed"},
-        {"channel_ref": _ref(s2, "ZBAY_VB"), "phase": "B", "phase_source": "engineer_confirmed"}]}).json()["id"]
+    spanning = _multi_bay(client, ws, "span", [(s1, ("VB",)), (s2, ("VB",))])
     only_s2 = _bay(client, ws, s2, ("VA", "IA"))
-    for ctx in (survivor, spanning, only_s2):
-        _set_bay(client, ws, ctx, "secondary")
+    _set_bay(client, ws, survivor, "secondary", src=s1)
+    _set_bay(client, ws, spanning, "secondary", src=s1)
+    _set_bay(client, ws, spanning, "secondary", src=s2)
+    _set_bay(client, ws, only_s2, "secondary", src=s2)
     registry = client.app.state.measurement_side_registry
-    assert registry.count() == 3
-    client.delete(f"/api/v1/workspaces/{ws}/sources/{s2}")                 # empties only_s2, reduces `spanning`
-    assert registry.get_bay(ws, only_s2) is None
-    assert registry.get_bay(ws, spanning) is not None and registry.get_bay(ws, survivor) is not None
-    client.delete(f"{_contexts(ws)}/{spanning}")                           # deleting a bay releases its override
-    assert registry.get_bay(ws, spanning) is None and registry.get_bay(ws, survivor) is not None
+    assert registry.count() == 4
+    client.delete(f"/api/v1/workspaces/{ws}/sources/{s2}")                   # empties only_s2, reduces `spanning`
+    assert registry.get_bay(ws, only_s2, s2) is None and registry.get_bay(ws, spanning, s2) is None
+    assert registry.get_bay(ws, spanning, s1) is not None and registry.get_bay(ws, survivor, s1) is not None
+    client.delete(f"{_contexts(ws)}/{spanning}")                             # deleting a bay releases every override of it
+    assert registry.get_bay(ws, spanning, s1) is None and registry.get_bay(ws, survivor, s1) is not None
+
+
+def test_removing_a_recording_from_a_bay_releases_that_recordings_override_only(client):
+    ws = _ws()
+    a, b = _source(client, ws, stem="a"), _source(client, ws, stem="b")
+    k1 = _multi_bay(client, ws, "KPDN1", [(a, ("VA", "IA")), (b, ("VA", "IA"))])
+    _set_bay(client, ws, k1, "secondary", src=a)
+    _set_bay(client, ws, k1, "primary", src=b)
+    registry = client.app.state.measurement_side_registry
+    members = [{"channel_ref": _ref(a, f"ZBAY_{n}"), "phase": n[1], "phase_source": "engineer_confirmed"} for n in ("VA", "IA")]
+    assert client.patch(f"{_contexts(ws)}/{k1}", json={"members": members}).status_code == 200   # B leaves the bay
+    assert registry.get_bay(ws, k1, b) is None and registry.get_bay(ws, k1, a) is not None
+    assert [x["source_id"] for x in _context_view(client, ws, k1)["associations"]] == [a]
 
 
 def test_workspace_reset_clears_everything(client):
@@ -785,6 +872,84 @@ def test_explicit_correction_is_consumable_and_fully_disclosed(client):
     pinned = _rec(client, ws, src)
     assert {c["authority"] for c in pinned["channels"]} == {AUTH_BAY_OVERRIDE}
     assert len(pinned["overridden_declarations"]) == 6
+
+
+# =========================================================================== CT/VT groups spanning bays
+
+
+def _ownership(view, group_id):
+    return next(o for o in view["group_ownership"] if o["group_id"] == group_id)
+
+
+def test_a_group_inside_one_bay_or_no_bay_is_unremarkable(client):
+    ws = _ws()
+    src = _source(client, ws)
+    bay = _bay(client, ws, src, _ALL)
+    _group(client, ws, src, KIND_VOLTAGE, V, "vg-1")
+    view = _bay_view(client, ws, bay)
+    assert _ownership(view, "vg-1")["status"] == "single_bay" and not _ownership(view, "vg-1")["conversion_authority_ambiguous"]
+    assert not {"GROUP_SPANS_BAYS", "GROUP_SPANS_BAYS_AMBIGUOUS"} & _codes(view)
+    ws2 = _ws()
+    src2 = _source(client, ws2)
+    _group(client, ws2, src2, KIND_VOLTAGE, V, "vg-9")
+    assert client.app.state.measurement_group_registry.get(ws2, "vg-9") is not None
+    from app.services.measurement_side_service import build_group_ownership
+    assert build_group_ownership(ws2, "vg-9", deps=_deps(client)).status == "no_bay"
+
+
+def test_a_group_shared_by_bays_on_one_side_is_flagged_but_not_ambiguous(client):
+    ws = _ws()
+    src = _source(client, ws)
+    b1, b2 = _bay(client, ws, src, ("VA", "IA")), _bay(client, ws, src, ("VB", "IB"))
+    _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB"), "bus-vt")             # one busbar VT serving both feeders
+    for bay in (b1, b2):
+        view = _bay_view(client, ws, bay)
+        owner = _ownership(view, "bus-vt")
+        assert (owner["status"], owner["conversion_authority_ambiguous"]) == ("spans_bays", False)
+        assert sorted(x["display_name"] for x in owner["bays"]) == ["bay-VA", "bay-VB"]
+        assert {"GROUP_SPANS_BAYS"} <= _codes(view) and "GROUP_SPANS_BAYS_AMBIGUOUS" not in _codes(view)
+        assert view["strict_usable"] is True
+    consumed = resolve_consumed_side(ws, [ChannelRef("source", src, "ZBAY_VA")], deps=_deps(client))
+    assert (consumed.strict_usable, consumed.conversion_authority) == (True, "unambiguous")
+
+
+def test_a_group_spanning_bays_on_different_sides_blocks_conversion_instead_of_borrowing(client):
+    ws = _ws()
+    src = _source(client, ws)                                                 # recording declares Primary everywhere
+    b1, b2 = _bay(client, ws, src, ("VA", "IA")), _bay(client, ws, src, ("VB", "IB"))
+    _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB"), "bus-vt")
+    _group(client, ws, src, KIND_CURRENT, ("IC",), "ct-c")                    # unrelated group, unaffected
+    _vt(client, ws, "bus-vt", VT_P, VT_S, note="VT")
+    assert _set_bay(client, ws, b1, "secondary").status_code == 200            # the two bays now sit on different sides
+    view = _bay_view(client, ws, b2)
+    owner = _ownership(view, "bus-vt")
+    assert (owner["status"], owner["conversion_authority_ambiguous"]) == ("spans_bays_ambiguous", True)
+    assert "GROUP_SPANS_BAYS_AMBIGUOUS" in _codes(view)
+    assert next(d for d in view["diagnostics"] if d["code"] == "GROUP_SPANS_BAYS_AMBIGUOUS")["severity"] == "conflict"
+    assert view["strict_usable"] is False                                       # the bay's side is known; its conversion is not
+    assert view["effective_side"] == "primary"
+    deps = _deps(client)
+    one = resolve_consumed_side(ws, [ChannelRef("source", src, "ZBAY_VB")], deps=deps)
+    assert (one.status, one.side, one.usable, one.strict_usable) == ("resolved", "primary", True, False)
+    assert (one.conversion_authority, one.ownership_ambiguous_groups) == ("ambiguous", ("bus-vt",))
+    assert "CONSUMED_GROUP_SPANS_BAYS_AMBIGUOUS" in {d.code for d in one.diagnostics}
+    clean = resolve_consumed_side(ws, [ChannelRef("source", src, "ZBAY_IC")], deps=deps)
+    assert (clean.strict_usable, clean.conversion_authority) == (True, "unambiguous")   # an unrelated group still converts
+    # the transformer ratio itself is untouched: nothing is borrowed, nothing is edited
+    config = client.app.state.voltage_group_config_registry.get(ws, "bus-vt")
+    assert (config.vt_primary_v, config.vt_secondary_v) == (VT_P, VT_S)
+
+
+def test_a_group_spanning_bays_with_an_unresolved_side_is_ambiguous_too(client):
+    ws = _ws()
+    src = _source(client, ws, v="none", i="none")                              # nothing declared anywhere
+    b1, b2 = _bay(client, ws, src, ("VA", "IA")), _bay(client, ws, src, ("VB", "IB"))
+    _group(client, ws, src, KIND_VOLTAGE, ("VA", "VB"), "bus-vt")
+    owner = _ownership(_bay_view(client, ws, b1), "bus-vt")
+    assert owner["status"] == "spans_bays_ambiguous" and owner["conversion_authority_ambiguous"] is True
+    _set_rec(client, ws, src, "primary")                                       # the engineer resolves it: no longer ambiguous
+    owner = _ownership(_bay_view(client, ws, b2), "bus-vt")
+    assert (owner["status"], owner["conversion_authority_ambiguous"]) == ("spans_bays", False)
 
 
 # =========================================================================== API contract
