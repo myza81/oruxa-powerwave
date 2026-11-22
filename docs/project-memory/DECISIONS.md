@@ -29637,3 +29637,11 @@ The D5A-2B2A report was accepted. The owner decided:
   `overridden_declarations` list) are preserved; the warning alone never blocks. The UI must disclose the contradicted source evidence.
 
 D5A-OC-001 owner UAT: PASSED (2026-11-22).
+
+### Amendment 2 (2026-11-22) — D5A-2B2B Recording Details UI
+
+- The Level 1 and Level 2 selectors live in Recording Details → Recording Info → "Measurement side" and render only the D5A-2B2A API (no frontend authority model,
+  no per-phase control, no Reset). Details: [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
+- A recording that declares Primary voltage and Secondary current is `voltage_current_differ` (info), not `mixed`; only disagreement within one quantity is a conflict.
+- Contradicted declarations are always disclosed with the correction, even when a bay setting takes over the channel.
+- A small **Confirm bay** link (existing Engineering Context status `PATCH`) satisfies B2A-3 for bays created as `suggested` at upload. [PROPOSAL, awaiting owner review]

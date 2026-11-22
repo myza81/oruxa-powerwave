@@ -9,6 +9,12 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## D5A-2B2B — Recording Details measurement-side UI (2026-11-22)
+
+[FACT] Implemented locally on `feature/d5a-2b2b-recording-details-side-ui`; NOT pushed, merged or deployed. Recording Info shows one Primary/Secondary selector for the recording and
+one per bay (no Reset, no per-phase control), rendered from the D5A-2B2A API, with discreet provenance and clear disclosure of mixed, undeclared, inferred and overridden evidence.
+The analyzers still use their own recorded-mode side selectors until D5A-2B2C. See [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
+
 ## D5A-2B2A — unified measurement-side configuration (2026-11-22)
 
 [FACT] Implemented locally on `feature/d5a-2b2a-measurement-side-config` (from `a2b55eb`); NOT pushed, merged or deployed; backend only.
