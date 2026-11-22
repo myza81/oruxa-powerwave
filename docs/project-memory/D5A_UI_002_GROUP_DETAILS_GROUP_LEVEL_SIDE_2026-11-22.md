@@ -76,11 +76,19 @@ Tests: `backend/tests/test_d5a_ui_002_group_measurement_side.py` (replaces the b
 
 ## 5. Verification
 
-See the owner report and the commit messages for totals. Mutation checks confirmed the new tests fail when the group override is ignored, shared across
-groups, or when an inferred side is allowed to clear an override, and when the page highlights an unresolved group.
+* Backend: full suite 13,490 passed / 405 skipped / 0 failed (13,895 collected). Every frontend static / Node test plus the group backend suite re-run on the final
+  frontend: 2,282 passed, 0 failed. Mutation checks: ignoring the override, sharing it across groups, letting an inferred side clear an override, and
+  highlighting an unresolved group each fail the suite.
+* Browser, Recording Details set (rd1-*, toolbar, d5a_*, lifecycle, analyser detection, ui_rec_001, plus time-reference, notation, phase-display, text-spacing,
+  post-upload readiness, voltage-only PU display, auto-PU import): **363 passed, 14 failed**. All 14 are in spec files that fail identically on the untouched
+  baseline frontend (`a1e8d68`; 22 failed / 63 passed over the same files on baseline vs 22 / 81 with this work, the post-upload failures moving between
+  tests run to run): `electrical-notation` (1), `phase-display-convention` (2), `post_upload_readiness` (4 of its 8 baseline failures), `time-reference-interpretation`
+  (3), `voltage-only-pu-display` (4). None touches Recording Info or Group Details, none was edited, no test was weakened.
+* Visual evidence (real browser, KPDN1/KPDN2/SLKS/MCRS recording with KPDN1 configured through the existing APIs): [evidence/d5a-ui-002/](evidence/d5a-ui-002/) —
+  `recording-info-wide`, `kpdn1-voltage-wide`, `kpdn1-current-wide`, `kpdn1-voltage-narrow` (1000 px viewport, narrow third column), `kpdn1-current-narrow`,
+  `kpdn1-voltage-phone` (single-panel layout); each as `-page.png` (whole app) and `-panel.png` (third column).
 
 ## 6. Limitations before D5A-2B2C
 
 * Calculated-channel side/lineage questions are unchanged (see D5A_2B2B §7).
 * Recording Details no longer offers a Confirm-bay review; confirming an Engineering Context is still available through its own endpoint/workflow.
-* The Per-unit Configuration card on Recording Info appears after the next re-render (pre-existing: groups load after the first draw).

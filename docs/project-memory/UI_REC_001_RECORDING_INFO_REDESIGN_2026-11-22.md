@@ -26,8 +26,10 @@ All of it is in `frontend/index.html`, localized as: one CSS block (`UI-REC-001-
   vs 22 failed / 81 passed with this change over the same files); they are environmental / pre-existing and none touches Recording Info.
   One test was adjusted: `rd1-ux3` D02b now expects the metadata card's two tables.
 
-## Observation for the owner (not changed)
+## Per-unit card on the first load (fixed in `b19f5de`, owner decision 2026-11-22)
 
-When a recording is first selected the measurement groups load after Recording Info is first drawn, and `wwRdSelectSource` deliberately does not re-render
-the details afterwards, so the Per-unit Configuration card appears only after the next re-render (for example switching tabs). This predates this task; a
-one-line re-render when the groups arrive would fix it. Not applied (change governance: report first).
+The measurement groups load after Recording Info is first drawn and the details were not drawn again, so the Per-unit Configuration card appeared only after a
+later redraw. `wwRdSelectSource` now redraws Recording Info once when the groups arrive — locally (no request, no loop) and only if the same recording is still
+selected, Recording Info is still the view, and no control inside the panel has focus. Group Details and another recording are never overwritten. Tests: the card
+is present on a first load with no tab switch and the draw count settles (fails on the code before the fix); late groups do not pull the engineer out of Group
+Details. The request sequence is identical before and after the change.
