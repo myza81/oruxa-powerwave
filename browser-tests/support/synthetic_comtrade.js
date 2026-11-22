@@ -9,6 +9,7 @@
 //     station: "STN_FAST", date: "06/03/2026", startClock: "10:00:00.000000",
 //     rateHz: 5000, durationS: 0.2,
 //     channels: [{ name: "VA", unit: "V", phase: "A", amplitude: 100, frequencyHz: 50 }],
+//   Optional per channel `side`: the COMTRADE primary/secondary marker ("P" default, "S", or "" for undeclared).
 //   })
 
 function clockToSeconds(clock) {
@@ -30,7 +31,7 @@ function syntheticComtrade({ station, date = "06/03/2026", startClock, triggerCl
     `${station},SYNTH_DEV,1999`,
     `${channels.length},${channels.length}A,0D`,
     ...channels.map((c, i) =>
-      `${i + 1},${c.name},${c.phase || ""},,${c.unit},${scale[i]},0.0,0,-32767,32767,1.0,1.0,P`),
+      `${i + 1},${c.name},${c.phase || ""},,${c.unit},${scale[i]},0.0,0,-32767,32767,1.0,1.0,${c.side === undefined ? "P" : c.side}`),
     "50",
     "1",
     `${rateHz},${sampleCount}`,
