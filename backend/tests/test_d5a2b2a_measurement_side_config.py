@@ -874,6 +874,31 @@ def test_explicit_correction_is_consumable_and_fully_disclosed(client):
     assert len(pinned["overridden_declarations"]) == 6
 
 
+# =========================================================================== Confirm bay is a status change only
+
+
+def test_confirming_a_bay_changes_its_status_and_nothing_else(client):
+    """Confirm bay promotes a suggested/needs-review bay explicitly; it never edits membership, phases or the evidence
+    behind them, and the Analysis input resolution of the bay is identical before and after."""
+    ws = _ws()
+    src = _source(client, ws)
+    bay = _bay(client, ws, src, _ALL, status="needs_review")
+    before = client.get(f"{_contexts(ws)}/{bay}").json()
+    kinds = [("phasor", "voltage_three_phase"), ("phasor", "voltage_phase_a")]
+    resolved_before = [client.get(f"{_contexts(ws)}/{bay}/input-resolution", params={"analysis_kind": k, "mode": m}).json()
+                       for k, m in kinds]
+    assert _set_bay(client, ws, bay, "secondary").status_code == 409          # not before it is confirmed
+    assert client.patch(f"{_contexts(ws)}/{bay}", json={"status": "confirmed"}).status_code == 200
+    after = client.get(f"{_contexts(ws)}/{bay}").json()
+    assert after["status"] == "confirmed"
+    assert {k: v for k, v in after.items() if k != "status"} == {k: v for k, v in before.items() if k != "status"}
+    assert [m["phase_source"] for m in after["members"]] == [m["phase_source"] for m in before["members"]]
+    assert [client.get(f"{_contexts(ws)}/{bay}/input-resolution", params={"analysis_kind": k, "mode": m}).json()
+            for k, m in kinds] == resolved_before
+    assert [c["id"] for c in client.get(_contexts(ws)).json()] == [bay]        # still listed for Analysis, same bay
+    assert _set_bay(client, ws, bay, "secondary").status_code == 200           # now it can take a manual side
+
+
 # =========================================================================== CT/VT groups spanning bays
 
 
