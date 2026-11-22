@@ -1207,6 +1207,47 @@
         .ww-rd-config-label { color: var(--text-dim); white-space: nowrap; }
         .ww-rd-config-value { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         .ww-rd-section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 10px 0; }
+        /* D5A-2B2B: Measurement side (Recording Information). Recording-level and per-bay Primary/Secondary
+           segmented controls plus discreet provenance. The shared .ww-rd-provenance classes carry the text colours. */
+        .ww-rd-side-note { font-size: 0.7rem; color: var(--text-dim); margin: -4px 0 8px; }
+        .ww-rd-side-rows { display: flex; flex-direction: column; gap: 8px; }
+        .ww-rd-side-subheading {
+            font-size: 0.7rem; font-weight: 600; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.06em; margin: 10px 0 2px;
+        }
+        .ww-rd-side-row {
+            display: grid; grid-template-columns: minmax(90px, 30%) auto; gap: 2px 10px;
+            align-items: center; font-size: 0.75rem;
+        }
+        .ww-rd-side-row-label { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ww-rd-side-row-control { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ww-rd-side-row .ww-rd-provenance { grid-column: 2; margin-top: 0; }
+        .ww-rd-side-group {
+            display: inline-flex; border: 1px solid var(--panel-border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        /* The global `button { color: #fff; border: none; }` reset leaks through unless colour/border are explicit. */
+        .ww-rd-side-btn {
+            font-size: 0.7rem; line-height: 1; padding: 6px 12px; cursor: pointer;
+            background: var(--panel); color: var(--text-dim); border: none; border-radius: 0;
+        }
+        .ww-rd-side-btn + .ww-rd-side-btn { border-left: 1px solid var(--panel-border); }
+        .ww-rd-side-btn:hover:not(:disabled):not(.ww-rd-side-btn--active) { background: var(--hover-tint); color: var(--text); }
+        .ww-rd-side-btn--active {
+            background: var(--accent-wash-soft); color: var(--accent); font-weight: 600;
+            box-shadow: inset 0 0 0 1px var(--accent-dim);
+        }
+        .ww-rd-side-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+        .ww-rd-side-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .ww-rd-side-link-btn {
+            background: none; border: none; padding: 0; color: var(--accent); font-size: 0.7rem;
+            text-decoration: underline; cursor: pointer;
+        }
+        .ww-rd-side-link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        @media (max-width: 692px) {
+            .ww-rd-side-row { grid-template-columns: 1fr; }
+            .ww-rd-side-row .ww-rd-provenance { grid-column: 1; }
+        }
 
         /* Slice C-1: panel headers that contain a title + action link */
         .ww-rd-details-panel-header,
@@ -17882,6 +17923,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // wwRdOnPageEntered() retries on the next page entry.
             if (sources !== null) {
                 wwRdState.sources = sources;
+                wwRdSideInvalidate(); // D5A-2B2B: the source set changed; never keep a side view of a removed/replaced source
                 if (wwRdState.selectedSourceId &&
                         !wwRdState.sources.find((s) => s.source_id === wwRdState.selectedSourceId)) {
                     wwRdState.selectedSourceId = null;
@@ -35833,6 +35875,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ------------------------------------------------------------------
 
         async function wwRdOnPageEntered() {
+            wwRdSideInvalidate(); // D5A-2B2B: bays/recordings may have changed on another page; always re-read
             wwRdApplyNarrowLayout(); // UAT-B-07: apply panel visibility on page enter
             if (wwRdState.sources === null) {
                 // UX-3: on first entry, call refreshAllSourceViews() (not just
@@ -35924,6 +35967,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         async function wwRdSelectSource(sourceId) {
+            wwRdSideInvalidate(); // D5A-2B2B: a different recording has its own measurement-side state
             wwRdState.selectedSourceId = sourceId;
             wwRdState.selectedGroupId = null;
             wwRdState.detailsView = "recording"; // Slice C-1: show Recording Info on selection
@@ -36142,6 +36186,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '</div>';
             html += '</div>';
 
+            // D5A-2B2B: recording-level and per-bay measurement side (backend is the only authority).
+            html += wwRdSideSectionHtml(s);
+
             // PU-UI-001 Final: Per-unit Configuration section — only shown
             // when there are PU issues requiring engineer attention.
             const groups = ww.measurementGroups.get(s.source_id) || [];
@@ -36185,6 +36232,328 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             return html;
         }
+
+        // ------------------------------------------------------------------
+        // D5A-2B2B: Measurement side in Recording Information (DEC-216).
+        // The backend (D5A-2B2A resolver and API) is the ONLY authority: this code renders what
+        // GET .../measurement-side returns and sends the engineer's Primary/Secondary choice back. It never
+        // interprets a recording's P/S marker, a channel name or a CT/VT ratio, and keeps no side model of its own.
+        //   - Level 1: one selector for the recording. Level 2: one selector per bay (never per phase).
+        //   - No Reset: choosing the side a bay (or the recording) already inherits clears the override server-side.
+        //   - Latest-wins: selections are sent one at a time in order, an older response can never replace a
+        //     newer view (sequence guards), and every response is checked against the workspace and recording
+        //     that are still on screen.
+        // ------------------------------------------------------------------
+        // D5A-2B2B-BLOCK-START
+        const wwRdSide = {
+            workspaceId: null, sourceId: null,
+            status: "idle",          // "idle" | "loading" | "ready" | "error"
+            data: null,              // GET .../measurement-side response for the current workspace
+            message: null,           // last save error, shown discreetly in the section
+            loadSeq: 0,              // bumped per load and per invalidation: only the newest load may apply
+            pending: 0,              // selections queued or in flight
+            chain: Promise.resolve(),
+            optimistic: { recording: null, bays: {} }, // what the engineer just chose, until the server view is re-read
+            focus: null,             // control to re-focus after a re-render (keyboard use)
+        };
+
+        function wwRdSideLabel(side) {
+            return side === "primary" ? "Primary" : side === "secondary" ? "Secondary" : "Not resolved";
+        }
+
+        function wwRdSideInvalidate() {
+            wwRdSide.loadSeq += 1;
+            wwRdSide.workspaceId = null;
+            wwRdSide.sourceId = null;
+            wwRdSide.status = "idle";
+            wwRdSide.data = null;
+            wwRdSide.message = null;
+            wwRdSide.optimistic = { recording: null, bays: {} };
+        }
+
+        function wwRdSideCurrent(workspaceId, sourceId) {
+            return wwRdSide.workspaceId === workspaceId && wwRdSide.sourceId === sourceId &&
+                currentWorkspaceId() === workspaceId && wwRdState.selectedSourceId === sourceId;
+        }
+
+        function wwRdSideUrl(workspaceId, tail) {
+            return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + tail;
+        }
+
+        function wwRdSideRerender() {
+            const el = document.getElementById("wwRdSideSection");
+            if (!el || !wwRdSide.sourceId) return;
+            el.outerHTML = wwRdSideRenderHtml(wwRdSide.sourceId);
+            const key = wwRdSide.focus;
+            if (key) {
+                const next = document.querySelector('#wwRdSideSection [data-ww-side-focus="' + key + '"]');
+                if (next && !next.disabled) next.focus();
+            }
+        }
+
+        async function wwRdSideLoad(sourceId) {
+            const workspaceId = currentWorkspaceId();
+            const seq = ++wwRdSide.loadSeq;
+            wwRdSide.workspaceId = workspaceId;
+            wwRdSide.sourceId = sourceId;
+            if (!wwRdSide.data) wwRdSide.status = "loading";
+            let body = null;
+            let failed = false;
+            try {
+                const response = await fetch(wwRdSideUrl(workspaceId, "/measurement-side"));
+                if (!response.ok) throw new Error("status " + response.status);
+                body = await response.json();
+            } catch (error) {
+                if (error && error.name === "AbortError") return; // workspace reset / navigation cancelled it
+                failed = true;
+            }
+            if (seq !== wwRdSide.loadSeq || !wwRdSideCurrent(workspaceId, sourceId)) return; // stale: newer view or other recording
+            if (failed) {
+                wwRdSide.status = "error";
+            } else {
+                wwRdSide.data = body;
+                wwRdSide.status = "ready";
+                if (wwRdSide.pending === 0) wwRdSide.optimistic = { recording: null, bays: {} };
+            }
+            wwRdSideRerender();
+        }
+
+        // Selections are applied in the order made; only after the last one settles is the view re-read.
+        function wwRdSideEnqueue(request) {
+            const workspaceId = wwRdSide.workspaceId;
+            const sourceId = wwRdSide.sourceId;
+            wwRdSide.pending += 1;
+            wwRdSide.message = null;
+            wwRdSide.chain = wwRdSide.chain.then(async function() {
+                let message = null;
+                if (wwRdSideCurrent(workspaceId, sourceId)) {
+                    try {
+                        const response = await request(workspaceId);
+                        if (!response.ok) {
+                            const detail = await response.json().catch(function() { return null; });
+                            message = (detail && detail.detail && detail.detail.message) || "The change could not be saved.";
+                        }
+                    } catch (error) {
+                        message = "The change could not be saved. Check the connection and try again.";
+                    }
+                }
+                wwRdSide.pending -= 1;
+                if (!wwRdSideCurrent(workspaceId, sourceId)) return;
+                if (message) wwRdSide.message = message;
+                if (wwRdSide.pending > 0) return; // a newer selection is queued; its completion re-reads the view
+                if (message) wwRdSide.optimistic = { recording: null, bays: {} };
+                await wwRdSideLoad(sourceId);
+            });
+        }
+
+        function wwRdSideCurrentRecording() {
+            const data = wwRdSide.data;
+            return data ? (data.recordings || []).find(function(r) { return r.source_id === wwRdSide.sourceId; }) || null : null;
+        }
+
+        function wwRdSideSelectRecording(side) {
+            const rec = wwRdSideCurrentRecording();
+            if (!rec || (side !== "primary" && side !== "secondary")) return;
+            const active = wwRdSide.optimistic.recording || rec.effective_side;
+            const derived = rec.recording_derived || {};
+            // Re-selecting the shown side is meaningful only to confirm a side that was merely inferred.
+            const confirmsInferred = !rec.engineer_correction && derived.status === "consistent" && derived.undeclared_channels > 0;
+            if (side === active && !(confirmsInferred && !wwRdSide.optimistic.recording)) return;
+            wwRdSide.optimistic.recording = side;
+            wwRdSide.focus = "recording:" + side;
+            wwRdSideRerender();
+            wwRdSideEnqueue(function(workspaceId) {
+                return fetch(wwRdSideUrl(workspaceId, "/sources/" + encodeURIComponent(rec.source_id) + "/measurement-side"), {
+                    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side: side }),
+                });
+            });
+        }
+
+        function wwRdSideSelectBay(contextId, side) {
+            const data = wwRdSide.data;
+            const bay = data ? (data.bays || []).find(function(b) { return b.engineering_context_id === contextId; }) : null;
+            if (!bay || bay.bay_membership !== "confirmed" || (side !== "primary" && side !== "secondary")) return;
+            const active = wwRdSide.optimistic.bays[contextId] || bay.effective_side;
+            if (side === active) return;
+            wwRdSide.optimistic.bays[contextId] = side;
+            wwRdSide.focus = "bay:" + contextId + ":" + side;
+            wwRdSideRerender();
+            wwRdSideEnqueue(function(workspaceId) {
+                return fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId) + "/measurement-side"), {
+                    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side: side }),
+                });
+            });
+        }
+
+        // B2A-3: a manual bay setting needs a confirmed bay. This uses the existing Engineering Context
+        // endpoint; it changes the bay's status only, never its members.
+        function wwRdSideConfirmBay(contextId) {
+            wwRdSide.focus = "confirm:" + contextId;
+            wwRdSideEnqueue(function(workspaceId) {
+                return fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId)), {
+                    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "confirmed" }),
+                });
+            });
+        }
+
+        function wwRdSideSegmentHtml(kind, targetId, active, disabled, label) {
+            const buttons = ["primary", "secondary"].map(function(value) {
+                const isActive = value === active;
+                const focusKey = kind === "recording" ? "recording:" + value : "bay:" + targetId + ":" + value;
+                return '<button type="button" class="ww-rd-side-btn' + (isActive ? ' ww-rd-side-btn--active' : '') + '"' +
+                    ' role="radio" aria-checked="' + (isActive ? "true" : "false") + '"' +
+                    ' data-ww-side-action="' + kind + '"' +
+                    (kind === "bay" ? ' data-ww-side-bay="' + escapeHtml(targetId) + '"' : '') +
+                    ' data-ww-side-value="' + value + '" data-ww-side-focus="' + escapeHtml(focusKey) + '"' +
+                    (disabled ? ' disabled' : '') + '>' + wwRdSideLabel(value) + '</button>';
+            }).join("");
+            return '<span class="ww-rd-side-group" role="radiogroup" aria-label="' + escapeHtml(label) + '">' + buttons + '</span>';
+        }
+
+        function wwRdSideProvenanceHtml(cls, text) {
+            return '<span class="ww-rd-provenance ww-rd-provenance--' + cls + '">' + escapeHtml(text) + '</span>';
+        }
+
+        function wwRdSideRecordingRowHtml(rec) {
+            const derived = rec.recording_derived || {};
+            const corr = rec.engineer_correction;
+            const active = wwRdSide.optimistic.recording || rec.effective_side;
+            let prov;
+            if (corr) {
+                prov = wwRdSideProvenanceHtml("manual", "Set by engineer");
+            } else if (rec.effective_side && derived.undeclared_channels > 0) {
+                prov = wwRdSideProvenanceHtml("suggested", "Inferred from the recording's declared channels (" +
+                    derived.undeclared_channels + " declare no side). Select it to confirm.");
+            } else if (rec.effective_side) {
+                prov = wwRdSideProvenanceHtml("auto", "From recording");
+            } else if (derived.status === "voltage_current_differ") {
+                // Legitimate (B2A-1): not a conflict. There is simply no single recording-wide side.
+                prov = wwRdSideProvenanceHtml("auto", "Recorded: voltage " + wwRdSideLabel(derived.voltage_side).toLowerCase() +
+                    ", current " + wwRdSideLabel(derived.current_side).toLowerCase() + ". Select a side to apply it to the whole recording.");
+            } else if (derived.status === "mixed") {
+                prov = wwRdSideProvenanceHtml("unresolved", "Recording channels declare different sides (" +
+                    derived.primary_channels + " Primary, " + derived.secondary_channels + " Secondary). Select the side to use.");
+            } else {
+                prov = wwRdSideProvenanceHtml("unresolved", "The recording does not declare a measurement side. Select it.");
+            }
+            let notice = "";
+            const overridden = rec.overridden_declarations || [];
+            if (corr && overridden.length) {
+                const declared = Array.from(new Set(overridden.map(function(o) { return wwRdSideLabel(o.declared_side); }))).join(" and ");
+                const names = overridden.map(function(o) { return o.channel_name; });
+                notice = '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="recording-override"' +
+                    ' title="' + escapeHtml(names.join(", ")) + '">' +
+                    escapeHtml("The recording declares " + declared + " on " + overridden.length + " channel" +
+                        (overridden.length === 1 ? "" : "s") + ". The side set here is used; the original declarations are kept.") +
+                    '</span>';
+            }
+            return '<div class="ww-rd-side-row" data-ww-side-row="recording">' +
+                '<span class="ww-rd-side-row-label">Recording</span>' +
+                '<span class="ww-rd-side-row-control">' + wwRdSideSegmentHtml("recording", "", active, false, "Recording measurement side") + '</span>' +
+                prov + notice + '</div>';
+        }
+
+        function wwRdSideBayRowHtml(bay) {
+            const id = bay.engineering_context_id;
+            const confirmed = bay.bay_membership === "confirmed";
+            const active = wwRdSide.optimistic.bays[id] || bay.effective_side;
+            const overridden = bay.overridden_declarations || [];
+            let prov;
+            let control = wwRdSideSegmentHtml("bay", id, active, !confirmed || bay.status === "not_applicable", bay.display_name + " measurement side");
+            if (!confirmed) {
+                prov = wwRdSideProvenanceHtml("suggested", "Bay not confirmed; it follows the recording.");
+                control += '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="confirm-bay"' +
+                    ' data-ww-side-bay="' + escapeHtml(id) + '" data-ww-side-focus="confirm:' + escapeHtml(id) + '">Confirm bay</button>';
+            } else if (bay.override && bay.override.active) {
+                prov = wwRdSideProvenanceHtml("manual", "Set manually");
+            } else if (bay.status === "conflict") {
+                const quantities = Array.from(new Set((bay.diagnostics || [])
+                    .filter(function(d) { return d.code === "BAY_MIXED_SIDES_WITHIN_QUANTITY"; })
+                    .map(function(d) { return d.detail && d.detail.quantity; }).filter(Boolean)));
+                prov = wwRdSideProvenanceHtml("unresolved", "The " + (quantities.join(" and ") || "channel") +
+                    " channels in this bay declare different sides. Select the side to use.");
+            } else if (bay.status === "resolved" && bay.reference_sides === "voltage_current_differ") {
+                prov = wwRdSideProvenanceHtml("auto", "Recorded: voltage " + wwRdSideLabel(bay.voltage_side).toLowerCase() +
+                    ", current " + wwRdSideLabel(bay.current_side).toLowerCase() + ". Select a side to apply it to the whole bay.");
+            } else if (bay.status === "unresolved") {
+                prov = wwRdSideProvenanceHtml("unresolved", "Side not resolved. Select it.");
+            } else if (bay.status === "not_applicable") {
+                prov = wwRdSideProvenanceHtml("auto", "No voltage or current channels.");
+            } else if ((bay.inferred_channels || []).length) {
+                prov = wwRdSideProvenanceHtml("suggested", "Follows the recording (inferred for " + bay.inferred_channels.length + " channels).");
+            } else {
+                prov = wwRdSideProvenanceHtml("auto", "Follows the recording");
+            }
+            let notice = "";
+            if (bay.override && bay.override.active && overridden.length) {
+                notice = '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="bay-override">' +
+                    escapeHtml("Differs from the side declared by " + overridden.length + " channel" + (overridden.length === 1 ? "" : "s") +
+                        "; the original declarations are kept.") + '</span>';
+            }
+            return '<div class="ww-rd-side-row" data-ww-side-row="bay" data-ww-side-bay="' + escapeHtml(id) + '">' +
+                '<span class="ww-rd-side-row-label" title="' + escapeHtml(bay.display_name) + '">' + escapeHtml(bay.display_name) + '</span>' +
+                '<span class="ww-rd-side-row-control">' + control + '</span>' + prov + notice + '</div>';
+        }
+
+        function wwRdSideRenderHtml(sourceId) {
+            let inner;
+            const rec = wwRdSideCurrentRecording();
+            if (wwRdSide.status === "error" && !wwRdSide.data) {
+                inner = '<p class="ww-rd-placeholder">The measurement side could not be loaded. ' +
+                    '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="retry">Retry</button></p>';
+            } else if (!wwRdSide.data) {
+                inner = '<p class="ww-rd-placeholder">Loading measurement side…</p>';
+            } else if (!rec) {
+                inner = '<p class="ww-rd-placeholder">Measurement side is not available for this recording.</p>';
+            } else {
+                const bays = (wwRdSide.data.bays || []).filter(function(b) { return (b.source_ids || []).indexOf(sourceId) >= 0; });
+                inner = '<div class="ww-rd-side-rows">' + wwRdSideRecordingRowHtml(rec) + '</div>';
+                if (bays.length) {
+                    inner += '<div class="ww-rd-side-subheading">Bays</div><div class="ww-rd-side-rows">' +
+                        bays.map(wwRdSideBayRowHtml).join("") + '</div>';
+                }
+                if (wwRdSide.message) {
+                    inner += '<span class="ww-rd-provenance ww-rd-provenance--warn" role="status" data-ww-side-notice="error">' +
+                        escapeHtml(wwRdSide.message) + '</span>';
+                }
+            }
+            return '<div class="ww-rd-section" id="wwRdSideSection" data-ww-side-source="' + escapeHtml(sourceId) + '">' +
+                '<div class="ww-rd-section-heading">Measurement side</div>' +
+                '<p class="ww-rd-side-note">Whether the recorded voltage and current are Primary or Secondary values.</p>' +
+                inner + '</div>';
+        }
+
+        function wwRdSideSectionHtml(source) {
+            const sourceId = source.source_id;
+            if (wwRdSide.sourceId !== sourceId || wwRdSide.workspaceId !== currentWorkspaceId()) {
+                wwRdSideInvalidate();
+                wwRdSide.workspaceId = currentWorkspaceId();
+                wwRdSide.sourceId = sourceId;
+                wwRdSide.status = "loading";
+                Promise.resolve().then(function() { wwRdSideLoad(sourceId); });
+            }
+            return wwRdSideRenderHtml(sourceId);
+        }
+
+        document.addEventListener("click", function(event) {
+            const target = event.target.closest ? event.target.closest("[data-ww-side-action]") : null;
+            if (!target || target.disabled) return;
+            const action = target.getAttribute("data-ww-side-action");
+            if (action === "recording") {
+                wwRdSideSelectRecording(target.getAttribute("data-ww-side-value"));
+            } else if (action === "bay") {
+                wwRdSideSelectBay(target.getAttribute("data-ww-side-bay"), target.getAttribute("data-ww-side-value"));
+            } else if (action === "confirm-bay") {
+                wwRdSideConfirmBay(target.getAttribute("data-ww-side-bay"));
+            } else if (action === "retry") {
+                const sourceId = wwRdState.selectedSourceId;
+                wwRdSideInvalidate();
+                wwRdSide.workspaceId = currentWorkspaceId();
+                wwRdSide.sourceId = sourceId;
+                wwRdSideLoad(sourceId);
+            }
+        });
+        // D5A-2B2B-BLOCK-END
 
         function wwRdCurrentConfigHtml(g) {
             const cc = g.current_config;
