@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Mapping
 
 from pydantic import BaseModel, Field
 
 from app.domain.measurement_side_config import (
+    GroupOwnership,
     AUTH_BAY_OVERRIDE,
     AUTH_RECORDING_CORRECTION,
     ChannelSideResolution,
@@ -15,7 +16,7 @@ from app.domain.measurement_side_config import (
     SideDiagnostic,
     SideSetResolution,
 )
-from app.services.measurement_side_service import BaySideView, RecordingSideView
+from app.services.measurement_side_service import BaySideView, ContextSideView, RecordingSideView
 
 ConfigurableSide = Literal["primary", "secondary"]
 
@@ -148,14 +149,41 @@ class BayOverrideOut(BaseModel):
     active: bool
 
 
-class BayMeasurementSideOut(BaseModel):
+class BayRefOut(BaseModel):
     engineering_context_id: str
+    display_name: str
+
+
+class GroupOwnershipOut(BaseModel):
+    """Which bays hold the channels of one Voltage/Current Measurement Group (CT/VT ownership)."""
+
+    group_id: str
+    kind: str
+    display_name: str
+    #: `no_bay`, `single_bay`, `spans_bays` (all on one side), `spans_bays_ambiguous` (sides differ or unresolved).
+    status: str
+    #: True when a conversion through this group's ratio must be blocked rather than guessed.
+    conversion_authority_ambiguous: bool
+    bays: list[BayRefOut] = Field(default_factory=list)
+
+    @classmethod
+    def from_domain(cls, o: GroupOwnership, bay_names: Mapping[str, str]) -> "GroupOwnershipOut":
+        return cls(group_id=o.group_id, kind=o.kind, display_name=o.display_name, status=o.status,
+                   conversion_authority_ambiguous=o.conversion_authority_ambiguous,
+                   bays=[BayRefOut(engineering_context_id=b, display_name=bay_names.get(b, b)) for b in o.bay_ids])
+
+
+class BayMeasurementSideOut(BaseModel):
+    """One bay (Engineering Context) WITHIN ONE recording -- the unit a Level 2 setting belongs to."""
+
+    engineering_context_id: str
+    source_id: str
     display_name: str
     context_status: str
     bay_membership: str
-    #: The single Level 1 value every recording of this bay shares; null when it has none or they disagree.
+    #: This recording's own Level 1 side; never a value shared across the bay's other recordings.
     inherited_recording_side: str | None
-    #: Present only when an engineer manually set this bay; absent means the bay follows Level 1.
+    #: Present only when an engineer manually set this bay for THIS recording; absent means it follows Level 1.
     override: BayOverrideOut | None
     status: str
     #: One side only when every channel shares it; null when voltage and current legitimately differ
@@ -169,33 +197,60 @@ class BayMeasurementSideOut(BaseModel):
     inferred_channels: list[str]
     authority: str
     overridden_declarations: list[OverriddenDeclarationOut] = Field(default_factory=list)
-    source_ids: list[str]
     voltage_group_ids: list[str]
     current_group_ids: list[str]
+    group_ownership: list[GroupOwnershipOut] = Field(default_factory=list)
     diagnostics: list[SideDiagnosticOut] = Field(default_factory=list)
     channels: list[ChannelMeasurementSideOut] | None = None
 
     @classmethod
-    def from_view(cls, view: BaySideView, *, include_channels: bool) -> "BayMeasurementSideOut":
+    def from_view(cls, view: BaySideView, *, include_channels: bool,
+                  bay_names: Mapping[str, str] | None = None) -> "BayMeasurementSideOut":
         res: SideSetResolution = view.resolution
+        names = bay_names or {}
         channels = [ChannelMeasurementSideOut.from_domain(c) for c in view.channels] if include_channels else None
         return cls(
-            engineering_context_id=view.context_id, display_name=view.display_name, context_status=view.context_status,
-            bay_membership=view.membership, inherited_recording_side=view.inherited_recording_side,
+            engineering_context_id=view.context_id, source_id=view.source_id, display_name=view.display_name,
+            context_status=view.context_status, bay_membership=view.membership,
+            inherited_recording_side=view.inherited_recording_side,
             override=(BayOverrideOut(side=view.override.side, set_at=view.override.set_at, active=view.override_active)
                       if view.override else None),
             status=res.status, effective_side=res.side, voltage_side=res.voltage_side, current_side=res.current_side,
             reference_sides=res.reference_sides, strict_usable=res.strict_usable,
             inferred_channels=list(res.inferred_channels), authority=res.authority,
-            overridden_declarations=_overridden(view.channels, authorities=(AUTH_BAY_OVERRIDE, AUTH_RECORDING_CORRECTION)), source_ids=list(view.source_ids), voltage_group_ids=list(view.voltage_group_ids),
-            current_group_ids=list(view.current_group_ids),
+            overridden_declarations=_overridden(view.channels, authorities=(AUTH_BAY_OVERRIDE, AUTH_RECORDING_CORRECTION)),
+            voltage_group_ids=list(view.voltage_group_ids), current_group_ids=list(view.current_group_ids),
+            group_ownership=[GroupOwnershipOut.from_domain(o, names) for o in view.group_ownership],
             diagnostics=[SideDiagnosticOut.from_domain(d) for d in view.diagnostics], channels=channels,
+        )
+
+
+class ContextMeasurementSideOut(BaseModel):
+    """An Engineering Context: one association per recording that contributes voltage/current channels."""
+
+    engineering_context_id: str
+    display_name: str
+    context_status: str
+    bay_membership: str
+    associations: list[BayMeasurementSideOut]
+    diagnostics: list[SideDiagnosticOut] = Field(default_factory=list)
+
+    @classmethod
+    def from_view(cls, view: ContextSideView, *, include_channels: bool,
+                  bay_names: Mapping[str, str] | None = None) -> "ContextMeasurementSideOut":
+        return cls(
+            engineering_context_id=view.context_id, display_name=view.display_name, context_status=view.context_status,
+            bay_membership=view.membership,
+            associations=[BayMeasurementSideOut.from_view(a, include_channels=include_channels, bay_names=bay_names)
+                          for a in view.associations],
+            diagnostics=[SideDiagnosticOut.from_domain(d) for d in view.diagnostics],
         )
 
 
 class WorkspaceMeasurementSideOut(BaseModel):
     workspace_id: str
     recordings: list[RecordingMeasurementSideOut]
+    #: Every (bay, recording) association -- one entry per recording a bay contributes channels from.
     bays: list[BayMeasurementSideOut]
 
 

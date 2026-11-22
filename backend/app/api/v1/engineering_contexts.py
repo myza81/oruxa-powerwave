@@ -117,6 +117,7 @@ from app.services.analysis_input_resolution_service import resolve_analysis_inpu
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.measurement_side_registry import MeasurementSideRegistry
+from app.services.measurement_side_service import prune_orphan_bay_overrides
 from app.services.engineering_context_service import (
     create_context,
     delete_context,
@@ -317,6 +318,7 @@ def update_engineering_context(
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
 ) -> EngineeringContextOut:
     """Partial update -- `display_name`/`status` via
     `update_context_metadata()`, `members` (full replace) via
@@ -337,6 +339,8 @@ def update_engineering_context(
                 members=_members_from_in(body.members),
                 registry=registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
             )
+            # D5A-2B2B: a bay setting scoped to a recording the bay no longer holds is released with that membership.
+            prune_orphan_bay_overrides(workspace_id, side_registry=measurement_side_registry, context_registry=registry)
         context = get_context(workspace_id, engineering_context_id, registry=registry)
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -378,7 +382,7 @@ def delete_engineering_context(
     D5A-2B2A: the bay's own measurement-side override is released with it."""
     workspace_id = _validate_workspace_id(workspace_id)
     delete_context(workspace_id, engineering_context_id, registry=registry)
-    measurement_side_registry.clear_bay(workspace_id, engineering_context_id)
+    measurement_side_registry.clear_context(workspace_id, engineering_context_id)
 
 
 def _resolution_to_out(result: AnalysisInputResolution) -> AnalysisInputResolutionOut:

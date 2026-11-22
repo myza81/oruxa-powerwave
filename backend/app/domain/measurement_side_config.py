@@ -85,6 +85,9 @@ DIAG_BAY_MEMBERSHIP_UNCONFIRMED = "BAY_MEMBERSHIP_UNCONFIRMED"
 DIAG_BAY_OVERRIDE_INACTIVE = "BAY_OVERRIDE_INACTIVE_UNCONFIRMED_MEMBERSHIP"
 DIAG_BAY_NO_MEASUREMENT_MEMBERS = "BAY_HAS_NO_VOLTAGE_CURRENT_MEMBERS"
 DIAG_BAY_INHERITANCE_AMBIGUOUS = "BAY_RECORDINGS_DISAGREE"
+DIAG_GROUP_SPANS_BAYS = "GROUP_SPANS_BAYS"
+DIAG_GROUP_SPANS_BAYS_AMBIGUOUS = "GROUP_SPANS_BAYS_AMBIGUOUS"
+DIAG_CONSUMED_GROUP_AMBIGUOUS = "CONSUMED_GROUP_SPANS_BAYS_AMBIGUOUS"
 DIAG_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND"
 DIAG_CHANNEL_NOT_MEASUREMENT = "CHANNEL_NOT_VOLTAGE_OR_CURRENT"
 DIAG_CALCULATED_CHANNEL = "CALCULATED_CHANNEL_NOT_RESOLVED"
@@ -346,6 +349,8 @@ class SideSetResolution:
     authority: str
     diagnostics: tuple[SideDiagnostic, ...] = ()
     inferred_channels: tuple[str, ...] = ()
+    #: Measurement Groups of the consumed channels whose transformer ownership is ambiguous (see `GroupOwnership`).
+    ownership_ambiguous_groups: tuple[str, ...] = ()
 
     @property
     def usable(self) -> bool:
@@ -353,9 +358,16 @@ class SideSetResolution:
         return self.status == STATUS_RESOLVED
 
     @property
+    def conversion_authority(self) -> str:
+        """`ambiguous` when a consumed channel's CT/VT group spans bays whose sides differ or are unresolved: a
+        side conversion through that group's ratio must be blocked, never guessed."""
+        return "ambiguous" if self.ownership_ambiguous_groups else "unambiguous"
+
+    @property
     def strict_usable(self) -> bool:
-        """`usable` and no side is merely inferred: safe for a strict side-dependent calculation."""
-        return self.usable and not self.inferred_channels
+        """`usable`, no side merely inferred and no ambiguous transformer ownership: safe for a strict
+        side-dependent calculation."""
+        return self.usable and not self.inferred_channels and not self.ownership_ambiguous_groups
 
     @property
     def reference_sides(self) -> str | None:
@@ -425,3 +437,55 @@ def resolve_side_set(
     authority = next(iter(authorities)) if len(authorities) == 1 else "mixed"
     side = None if vi_differ else next(iter(concrete_all))
     return SideSetResolution(STATUS_RESOLVED, side, voltage_side, current_side, authority, tuple(diags), inferred)
+
+
+# --------------------------------------------------------------------------- CT/VT group ownership
+
+OWNERSHIP_NO_BAY = "no_bay"
+OWNERSHIP_SINGLE_BAY = "single_bay"
+OWNERSHIP_SPANS_BAYS = "spans_bays"
+OWNERSHIP_SPANS_BAYS_AMBIGUOUS = "spans_bays_ambiguous"
+
+
+@dataclass(frozen=True, slots=True)
+class GroupOwnership:
+    """Which bays (Engineering Contexts) the channels of ONE Voltage/Current Measurement Group belong to.
+
+    A group is a CT/VT ownership unit with a single ratio. A group whose channels sit in several bays is not wrong
+    by itself (a busbar VT legitimately serves several feeders) but its ratio must never be borrowed by an
+    unrelated bay: when those bays' sides differ, or any is unresolved, conversion authority is ambiguous."""
+
+    group_id: str
+    kind: str
+    display_name: str
+    status: str
+    bay_ids: tuple[str, ...] = ()
+    diagnostics: tuple[SideDiagnostic, ...] = ()
+
+    @property
+    def conversion_authority_ambiguous(self) -> bool:
+        return self.status == OWNERSHIP_SPANS_BAYS_AMBIGUOUS
+
+
+def classify_group_ownership(
+    group_id: str, kind: str, display_name: str, sides_by_bay: Mapping[str, Sequence[str]],
+) -> GroupOwnership:
+    """`sides_by_bay`: for each bay holding at least one of the group's channels, those channels' effective sides
+    (`unknown` for an unresolved one). Channels in no bay are simply absent (they follow their recording)."""
+    bays = tuple(sides_by_bay)
+    if not bays:
+        return GroupOwnership(group_id, kind, display_name, OWNERSHIP_NO_BAY)
+    if len(bays) == 1:
+        return GroupOwnership(group_id, kind, display_name, OWNERSHIP_SINGLE_BAY, bays)
+    concrete = {side for sides in sides_by_bay.values() for side in sides if side in CONFIGURABLE_SIDES}
+    unresolved = any(side not in CONFIGURABLE_SIDES for sides in sides_by_bay.values() for side in sides)
+    detail = {"group_id": group_id, "bays": ",".join(bays)}
+    if len(concrete) > 1 or unresolved:
+        return GroupOwnership(group_id, kind, display_name, OWNERSHIP_SPANS_BAYS_AMBIGUOUS, bays, (SideDiagnostic(
+            DIAG_GROUP_SPANS_BAYS_AMBIGUOUS, SEVERITY_CONFLICT,
+            f"This {kind} group has channels in several bays whose measurement sides differ or are unresolved; its "
+            "transformer ratio is not borrowed across them and a conversion through it is blocked.", detail),))
+    return GroupOwnership(group_id, kind, display_name, OWNERSHIP_SPANS_BAYS, bays, (SideDiagnostic(
+        DIAG_GROUP_SPANS_BAYS, SEVERITY_WARNING,
+        f"This {kind} group has channels in several bays that share one measurement side; its transformer ratio "
+        "is the group's own.", detail),))
