@@ -1244,19 +1244,6 @@
             text-decoration: underline; cursor: pointer;
         }
         .ww-rd-side-link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .ww-rd-side-review {
-            grid-column: 1 / -1; margin: 6px 0 2px; padding: 8px 10px; font-size: 0.75rem;
-            border: 1px solid var(--panel-border); border-radius: var(--radius); background: var(--surface-tint);
-            display: flex; flex-direction: column; gap: 6px;
-        }
-        .ww-rd-side-review-members { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 12px; }
-        .ww-rd-side-review-members > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .ww-rd-side-review-actions { display: flex; align-items: center; gap: 14px; }
-        .ww-rd-side-confirm-btn {
-            background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
-            padding: 6px 14px; font-size: 0.7rem; font-weight: 600; cursor: pointer;
-        }
-        .ww-rd-side-confirm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         @media (max-width: 692px) {
             .ww-rd-side-row { grid-template-columns: 1fr; }
             .ww-rd-side-row .ww-rd-provenance { grid-column: 1; }
@@ -1550,6 +1537,80 @@
             #wwRdDetailsPanel .ww-rd-recording-context-name { font-size: 1.05rem; }
         }
         /* UI-REC-001-CSS-END */
+
+        /* D5A-UI-002-CSS-START: Group Details cards (one selected Measurement Group) and the Measurement Groups list.
+           Presentation only. Scoped to .ww-rd-details-body--group / #wwRdGroupsBody; the Recording Info tab is unchanged. */
+        .ww-rd-details-body--group { padding: 16px 18px 22px; }
+        .ww-rd-details-body--group > .ww-rd-section:first-child { padding: 4px 4px 14px; margin-bottom: 14px; border-bottom: 1px solid var(--panel-border); }
+        .ww-rd-details-body--group .ww-rd-details-group-name { font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.01em; }
+        .ww-rd-details-body--group .ww-rd-details-channels { font-size: 0.8rem; }
+
+        .ww-rd-details-body--group .ww-rd-gcard {
+            display: flex; align-items: flex-start; gap: 18px; padding: 16px 20px; margin-bottom: 14px;
+            border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--panel-border)); border-radius: 12px;
+            background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 4%, var(--panel)),
+                                                 color-mix(in srgb, var(--accent) 9%, var(--panel)));
+        }
+        .ww-rd-details-body--group .ww-rd-gcard:last-child { border-bottom: 1px solid color-mix(in srgb, var(--accent) 28%, var(--panel-border)); }
+        .ww-rd-gcard-body { flex: 1 1 auto; min-width: 0; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-section-heading {
+            font-size: 1rem; font-weight: 700; margin-bottom: 4px; min-height: 28px; align-items: center; gap: 10px;
+        }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-side-note { font-size: 0.8rem; margin: 0 0 12px; color: var(--text-dim); }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-edit-btn {
+            margin-left: auto; padding: 5px 16px; font-size: 0.75rem; font-weight: 600; border-radius: 8px;
+            border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--panel-border)); background: var(--panel); color: var(--accent);
+        }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-edit-btn:hover { background: var(--accent-wash); }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-grid { gap: 12px 0; margin: 6px 0 4px; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field { padding: 0 18px 0 0; min-width: 0; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field:nth-child(even) {
+            padding: 0 0 0 20px; border-left: 1px solid color-mix(in srgb, var(--accent) 22%, var(--panel-border));
+        }
+        .ww-rd-details-body--group .ww-rd-gcard--ct .ww-rd-field-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .ww-rd-details-body--group .ww-rd-gcard--ct .ww-rd-field { padding: 0 14px; border-left: 1px solid color-mix(in srgb, var(--accent) 22%, var(--panel-border)); }
+        .ww-rd-details-body--group .ww-rd-gcard--ct .ww-rd-field:first-child { padding-left: 0; border-left: none; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-full { grid-column: 1 / -1; padding: 0; border-left: none; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-label { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 3px; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-value { font-size: 0.95rem; font-weight: 700; overflow-wrap: anywhere; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-value--unresolved,
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-status--neutral { font-weight: 600; color: var(--text-dim); }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-sub { font-size: 0.74rem; }
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-edit-input,
+        .ww-rd-details-body--group .ww-rd-gcard .ww-rd-edit-select { background: var(--panel); }
+        .ww-rd-details-body--group .ww-rd-conflict-banner { border-radius: 8px; margin-bottom: 14px; }
+        .ww-rd-side-row--group { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+        .ww-rd-side-row--group .ww-rd-provenance { font-size: 0.74rem; }
+        @media (max-width: 692px) {
+            .ww-rd-details-body--group { padding: 12px; }
+            .ww-rd-details-body--group .ww-rd-gcard { padding: 14px; gap: 12px; }
+            .ww-rd-details-body--group .ww-rd-gcard--ct .ww-rd-field-grid { grid-template-columns: minmax(0, 1fr); }
+            .ww-rd-details-body--group .ww-rd-gcard--ct .ww-rd-field { padding: 0; border-left: none; }
+        }
+        @container (max-width: 520px) {
+            .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field-grid { grid-template-columns: minmax(0, 1fr); }
+            .ww-rd-details-body--group .ww-rd-gcard .ww-rd-field:nth-child(even) { padding: 0; border-left: none; }
+        }
+        .ww-rd-details-body--group { container-type: inline-size; }
+
+        /* Measurement Groups list (middle column): pill filters and rounded rows with the selection card. */
+        #wwRdGroupKindFilter { gap: 8px; padding: 10px 14px; }
+        #wwRdGroupKindFilter .ww-rd-filter-btn { font-size: 0.75rem; font-weight: 600; padding: 6px 14px; border-radius: 999px; background: var(--panel); color: var(--text); }
+        #wwRdGroupKindFilter .ww-rd-filter-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+        #wwRdGroupsBody { padding: 10px 12px; }
+        #wwRdGroupsBody .ww-rd-group-item {
+            padding: 10px 12px; margin-bottom: 4px; border-bottom: none; border: 1px solid transparent; border-radius: 10px;
+        }
+        #wwRdGroupsBody .ww-rd-group-item[aria-selected="true"] {
+            background: var(--accent-wash-soft); border-color: var(--accent); outline: none;
+        }
+        #wwRdGroupsBody .ww-rd-group-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+        #wwRdGroupsBody .ww-rd-group-name { font-size: 0.78rem; font-weight: 600; }
+        #wwRdGroupsBody .ww-rd-group-badge {
+            font-size: 0.7rem; font-weight: 700; min-width: 22px; text-align: center; padding: 3px 6px; border-radius: 6px;
+            background: color-mix(in srgb, var(--text) 8%, var(--panel)); color: var(--text-dim);
+        }
+        /* D5A-UI-002-CSS-END */
 
         .recordings-header {
             display: flex;
@@ -36200,6 +36261,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Update tabpanel aria-labelledby to reflect active tab
             body.setAttribute("aria-labelledby", isRecording ? "wwRdTabRecordingInfo" : "wwRdTabGroupDetails");
             body.classList.toggle("ww-rd-details-body--info", isRecording); // UI-REC-001: card surface for Recording Info only
+            body.classList.toggle("ww-rd-details-body--group", !isRecording); // D5A-UI-002: card sections for Group Details
             if (isRecording) {
                 if (!s) {
                     body.innerHTML = '<p class="ww-rd-placeholder">' +
@@ -36225,6 +36287,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             body.innerHTML = wwRdBuildDetailsHtml(g);
+            wwRdDecorateGroupCards(body, g.kind);   // D5A-UI-002: presentation only (icon tile + card)
         }
 
         // UI-REC-001: card icons for Per-unit Configuration (stroke icons, colour from the surrounding tile).
@@ -36361,30 +36424,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
-        // ------------------------------------------------------------------
-        // D5A-2B2B: Measurement side in Recording Information (DEC-216).
-        // The backend (D5A-2B2A resolver and API) is the ONLY authority: this code renders what
-        // GET .../measurement-side returns and sends the engineer's Primary/Secondary choice back. It never
-        // interprets a recording's P/S marker, a channel name or a CT/VT ratio, and keeps no side model of its own.
-        //   - Level 1: one selector for the recording. Level 2: one selector per bay (never per phase).
-        //   - No Reset: choosing the side a bay (or the recording) already inherits clears the override server-side.
-        //   - Latest-wins: selections are sent one at a time in order, an older response can never replace a
-        //     newer view (sequence guards), and every response is checked against the workspace and recording
-        //     that are still on screen.
-        // ------------------------------------------------------------------
         // D5A-2B2B-BLOCK-START
         // ------------------------------------------------------------------
-        // D5A-2B2B: Measurement side in Recording Details (DEC-216).
+        // D5A-2B2B / D5A-UI-002: measurement side in Recording Details (DEC-216).
         // The backend (D5A-2B2A resolver and API) is the ONLY authority: this code renders what
         // GET .../measurement-side returns and sends the engineer's Primary/Secondary choice back. It never
         // interprets a recording's P/S marker, a channel name or a CT/VT ratio, and keeps no side model of its own.
         //   - Level 1 (Recording Info): one selector for the recording.
-        //   - Level 2 (Group Details): one selector for the selected group's bay WITHIN THIS RECORDING (a bay can
-        //     hold channels of several recordings; a choice here never touches the others). Never per phase, and
-        //     never separate Voltage/Current group settings: the voltage and the current group of a bay show the
-        //     same bay setting.
-        //   - No Reset: choosing the side the recording (or bay) already inherits clears the override server-side.
-        //   - A suggested / needs-review bay needs an explicit, reviewed confirmation before it takes a manual side.
+        //   - Level 2 (Group Details): one selector for the SELECTED Measurement Group (a Voltage group or a Current group of
+        //     this recording; all its phases). A bay's Voltage group and Current group are independent settings, and neither
+        //     touches the other. Never per phase. Engineering Context membership / status plays no part.
+        //   - No Reset: choosing the side the recording (or the group's own evidence) already gives clears the override server-side.
         //   - Latest-wins: selections are sent one at a time in order, an older response can never replace a
         //     newer view (sequence guards), and every response is checked against the workspace and recording
         //     that are still on screen.
@@ -36393,6 +36443,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_RD_ICON_LAYERS = '<span class="ww-rd-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
             '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>' +
             '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></span>';
+        // D5A-UI-002: stroke icons of the Group Details cards (colour comes from the surrounding tile).
+        function wwRdIconSvg(paths) {
+            return '<span class="ww-rd-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+                'stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg></span>';
+        }
+        const WW_RD_GROUP_CARD_ICONS = {
+            // voltage quantity: a bolt; current quantity: a wave arc
+            "Measurement Value:voltage": wwRdIconSvg('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
+            "Measurement Value:current": wwRdIconSvg('<path d="M3 17c0-6 3.5-10 9-10s9 4 9 10"/><path d="M3 17h4m10 0h4"/>'),
+            "Voltage Base Configuration": WW_RD_ICON_LAYERS,
+            "Voltage Transformer (VT)": wwRdIconSvg('<path d="M8 4c-2 0-3 1-3 3v2c0 1.2-.6 2-2 3 1.4 1 2 1.8 2 3v2c0 2 1 3 3 3"/><path d="M16 4c2 0 3 1 3 3v2c0 1.2.6 2 2 3-1.4 1-2 1.8-2 3v2c0 2-1 3-3 3"/><path d="M12 8v8"/>'),
+            "Equipment Rating": wwRdIconSvg('<path d="M12 3v3"/><path d="M5 20v-5a7 7 0 0 1 14 0v5"/><path d="M3 20h18"/><path d="m12 14 3-4"/>'),
+            "Current Transformer (CT)": wwRdIconSvg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>'),
+        };
+
+        // Turns one Group Details section (heading + content) into a card with its icon tile; idempotent.
+        function wwRdDecorateGroupCard(section, kind) {
+            if (!section || section.classList.contains("ww-rd-gcard")) return;
+            const heading = section.querySelector(":scope > .ww-rd-section-heading");
+            if (!heading) return;
+            const first = heading.firstChild;
+            const title = (first && first.nodeType === 3 ? first.textContent : heading.textContent).trim();
+            const icon = WW_RD_GROUP_CARD_ICONS[title === "Measurement Value" ? title + ":" + (kind === "current" ? "current" : "voltage") : title];
+            if (!icon) return;
+            const bodyEl = document.createElement("div");
+            bodyEl.className = "ww-rd-gcard-body";
+            while (section.firstChild) bodyEl.appendChild(section.firstChild);
+            section.insertAdjacentHTML("afterbegin", icon);
+            section.appendChild(bodyEl);
+            section.classList.add("ww-rd-gcard");
+            if (title === "Current Transformer (CT)") section.classList.add("ww-rd-gcard--ct");
+        }
+
+        function wwRdDecorateGroupCards(container, kind) {
+            container.querySelectorAll(":scope > .ww-rd-section").forEach(function(section) { wwRdDecorateGroupCard(section, kind); });
+        }
+
         const wwRdSide = {
             workspaceId: null, sourceId: null,
             status: "idle",          // "idle" | "loading" | "ready" | "error"
@@ -36401,10 +36488,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             loadSeq: 0,              // bumped per load and per invalidation: only the newest load may apply
             pending: 0,              // selections queued or in flight
             chain: Promise.resolve(),
-            optimistic: { recording: null, bays: {} }, // what the engineer just chose, until the server view is re-read
+            optimistic: { recording: null, groups: {} }, // what the engineer just chose, until the server view is re-read
             focus: null,             // control to re-focus after a re-render (keyboard use)
-            review: null,            // { contextId, status: "loading"|"ready"|"error", context } while confirming a bay
-            reviewSeq: 0,
         };
 
         function wwRdSideLabel(side) {
@@ -36413,14 +36498,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwRdSideInvalidate() {
             wwRdSide.loadSeq += 1;
-            wwRdSide.reviewSeq += 1;
             wwRdSide.workspaceId = null;
             wwRdSide.sourceId = null;
             wwRdSide.status = "idle";
             wwRdSide.data = null;
             wwRdSide.message = null;
-            wwRdSide.review = null;
-            wwRdSide.optimistic = { recording: null, bays: {} };
+            wwRdSide.optimistic = { recording: null, groups: {} };
         }
 
         function wwRdSideCurrent(workspaceId, sourceId) {
@@ -36432,8 +36515,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + tail;
         }
 
-        function wwRdSideBayKey(contextId) {
-            return wwRdSide.sourceId + "|" + contextId;
+        function wwRdSideGroupKey(groupId) {
+            return wwRdSide.sourceId + "|" + groupId;
         }
 
         // Re-renders whichever side section is on screen (Recording Info or Group Details).
@@ -36442,10 +36525,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!sourceId) return;
             const recordingEl = document.getElementById("wwRdSideSection");
             if (recordingEl) recordingEl.outerHTML = wwRdSideRenderHtml(sourceId);
-            const bayEl = document.getElementById("wwRdSideBaySection");
-            if (bayEl) {
-                const group = wwRdSideGroup(sourceId, bayEl.getAttribute("data-ww-side-group"));
-                if (group) bayEl.outerHTML = wwRdSideBayRenderHtml(group);
+            const groupEl = document.getElementById("wwRdSideGroupSection");
+            if (groupEl) {
+                const group = wwRdSideGroup(sourceId, groupEl.getAttribute("data-ww-side-group"));
+                if (group) {
+                    groupEl.outerHTML = wwRdSideGroupRenderHtml(group);
+                    wwRdDecorateGroupCard(document.getElementById("wwRdSideGroupSection"), group.kind);
+                }
             }
             const key = wwRdSide.focus;
             if (key) {
@@ -36480,7 +36566,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else {
                 wwRdSide.data = body;
                 wwRdSide.status = "ready";
-                if (wwRdSide.pending === 0) wwRdSide.optimistic = { recording: null, bays: {} };
+                if (wwRdSide.pending === 0) wwRdSide.optimistic = { recording: null, groups: {} };
             }
             wwRdSideRerender();
         }
@@ -36519,7 +36605,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (!wwRdSideCurrent(workspaceId, sourceId)) return;
                 if (message) wwRdSide.message = message;
                 if (wwRdSide.pending > 0) return; // a newer selection is queued; its completion re-reads the view
-                if (message) wwRdSide.optimistic = { recording: null, bays: {} };
+                if (message) wwRdSide.optimistic = { recording: null, groups: {} };
                 await wwRdSideLoad(sourceId);
             });
         }
@@ -36529,14 +36615,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return data ? (data.recordings || []).find(function(r) { return r.source_id === wwRdSide.sourceId; }) || null : null;
         }
 
-        // The bay-within-this-recording associations of one Measurement Group (a group can serve several bays).
-        function wwRdSideAssociationsForGroup(group) {
+        // This recording's Level 2 entry for one Measurement Group (null until the overview is read).
+        function wwRdSideGroupEntry(group) {
             const data = wwRdSide.data;
-            if (!data) return [];
-            return (data.bays || []).filter(function(b) {
-                return b.source_id === group.source_id &&
-                    ((b.voltage_group_ids || []).indexOf(group.id) >= 0 || (b.current_group_ids || []).indexOf(group.id) >= 0);
-            });
+            return data ? (data.groups || []).find(function(entry) {
+                return entry.measurement_group_id === group.id && entry.source_id === group.source_id;
+            }) || null : null;
         }
 
         function wwRdSideSelectRecording(side) {
@@ -36557,137 +36641,40 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
         }
 
-        function wwRdSideAssociation(contextId) {
-            const data = wwRdSide.data;
-            return data ? (data.bays || []).find(function(b) {
-                return b.engineering_context_id === contextId && b.source_id === wwRdSide.sourceId;
-            }) || null : null;
-        }
-
-        function wwRdSideSelectBay(contextId, side) {
-            const bay = wwRdSideAssociation(contextId);
-            if (!bay || bay.bay_membership !== "confirmed" || (side !== "primary" && side !== "secondary")) return;
-            const active = wwRdSide.optimistic.bays[wwRdSideBayKey(contextId)] || bay.effective_side;
-            if (side === active) return;
+        function wwRdSideSelectGroup(groupId, side) {
+            const group = wwRdSideGroup(wwRdSide.sourceId, groupId);
+            const entry = group ? wwRdSideGroupEntry(group) : null;
+            if (!entry || (side !== "primary" && side !== "secondary")) return;
+            const active = wwRdSide.optimistic.groups[wwRdSideGroupKey(groupId)] || entry.effective_side;
+            // Re-selecting the shown side is meaningful only to confirm one that is merely inferred.
+            const confirmsInferred = !entry.override && (entry.inferred_channels || []).length > 0;
+            if (side === active && !(confirmsInferred && !wwRdSide.optimistic.groups[wwRdSideGroupKey(groupId)])) return;
             const sourceId = wwRdSide.sourceId;
-            wwRdSide.optimistic.bays[wwRdSideBayKey(contextId)] = side;
-            wwRdSide.focus = "bay:" + contextId + ":" + side;
+            wwRdSide.optimistic.groups[wwRdSideGroupKey(groupId)] = side;
+            wwRdSide.focus = "group:" + groupId + ":" + side;
             wwRdSideRerender();
             wwRdSideEnqueue(function(workspaceId) {
                 return fetch(wwRdSideUrl(workspaceId, "/sources/" + encodeURIComponent(sourceId) +
-                        "/engineering-contexts/" + encodeURIComponent(contextId) + "/measurement-side"), {
+                        "/measurement-groups/" + encodeURIComponent(groupId) + "/measurement-side"), {
                     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side: side }),
                 });
             });
         }
 
-        // ---- Confirm bay (B2A-3): explicit, reviewed, status only -------------------------------------
-        // A manual bay setting needs a confirmed bay, and a suggested / needs-review bay was put together by automatic
-        // detection. Confirming therefore shows the engineer what they are confirming (the channels, their phases and
-        // where each phase came from) and states what it does NOT do. It changes the bay's status only, through the
-        // existing Engineering Context endpoint; membership and phases are never edited here.
-        function wwRdSideEvidenceLabel(source) {
-            const labels = { detected_from_name: "from channel name", structured_metadata: "from recording metadata",
-                engineer_confirmed: "set by engineer", manual: "set by engineer", unknown: "not determined" };
-            return labels[source] || "not determined";
-        }
-
-        async function wwRdSideOpenReview(contextId) {
-            const workspaceId = wwRdSide.workspaceId;
-            const sourceId = wwRdSide.sourceId;
-            const seq = ++wwRdSide.reviewSeq;
-            wwRdSide.review = { contextId: contextId, status: "loading", context: null };
-            wwRdSide.focus = null;
-            wwRdSideRerender();
-            let context = null;
-            try {
-                const response = await fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId)));
-                if (!response.ok) throw new Error("status " + response.status);
-                context = await response.json();
-            } catch (error) {
-                if (error && error.name === "AbortError") return;
-            }
-            if (seq !== wwRdSide.reviewSeq || !wwRdSideCurrent(workspaceId, sourceId)) return;
-            wwRdSide.review = { contextId: contextId, status: context ? "ready" : "error", context: context };
-            wwRdSide.focus = "review-cancel:" + contextId;
-            wwRdSideRerender();
-        }
-
-        function wwRdSideCancelReview() {
-            const contextId = wwRdSide.review ? wwRdSide.review.contextId : null;
-            wwRdSide.reviewSeq += 1;
-            wwRdSide.review = null;
-            wwRdSide.focus = contextId ? "review:" + contextId : null;
-            wwRdSideRerender();
-        }
-
-        function wwRdSideConfirmBay(contextId) {
-            if (!wwRdSide.review || wwRdSide.review.contextId !== contextId || wwRdSide.review.status !== "ready") return;
-            wwRdSide.reviewSeq += 1;
-            wwRdSide.review = null;
-            wwRdSide.focus = null;
-            wwRdSideEnqueue(function(workspaceId) {
-                return fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId)), {
-                    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "confirmed" }),
-                });
-            });
-        }
-
-        function wwRdSideReviewHtml(bay) {
-            const review = wwRdSide.review;
-            if (!review || review.contextId !== bay.engineering_context_id) return "";
-            const id = escapeHtml(bay.engineering_context_id);
-            if (review.status === "loading") {
-                return '<div class="ww-rd-side-review" data-ww-side-review="' + id + '">Loading the bay’s channels…</div>';
-            }
-            if (review.status === "error" || !review.context) {
-                return '<div class="ww-rd-side-review" data-ww-side-review="' + id + '">The bay’s channels could not be loaded, so it cannot be confirmed now. ' +
-                    '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="review-cancel" data-ww-side-bay="' + id +
-                    '" data-ww-side-focus="review-cancel:' + id + '">Close</button></div>';
-            }
-            const members = review.context.members || [];
-            const shown = members.slice(0, 24);
-            let rows = "";
-            for (const m of shown) {
-                const ref = m.channel_ref || {};
-                const other = ref.source_id && ref.source_id !== wwRdSide.sourceId ? " (other recording)" : "";
-                const phase = m.phase && m.phase !== "unknown" ? (m.original_phase_label || m.phase) : "not determined";
-                rows += '<span>' + escapeHtml((ref.channel_name || "") + other) + '</span><span>' + escapeHtml(phase) +
-                    '</span><span>' + escapeHtml(wwRdSideEvidenceLabel(m.phase_source)) + '</span>';
-            }
-            const more = members.length > shown.length ? '<span>and ' + (members.length - shown.length) + ' more</span><span></span><span></span>' : "";
-            const flagged = review.context.status === "needs_review"
-                ? '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="needs-review">' +
-                  'Automatic detection flagged this bay for review. Check the channels and phases below before confirming.</span>'
-                : "";
-            return '<div class="ww-rd-side-review" data-ww-side-review="' + id + '" role="group" aria-label="Confirm bay">' +
-                '<div>Confirm that these channels belong to <strong>' + escapeHtml(bay.display_name) + '</strong>?</div>' + flagged +
-                '<div class="ww-rd-side-review-members"><span class="ww-rd-config-label">Channel</span><span class="ww-rd-config-label">Phase</span>' +
-                '<span class="ww-rd-config-label">Phase evidence</span>' + rows + more + '</div>' +
-                '<span class="ww-rd-provenance ww-rd-provenance--auto">Confirming only states that these channels belong to this bay. ' +
-                'The channels and phases are not changed.</span>' +
-                '<div class="ww-rd-side-review-actions">' +
-                '<button type="button" class="ww-rd-side-confirm-btn" data-ww-side-action="confirm-bay" data-ww-side-bay="' + id +
-                '" data-ww-side-focus="confirm:' + id + '">Confirm bay</button>' +
-                '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="review-cancel" data-ww-side-bay="' + id +
-                '" data-ww-side-focus="review-cancel:' + id + '">Cancel</button></div></div>';
-        }
-
         // ---- rendering -----------------------------------------------------------------------------
         function wwRdSideSegmentHtml(kind, targetId, active, disabled, label) {
-            // Level 1 (Recording Info) uses the pill presentation of UI-REC-001; Level 2 keeps its own.
+            // Both levels use the pill presentation of UI-REC-001 / D5A-UI-002.
             const buttons = ["primary", "secondary"].map(function(value) {
                 const isActive = value === active;
-                const focusKey = kind === "recording" ? "recording:" + value : "bay:" + targetId + ":" + value;
+                const focusKey = kind === "recording" ? "recording:" + value : "group:" + targetId + ":" + value;
                 return '<button type="button" class="ww-rd-side-btn' + (isActive ? ' ww-rd-side-btn--active' : '') + '"' +
                     ' role="radio" aria-checked="' + (isActive ? "true" : "false") + '"' +
                     ' data-ww-side-action="' + kind + '"' +
-                    (kind === "bay" ? ' data-ww-side-bay="' + escapeHtml(targetId) + '"' : '') +
+                    (kind === "group" ? ' data-ww-side-group="' + escapeHtml(targetId) + '"' : '') +
                     ' data-ww-side-value="' + value + '" data-ww-side-focus="' + escapeHtml(focusKey) + '"' +
                     (disabled ? ' disabled' : '') + '>' + wwRdSideLabel(value) + '</button>';
             }).join("");
-            return '<span class="ww-rd-side-group' + (kind === "recording" ? ' ww-rd-side-group--pill' : '') +
-                '" role="radiogroup" aria-label="' + escapeHtml(label) + '">' + buttons + '</span>';
+            return '<span class="ww-rd-side-group ww-rd-side-group--pill" role="radiogroup" aria-label="' + escapeHtml(label) + '">' + buttons + '</span>';
         }
 
         function wwRdSideProvenanceHtml(cls, text) {
@@ -36732,47 +36719,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 prov + notice + '</div>';
         }
 
-        function wwRdSideBayRowHtml(bay) {
-            const id = bay.engineering_context_id;
-            const confirmed = bay.bay_membership === "confirmed";
-            const active = wwRdSide.optimistic.bays[wwRdSideBayKey(id)] || bay.effective_side;
-            const overridden = bay.overridden_declarations || [];
-            const reviewing = !!(wwRdSide.review && wwRdSide.review.contextId === id);
-            let prov;
-            let control = wwRdSideSegmentHtml("bay", id, active, !confirmed, bay.display_name + " measurement side");
-            if (!confirmed) {
-                prov = wwRdSideProvenanceHtml("suggested", "Bay not confirmed; it follows the recording.");
-                if (!reviewing) {
-                    control += '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="review-bay"' +
-                        ' data-ww-side-bay="' + escapeHtml(id) + '" data-ww-side-focus="review:' + escapeHtml(id) + '">Confirm bay…</button>';
-                }
-            } else if (bay.override && bay.override.active) {
+        // Level 2 control for one Measurement Group. The side shown is the backend's effective side; nothing is
+        // highlighted while the group is genuinely unresolved or in conflict. The normal state carries no status line.
+        function wwRdSideGroupControlHtml(entry) {
+            const id = entry.measurement_group_id;
+            const active = wwRdSide.optimistic.groups[wwRdSideGroupKey(id)] || entry.effective_side;
+            const quantity = entry.kind === "current" ? "current" : "voltage";
+            const overridden = entry.overridden_declarations || [];
+            let prov = "";
+            if (entry.status === "conflict") {
+                prov = wwRdSideProvenanceHtml("unresolved", "The " + quantity + " channels in this group declare different sides. Select the side to use.");
+            } else if (entry.status === "unresolved") {
+                prov = wwRdSideProvenanceHtml("unresolved", "The side of this group is not resolved. Select it.");
+            } else if (!entry.override && (entry.inferred_channels || []).length) {
+                prov = wwRdSideProvenanceHtml("suggested", "Inferred from the recording's other channels (" + entry.inferred_channels.length +
+                    " declare no side). Select it to confirm.");
+            } else if (entry.override) {
                 prov = wwRdSideProvenanceHtml("manual", "Set manually");
-            } else if (bay.status === "conflict") {
-                const quantities = Array.from(new Set((bay.diagnostics || [])
-                    .filter(function(d) { return d.code === "BAY_MIXED_SIDES_WITHIN_QUANTITY"; })
-                    .map(function(d) { return d.detail && d.detail.quantity; }).filter(Boolean)));
-                prov = wwRdSideProvenanceHtml("unresolved", "The " + (quantities.join(" and ") || "channel") +
-                    " channels in this bay declare different sides. Select the side to use.");
-            } else if (bay.status === "resolved" && bay.reference_sides === "voltage_current_differ") {
-                prov = wwRdSideProvenanceHtml("auto", "Recorded: voltage " + wwRdSideLabel(bay.voltage_side).toLowerCase() +
-                    ", current " + wwRdSideLabel(bay.current_side).toLowerCase() + ". Select a side to apply it to the whole bay.");
-            } else if (bay.status === "unresolved") {
-                prov = wwRdSideProvenanceHtml("unresolved", "Side not resolved. Select it.");
-            } else if ((bay.inferred_channels || []).length) {
-                prov = wwRdSideProvenanceHtml("suggested", "Follows the recording (inferred for " + bay.inferred_channels.length + " channels).");
-            } else {
-                prov = wwRdSideProvenanceHtml("auto", "Follows the recording");
             }
             let notice = "";
-            if (bay.override && bay.override.active && overridden.length) {
-                notice = '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="bay-override">' +
+            if (entry.override && overridden.length) {
+                notice = '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="group-override">' +
                     escapeHtml("Differs from the side declared by " + overridden.length + " channel" + (overridden.length === 1 ? "" : "s") +
                         "; the original declarations are kept.") + '</span>';
             }
-            return '<div class="ww-rd-side-row" data-ww-side-row="bay" data-ww-side-bay="' + escapeHtml(id) + '">' +
-                '<span class="ww-rd-side-row-label" title="' + escapeHtml(bay.display_name) + '">' + escapeHtml(bay.display_name) + '</span>' +
-                '<span class="ww-rd-side-row-control">' + control + '</span>' + prov + notice + wwRdSideReviewHtml(bay) + '</div>';
+            return '<div class="ww-rd-side-row ww-rd-side-row--group" data-ww-side-row="group" data-ww-side-group="' + escapeHtml(id) + '">' +
+                wwRdSideSegmentHtml("group", id, active, false, entry.display_name + " measurement side") + prov + notice + '</div>';
         }
 
         function wwRdSidePlaceholderHtml(loadingText) {
@@ -36805,38 +36777,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 inner + '</div></div>';
         }
 
-        function wwRdSideOwnershipNotice(group, bays) {
-            const entry = bays.map(function(b) {
-                return (b.group_ownership || []).find(function(o) { return o.group_id === group.id; });
-            }).find(Boolean);
-            if (!entry || (entry.status !== "spans_bays" && entry.status !== "spans_bays_ambiguous")) return "";
-            const names = (entry.bays || []).map(function(b) { return b.display_name; }).join(", ");
-            if (entry.status === "spans_bays_ambiguous") {
-                return '<span class="ww-rd-provenance ww-rd-provenance--unresolved" role="note" data-ww-side-notice="group-ambiguous">' +
-                    escapeHtml("This group's channels are in several bays (" + names + ") on different or unresolved measurement sides. " +
-                        "Its transformer ratio is not shared across them, and a calculation that needs to convert through it is blocked until this is resolved.") +
-                    '</span>';
-            }
-            return '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="group-spans">' +
-                escapeHtml("This group's channels are in several bays (" + names + ") that share one measurement side. Its transformer ratio is the group's own.") +
-                '</span>';
-        }
-
-        // Level 2: Group Details. One setting per bay of the selected group, within this recording.
-        function wwRdSideBayRenderHtml(group) {
+        // Level 2: Group Details. One setting for the selected Measurement Group (all its phases) of this recording.
+        function wwRdSideGroupRenderHtml(group) {
+            const quantity = group.kind === "current" ? "current" : "voltage";
             let inner = wwRdSidePlaceholderHtml("Loading measurement side…");
             if (inner === null) {
-                const bays = wwRdSideAssociationsForGroup(group);
-                if (!bays.length) {
-                    inner = '<p class="ww-rd-side-note">This group is not part of a bay, so it follows the recording.</p>';
-                } else {
-                    inner = '<div class="ww-rd-side-rows">' + bays.map(wwRdSideBayRowHtml).join("") + '</div>' +
-                        wwRdSideOwnershipNotice(group, bays) + wwRdSideMessageHtml();
-                }
+                const entry = wwRdSideGroupEntry(group);
+                inner = entry ? wwRdSideGroupControlHtml(entry) + wwRdSideMessageHtml()
+                    : '<p class="ww-rd-side-note">The measurement side of this group is not available.</p>';
             }
-            return '<div class="ww-rd-section" id="wwRdSideBaySection" data-ww-side-group="' + escapeHtml(group.id) + '">' +
-                '<div class="ww-rd-section-heading">Bay measurement side</div>' +
-                '<p class="ww-rd-side-note">One setting for this bay in this recording, covering its voltage and current channels.</p>' +
+            return '<div class="ww-rd-section" id="wwRdSideGroupSection" data-ww-side-group="' + escapeHtml(group.id) + '" data-ww-side-kind="' + quantity + '">' +
+                '<div class="ww-rd-section-heading">Measurement Value</div>' +
+                '<p class="ww-rd-side-note">Primary or secondary values for ' + quantity + '.</p>' +
                 inner + '</div>';
         }
 
@@ -36845,26 +36797,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return wwRdSideRenderHtml(source.source_id);
         }
 
-        function wwRdSideBaySectionHtml(group) {
+        function wwRdSideGroupSectionHtml(group) {
             wwRdSideEnsure(group.source_id);
-            return wwRdSideBayRenderHtml(group);
+            return wwRdSideGroupRenderHtml(group);
         }
 
         document.addEventListener("click", function(event) {
             const target = event.target.closest ? event.target.closest("[data-ww-side-action]") : null;
             if (!target || target.disabled) return;
             const action = target.getAttribute("data-ww-side-action");
-            const bayId = target.getAttribute("data-ww-side-bay");
+            const groupId = target.getAttribute("data-ww-side-group");
             if (action === "recording") {
                 wwRdSideSelectRecording(target.getAttribute("data-ww-side-value"));
-            } else if (action === "bay") {
-                wwRdSideSelectBay(bayId, target.getAttribute("data-ww-side-value"));
-            } else if (action === "review-bay") {
-                wwRdSideOpenReview(bayId);
-            } else if (action === "review-cancel") {
-                wwRdSideCancelReview();
-            } else if (action === "confirm-bay") {
-                wwRdSideConfirmBay(bayId);
+            } else if (action === "group") {
+                wwRdSideSelectGroup(groupId, target.getAttribute("data-ww-side-value"));
             } else if (action === "retry") {
                 const sourceId = wwRdState.selectedSourceId;
                 wwRdSideInvalidate();
@@ -37349,8 +37295,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Instrument transformer section — group-type specific, read-only
             const transformerHtml = kind === "voltage" ? wwRdVtSectionHtml(g) : wwRdCtSectionHtml(g);
 
-            // D5A-2B2B: Level 2 -- the bay's measurement side, shown with the group (same setting for its voltage and current groups).
-            return headerHtml + wwRdSideBaySectionHtml(g) + conflictHtml + configHtml + transformerHtml;
+            // D5A-UI-002: Level 2 -- the measurement side of THIS Measurement Group only (voltage or current), first card.
+            return headerHtml + wwRdSideGroupSectionHtml(g) + conflictHtml + configHtml + transformerHtml;
         }
 
         // D2: Apply the in-progress voltage edit to the backend.
