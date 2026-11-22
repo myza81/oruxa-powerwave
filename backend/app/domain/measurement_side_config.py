@@ -52,6 +52,9 @@ AUTH_NOT_APPLICABLE = "not_applicable"
 EVIDENCE_CONSISTENT = "consistent"
 EVIDENCE_NONE = "none"
 EVIDENCE_MIXED = "mixed"
+# Voltage channels agree among themselves and so do current channels, but the two quantities declare different
+# sides. Legitimate (B2A-1): there is simply no single recording-wide side, so each channel keeps its own.
+EVIDENCE_QUANTITY_SPLIT = "voltage_current_differ"
 
 # --- Aggregate resolution status (bay / consumed-channel set) ---
 STATUS_RESOLVED = "resolved"
@@ -71,6 +74,7 @@ SEVERITY_CONFLICT = "conflict"
 # Diagnostic codes (stable contract).
 DIAG_RECORDING_EVIDENCE_MISSING = "RECORDING_SIDE_EVIDENCE_MISSING"
 DIAG_RECORDING_EVIDENCE_MIXED = "RECORDING_MIXED_SIDE_EVIDENCE"
+DIAG_RECORDING_QUANTITY_SPLIT = "RECORDING_VOLTAGE_CURRENT_SIDES_DIFFER"
 DIAG_RECORDING_EVIDENCE_PARTIAL = "RECORDING_PARTIAL_SIDE_EVIDENCE"
 DIAG_RECORDING_CORRECTION_OVERRIDES = "ENGINEER_CORRECTION_OVERRIDES_DECLARATION"
 DIAG_BAY_OVERRIDE_OVERRIDES = "BAY_OVERRIDE_OVERRIDES_DECLARATION"
@@ -128,6 +132,14 @@ class RecordingSideDerivation:
     secondary_count: int = 0
     undeclared_count: int = 0
     evidence_channel_count: int = 0
+    #: The side every DECLARING channel of that quantity agrees on (None when none declare, or they disagree).
+    voltage_side: str | None = None
+    current_side: str | None = None
+
+
+def _quantity_side(items: Sequence[ChannelSideEvidence], quantity: str) -> str | None:
+    declared = {e.declared_side for e in items if e.quantity == quantity and e.declared_side != SIDE_UNKNOWN}
+    return next(iter(declared)) if len(declared) == 1 else None
 
 
 def derive_recording_side(evidence: Iterable[ChannelSideEvidence]) -> RecordingSideDerivation:
@@ -136,13 +148,16 @@ def derive_recording_side(evidence: Iterable[ChannelSideEvidence]) -> RecordingS
     primary = sum(1 for e in items if e.declared_side == SIDE_PRIMARY)
     secondary = sum(1 for e in items if e.declared_side == SIDE_SECONDARY)
     undeclared = len(items) - primary - secondary
+    voltage_side, current_side = _quantity_side(items, QUANTITY_VOLTAGE), _quantity_side(items, QUANTITY_CURRENT)
     if primary and secondary:
-        status, side = EVIDENCE_MIXED, None
+        # Disagreement WITHIN a quantity is a genuine mix; one side per quantity, differing, is a legitimate split.
+        split = voltage_side is not None and current_side is not None and voltage_side != current_side
+        status, side = (EVIDENCE_QUANTITY_SPLIT if split else EVIDENCE_MIXED), None
     elif primary or secondary:
         status, side = EVIDENCE_CONSISTENT, SIDE_PRIMARY if primary else SIDE_SECONDARY
     else:
         status, side = EVIDENCE_NONE, None
-    return RecordingSideDerivation(status, side, primary, secondary, undeclared, len(items))
+    return RecordingSideDerivation(status, side, primary, secondary, undeclared, len(items), voltage_side, current_side)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +182,13 @@ def resolve_recording_state(
             "The recording's voltage/current channels declare different measurement sides; no recording-wide "
             "default is derived. Each channel keeps its own declaration until an engineer sets the recording side.",
             {"primary_channels": derivation.primary_count, "secondary_channels": derivation.secondary_count},
+        ))
+    elif derivation.status == EVIDENCE_QUANTITY_SPLIT:
+        diags.append(SideDiagnostic(
+            DIAG_RECORDING_QUANTITY_SPLIT, SEVERITY_INFO,
+            "The recording declares voltage and current on different sides, so it has no single recording-wide "
+            "side; each channel is used as declared.",
+            {"voltage_side": derivation.voltage_side, "current_side": derivation.current_side},
         ))
     elif derivation.status == EVIDENCE_NONE:
         diags.append(SideDiagnostic(

@@ -70,6 +70,9 @@ class RecordingDerivedSideOut(BaseModel):
 
     status: str
     side: str | None
+    #: The side the declaring channels of each quantity agree on (null when none declare or they disagree).
+    voltage_side: str | None
+    current_side: str | None
     primary_channels: int
     secondary_channels: int
     undeclared_channels: int
@@ -116,7 +119,8 @@ class RecordingMeasurementSideOut(BaseModel):
         return cls(
             source_id=view.source_id,
             recording_derived=RecordingDerivedSideOut(
-                status=d.status, side=d.side, primary_channels=d.primary_count, secondary_channels=d.secondary_count,
+                status=d.status, side=d.side, voltage_side=d.voltage_side, current_side=d.current_side,
+                primary_channels=d.primary_count, secondary_channels=d.secondary_count,
                 undeclared_channels=d.undeclared_count, evidence_channels=d.evidence_channel_count),
             engineer_correction=(RecordingCorrectionOut(side=view.correction.side, note=view.correction.note,
                                                         set_at=view.correction.set_at) if view.correction else None),

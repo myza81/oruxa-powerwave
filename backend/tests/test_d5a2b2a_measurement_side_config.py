@@ -154,6 +154,24 @@ def test_recording_derivation_oracle(declared, status, side, counts):
     assert (d.status, d.side, (d.primary_count, d.secondary_count, d.undeclared_count)) == (status, side, counts)
 
 
+def test_voltage_current_split_is_a_legitimate_recording_not_a_mix():
+    ev = [_ev("va", "primary"), _ev("vb", "primary"), _ev("ia", "secondary", "current"), _ev("ib", "secondary", "current")]
+    d = derive_recording_side(ev)
+    assert (d.status, d.side, d.voltage_side, d.current_side) == ("voltage_current_differ", None, "primary", "secondary")
+    state = resolve_recording_state(d, None, ev)
+    assert (state.effective_side, state.authority) == (None, AUTH_UNRESOLVED)
+    assert [(x.code, x.severity) for x in state.diagnostics] == [("RECORDING_VOLTAGE_CURRENT_SIDES_DIFFER", "info")]
+    # Disagreement within a quantity is still a genuine mix, even when the other quantity is uniform.
+    within = derive_recording_side(ev + [_ev("vc", "secondary")])
+    assert (within.status, within.voltage_side) == ("mixed", None)
+    # Each channel keeps its own declaration; nothing is inferred for the undeclared ones.
+    sub = resolve_channel_side(_ev("ia", "secondary", "current"), state)
+    assert (sub.side, sub.authority) == ("secondary", AUTH_CHANNEL_DECLARED)
+    undeclared = resolve_channel_side(_ev("ic", "unknown", "current"), state)
+    assert (undeclared.side, undeclared.authority) == ("unknown", AUTH_UNRESOLVED)
+    assert recording_correction_to_store("primary", d) == "primary"
+
+
 @pytest.mark.parametrize("selected,derived_status,derived_side,expected", [
     (None, EVIDENCE_CONSISTENT, "primary", None),            # follow the recording
     ("primary", EVIDENCE_CONSISTENT, "primary", None),       # equal to the recording: nothing redundant stored
@@ -258,7 +276,8 @@ def test_file_side_flows_to_every_bay(client, side):
     bay_a = _bay(client, ws, src, ("VA", "IA"))
     bay_b = _bay(client, ws, src, ("VB", "VC", "IB", "IC"))
     rec = _rec(client, ws, src)
-    assert rec["recording_derived"] == {"status": "consistent", "side": side, "primary_channels": 6 if side == "primary" else 0,
+    assert rec["recording_derived"] == {"status": "consistent", "side": side, "voltage_side": side, "current_side": side,
+                                        "primary_channels": 6 if side == "primary" else 0,
                                         "secondary_channels": 0 if side == "primary" else 6, "undeclared_channels": 0,
                                         "evidence_channels": 6}
     assert (rec["effective_side"], rec["authority"], rec["engineer_correction"]) == (side, AUTH_CHANNEL_DECLARED, None)
@@ -498,6 +517,10 @@ def test_voltage_and_current_declaring_different_sides_inside_one_bay_is_resolve
         "resolved", "primary", "secondary", None)
     assert (view["reference_sides"], view["strict_usable"]) == ("voltage_current_differ", True)
     assert "BAY_VOLTAGE_CURRENT_SIDES_DIFFER" in _codes(view)
+    rec = _rec(client, ws, src)                                           # the recording itself: split, not mixed
+    assert (rec["recording_derived"]["status"], rec["recording_derived"]["voltage_side"],
+            rec["recording_derived"]["current_side"], rec["effective_side"]) == ("voltage_current_differ", "primary", "secondary", None)
+    assert "RECORDING_VOLTAGE_CURRENT_SIDES_DIFFER" in _codes(rec) and "RECORDING_MIXED_SIDE_EVIDENCE" not in _codes(rec)
     assert not any(d["severity"] == "conflict" for d in view["diagnostics"])
     # Each channel resolves from its own evidence, so a consumer can normalise voltage and current independently.
     assert (_chan(client, ws, src, "VA")["effective_side"], _chan(client, ws, src, "IA")["effective_side"]) == (
