@@ -16,7 +16,11 @@ NOT pushed, merged or deployed. **Stopped for owner review / DEV UAT authorisati
 and a CT/VT group spanning bays is diagnosed (ambiguous sides block conversion). Calculated-channel side resolution stays deferred to D5A-2B2C (open questions in the document below).
 PU, Overcurrent, Impedance and Distance numerics and their existing controls are untouched. Details, verification and decisions: [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
 
-**Next action:** owner review/UAT of the UI and the open points in §5/§6 of that document. Then (each only when authorised) the PU migration slice, D5A-2B2C (consumer
+**Owner decision (2026-11-22): APPROVED for DEV UAT** (backend 13,490 passed / 405 skipped / 0 failed; affected browser 280 passed / 0 failed). Confirmed: Level 1 in Recording Information; Level 2 in Group Details scoped to (bay, recording); Primary/Secondary only with automatic inheritance and preserved manual overrides; no Reset / per-phase / separate V-I settings; Confirm-bay review approved; one overview entry per (bay, recording); a group spanning bays on one shared side stays warning-only for now.
+
+**D5A-2B2C safeguard (owner, 2026-11-22):** matching measurement sides alone do not establish valid shared CT/VT conversion authority (two Primary-referenced bays may have different CT ratios). The consumer integration must verify the CT/VT authority of the *actual consumed channel* and its Measurement Group. Shared busbar VT arrangements remain supported; genuinely ambiguous transformer ownership must not produce an invented conversion. No production-code change is required for this in D5A-2B2B.
+
+**Next action:** owner DEV UAT of Recording Details (checklist in the owner report). D5A-2B2C, D5A-2B2D and the PU migration start only after that UAT is accepted. Open points from the owner review are in §5/§6 of the document below. Then (each only when authorised) the PU migration slice, D5A-2B2C (consumer
 migration and removal of recorded-mode side selectors) and D5A-2B2D. The shared `frontend/index.html` also carries Codex's Waveform Analysis work: this slice adds one
 marked block (`D5A-2B2B-BLOCK-START/END`), one CSS block and four one-line hooks, so a merge should be mechanical.
 

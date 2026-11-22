@@ -48,6 +48,10 @@ every response is checked against the workspace and recording on screen, and the
 | `spans_bays` (all on one side) | that side | allowed; the ratio is the group's own; a warning is shown |
 | `spans_bays_ambiguous` | still reported per channel | **must be blocked** (`conversion_authority = ambiguous`); resolve by confirming one side for the affected bays or splitting the group |
 
+## 4a. Owner acceptance and D5A-2B2C safeguard (2026-11-22)
+
+D5A-2B2B was approved for DEV UAT. A group spanning bays on one shared side stays warning-only. **Safeguard for D5A-2B2C:** matching measurement sides alone do not establish valid shared CT/VT conversion authority (two Primary-referenced bays may have different CT ratios). The consumer integration must verify the CT/VT authority of the *actual consumed channel* and its Measurement Group. Shared busbar VT arrangements remain supported; genuinely ambiguous transformer ownership must not produce an invented conversion. No production-code change is required for this in D5A-2B2B.
+
 ## 5. Verification
 
 - **Full backend regression** (final tree): 13,490 passed / 405 skipped / 0 failed / 0 errors (13,895 collected, 2,372 s). The previous report was 13,474 passed; the delta is the new per-recording scope,
