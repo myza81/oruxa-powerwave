@@ -8,6 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.domain.measurement_side_config import (
+    AUTH_BAY_OVERRIDE,
+    AUTH_RECORDING_CORRECTION,
     ChannelSideResolution,
     RecordingSideState,
     SideDiagnostic,
@@ -39,6 +41,10 @@ class ChannelMeasurementSideOut(BaseModel):
     effective_side: str
     authority: str
     usable: bool
+    #: True for a concrete side strict side-dependent calculations may act on (reliable evidence or an engineer
+    #: setting). False when the side is only inferred from the recording's other channels.
+    strict_usable: bool
+    inferred: bool
     declared_side: str
     recording_side: str | None = None
     recording_authority: str
@@ -51,7 +57,8 @@ class ChannelMeasurementSideOut(BaseModel):
     def from_domain(cls, r: ChannelSideResolution) -> "ChannelMeasurementSideOut":
         return cls(
             source_id=r.source_id, channel_name=r.channel_name, quantity=r.quantity, effective_side=r.side,
-            authority=r.authority, usable=r.usable, declared_side=r.declared_side, recording_side=r.recording_side,
+            authority=r.authority, usable=r.usable, strict_usable=r.strict_usable, inferred=r.inferred,
+            declared_side=r.declared_side, recording_side=r.recording_side,
             recording_authority=r.recording_authority, engineering_context_id=r.context_id,
             bay_membership=r.membership, bay_override_side=r.bay_override_side,
             diagnostics=[SideDiagnosticOut.from_domain(d) for d in r.diagnostics],
@@ -69,6 +76,21 @@ class RecordingDerivedSideOut(BaseModel):
     evidence_channels: int
 
 
+class OverriddenDeclarationOut(BaseModel):
+    """A channel whose original declaration an engineer setting overrides -- disclosed, never hidden."""
+
+    source_id: str | None
+    channel_name: str
+    declared_side: str
+    effective_side: str
+
+
+def _overridden(channels, *, authorities: tuple[str, ...]) -> list[OverriddenDeclarationOut]:
+    return [OverriddenDeclarationOut(source_id=c.source_id, channel_name=c.channel_name or "",
+                                     declared_side=c.declared_side, effective_side=c.side)
+            for c in channels if c.authority in authorities and c.declared_side not in ("unknown", c.side)]
+
+
 class RecordingCorrectionOut(BaseModel):
     side: str
     note: str | None
@@ -82,6 +104,8 @@ class RecordingMeasurementSideOut(BaseModel):
     effective_side: str | None
     authority: str
     bay_ids: list[str] = Field(default_factory=list)
+    #: Channels whose own declaration the engineer's recording-level correction contradicts.
+    overridden_declarations: list[OverriddenDeclarationOut] = Field(default_factory=list)
     diagnostics: list[SideDiagnosticOut] = Field(default_factory=list)
     channels: list[ChannelMeasurementSideOut] | None = None
 
@@ -97,6 +121,7 @@ class RecordingMeasurementSideOut(BaseModel):
             engineer_correction=(RecordingCorrectionOut(side=view.correction.side, note=view.correction.note,
                                                         set_at=view.correction.set_at) if view.correction else None),
             effective_side=state.effective_side, authority=state.authority, bay_ids=list(view.bay_ids),
+            overridden_declarations=_overridden(view.channels, authorities=(AUTH_RECORDING_CORRECTION,)),
             diagnostics=[SideDiagnosticOut.from_domain(x) for x in state.diagnostics],
             channels=([ChannelMeasurementSideOut.from_domain(c) for c in view.channels]
                       if include_channels else None),
@@ -119,10 +144,17 @@ class BayMeasurementSideOut(BaseModel):
     #: Present only when an engineer manually set this bay; absent means the bay follows Level 1.
     override: BayOverrideOut | None
     status: str
+    #: One side only when every channel shares it; null when voltage and current legitimately differ
+    #: (see `reference_sides`) or the bay is unresolved/conflicting.
     effective_side: str | None
     voltage_side: str | None
     current_side: str | None
+    #: `uniform`, `voltage_current_differ` (legitimate: normalised independently) or null when not resolved.
+    reference_sides: str | None
+    strict_usable: bool
+    inferred_channels: list[str]
     authority: str
+    overridden_declarations: list[OverriddenDeclarationOut] = Field(default_factory=list)
     source_ids: list[str]
     voltage_group_ids: list[str]
     current_group_ids: list[str]
@@ -139,7 +171,9 @@ class BayMeasurementSideOut(BaseModel):
             override=(BayOverrideOut(side=view.override.side, set_at=view.override.set_at, active=view.override_active)
                       if view.override else None),
             status=res.status, effective_side=res.side, voltage_side=res.voltage_side, current_side=res.current_side,
-            authority=res.authority, source_ids=list(view.source_ids), voltage_group_ids=list(view.voltage_group_ids),
+            reference_sides=res.reference_sides, strict_usable=res.strict_usable,
+            inferred_channels=list(res.inferred_channels), authority=res.authority,
+            overridden_declarations=_overridden(view.channels, authorities=(AUTH_BAY_OVERRIDE, AUTH_RECORDING_CORRECTION)), source_ids=list(view.source_ids), voltage_group_ids=list(view.voltage_group_ids),
             current_group_ids=list(view.current_group_ids),
             diagnostics=[SideDiagnosticOut.from_domain(d) for d in view.diagnostics], channels=channels,
         )

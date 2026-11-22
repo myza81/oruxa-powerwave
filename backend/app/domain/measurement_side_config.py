@@ -86,6 +86,8 @@ DIAG_CHANNEL_NOT_MEASUREMENT = "CHANNEL_NOT_VOLTAGE_OR_CURRENT"
 DIAG_CALCULATED_CHANNEL = "CALCULATED_CHANNEL_NOT_RESOLVED"
 DIAG_SOURCE_NOT_FOUND = "SOURCE_NOT_FOUND"
 DIAG_CONSUMED_MIXED = "CONSUMED_CHANNELS_SIDES_DIFFER"
+DIAG_CONSUMED_VI_DIFFER = "CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER"
+DIAG_CHANNEL_INFERRED = "CHANNEL_SIDE_INFERRED"
 DIAG_CONSUMED_UNRESOLVED = "CONSUMED_CHANNEL_SIDE_UNRESOLVED"
 
 
@@ -195,12 +197,14 @@ def resolve_recording_state(
 
 def recording_correction_to_store(selected: str | None, derivation: RecordingSideDerivation) -> str | None:
     """The engineer's selection -> the correction to keep. `None` follows the recording. Selecting the value the
-    recording already declares consistently stores nothing, so there is never a redundant correction."""
+    recording already declares for EVERY channel stores nothing (nothing is redundant). When some channels declare
+    nothing, the same selection is kept: it is the engineer's confirmation of what those channels would otherwise
+    only inherit as an inferred default."""
     if selected is None:
         return None
     if not side_configurable(selected):
         raise ValueError("Measurement side must be 'primary' or 'secondary'.")
-    if derivation.status == EVIDENCE_CONSISTENT and selected == derivation.side:
+    if derivation.status == EVIDENCE_CONSISTENT and selected == derivation.side and not derivation.undeclared_count:
         return None
     return selected
 
@@ -244,8 +248,19 @@ class ChannelSideResolution:
 
     @property
     def usable(self) -> bool:
-        """True only for a concrete Primary/Secondary side a consumer may act on."""
+        """True for any concrete Primary/Secondary side, including an inferred one (display / inheritance)."""
         return self.side in CONFIGURABLE_SIDES
+
+    @property
+    def inferred(self) -> bool:
+        """The side comes only from the sibling-derived recording default, not from this channel's own evidence."""
+        return self.authority == AUTH_RECORDING_DEFAULT
+
+    @property
+    def strict_usable(self) -> bool:
+        """A side strict side-dependent calculations may act on: reliable evidence (the channel's own declaration)
+        or an engineer-confirmed Recording / Bay setting. An inferred default is not enough."""
+        return self.usable and not self.inferred
 
 
 def resolve_channel_side(
@@ -255,8 +270,9 @@ def resolve_channel_side(
     diags: list[SideDiagnostic] = []
     if bay.membership == MEMBERSHIP_UNCONFIRMED:
         diags.append(SideDiagnostic(
-            DIAG_BAY_MEMBERSHIP_UNCONFIRMED, SEVERITY_WARNING,
-            "This channel's bay membership is suggested or needs review, so no bay setting is applied to it.",
+            DIAG_BAY_MEMBERSHIP_UNCONFIRMED, SEVERITY_INFO,
+            "This channel's bay membership is suggested or needs review, so no bay setting is applied to it; "
+            "it follows its recording.",
             {"engineering_context_id": bay.context_id},
         ))
     declared = evidence.declared_side
@@ -281,6 +297,12 @@ def resolve_channel_side(
         side, authority = declared, AUTH_CHANNEL_DECLARED
     elif recording.effective_side is not None:
         side, authority = recording.effective_side, AUTH_RECORDING_DEFAULT
+        diags.append(SideDiagnostic(
+            DIAG_CHANNEL_INFERRED, SEVERITY_INFO,
+            "This channel declares no side; the side shown is inferred from the recording's other channels. Strict "
+            "side-dependent calculations need reliable evidence or an engineer-confirmed recording/bay setting.",
+            {"inferred_side": side},
+        ))
     else:
         side, authority = SIDE_UNKNOWN, AUTH_UNRESOLVED
     return ChannelSideResolution(
@@ -301,10 +323,25 @@ class SideSetResolution:
     current_side: str | None
     authority: str
     diagnostics: tuple[SideDiagnostic, ...] = ()
+    inferred_channels: tuple[str, ...] = ()
 
     @property
     def usable(self) -> bool:
+        """Every channel has a concrete side (possibly inferred, possibly Primary voltage with Secondary current)."""
         return self.status == STATUS_RESOLVED
+
+    @property
+    def strict_usable(self) -> bool:
+        """`usable` and no side is merely inferred: safe for a strict side-dependent calculation."""
+        return self.usable and not self.inferred_channels
+
+    @property
+    def reference_sides(self) -> str | None:
+        """`uniform` when every channel shares one side; `voltage_current_differ` when each quantity is uniform
+        but voltage and current sit on different sides (legitimate: each is normalised independently)."""
+        if not self.usable:
+            return None
+        return "uniform" if self.side is not None else "voltage_current_differ"
 
 
 def _uniform(resolutions: Sequence[ChannelSideResolution]) -> str | None:
@@ -338,12 +375,15 @@ def resolve_side_set(
                     f"{r.channel_name}={r.side}" for r in group)},
             ))
     concrete_all = {r.side for r in items if r.usable}
-    if not conflict and len(concrete_all) > 1:
-        conflict = True
+    vi_differ = False
+    if not conflict and voltage_side and current_side and voltage_side != current_side:
+        # Not a conflict: each quantity is internally consistent, so each can be normalised independently. Only
+        # a quantity whose channels disagree among themselves is (above).
+        vi_differ = True
         diags.append(SideDiagnostic(
-            vi_code, SEVERITY_CONFLICT,
-            "The voltage and current channels have different effective measurement sides.",
-            {"voltage_side": voltage_side, "current_side": current_side},
+            vi_code, SEVERITY_INFO,
+            "Voltage and current are on different measurement sides; each is normalised independently when a "
+            "calculation needs it.", {"voltage_side": voltage_side, "current_side": current_side},
         ))
     unresolved = [r for r in items if not r.usable]
     if unresolved:
@@ -358,7 +398,8 @@ def resolve_side_set(
         return SideSetResolution(STATUS_CONFLICT, None, voltage_side, current_side, AUTH_UNRESOLVED, tuple(diags))
     if unresolved:
         return SideSetResolution(STATUS_UNRESOLVED, None, voltage_side, current_side, AUTH_UNRESOLVED, tuple(diags))
-    side = next(iter(concrete_all))
+    inferred = tuple(r.channel_name or "?" for r in items if r.inferred)
     authorities = {r.authority for r in items}
     authority = next(iter(authorities)) if len(authorities) == 1 else "mixed"
-    return SideSetResolution(STATUS_RESOLVED, side, voltage_side, current_side, authority, tuple(diags))
+    side = None if vi_differ else next(iter(concrete_all))
+    return SideSetResolution(STATUS_RESOLVED, side, voltage_side, current_side, authority, tuple(diags), inferred)

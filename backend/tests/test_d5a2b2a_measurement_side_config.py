@@ -167,6 +167,14 @@ def test_recording_correction_to_store_oracle(selected, derived_status, derived_
     assert recording_correction_to_store(selected, d) == expected
 
 
+def test_confirming_the_inferred_side_of_partial_evidence_is_kept():
+    from app.domain.measurement_side_config import RecordingSideDerivation
+    partial = RecordingSideDerivation(EVIDENCE_CONSISTENT, "secondary", undeclared_count=2)
+    assert recording_correction_to_store("secondary", partial) == "secondary"     # engineer confirmation, not redundant
+    assert recording_correction_to_store("primary", partial) == "primary"
+    assert recording_correction_to_store(None, partial) is None
+
+
 @pytest.mark.parametrize("selected,inherited,expected", [
     ("primary", "primary", None),          # selecting the inherited value clears the override
     ("secondary", "primary", "secondary"),
@@ -226,9 +234,15 @@ def test_side_set_oracle():
     within = resolve_side_set([_res("a", "primary"), _res("b", "secondary")])
     assert (within.status, within.side) == ("conflict", None)
     assert "BAY_MIXED_SIDES_WITHIN_QUANTITY" in {d.code for d in within.diagnostics}
-    vi = resolve_side_set([_res("a", "primary"), _res("ia", "secondary", "current")])
-    assert (vi.status, vi.voltage_side, vi.current_side) == ("conflict", "primary", "secondary")
-    assert "BAY_VOLTAGE_CURRENT_SIDES_DIFFER" in {d.code for d in vi.diagnostics}
+    # B2A-1: voltage Primary + current Secondary is a legitimate mixed reference, NOT a conflict.
+    vi = resolve_side_set([_res("a", "primary"), _res("b", "primary"), _res("ia", "secondary", "current")])
+    assert (vi.status, vi.side, vi.voltage_side, vi.current_side, vi.usable, vi.reference_sides) == (
+        "resolved", None, "primary", "secondary", True, "voltage_current_differ")
+    note = next(d for d in vi.diagnostics if d.code == "BAY_VOLTAGE_CURRENT_SIDES_DIFFER")
+    assert note.severity == "info"
+    # ... but disagreement WITHIN a quantity still is, even alongside a differing other quantity.
+    both = resolve_side_set([_res("a", "primary"), _res("b", "secondary"), _res("ia", "secondary", "current")])
+    assert (both.status, both.side, both.usable) == ("conflict", None, False)
     part = resolve_side_set([_res("a", "primary"), _res("b", "unknown")])
     assert (part.status, part.side) == ("unresolved", None)       # never guessed from the channels that did resolve
     assert resolve_side_set([]).status == "not_applicable"
@@ -368,6 +382,36 @@ def test_partial_evidence_uses_the_consistent_default_for_undeclared_channels_an
     by_name = {c["channel_name"]: c for c in rec["channels"]}
     assert (by_name["ZBAY_VA"]["effective_side"], by_name["ZBAY_VA"]["authority"]) == ("secondary", AUTH_CHANNEL_DECLARED)
     assert (by_name["ZBAY_IA"]["effective_side"], by_name["ZBAY_IA"]["authority"]) == ("secondary", AUTH_RECORDING_DEFAULT)
+    # B2A-2: the sibling-derived default is displayed, but it is inferred evidence, not strict-usable.
+    assert (by_name["ZBAY_VA"]["strict_usable"], by_name["ZBAY_VA"]["inferred"]) == (True, False)
+    assert (by_name["ZBAY_IA"]["usable"], by_name["ZBAY_IA"]["strict_usable"], by_name["ZBAY_IA"]["inferred"]) == (True, False, True)
+    assert "CHANNEL_SIDE_INFERRED" in {d["code"] for d in by_name["ZBAY_IA"]["diagnostics"]}
+
+
+def test_inferred_default_blocks_strict_consumption_until_declared_or_engineer_confirmed(client):
+    ws = _ws()
+    src = _source(client, ws, v="secondary", i="none")
+    bay = _bay(client, ws, src, _ALL)
+    deps = _deps(client)
+    refs = [ChannelRef("source", src, f"ZBAY_{n}") for n in ("VA", "IA")]
+    view = _bay_view(client, ws, bay)
+    assert (view["status"], view["effective_side"], view["strict_usable"]) == ("resolved", "secondary", False)
+    assert sorted(view["inferred_channels"]) == ["ZBAY_IA", "ZBAY_IB", "ZBAY_IC"]
+    consumed = resolve_consumed_side(ws, refs, deps=deps)
+    assert (consumed.usable, consumed.strict_usable) == (True, False)           # displayable, not strict
+    assert resolve_consumed_side(ws, refs[:1], deps=deps).strict_usable         # voltage alone is declared
+    # An engineer-confirmed Recording setting makes every channel's side reliable (provenance changes with it).
+    _set_rec(client, ws, src, "secondary")
+    confirmed = resolve_consumed_side(ws, refs, deps=deps)
+    assert (confirmed.usable, confirmed.strict_usable, confirmed.inferred_channels) == (True, True, ())
+    assert _bay_view(client, ws, bay)["strict_usable"] is True
+    # ... and so does a confirmed Bay setting on a freshly inferred recording.
+    ws2 = _ws()
+    src2 = _source(client, ws2, v="secondary", i="none")
+    bay2 = _bay(client, ws2, src2, _ALL)
+    assert _bay_view(client, ws2, bay2)["strict_usable"] is False
+    after = _set_bay(client, ws2, bay2, "primary").json()
+    assert (after["strict_usable"], after["authority"]) == (True, AUTH_BAY_OVERRIDE)
 
 
 # =========================================================================== different sides between bays
@@ -385,7 +429,7 @@ def test_bays_from_different_recordings_have_independent_sides(client):
     assert _rec(client, ws, s2)["engineer_correction"] is None             # the other source is untouched
 
 
-def test_a_bay_spanning_recordings_with_different_sides_is_a_conflict_until_resolved(client):
+def test_a_bay_spanning_recordings_with_different_sides_is_a_legitimate_mixed_reference(client):
     ws = _ws()
     volts = _source(client, ws, v="primary", i="primary", stem="volts")
     amps = _source(client, ws, v="secondary", i="secondary", stem="amps")
@@ -394,12 +438,14 @@ def test_a_bay_spanning_recordings_with_different_sides_is_a_conflict_until_reso
         {"channel_ref": _ref(amps, "ZBAY_IA"), "phase": "A", "phase_source": "engineer_confirmed"}]}).json()["id"]
     view = _bay_view(client, ws, ctx)
     assert (view["status"], view["effective_side"], view["voltage_side"], view["current_side"]) == (
-        "conflict", None, "primary", "secondary")
-    assert "BAY_VOLTAGE_CURRENT_SIDES_DIFFER" in _codes(view)
+        "resolved", None, "primary", "secondary")
+    assert (view["reference_sides"], view["strict_usable"]) == ("voltage_current_differ", True)
+    assert next(d for d in view["diagnostics"] if d["code"] == "BAY_VOLTAGE_CURRENT_SIDES_DIFFER")["severity"] == "info"
     assert view["inherited_recording_side"] is None and set(view["source_ids"]) == {volts, amps}
-    assert _chan(client, ws, volts, "VA")["effective_side"] == "primary"   # per-channel evidence still usable
+    assert _chan(client, ws, volts, "VA")["effective_side"] == "primary"   # per-channel evidence kept, not collapsed
     resolved = _set_bay(client, ws, ctx, "secondary").json()               # nothing single to inherit: a manual override
     assert (resolved["status"], resolved["effective_side"], resolved["override"]["side"]) == ("resolved", "secondary", "secondary")
+    assert resolved["reference_sides"] == "uniform"
 
 
 # =========================================================================== genuine mixed sides
@@ -443,14 +489,17 @@ def test_engineer_resolves_a_mixed_recording_and_the_contradicting_declarations_
     assert (view["status"], view["effective_side"]) == ("resolved", "primary")
 
 
-def test_voltage_and_current_declaring_different_sides_inside_one_bay_is_a_conflict(client):
+def test_voltage_and_current_declaring_different_sides_inside_one_bay_is_resolved_not_blocked(client):
     ws = _ws()
     src = _source(client, ws, v="primary", i="secondary")
     bay = _bay(client, ws, src, _ALL)
     view = _bay_view(client, ws, bay)
-    assert (view["status"], view["voltage_side"], view["current_side"]) == ("conflict", "primary", "secondary")
+    assert (view["status"], view["voltage_side"], view["current_side"], view["effective_side"]) == (
+        "resolved", "primary", "secondary", None)
+    assert (view["reference_sides"], view["strict_usable"]) == ("voltage_current_differ", True)
     assert "BAY_VOLTAGE_CURRENT_SIDES_DIFFER" in _codes(view)
-    # Each channel still resolves from its own evidence for a consumer that chooses to convert independently.
+    assert not any(d["severity"] == "conflict" for d in view["diagnostics"])
+    # Each channel resolves from its own evidence, so a consumer can normalise voltage and current independently.
     assert (_chan(client, ws, src, "VA")["effective_side"], _chan(client, ws, src, "IA")["effective_side"]) == (
         "primary", "secondary")
 
@@ -477,6 +526,11 @@ def test_unconfirmed_bay_membership_is_ambiguous_ownership_no_bay_setting_applie
     resp = _set_bay(client, ws, bay, "secondary")
     assert resp.status_code == 409 and resp.json()["detail"]["code"] == "bay_membership_unconfirmed"
     assert _chan(client, ws, src, "VA")["bay_membership"] == "unconfirmed"
+    # B2A-3: normal inheritance keeps working without confirming the bay (information, not a warning).
+    assert (view["status"], view["effective_side"], view["strict_usable"]) == ("resolved", "primary", True)
+    assert next(d for d in view["diagnostics"] if d["code"] == "BAY_MEMBERSHIP_UNCONFIRMED")["severity"] == "info"
+    _set_rec(client, ws, src, "secondary")
+    assert _bay_view(client, ws, bay)["effective_side"] == "secondary"         # follows Level 1 with no bay confirmation
 
 
 def test_an_override_goes_inactive_when_its_bay_is_no_longer_confirmed(client):
@@ -655,11 +709,54 @@ def test_consumed_side_requires_every_channel_to_agree_and_resolve(client):
     deps = _deps(client)
     refs = lambda *n: [ChannelRef("source", src, f"ZBAY_{x}") for x in n]  # noqa: E731
     assert resolve_consumed_side(ws, refs("VA", "VB", "VC"), deps=deps).side == "primary"
-    cross = resolve_consumed_side(ws, refs("VA", "IA"), deps=deps)
-    assert (cross.status, cross.voltage_side, cross.current_side, cross.usable) == ("conflict", "primary", "secondary", False)
-    assert "CONSUMED_CHANNELS_SIDES_DIFFER" in {d.code for d in cross.diagnostics}
+    cross = resolve_consumed_side(ws, refs("VA", "IA"), deps=deps)             # B2A-1: independent V/I sides are usable
+    assert (cross.status, cross.side, cross.voltage_side, cross.current_side, cross.usable, cross.strict_usable) == (
+        "resolved", None, "primary", "secondary", True, True)
+    assert "CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER" in {d.code for d in cross.diagnostics}
+    assert cross.reference_sides == "voltage_current_differ"
     unknown = resolve_consumed_side(ws, refs("VA") + [ChannelRef("source", src, "NOPE")], deps=deps)
     assert (unknown.status, unknown.usable) == ("unresolved", False)
+
+
+def test_missing_evidence_is_never_inferred_from_ratios_or_magnitude(client):
+    """B2A-4: a recording with no P/S declaration needs an engineer's Level 1 value, whatever CT/VT or magnitude says."""
+    ws = _ws()
+    cfg, dat = _comtrade(v_rms=66.0, i_rms=2.0, ps=_flags("none", "none"))        # secondary-looking magnitudes
+    src = _upload(client, ws, cfg, dat)
+    _clear(client, ws)
+    bay = _bay(client, ws, src, _ALL)
+    _group(client, ws, src, KIND_VOLTAGE, V, "vg-1")
+    _group(client, ws, src, KIND_CURRENT, I, "ig-1")
+    _vt(client, ws, "vg-1", VT_P, VT_S, note="VT")                                 # a configured VT/CT is not side evidence
+    _ct(client, ws, "ig-1", CT_P, CT_S, note="CT")
+    rec, view = _rec(client, ws, src), _bay_view(client, ws, bay)
+    assert (rec["effective_side"], rec["authority"], rec["recording_derived"]["status"]) == (None, AUTH_UNRESOLVED, "none")
+    assert (view["status"], view["effective_side"], view["strict_usable"]) == ("unresolved", None, False)
+    assert not resolve_consumed_side(ws, [ChannelRef("source", src, "ZBAY_VA")], deps=_deps(client)).strict_usable
+    _set_rec(client, ws, src, "secondary")                                         # the engineer's value is the authority
+    assert _bay_view(client, ws, bay)["strict_usable"] is True
+
+
+def test_explicit_correction_is_consumable_and_fully_disclosed(client):
+    """B2A-5: a correction supersedes a wrong declaration, keeps the original evidence and a visible warning, and
+    the warning alone never blocks a strict consumer."""
+    ws = _ws()
+    src = _source(client, ws, v="primary", i="primary")                            # recorder says Primary ...
+    bay = _bay(client, ws, src, _ALL)
+    body = _set_rec(client, ws, src, "secondary", note="Relay exports secondary quantities")   # ... engineer knows it is not
+    assert body["engineer_correction"]["set_at"] and body["engineer_correction"]["note"]
+    assert (body["effective_side"], body["authority"]) == ("secondary", AUTH_RECORDING_CORRECTION)
+    warn = next(d for d in body["diagnostics"] if d["code"] == "ENGINEER_CORRECTION_OVERRIDES_DECLARATION")
+    assert warn["severity"] == "warning"
+    assert sorted(o["channel_name"] for o in body["overridden_declarations"]) == sorted(f"ZBAY_{n}" for n in _ALL)
+    assert {(o["declared_side"], o["effective_side"]) for o in body["overridden_declarations"]} == {("primary", "secondary")}
+    view = _bay_view(client, ws, bay)
+    assert (view["status"], view["strict_usable"], view["effective_side"]) == ("resolved", True, "secondary")
+    assert len(view["overridden_declarations"]) == 6
+    consumed = resolve_consumed_side(ws, [ChannelRef("source", src, f"ZBAY_{n}") for n in _ALL], deps=_deps(client))
+    assert (consumed.status, consumed.side, consumed.strict_usable) == ("resolved", "secondary", True)
+    # The original evidence is still reported untouched.
+    assert body["recording_derived"]["side"] == "primary" and {c["declared_side"] for c in body["channels"]} == {"primary"}
 
 
 # =========================================================================== API contract

@@ -37,6 +37,7 @@ from app.domain.measurement_side_config import (
     DIAG_CHANNEL_NOT_FOUND,
     DIAG_CHANNEL_NOT_MEASUREMENT,
     DIAG_CONSUMED_MIXED,
+    DIAG_CONSUMED_VI_DIFFER,
     DIAG_CONSUMED_UNRESOLVED,
     DIAG_SOURCE_NOT_FOUND,
     MEMBERSHIP_CONFIRMED,
@@ -196,7 +197,7 @@ def resolve_consumed_side(workspace_id: str, refs: Iterable[ChannelRef], *, deps
     side. Different sides, or any unresolved channel, are reported (never merged or guessed) so the consumer
     blocks."""
     resolutions = [resolve_effective_side_for_ref(workspace_id, r, deps=deps) for r in refs]
-    return resolve_side_set(resolutions, mixed_code=DIAG_CONSUMED_MIXED, vi_code=DIAG_CONSUMED_MIXED,
+    return resolve_side_set(resolutions, mixed_code=DIAG_CONSUMED_MIXED, vi_code=DIAG_CONSUMED_VI_DIFFER,
                             unresolved_code=DIAG_CONSUMED_UNRESOLVED)
 
 
@@ -318,8 +319,9 @@ def build_bay_view(workspace_id: str, context_id: str, *, deps: SideAuthority) -
                                     "This bay has no recorded voltage or current channel."))
     if membership == MEMBERSHIP_UNCONFIRMED:
         if not any(d.code == DIAG_BAY_MEMBERSHIP_UNCONFIRMED for d in diags):
-            diags.append(SideDiagnostic(DIAG_BAY_MEMBERSHIP_UNCONFIRMED, SEVERITY_WARNING,
-                                        "The bay's membership is suggested or needs review; no bay setting applies.",
+            diags.append(SideDiagnostic(DIAG_BAY_MEMBERSHIP_UNCONFIRMED, SEVERITY_INFO,
+                                        "The bay's membership is suggested or needs review; it follows its recording "
+                                        "until the bay is confirmed.",
                                         {"engineering_context_id": context_id}))
         if stored is not None:
             diags.append(SideDiagnostic(DIAG_BAY_OVERRIDE_INACTIVE, SEVERITY_WARNING,
