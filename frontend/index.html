@@ -1244,6 +1244,19 @@
             text-decoration: underline; cursor: pointer;
         }
         .ww-rd-side-link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .ww-rd-side-review {
+            grid-column: 1 / -1; margin: 6px 0 2px; padding: 8px 10px; font-size: 0.75rem;
+            border: 1px solid var(--panel-border); border-radius: var(--radius); background: var(--surface-tint);
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .ww-rd-side-review-members { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 12px; }
+        .ww-rd-side-review-members > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ww-rd-side-review-actions { display: flex; align-items: center; gap: 14px; }
+        .ww-rd-side-confirm-btn {
+            background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+            padding: 6px 14px; font-size: 0.7rem; font-weight: 600; cursor: pointer;
+        }
+        .ww-rd-side-confirm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         @media (max-width: 692px) {
             .ww-rd-side-row { grid-template-columns: 1fr; }
             .ww-rd-side-row .ww-rd-provenance { grid-column: 1; }
@@ -36245,6 +36258,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //     that are still on screen.
         // ------------------------------------------------------------------
         // D5A-2B2B-BLOCK-START
+        // ------------------------------------------------------------------
+        // D5A-2B2B: Measurement side in Recording Details (DEC-216).
+        // The backend (D5A-2B2A resolver and API) is the ONLY authority: this code renders what
+        // GET .../measurement-side returns and sends the engineer's Primary/Secondary choice back. It never
+        // interprets a recording's P/S marker, a channel name or a CT/VT ratio, and keeps no side model of its own.
+        //   - Level 1 (Recording Info): one selector for the recording.
+        //   - Level 2 (Group Details): one selector for the selected group's bay WITHIN THIS RECORDING (a bay can
+        //     hold channels of several recordings; a choice here never touches the others). Never per phase, and
+        //     never separate Voltage/Current group settings: the voltage and the current group of a bay show the
+        //     same bay setting.
+        //   - No Reset: choosing the side the recording (or bay) already inherits clears the override server-side.
+        //   - A suggested / needs-review bay needs an explicit, reviewed confirmation before it takes a manual side.
+        //   - Latest-wins: selections are sent one at a time in order, an older response can never replace a
+        //     newer view (sequence guards), and every response is checked against the workspace and recording
+        //     that are still on screen.
+        // ------------------------------------------------------------------
         const wwRdSide = {
             workspaceId: null, sourceId: null,
             status: "idle",          // "idle" | "loading" | "ready" | "error"
@@ -36255,6 +36284,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             chain: Promise.resolve(),
             optimistic: { recording: null, bays: {} }, // what the engineer just chose, until the server view is re-read
             focus: null,             // control to re-focus after a re-render (keyboard use)
+            review: null,            // { contextId, status: "loading"|"ready"|"error", context } while confirming a bay
+            reviewSeq: 0,
         };
 
         function wwRdSideLabel(side) {
@@ -36263,11 +36294,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwRdSideInvalidate() {
             wwRdSide.loadSeq += 1;
+            wwRdSide.reviewSeq += 1;
             wwRdSide.workspaceId = null;
             wwRdSide.sourceId = null;
             wwRdSide.status = "idle";
             wwRdSide.data = null;
             wwRdSide.message = null;
+            wwRdSide.review = null;
             wwRdSide.optimistic = { recording: null, bays: {} };
         }
 
@@ -36280,15 +36313,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + tail;
         }
 
+        function wwRdSideBayKey(contextId) {
+            return wwRdSide.sourceId + "|" + contextId;
+        }
+
+        // Re-renders whichever side section is on screen (Recording Info or Group Details).
         function wwRdSideRerender() {
-            const el = document.getElementById("wwRdSideSection");
-            if (!el || !wwRdSide.sourceId) return;
-            el.outerHTML = wwRdSideRenderHtml(wwRdSide.sourceId);
+            const sourceId = wwRdSide.sourceId;
+            if (!sourceId) return;
+            const recordingEl = document.getElementById("wwRdSideSection");
+            if (recordingEl) recordingEl.outerHTML = wwRdSideRenderHtml(sourceId);
+            const bayEl = document.getElementById("wwRdSideBaySection");
+            if (bayEl) {
+                const group = wwRdSideGroup(sourceId, bayEl.getAttribute("data-ww-side-group"));
+                if (group) bayEl.outerHTML = wwRdSideBayRenderHtml(group);
+            }
             const key = wwRdSide.focus;
             if (key) {
-                const next = document.querySelector('#wwRdSideSection [data-ww-side-focus="' + key + '"]');
+                const next = document.querySelector('[data-ww-side-focus="' + key + '"]');
                 if (next && !next.disabled) next.focus();
             }
+        }
+
+        function wwRdSideGroup(sourceId, groupId) {
+            return (ww.measurementGroups.get(sourceId) || []).find(function(g) { return g.id === groupId; }) || null;
         }
 
         async function wwRdSideLoad(sourceId) {
@@ -36316,6 +36364,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (wwRdSide.pending === 0) wwRdSide.optimistic = { recording: null, bays: {} };
             }
             wwRdSideRerender();
+        }
+
+        // Starts the one read this recording's sections need (idempotent while it is the recording on screen).
+        function wwRdSideEnsure(sourceId) {
+            if (wwRdSide.sourceId !== sourceId || wwRdSide.workspaceId !== currentWorkspaceId()) {
+                wwRdSideInvalidate();
+                wwRdSide.workspaceId = currentWorkspaceId();
+                wwRdSide.sourceId = sourceId;
+                wwRdSide.status = "loading";
+                Promise.resolve().then(function() { wwRdSideLoad(sourceId); });
+            }
         }
 
         // Selections are applied in the order made; only after the last one settles is the view re-read.
@@ -36351,6 +36410,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return data ? (data.recordings || []).find(function(r) { return r.source_id === wwRdSide.sourceId; }) || null : null;
         }
 
+        // The bay-within-this-recording associations of one Measurement Group (a group can serve several bays).
+        function wwRdSideAssociationsForGroup(group) {
+            const data = wwRdSide.data;
+            if (!data) return [];
+            return (data.bays || []).filter(function(b) {
+                return b.source_id === group.source_id &&
+                    ((b.voltage_group_ids || []).indexOf(group.id) >= 0 || (b.current_group_ids || []).indexOf(group.id) >= 0);
+            });
+        }
+
         function wwRdSideSelectRecording(side) {
             const rec = wwRdSideCurrentRecording();
             if (!rec || (side !== "primary" && side !== "secondary")) return;
@@ -36369,26 +36438,75 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
         }
 
-        function wwRdSideSelectBay(contextId, side) {
+        function wwRdSideAssociation(contextId) {
             const data = wwRdSide.data;
-            const bay = data ? (data.bays || []).find(function(b) { return b.engineering_context_id === contextId; }) : null;
+            return data ? (data.bays || []).find(function(b) {
+                return b.engineering_context_id === contextId && b.source_id === wwRdSide.sourceId;
+            }) || null : null;
+        }
+
+        function wwRdSideSelectBay(contextId, side) {
+            const bay = wwRdSideAssociation(contextId);
             if (!bay || bay.bay_membership !== "confirmed" || (side !== "primary" && side !== "secondary")) return;
-            const active = wwRdSide.optimistic.bays[contextId] || bay.effective_side;
+            const active = wwRdSide.optimistic.bays[wwRdSideBayKey(contextId)] || bay.effective_side;
             if (side === active) return;
-            wwRdSide.optimistic.bays[contextId] = side;
+            const sourceId = wwRdSide.sourceId;
+            wwRdSide.optimistic.bays[wwRdSideBayKey(contextId)] = side;
             wwRdSide.focus = "bay:" + contextId + ":" + side;
             wwRdSideRerender();
             wwRdSideEnqueue(function(workspaceId) {
-                return fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId) + "/measurement-side"), {
+                return fetch(wwRdSideUrl(workspaceId, "/sources/" + encodeURIComponent(sourceId) +
+                        "/engineering-contexts/" + encodeURIComponent(contextId) + "/measurement-side"), {
                     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side: side }),
                 });
             });
         }
 
-        // B2A-3: a manual bay setting needs a confirmed bay. This uses the existing Engineering Context
-        // endpoint; it changes the bay's status only, never its members.
+        // ---- Confirm bay (B2A-3): explicit, reviewed, status only -------------------------------------
+        // A manual bay setting needs a confirmed bay, and a suggested / needs-review bay was put together by automatic
+        // detection. Confirming therefore shows the engineer what they are confirming (the channels, their phases and
+        // where each phase came from) and states what it does NOT do. It changes the bay's status only, through the
+        // existing Engineering Context endpoint; membership and phases are never edited here.
+        function wwRdSideEvidenceLabel(source) {
+            const labels = { detected_from_name: "from channel name", structured_metadata: "from recording metadata",
+                engineer_confirmed: "set by engineer", manual: "set by engineer", unknown: "not determined" };
+            return labels[source] || "not determined";
+        }
+
+        async function wwRdSideOpenReview(contextId) {
+            const workspaceId = wwRdSide.workspaceId;
+            const sourceId = wwRdSide.sourceId;
+            const seq = ++wwRdSide.reviewSeq;
+            wwRdSide.review = { contextId: contextId, status: "loading", context: null };
+            wwRdSide.focus = null;
+            wwRdSideRerender();
+            let context = null;
+            try {
+                const response = await fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId)));
+                if (!response.ok) throw new Error("status " + response.status);
+                context = await response.json();
+            } catch (error) {
+                if (error && error.name === "AbortError") return;
+            }
+            if (seq !== wwRdSide.reviewSeq || !wwRdSideCurrent(workspaceId, sourceId)) return;
+            wwRdSide.review = { contextId: contextId, status: context ? "ready" : "error", context: context };
+            wwRdSide.focus = "review-cancel:" + contextId;
+            wwRdSideRerender();
+        }
+
+        function wwRdSideCancelReview() {
+            const contextId = wwRdSide.review ? wwRdSide.review.contextId : null;
+            wwRdSide.reviewSeq += 1;
+            wwRdSide.review = null;
+            wwRdSide.focus = contextId ? "review:" + contextId : null;
+            wwRdSideRerender();
+        }
+
         function wwRdSideConfirmBay(contextId) {
-            wwRdSide.focus = "confirm:" + contextId;
+            if (!wwRdSide.review || wwRdSide.review.contextId !== contextId || wwRdSide.review.status !== "ready") return;
+            wwRdSide.reviewSeq += 1;
+            wwRdSide.review = null;
+            wwRdSide.focus = null;
             wwRdSideEnqueue(function(workspaceId) {
                 return fetch(wwRdSideUrl(workspaceId, "/engineering-contexts/" + encodeURIComponent(contextId)), {
                     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "confirmed" }),
@@ -36396,6 +36514,47 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
         }
 
+        function wwRdSideReviewHtml(bay) {
+            const review = wwRdSide.review;
+            if (!review || review.contextId !== bay.engineering_context_id) return "";
+            const id = escapeHtml(bay.engineering_context_id);
+            if (review.status === "loading") {
+                return '<div class="ww-rd-side-review" data-ww-side-review="' + id + '">Loading the bay’s channels…</div>';
+            }
+            if (review.status === "error" || !review.context) {
+                return '<div class="ww-rd-side-review" data-ww-side-review="' + id + '">The bay’s channels could not be loaded, so it cannot be confirmed now. ' +
+                    '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="review-cancel" data-ww-side-bay="' + id +
+                    '" data-ww-side-focus="review-cancel:' + id + '">Close</button></div>';
+            }
+            const members = review.context.members || [];
+            const shown = members.slice(0, 24);
+            let rows = "";
+            for (const m of shown) {
+                const ref = m.channel_ref || {};
+                const other = ref.source_id && ref.source_id !== wwRdSide.sourceId ? " (other recording)" : "";
+                const phase = m.phase && m.phase !== "unknown" ? (m.original_phase_label || m.phase) : "not determined";
+                rows += '<span>' + escapeHtml((ref.channel_name || "") + other) + '</span><span>' + escapeHtml(phase) +
+                    '</span><span>' + escapeHtml(wwRdSideEvidenceLabel(m.phase_source)) + '</span>';
+            }
+            const more = members.length > shown.length ? '<span>and ' + (members.length - shown.length) + ' more</span><span></span><span></span>' : "";
+            const flagged = review.context.status === "needs_review"
+                ? '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="needs-review">' +
+                  'Automatic detection flagged this bay for review. Check the channels and phases below before confirming.</span>'
+                : "";
+            return '<div class="ww-rd-side-review" data-ww-side-review="' + id + '" role="group" aria-label="Confirm bay">' +
+                '<div>Confirm that these channels belong to <strong>' + escapeHtml(bay.display_name) + '</strong>?</div>' + flagged +
+                '<div class="ww-rd-side-review-members"><span class="ww-rd-config-label">Channel</span><span class="ww-rd-config-label">Phase</span>' +
+                '<span class="ww-rd-config-label">Phase evidence</span>' + rows + more + '</div>' +
+                '<span class="ww-rd-provenance ww-rd-provenance--auto">Confirming only states that these channels belong to this bay. ' +
+                'The channels and phases are not changed.</span>' +
+                '<div class="ww-rd-side-review-actions">' +
+                '<button type="button" class="ww-rd-side-confirm-btn" data-ww-side-action="confirm-bay" data-ww-side-bay="' + id +
+                '" data-ww-side-focus="confirm:' + id + '">Confirm bay</button>' +
+                '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="review-cancel" data-ww-side-bay="' + id +
+                '" data-ww-side-focus="review-cancel:' + id + '">Cancel</button></div></div>';
+        }
+
+        // ---- rendering -----------------------------------------------------------------------------
         function wwRdSideSegmentHtml(kind, targetId, active, disabled, label) {
             const buttons = ["primary", "secondary"].map(function(value) {
                 const isActive = value === active;
@@ -36456,14 +36615,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRdSideBayRowHtml(bay) {
             const id = bay.engineering_context_id;
             const confirmed = bay.bay_membership === "confirmed";
-            const active = wwRdSide.optimistic.bays[id] || bay.effective_side;
+            const active = wwRdSide.optimistic.bays[wwRdSideBayKey(id)] || bay.effective_side;
             const overridden = bay.overridden_declarations || [];
+            const reviewing = !!(wwRdSide.review && wwRdSide.review.contextId === id);
             let prov;
-            let control = wwRdSideSegmentHtml("bay", id, active, !confirmed || bay.status === "not_applicable", bay.display_name + " measurement side");
+            let control = wwRdSideSegmentHtml("bay", id, active, !confirmed, bay.display_name + " measurement side");
             if (!confirmed) {
                 prov = wwRdSideProvenanceHtml("suggested", "Bay not confirmed; it follows the recording.");
-                control += '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="confirm-bay"' +
-                    ' data-ww-side-bay="' + escapeHtml(id) + '" data-ww-side-focus="confirm:' + escapeHtml(id) + '">Confirm bay</button>';
+                if (!reviewing) {
+                    control += '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="review-bay"' +
+                        ' data-ww-side-bay="' + escapeHtml(id) + '" data-ww-side-focus="review:' + escapeHtml(id) + '">Confirm bay…</button>';
+                }
             } else if (bay.override && bay.override.active) {
                 prov = wwRdSideProvenanceHtml("manual", "Set manually");
             } else if (bay.status === "conflict") {
@@ -36477,8 +36639,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     ", current " + wwRdSideLabel(bay.current_side).toLowerCase() + ". Select a side to apply it to the whole bay.");
             } else if (bay.status === "unresolved") {
                 prov = wwRdSideProvenanceHtml("unresolved", "Side not resolved. Select it.");
-            } else if (bay.status === "not_applicable") {
-                prov = wwRdSideProvenanceHtml("auto", "No voltage or current channels.");
             } else if ((bay.inferred_channels || []).length) {
                 prov = wwRdSideProvenanceHtml("suggested", "Follows the recording (inferred for " + bay.inferred_channels.length + " channels).");
             } else {
@@ -36492,30 +36652,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return '<div class="ww-rd-side-row" data-ww-side-row="bay" data-ww-side-bay="' + escapeHtml(id) + '">' +
                 '<span class="ww-rd-side-row-label" title="' + escapeHtml(bay.display_name) + '">' + escapeHtml(bay.display_name) + '</span>' +
-                '<span class="ww-rd-side-row-control">' + control + '</span>' + prov + notice + '</div>';
+                '<span class="ww-rd-side-row-control">' + control + '</span>' + prov + notice + wwRdSideReviewHtml(bay) + '</div>';
         }
 
-        function wwRdSideRenderHtml(sourceId) {
-            let inner;
-            const rec = wwRdSideCurrentRecording();
+        function wwRdSidePlaceholderHtml(loadingText) {
             if (wwRdSide.status === "error" && !wwRdSide.data) {
-                inner = '<p class="ww-rd-placeholder">The measurement side could not be loaded. ' +
+                return '<p class="ww-rd-placeholder">The measurement side could not be loaded. ' +
                     '<button type="button" class="ww-rd-side-link-btn" data-ww-side-action="retry">Retry</button></p>';
-            } else if (!wwRdSide.data) {
-                inner = '<p class="ww-rd-placeholder">Loading measurement side…</p>';
-            } else if (!rec) {
-                inner = '<p class="ww-rd-placeholder">Measurement side is not available for this recording.</p>';
-            } else {
-                const bays = (wwRdSide.data.bays || []).filter(function(b) { return (b.source_ids || []).indexOf(sourceId) >= 0; });
-                inner = '<div class="ww-rd-side-rows">' + wwRdSideRecordingRowHtml(rec) + '</div>';
-                if (bays.length) {
-                    inner += '<div class="ww-rd-side-subheading">Bays</div><div class="ww-rd-side-rows">' +
-                        bays.map(wwRdSideBayRowHtml).join("") + '</div>';
-                }
-                if (wwRdSide.message) {
-                    inner += '<span class="ww-rd-provenance ww-rd-provenance--warn" role="status" data-ww-side-notice="error">' +
-                        escapeHtml(wwRdSide.message) + '</span>';
-                }
+            }
+            return wwRdSide.data ? null : '<p class="ww-rd-placeholder">' + loadingText + '</p>';
+        }
+
+        function wwRdSideMessageHtml() {
+            return wwRdSide.message
+                ? '<span class="ww-rd-provenance ww-rd-provenance--warn" role="status" data-ww-side-notice="error">' + escapeHtml(wwRdSide.message) + '</span>'
+                : "";
+        }
+
+        // Level 1: Recording Information.
+        function wwRdSideRenderHtml(sourceId) {
+            let inner = wwRdSidePlaceholderHtml("Loading measurement side…");
+            if (inner === null) {
+                const rec = wwRdSideCurrentRecording();
+                inner = rec ? '<div class="ww-rd-side-rows">' + wwRdSideRecordingRowHtml(rec) + '</div>' + wwRdSideMessageHtml()
+                    : '<p class="ww-rd-placeholder">Measurement side is not available for this recording.</p>';
             }
             return '<div class="ww-rd-section" id="wwRdSideSection" data-ww-side-source="' + escapeHtml(sourceId) + '">' +
                 '<div class="ww-rd-section-heading">Measurement side</div>' +
@@ -36523,28 +36683,66 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 inner + '</div>';
         }
 
-        function wwRdSideSectionHtml(source) {
-            const sourceId = source.source_id;
-            if (wwRdSide.sourceId !== sourceId || wwRdSide.workspaceId !== currentWorkspaceId()) {
-                wwRdSideInvalidate();
-                wwRdSide.workspaceId = currentWorkspaceId();
-                wwRdSide.sourceId = sourceId;
-                wwRdSide.status = "loading";
-                Promise.resolve().then(function() { wwRdSideLoad(sourceId); });
+        function wwRdSideOwnershipNotice(group, bays) {
+            const entry = bays.map(function(b) {
+                return (b.group_ownership || []).find(function(o) { return o.group_id === group.id; });
+            }).find(Boolean);
+            if (!entry || (entry.status !== "spans_bays" && entry.status !== "spans_bays_ambiguous")) return "";
+            const names = (entry.bays || []).map(function(b) { return b.display_name; }).join(", ");
+            if (entry.status === "spans_bays_ambiguous") {
+                return '<span class="ww-rd-provenance ww-rd-provenance--unresolved" role="note" data-ww-side-notice="group-ambiguous">' +
+                    escapeHtml("This group's channels are in several bays (" + names + ") on different or unresolved measurement sides. " +
+                        "Its transformer ratio is not shared across them, and a calculation that needs to convert through it is blocked until this is resolved.") +
+                    '</span>';
             }
-            return wwRdSideRenderHtml(sourceId);
+            return '<span class="ww-rd-provenance ww-rd-provenance--warn" role="note" data-ww-side-notice="group-spans">' +
+                escapeHtml("This group's channels are in several bays (" + names + ") that share one measurement side. Its transformer ratio is the group's own.") +
+                '</span>';
+        }
+
+        // Level 2: Group Details. One setting per bay of the selected group, within this recording.
+        function wwRdSideBayRenderHtml(group) {
+            let inner = wwRdSidePlaceholderHtml("Loading measurement side…");
+            if (inner === null) {
+                const bays = wwRdSideAssociationsForGroup(group);
+                if (!bays.length) {
+                    inner = '<p class="ww-rd-side-note">This group is not part of a bay, so it follows the recording.</p>';
+                } else {
+                    inner = '<div class="ww-rd-side-rows">' + bays.map(wwRdSideBayRowHtml).join("") + '</div>' +
+                        wwRdSideOwnershipNotice(group, bays) + wwRdSideMessageHtml();
+                }
+            }
+            return '<div class="ww-rd-section" id="wwRdSideBaySection" data-ww-side-group="' + escapeHtml(group.id) + '">' +
+                '<div class="ww-rd-section-heading">Bay measurement side</div>' +
+                '<p class="ww-rd-side-note">One setting for this bay in this recording, covering its voltage and current channels.</p>' +
+                inner + '</div>';
+        }
+
+        function wwRdSideSectionHtml(source) {
+            wwRdSideEnsure(source.source_id);
+            return wwRdSideRenderHtml(source.source_id);
+        }
+
+        function wwRdSideBaySectionHtml(group) {
+            wwRdSideEnsure(group.source_id);
+            return wwRdSideBayRenderHtml(group);
         }
 
         document.addEventListener("click", function(event) {
             const target = event.target.closest ? event.target.closest("[data-ww-side-action]") : null;
             if (!target || target.disabled) return;
             const action = target.getAttribute("data-ww-side-action");
+            const bayId = target.getAttribute("data-ww-side-bay");
             if (action === "recording") {
                 wwRdSideSelectRecording(target.getAttribute("data-ww-side-value"));
             } else if (action === "bay") {
-                wwRdSideSelectBay(target.getAttribute("data-ww-side-bay"), target.getAttribute("data-ww-side-value"));
+                wwRdSideSelectBay(bayId, target.getAttribute("data-ww-side-value"));
+            } else if (action === "review-bay") {
+                wwRdSideOpenReview(bayId);
+            } else if (action === "review-cancel") {
+                wwRdSideCancelReview();
             } else if (action === "confirm-bay") {
-                wwRdSideConfirmBay(target.getAttribute("data-ww-side-bay"));
+                wwRdSideConfirmBay(bayId);
             } else if (action === "retry") {
                 const sourceId = wwRdState.selectedSourceId;
                 wwRdSideInvalidate();
@@ -37029,7 +37227,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Instrument transformer section — group-type specific, read-only
             const transformerHtml = kind === "voltage" ? wwRdVtSectionHtml(g) : wwRdCtSectionHtml(g);
 
-            return headerHtml + conflictHtml + configHtml + transformerHtml;
+            // D5A-2B2B: Level 2 -- the bay's measurement side, shown with the group (same setting for its voltage and current groups).
+            return headerHtml + wwRdSideBaySectionHtml(g) + conflictHtml + configHtml + transformerHtml;
         }
 
         // D2: Apply the in-progress voltage edit to the backend.
