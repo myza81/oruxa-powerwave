@@ -1,10 +1,11 @@
-"""D5A-2B2B frontend: measurement side in Recording Details.
+"""D5A-2B2B / D5A-UI-002 frontend: measurement side in Recording Details.
 
-Level 1 (recording) is rendered in Recording Information; Level 2 (the bay, within the selected recording) in Group Details.
+Level 1 (the recording) is rendered in Recording Information; Level 2 (the selected Measurement Group of that recording,
+voltage OR current, all its phases) in Group Details.
 
 The REAL helper block of frontend/index.html is run with Node (no re-implementation) against a fake network: what is
-rendered, which requests a selection sends and in what order, the explicit bay-confirmation review, and that a stale or
-foreign response can never replace a newer view. The page keeps no side model of its own; everything it shows is the backend's.
+rendered, which requests a selection sends and in what order, and that a stale or foreign response can never replace a
+newer view. The page keeps no side model of its own; everything it shows is the backend's.
 """
 
 from __future__ import annotations
@@ -44,14 +45,15 @@ function escapeHtml(v) {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 const GROUP = { id: "g1", source_id: "s1", kind: "voltage", display_name: "KPDN1 VOLTAGE" };
-const ww = { measurementGroups: new Map([["s1", [GROUP]]]) };
+const GROUP_I = { id: "g2", source_id: "s1", kind: "current", display_name: "KPDN1 CURRENT" };
+const ww = { measurementGroups: new Map([["s1", [GROUP, GROUP_I]]]) };
 const wwRdState = { selectedSourceId: "s1" };
-const rendered = { recording: null, bay: null };
+const rendered = { recording: null, group: null };
 const sectionEl = { set outerHTML(v) { rendered.recording = v; } };
-const bayEl = { set outerHTML(v) { rendered.bay = v; }, getAttribute() { return "g1"; } };
+const groupEl = { set outerHTML(v) { rendered.group = v; }, getAttribute() { return payload.shownGroup || "g1"; }, classList: { contains() { return true; } } };
 const document = {
   handlers: {},
-  getElementById(id) { return id === "wwRdSideSection" ? sectionEl : id === "wwRdSideBaySection" ? bayEl : null; },
+  getElementById(id) { return id === "wwRdSideSection" ? sectionEl : id === "wwRdSideGroupSection" ? groupEl : null; },
   querySelector() { return null; },
   addEventListener(type, fn) { this.handlers[type] = fn; },
 };
@@ -98,30 +100,22 @@ def _derived(status="consistent", side="primary", p=6, s=0, undeclared=0, v=None
 def _recording(source_id="s1", *, effective="primary", authority="recording_declared", derived=None, correction=None,
                overridden=()):
     return {"source_id": source_id, "recording_derived": derived or _derived(side=effective or "primary"),
-            "engineer_correction": correction, "effective_side": effective, "authority": authority, "bay_ids": [],
+            "engineer_correction": correction, "effective_side": effective, "authority": authority, "group_ids": [],
             "overridden_declarations": list(overridden), "diagnostics": [], "channels": None}
 
 
-def _ownership(status="single_bay", bays=(("ec-1", "KPDN1"),)):
-    return {"group_id": "g1", "kind": "voltage", "display_name": "KPDN1 VOLTAGE", "status": status,
-            "conversion_authority_ambiguous": status == "spans_bays_ambiguous",
-            "bays": [{"engineering_context_id": i, "display_name": n} for i, n in bays]}
+def _group(gid="g1", kind="voltage", name=None, *, source="s1", effective="primary", status="resolved", override=None,
+           inferred=(), overridden=(), diagnostics=()):
+    return {"measurement_group_id": gid, "source_id": source, "kind": kind,
+            "display_name": name or ("KPDN1 VOLTAGE" if kind == "voltage" else "KPDN1 CURRENT"),
+            "inherited_side": "primary", "recording_side": "primary", "override": override, "status": status,
+            "effective_side": effective, "strict_usable": not inferred, "inferred_channels": list(inferred),
+            "authority": "recording_channel_declared", "overridden_declarations": list(overridden),
+            "diagnostics": list(diagnostics), "channels": None}
 
 
-def _bay(ctx, name, *, source="s1", membership="confirmed", effective="primary", status="resolved", override=None,
-         reference_sides="uniform", v="primary", i="primary", inferred=(), overridden=(), diagnostics=(), groups=("g1",),
-         ownership=None):
-    return {"engineering_context_id": ctx, "source_id": source, "display_name": name,
-            "context_status": "confirmed" if membership == "confirmed" else "suggested",
-            "bay_membership": membership, "inherited_recording_side": "primary", "override": override, "status": status,
-            "effective_side": effective, "voltage_side": v, "current_side": i, "reference_sides": reference_sides,
-            "strict_usable": True, "inferred_channels": list(inferred), "authority": "recording_channel_declared",
-            "overridden_declarations": list(overridden), "voltage_group_ids": list(groups), "current_group_ids": [],
-            "group_ownership": [ownership or _ownership(bays=((ctx, name),))], "diagnostics": list(diagnostics), "channels": None}
-
-
-def _overview(recording, bays=()):
-    return {"workspace_id": "ws-1", "recordings": [recording], "bays": list(bays)}
+def _overview(recording, groups=()):
+    return {"workspace_id": "ws-1", "recordings": [recording], "groups": list(groups)}
 
 
 def _render(data, *, optimistic=None):
@@ -134,20 +128,19 @@ def _render(data, *, optimistic=None):
     return _node(script, {"data": data, "optimistic": optimistic})["html"]
 
 
-def _render_group(data, *, optimistic=None, review=None):
-    """The Level 2 section (Group Details of group g1)."""
+def _render_group(data, *, kind="voltage", optimistic=None):
+    """The Level 2 section (Group Details of the voltage group g1, or the current group g2)."""
     script = """
     ready(payload.data);
     if (payload.optimistic) Object.assign(wwRdSide.optimistic, payload.optimistic);
-    if (payload.review) wwRdSide.review = payload.review;
-    console.log(JSON.stringify({ html: wwRdSideBayRenderHtml(GROUP) }));
+    console.log(JSON.stringify({ html: wwRdSideGroupRenderHtml(payload.kind === "current" ? GROUP_I : GROUP) }));
     """
-    return _node(script, {"data": data, "optimistic": optimistic, "review": review})["html"]
+    return _node(script, {"data": data, "optimistic": optimistic, "kind": kind})["html"]
 
 
 def _active(html, row):
-    """The Primary/Secondary label(s) shown active inside one row (`recording` or a bay id)."""
-    marker = 'data-ww-side-row="recording"' if row == "recording" else f'data-ww-side-row="bay" data-ww-side-bay="{row}"'
+    """The Primary/Secondary label(s) shown active inside one row (`recording` or a group id)."""
+    marker = 'data-ww-side-row="recording"' if row == "recording" else f'data-ww-side-row="group" data-ww-side-group="{row}"'
     chunk = html[html.index(marker):]
     chunk = chunk[:chunk.index('</span>', chunk.index('radiogroup'))]   # the segmented control closes first
     return re.findall(r'ww-rd-side-btn--active"[^>]*>(\w+)</button>', chunk)
@@ -162,29 +155,27 @@ def _buttons(html):
 
 def test_level1_lives_in_recording_info_and_level2_in_group_details():
     code = _code_only(_block())
-    assert code.count('wwRdSideSegmentHtml("recording"') == 1 and code.count('wwRdSideSegmentHtml("bay"') == 1
-    html1 = _render(_overview(_recording(), [_bay("ec-1", "KPDN1")]))
-    assert 'data-ww-side-row="recording"' in html1 and 'data-ww-side-row="bay"' not in html1      # no bays in Recording Info
-    html2 = _render_group(_overview(_recording(), [_bay("ec-1", "KPDN1")]))
-    assert 'data-ww-side-row="bay"' in html2 and 'data-ww-side-row="recording"' not in html2      # no recording row in Group Details
-    assert "return headerHtml + wwRdSideBaySectionHtml(g)" in SOURCE and "html += wwRdSideSectionHtml(s);" in SOURCE
+    assert code.count('wwRdSideSegmentHtml("recording"') == 1 and code.count('wwRdSideSegmentHtml("group"') == 1
+    data = _overview(_recording(), [_group("g1")])
+    html1 = _render(data)
+    assert 'data-ww-side-row="recording"' in html1 and 'data-ww-side-row="group"' not in html1      # no group control in Recording Info
+    html2 = _render_group(data)
+    assert 'data-ww-side-row="group"' in html2 and 'data-ww-side-row="recording"' not in html2      # no recording row in Group Details
+    assert "return headerHtml + wwRdSideGroupSectionHtml(g)" in SOURCE and "html += wwRdSideSectionHtml(s);" in SOURCE
 
 
-def test_never_per_phase_never_separate_voltage_and_current_group_settings_and_no_reset():
+def test_never_per_phase_no_reset_and_no_confirm_bay_in_the_card():
     code = _code_only(_block())
-    for forbidden in ("R/Y/B", "side-phase", 'SegmentHtml("phase"', 'SegmentHtml("voltage"', 'SegmentHtml("current"', "reset", "Reset", "Revert"):
-        assert forbidden not in code
-    # a voltage group and a current group of the SAME bay show the very same bay setting (one association)
-    current = _bay("ec-1", "KPDN1", groups=("g1",))
-    current["voltage_group_ids"], current["current_group_ids"] = [], ["g1"]
-    assert 'data-ww-side-bay="ec-1"' in _render_group(_overview(_recording(), [current]))
+    for forbidden in ("R/Y/B", "side-phase", 'SegmentHtml("phase"', 'SegmentHtml("voltage"', 'SegmentHtml("current"', "reset", "Reset", "Revert",
+                      "Confirm", "review", "engineering-contexts", "data-ww-side-bay", "bay_membership"):
+        assert forbidden not in code, forbidden
 
 
 def test_no_second_authority_model_in_the_page():
     code = _code_only(_block())
     for forbidden in ("measurement_side", "ps_flag", "channel_name.", "vt_ratio", "ct_ratio", "localStorage"):
         assert forbidden not in code
-    assert {"/measurement-side", "/sources/", "/engineering-contexts/"} <= set(re.findall(r'"(/(?:sources|engineering-contexts)/|/measurement-side)"', code))
+    assert {"/measurement-side", "/sources/", "/measurement-groups/"} <= set(re.findall(r'"(/(?:sources|measurement-groups)/|/measurement-side)"', code))
 
 
 def test_hooks_invalidate_the_view_on_every_lifecycle_boundary():
@@ -202,7 +193,7 @@ def test_notation_uses_words_not_electrical_symbols():
 
 def test_recording_from_evidence_shows_the_declared_side_without_a_status_line():
     # UI-REC-001: the normal state is the heading, the one-line description and the pill control, nothing else.
-    html = _render(_overview(_recording(), [_bay("ec-1", "ALPHA1")]))
+    html = _render(_overview(_recording(), [_group("g1")]))
     assert _active(html, "recording") == ["Primary"]
     assert html.count('role="radiogroup"') == 1
     assert "From recording" not in html and "Detected from" not in html and "Applies to the recording" not in html
@@ -251,58 +242,67 @@ def test_inferred_recording_side_asks_for_confirmation():
 # --------------------------------------------------------------------------- Level 2 rendering (Group Details)
 
 
-def test_bay_rows_follow_unconfirmed_manual_split_and_conflict_states():
-    bays = [
-        _bay("ec-follow", "KPDN1"),
-        _bay("ec-manual", "KPDN2", effective="secondary", override={"side": "secondary", "set_at": "x", "active": True},
-             overridden=[{"source_id": "s1", "channel_name": "c", "declared_side": "primary", "effective_side": "secondary"}]),
-        _bay("ec-new", "KPDN3", membership="suggested"),
-        _bay("ec-split", "KPDN4", effective=None, reference_sides="voltage_current_differ", v="primary", i="secondary"),
-        _bay("ec-conflict", "KPDN5", effective=None, status="conflict", reference_sides=None, v=None, i="primary",
-             diagnostics=[{"code": "BAY_MIXED_SIDES_WITHIN_QUANTITY", "severity": "conflict", "message": "m",
-                           "detail": {"quantity": "voltage"}}]),
-    ]
-    html = _render_group(_overview(_recording(), bays))
-    assert _active(html, "ec-follow") == ["Primary"] and _active(html, "ec-manual") == ["Secondary"]
-    assert "Set manually" in html and 'data-ww-side-notice="bay-override"' in html
-    unconfirmed = html[html.index('data-ww-side-row="bay" data-ww-side-bay="ec-new"'):]
-    unconfirmed = unconfirmed[:unconfirmed.index('data-ww-side-row="bay" data-ww-side-bay="ec-split"')]
-    assert unconfirmed.count(" disabled") == 2 and "Confirm bay…" in unconfirmed
-    assert "Bay not confirmed; it follows the recording." in unconfirmed
-    assert _active(html, "ec-split") == [] and "Recorded: voltage primary, current secondary" in html
-    assert _active(html, "ec-conflict") == [] and "The voltage channels in this bay declare different sides" in html
-    assert html.count("Confirm bay…") == 1
-    assert html.count('role="radiogroup"') == 5                            # one per bay, never per phase
+def test_a_voltage_group_card_is_about_voltage_and_a_current_group_card_about_current():
+    data = _overview(_recording(), [_group("g1", "voltage"), _group("g2", "current")])
+    volt, cur = _render_group(data), _render_group(data, kind="current")
+    assert re.search(r">Measurement Value</div>", volt) and "Primary or secondary values for voltage." in volt
+    assert re.search(r">Measurement Value</div>", cur) and "Primary or secondary values for current." in cur
+    assert 'data-ww-side-kind="voltage"' in volt and 'data-ww-side-kind="current"' in cur
+    assert 'id="wwRdSideGroupSection"' in volt and 'data-ww-side-group="g1"' in volt and 'data-ww-side-group="g2"' in cur
+    for html, own, other in ((volt, "g1", "g2"), (cur, "g2", "g1")):
+        assert html.count('role="radiogroup"') == 1                       # one control for the group, never per phase
+        assert f'data-ww-side-row="group" data-ww-side-group="{own}"' in html and f'data-ww-side-group="{other}"' not in html
+        assert "ww-rd-side-group--pill" in html and "Bay" not in html and "bay" not in html
 
 
-def test_only_this_recordings_association_is_shown_and_names_are_escaped():
-    bays = [_bay("ec-other", "OTHER", source="s2"), _bay("ec-x", '<img src=x onerror=alert(1)>')]
-    html = _render_group(_overview(_recording(), bays))
-    assert "OTHER" not in html and "<img" not in html and "&lt;img src=x" in html
+def test_voltage_and_current_groups_of_one_bay_show_their_own_independent_sides():
+    data = _overview(_recording(), [
+        _group("g1", "voltage", effective="primary"),
+        _group("g2", "current", effective="secondary", override={"side": "secondary", "set_at": "x"}),
+    ])
+    volt, cur = _render_group(data), _render_group(data, kind="current")
+    assert _active(volt, "g1") == ["Primary"] and _active(cur, "g2") == ["Secondary"]
+    assert "Set manually" in cur and "Set manually" not in volt
+    # Optimistic choices are per group: choosing for the voltage group never moves the current group's control.
+    chosen = _render_group(data, optimistic={"recording": None, "groups": {"s1|g1": "secondary"}})
+    assert _active(chosen, "g1") == ["Secondary"]
+    assert _active(_render_group(data, kind="current", optimistic={"recording": None, "groups": {"s1|g1": "secondary"}}), "g2") == ["Secondary"]
+    other = _overview(_recording(), [_group("g1", "voltage"), _group("g2", "current", effective="primary")])
+    assert _active(_render_group(other, kind="current", optimistic={"recording": None, "groups": {"s1|g1": "secondary"}}), "g2") == ["Primary"]
 
 
-def test_a_group_in_no_bay_says_so_and_offers_no_control():
-    html = _render_group(_overview(_recording(), [_bay("ec-1", "KPDN1", groups=("other",))]))
-    assert "not part of a bay, so it follows the recording" in html and "radiogroup" not in html
+def test_group_states_follow_override_inferred_unresolved_and_conflict():
+    plain = _render_group(_overview(_recording(), [_group("g1")]))
+    assert _active(plain, "g1") == ["Primary"] and "ww-rd-provenance" not in plain            # normal: no status line
+    manual = _render_group(_overview(_recording(), [_group(
+        "g1", effective="secondary", override={"side": "secondary", "set_at": "x"},
+        overridden=[{"source_id": "s1", "channel_name": "c", "declared_side": "primary", "effective_side": "secondary"}])]))
+    assert _active(manual, "g1") == ["Secondary"] and "Set manually" in manual
+    notice = re.search(r'data-ww-side-notice="group-override"[^>]*>([^<]*)<', manual).group(1)
+    assert "Differs from the side declared by 1 channel" in notice and "original declarations are kept" in notice
+    inferred = _render_group(_overview(_recording(), [_group("g1", inferred=("c1", "c2"))]))
+    assert _active(inferred, "g1") == ["Primary"] and "ww-rd-provenance--suggested" in inferred and "Select it to confirm" in inferred
+    unresolved = _render_group(_overview(_recording(), [_group("g1", effective=None, status="unresolved")]))
+    assert _active(unresolved, "g1") == [] and "ww-rd-provenance--unresolved" in unresolved                 # no false highlight
+    conflict = _render_group(_overview(_recording(), [_group("g1", effective=None, status="conflict")]))
+    assert _active(conflict, "g1") == [] and "The voltage channels in this group declare different sides" in conflict
+    cur_conflict = _render_group(_overview(_recording(), [_group("g2", "current", effective=None, status="conflict")]), kind="current")
+    assert "The current channels in this group declare different sides" in cur_conflict
 
 
-def test_a_group_spanning_bays_is_disclosed_and_ambiguity_says_conversion_is_blocked():
-    own = _ownership("spans_bays", (("ec-1", "KPDN1"), ("ec-2", "KPDN2")))
-    html = _render_group(_overview(_recording(), [_bay("ec-1", "KPDN1", ownership=own), _bay("ec-2", "KPDN2", ownership=own)]))
-    assert html.count('role="radiogroup"') == 2 and html.count('data-ww-side-notice="group-spans"') == 1
-    assert "KPDN1, KPDN2) that share one measurement side" in html and "group-ambiguous" not in html
-    amb = _ownership("spans_bays_ambiguous", (("ec-1", "KPDN1"), ("ec-2", "KPDN2")))
-    html = _render_group(_overview(_recording(), [_bay("ec-1", "KPDN1", ownership=amb), _bay("ec-2", "KPDN2", ownership=amb)]))
-    notice = re.search(r'data-ww-side-notice="group-ambiguous"[^>]*>([^<]*)<', html).group(1)
-    assert "different or unresolved measurement sides" in notice and "is blocked until this is resolved" in notice
-    assert "not shared across them" in notice
+def test_only_this_groups_entry_for_this_recording_is_shown_and_names_are_escaped():
+    data = _overview(_recording(), [_group("g1", source="s2"), _group("g1", name='<img src=x onerror=alert(1)>')])
+    html = _render_group(data)
+    assert "<img" not in html and html.count('role="radiogroup"') == 1
+    assert 'aria-label="&lt;img src=x onerror=alert(1)&gt; measurement side"' in html
+    none = _render_group(_overview(_recording(), [_group("g1", source="s2")]))
+    assert "radiogroup" not in none and "not available" in none
 
 
 def test_optimistic_choice_shows_immediately_until_the_view_is_re_read():
-    data = _overview(_recording(), [_bay("ec-1", "ALPHA1")])
-    assert _active(_render(data, optimistic={"recording": "secondary", "bays": {}}), "recording") == ["Secondary"]
-    html = _render_group(data, optimistic={"recording": None, "bays": {"s1|ec-1": "secondary"}})
-    assert _active(html, "ec-1") == ["Secondary"]
+    data = _overview(_recording(), [_group("g1")])
+    assert _active(_render(data, optimistic={"recording": "secondary", "groups": {}}), "recording") == ["Secondary"]
+    assert _active(_render_group(data, optimistic={"recording": None, "groups": {"s1|g1": "secondary"}}), "g1") == ["Secondary"]
 
 
 # --------------------------------------------------------------------------- requests, ordering, stale responses
@@ -322,6 +322,29 @@ def test_selection_sends_the_chosen_side_and_nothing_else():
     """, {"data": _overview(_recording())})
     assert out["first"] == ['PUT ws-1/sources/s1/measurement-side {"side":"secondary"}']
     assert out["all"][-1] == "GET ws-1/measurement-side"                   # re-read once the selection settled
+
+
+def test_a_group_selection_writes_only_that_group_and_is_scoped_to_the_recording_on_screen():
+    data = _overview(_recording(), [_group("g1", "voltage"), _group("g2", "current"), _group("g1", source="s2")])
+    out = _node("""
+    (async function() {
+      ready(payload.data);
+      wwRdSideSelectGroup("g1", "secondary");
+      await flush(); settle(pending[0], {}); await flush(); settle(pending[1], payload.data); await flush();
+      console.log(JSON.stringify({ log }));
+    })();
+    """, {"data": data})
+    assert out["log"] == ['PUT ws-1/sources/s1/measurement-groups/g1/measurement-side {"side":"secondary"}',
+                          "GET ws-1/measurement-side"]                    # never the bay, never the sibling current group
+    only_other = _node("""
+    (async function() {
+      ready(payload.data);
+      wwRdSideSelectGroup("g1", "secondary");
+      await flush();
+      console.log(JSON.stringify({ log }));
+    })();
+    """, {"data": _overview(_recording(), [_group("g1", source="s2")])})
+    assert only_other["log"] == []                                           # another recording's group is not addressable
 
 
 def test_selections_are_sent_in_order_and_the_view_is_re_read_once_after_the_last():
@@ -347,7 +370,25 @@ def test_selections_are_sent_in_order_and_the_view_is_re_read_once_after_the_las
     assert out["queued"] == [put("secondary")]
     assert out["afterFirst"] == [put("secondary"), put("primary")]
     assert out["afterSecond"] == [put("secondary"), put("primary"), "GET ws-1/measurement-side"]
-    assert _active(out["active"], "recording") == ["Primary"] and out["optimistic"] == {"recording": None, "bays": {}}
+    assert _active(out["active"], "recording") == ["Primary"] and out["optimistic"] == {"recording": None, "groups": {}}
+
+
+def test_voltage_and_current_choices_queue_in_order_and_each_reaches_only_its_own_group():
+    data = _overview(_recording(), [_group("g1", "voltage"), _group("g2", "current")])
+    out = _node("""
+    (async function() {
+      ready(payload.data);
+      wwRdSideSelectGroup("g1", "secondary");
+      wwRdSideSelectGroup("g2", "secondary");
+      await flush(); settle(pending[0], {}); await flush(); settle(pending[1], {}); await flush();
+      console.log(JSON.stringify({ log, optimistic: wwRdSide.optimistic }));
+    })();
+    """, {"data": data})
+    assert out["log"] == [
+        'PUT ws-1/sources/s1/measurement-groups/g1/measurement-side {"side":"secondary"}',
+        'PUT ws-1/sources/s1/measurement-groups/g2/measurement-side {"side":"secondary"}',
+        "GET ws-1/measurement-side"]
+    assert out["optimistic"]["groups"] == {"s1|g1": "secondary", "s1|g2": "secondary"}   # until the server view is read
 
 
 def test_a_slow_older_read_can_never_replace_a_newer_view():
@@ -389,19 +430,34 @@ def test_a_response_for_another_workspace_or_recording_is_discarded():
     assert out["afterWorkspace"] is None and out["afterSource"] is None
 
 
-def test_a_selection_in_flight_when_the_recording_changes_never_refreshes_the_old_view():
+def test_a_group_save_in_flight_when_the_recording_changes_never_refreshes_the_old_view():
     out = _node("""
     (async function() {
       ready(payload.data);
-      wwRdSideSelectRecording("secondary");
+      wwRdSideSelectGroup("g1", "secondary");
       await flush();
       wwRdSideInvalidate(); wwRdState.selectedSourceId = "s2";          // switched recording before the answer
       settle(pending[0], {});
       await flush();
       console.log(JSON.stringify({ log, data: wwRdSide.data }));
     })();
-    """, {"data": _overview(_recording())})
-    assert out["log"] == ['PUT ws-1/sources/s1/measurement-side {"side":"secondary"}'] and out["data"] is None
+    """, {"data": _overview(_recording(), [_group("g1")])})
+    assert out["log"] == ['PUT ws-1/sources/s1/measurement-groups/g1/measurement-side {"side":"secondary"}'] and out["data"] is None
+
+
+def test_a_late_answer_re_renders_only_the_group_that_is_on_screen():
+    data = _overview(_recording(), [_group("g1", "voltage"), _group("g2", "current", effective="secondary")])
+    out = _node("""
+    (async function() {
+      ready(payload.data);
+      payload.shownGroup = "g2";                                        // the engineer has since selected the current group
+      wwRdSideSelectGroup("g1", "secondary");
+      await flush(); settle(pending[0], {}); await flush(); settle(pending[1], payload.data); await flush();
+      console.log(JSON.stringify({ group: rendered.group }));
+    })();
+    """, {"data": data, "shownGroup": "g2"})
+    assert 'data-ww-side-group="g2"' in out["group"] and 'data-ww-side-group="g1"' not in out["group"]
+    assert _active(out["group"], "g2") == ["Secondary"]
 
 
 def test_reselecting_what_is_shown_sends_nothing_except_to_confirm_an_inferred_side():
@@ -409,135 +465,20 @@ def test_reselecting_what_is_shown_sends_nothing_except_to_confirm_an_inferred_s
     (async function() {
       ready(payload.plain);
       wwRdSideSelectRecording("primary");
-      wwRdSideSelectBay("ec-1", "primary");
-      wwRdSideSelectBay("ec-new", "secondary");                         // unconfirmed bay: refused client-side as well
+      wwRdSideSelectGroup("g1", "primary");
+      wwRdSideSelectGroup("g-missing", "secondary");                    // unknown group: refused client-side as well
       const none = log.slice();
       ready(payload.inferred);
       wwRdSideSelectRecording("primary");
-      await flush();
+      wwRdSideSelectGroup("g1", "primary");
+      await flush(); settle(pending[0], {}); await flush();             // the group choice is queued behind the recording's
       console.log(JSON.stringify({ none, log }));
     })();
-    """, {"plain": _overview(_recording(), [_bay("ec-1", "A"), _bay("ec-new", "B", membership="suggested")]),
-          "inferred": _overview(_recording(derived=_derived(undeclared=2, p=4)))})
+    """, {"plain": _overview(_recording(), [_group("g1")]),
+          "inferred": _overview(_recording(derived=_derived(undeclared=2, p=4)), [_group("g1", inferred=("c1", "c2"))])})
     assert out["none"] == []
-    assert out["log"] == ['PUT ws-1/sources/s1/measurement-side {"side":"primary"}']
-
-
-def test_a_bay_choice_is_scoped_to_the_recording_on_screen():
-    out = _node("""
-    (async function() {
-      ready(payload.data);
-      wwRdSideSelectBay("ec-1", "secondary");
-      await flush(); settle(pending[0], {}); await flush(); settle(pending[1], payload.data); await flush();
-      console.log(JSON.stringify({ log }));
-    })();
-    """, {"data": _overview(_recording(), [_bay("ec-1", "A"), _bay("ec-1", "A", source="s2")])})
-    assert out["log"] == ['PUT ws-1/sources/s1/engineering-contexts/ec-1/measurement-side {"side":"secondary"}',
-                          "GET ws-1/measurement-side"]
-    # the other recording's association of the same bay is neither shown nor addressable from this recording
-    only_other = _node("""
-    (async function() {
-      ready(payload.data);
-      wwRdSideSelectBay("ec-1", "secondary");
-      await flush();
-      console.log(JSON.stringify({ log }));
-    })();
-    """, {"data": _overview(_recording(), [_bay("ec-1", "A", source="s2")])})
-    assert only_other["log"] == []
-
-
-# --------------------------------------------------------------------------- Confirm bay: explicit, reviewed, status only
-
-
-def _members(*rows):
-    return [{"channel_ref": {"kind": "source", "source_id": src, "channel_name": name}, "phase": phase,
-             "phase_source": evidence, "original_phase_label": label} for name, phase, evidence, label, src in rows]
-
-
-REVIEW_CONTEXT = {"id": "ec-new", "display_name": "KPDN3", "status": "suggested", "members": _members(
-    ("KPDN3_VA", "A", "detected_from_name", "R", "s1"), ("KPDN3_VB", "B", "structured_metadata", None, "s1"),
-    ("KPDN3_IA", "unknown", "unknown", None, "s2"))}
-
-
-def test_confirming_a_bay_is_a_two_step_review_then_a_status_only_patch():
-    data = _overview(_recording(), [_bay("ec-new", "KPDN3", membership="suggested")])
-    out = _node("""
-    (async function() {
-      ready(payload.data);
-      wwRdSideOpenReview("ec-new");
-      await flush();
-      const afterOpen = log.slice();                                    // review: reads the bay's channels, changes nothing
-      settle(pending[0], payload.context);
-      await flush();
-      const panel = rendered.bay;
-      wwRdSideConfirmBay("ec-new");
-      await flush();
-      const afterConfirm = log.slice();
-      settle(pending[1], {});
-      await flush();
-      console.log(JSON.stringify({ afterOpen, panel, afterConfirm, all: log, review: wwRdSide.review }));
-    })();
-    """, {"data": data, "context": REVIEW_CONTEXT})
-    assert out["afterOpen"] == ["GET ws-1/engineering-contexts/ec-new"]
-    panel = out["panel"]
-    assert "Confirm that these channels belong to <strong>KPDN3</strong>?" in panel
-    assert "KPDN3_VA" in panel and ">R<" in panel and "from channel name" in panel          # evidence shown, not hidden
-    assert "from recording metadata" in panel and "not determined" in panel and "(other recording)" in panel
-    assert "The channels and phases are not changed." in panel
-    assert 'data-ww-side-notice="needs-review"' not in panel                                 # only for a needs-review bay
-    assert _buttons(panel).count("Confirm bay") == 1 and "Cancel" in _buttons(panel)
-    assert out["afterConfirm"] == ['GET ws-1/engineering-contexts/ec-new', 'PATCH ws-1/engineering-contexts/ec-new {"status":"confirmed"}']
-    assert out["all"][-1] == "GET ws-1/measurement-side" and out["review"] is None
-
-
-def test_a_needs_review_bay_is_flagged_in_the_review():
-    data = _overview(_recording(), [_bay("ec-new", "KPDN3", membership="suggested")])
-    ctx = dict(REVIEW_CONTEXT, status="needs_review")
-    out = _node("""
-    (async function() {
-      ready(payload.data);
-      wwRdSideOpenReview("ec-new"); await flush(); settle(pending[0], payload.context); await flush();
-      console.log(JSON.stringify({ panel: rendered.bay }));
-    })();
-    """, {"data": data, "context": ctx})
-    notice = re.search(r'data-ww-side-notice="needs-review"[^>]*>([^<]*)<', out["panel"]).group(1)
-    assert "Automatic detection flagged this bay for review" in notice
-
-
-def test_cancelling_or_confirming_without_a_review_changes_nothing():
-    data = _overview(_recording(), [_bay("ec-new", "KPDN3", membership="suggested")])
-    out = _node("""
-    (async function() {
-      ready(payload.data);
-      wwRdSideConfirmBay("ec-new");                                     // never confirmable without the review
-      await flush();
-      const direct = log.slice();
-      wwRdSideOpenReview("ec-new"); await flush(); settle(pending[0], payload.context); await flush();
-      wwRdSideCancelReview(); await flush();
-      console.log(JSON.stringify({ direct, log, review: wwRdSide.review }));
-    })();
-    """, {"data": data, "context": REVIEW_CONTEXT})
-    assert out["direct"] == [] and out["log"] == ["GET ws-1/engineering-contexts/ec-new"] and out["review"] is None
-
-
-def test_a_review_for_another_recording_is_discarded_and_a_failed_review_cannot_confirm():
-    data = _overview(_recording(), [_bay("ec-new", "KPDN3", membership="suggested")])
-    out = _node("""
-    (async function() {
-      ready(payload.data);
-      wwRdSideOpenReview("ec-new"); await flush();
-      wwRdSideInvalidate(); wwRdState.selectedSourceId = "s2";          // the engineer moved to another recording
-      settle(pending[0], payload.context); await flush();
-      const discarded = wwRdSide.review;
-      wwRdState.selectedSourceId = "s1"; ready(payload.data);
-      wwRdSideOpenReview("ec-new"); await flush(); settle(pending[1], {}, 500); await flush();
-      wwRdSideConfirmBay("ec-new"); await flush();
-      console.log(JSON.stringify({ discarded, status: wwRdSide.review.status, log, panel: rendered.bay }));
-    })();
-    """, {"data": data, "context": REVIEW_CONTEXT})
-    assert out["discarded"] is None and out["status"] == "error"
-    assert not any(line.startswith("PATCH") for line in out["log"])
-    assert "cannot be confirmed now" in out["panel"]
+    assert out["log"] == ['PUT ws-1/sources/s1/measurement-side {"side":"primary"}',
+                          'PUT ws-1/sources/s1/measurement-groups/g1/measurement-side {"side":"primary"}']
 
 
 def test_a_refused_save_is_shown_and_the_view_is_re_read():
@@ -546,7 +487,7 @@ def test_a_refused_save_is_shown_and_the_view_is_re_read():
       ready(payload.data);
       wwRdSideSelectRecording("secondary");
       await flush();
-      settle(pending[0], { detail: { code: "x", message: "That bay needs confirmation first." } }, 409);
+      settle(pending[0], { detail: { code: "x", message: "That group has no voltage or current channel." } }, 409);
       await flush();
       const reread = log[log.length - 1];
       settle(pending[1], payload.data);
@@ -555,12 +496,12 @@ def test_a_refused_save_is_shown_and_the_view_is_re_read():
     })();
     """, {"data": _overview(_recording())})
     assert out["reread"] == "GET ws-1/measurement-side"
-    assert "That bay needs confirmation first." in out["html"] and out["optimistic"] == {"recording": None, "bays": {}}
+    assert "That group has no voltage or current channel." in out["html"] and out["optimistic"] == {"recording": None, "groups": {}}
     assert _active(out["html"], "recording") == ["Primary"]                # the server's truth, not the rejected choice
 
 
-def test_every_rendered_button_is_a_side_choice_or_an_explicit_confirmation_step():
-    states = [_bay("ec-a", "A"), _bay("ec-b", "B", membership="suggested"),
-              _bay("ec-c", "C", effective="secondary", override={"side": "secondary", "set_at": "x", "active": True})]
-    html = _render_group(_overview(_recording(), states)) + _render(_overview(_recording(), states))
-    assert set(_buttons(html)) <= {"Primary", "Secondary", "Confirm bay…"}
+def test_every_rendered_button_is_a_side_choice():
+    states = [_group("g1"), _group("g2", "current", effective="secondary", override={"side": "secondary", "set_at": "x"})]
+    data = _overview(_recording(), states)
+    html = _render_group(data) + _render_group(data, kind="current") + _render(data)
+    assert set(_buttons(html)) <= {"Primary", "Secondary"}
