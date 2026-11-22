@@ -106,11 +106,11 @@ async function confirmBayInUi(page, id) {
 
 test("Level 1: one selector, shown from the recording, correctable, with the contradiction disclosed", async ({ page }) => {
   const s = await seed(page);
-  await expect(page.locator("#wwRdSideSection .ww-rd-section-heading")).toHaveText("Measurement side");
+  await expect(page.locator("#wwRdSideSection .ww-rd-section-heading")).toHaveText("Measurement Side");
   await expect(page.locator("#wwRdSideBaySection")).toHaveCount(0);       // no bay controls in Recording Info
   await expect(page.locator('#wwRdSideSection [data-ww-side-row="bay"]')).toHaveCount(0);
   await recActive(page, "primary");
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
   await expect(page.locator('#wwRdSideSection [data-ww-side-notice="recording-override"]')).toHaveCount(0);
 
   await recBtn(page, "secondary").click();
@@ -126,7 +126,7 @@ test("Level 1: one selector, shown from the recording, correctable, with the con
 
   await recBtn(page, "primary").click();                                // back to what the recording declares: no Reset needed
   await recActive(page, "primary");
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
   await expect(notice).toHaveCount(0);
   expect((await getJson(page, `${s.base}/sources/${s.sourceId}/measurement-side`)).engineer_correction).toBeNull();
 });
@@ -383,7 +383,7 @@ test("a quick second choice wins: selections are applied in order and the view s
   await expect.poll(() => puts).toBe(2);
   await page.waitForTimeout(1500);
   await recActive(page, "primary");                                      // the slow first save never overwrote the second
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
   expect((await getJson(page, `${s.base}/sources/${s.sourceId}/measurement-side`)).engineer_correction).toBeNull();
 });
 
@@ -395,7 +395,7 @@ test("a slow read for one recording cannot appear on another", async ({ page }) 
   await expect(recRow(page)).toContainText("Set by engineer");
   await a.item.click();
   await recActive(page, "primary");
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
 
   let reads = 0;
   await page.route("**/measurement-side", async (route) => {
@@ -407,10 +407,10 @@ test("a slow read for one recording cannot appear on another", async ({ page }) 
   await itemB.click();                                                   // slow read starts for B ...
   await a.item.click();                                                  // ... A is opened before it returns
   await recActive(page, "primary");
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
   await page.waitForTimeout(2000);                                       // B's late answer arrives
   await recActive(page, "primary");
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
   await expect(page.locator('#wwRdSideSection[data-ww-side-source="' + a.sourceId + '"]')).toBeVisible();
 });
 
@@ -421,7 +421,7 @@ test("lifecycle: another recording keeps its own state, and a workspace reset le
   const itemB = await upload(page, recording({ prefix: "BRAVO1" }), "side_b");
   await itemB.click();
   await recActive(page, "primary");                                      // B is untouched by A's correction
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
   await a.item.click();
   await recActive(page, "secondary");                                    // A keeps it
 
@@ -434,7 +434,7 @@ test("lifecycle: another recording keeps its own state, and a workspace reset le
   const fresh = await upload(page, recording(), "side_a");               // re-upload of the same file starts clean
   await fresh.click();
   await recActive(page, "primary");
-  await expect(recRow(page)).toContainText("From recording");
+  await expect(recRow(page)).not.toContainText("Set by engineer"); // UI-REC-001: the normal state carries no provenance line
 });
 
 // ------------------------------------------------------------------------------------------------ layout

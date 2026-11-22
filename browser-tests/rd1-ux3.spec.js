@@ -328,7 +328,8 @@ test("RD-1 UX3-D02b: Recording Info body omits the duplicate recording name head
     // The .ww-rd-details-group-header element (name + badge) must NOT appear in Recording Info.
     await expect(details.locator(".ww-rd-details-group-header")).toHaveCount(0);
     // The metadata table must still be present.
-    await expect(details.locator(".ww-rd-config-table")).toBeVisible();
+    // UI-REC-001: the metadata card holds two tables (left / right column).
+    await expect(details.locator(".ww-rd-config-table").first()).toBeVisible();
     await expect(details).toContainText("Format");
 });
 

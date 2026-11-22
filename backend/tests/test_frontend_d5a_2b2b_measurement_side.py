@@ -149,7 +149,7 @@ def _active(html, row):
     """The Primary/Secondary label(s) shown active inside one row (`recording` or a bay id)."""
     marker = 'data-ww-side-row="recording"' if row == "recording" else f'data-ww-side-row="bay" data-ww-side-bay="{row}"'
     chunk = html[html.index(marker):]
-    chunk = chunk[:chunk.index('</span></span>')]
+    chunk = chunk[:chunk.index('</span>', chunk.index('radiogroup'))]   # the segmented control closes first
     return re.findall(r'ww-rd-side-btn--active"[^>]*>(\w+)</button>', chunk)
 
 
@@ -200,11 +200,25 @@ def test_notation_uses_words_not_electrical_symbols():
 # --------------------------------------------------------------------------- Level 1 rendering
 
 
-def test_recording_from_evidence_shows_the_declared_side_and_discreet_provenance():
+def test_recording_from_evidence_shows_the_declared_side_without_a_status_line():
+    # UI-REC-001: the normal state is the heading, the one-line description and the pill control, nothing else.
     html = _render(_overview(_recording(), [_bay("ec-1", "ALPHA1")]))
-    assert _active(html, "recording") == ["Primary"] and "From recording" in html
+    assert _active(html, "recording") == ["Primary"]
     assert html.count('role="radiogroup"') == 1
+    assert "From recording" not in html and "Detected from" not in html and "Applies to the recording" not in html
     assert "Set by engineer" not in html and 'data-ww-side-notice="recording-override"' not in html
+    assert "ww-rd-provenance" not in html
+    assert re.search(r">Measurement Side</div>", html)
+    assert "Measurement side values for voltage and current." in html
+    assert 'class="ww-rd-side-row-label"' not in html               # no redundant "Recording" label beside the selector
+    assert "ww-rd-side-group--pill" in html
+
+
+def test_exceptional_recording_states_keep_a_compact_message():
+    inferred = _render(_overview(_recording(derived=_derived("consistent", "primary", 4, 0, 2))))
+    assert "ww-rd-provenance--suggested" in inferred and "Select it to confirm" in inferred
+    none = _render(_overview(_recording(effective=None, derived=_derived("none", None, 0, 0, 6))))
+    assert "ww-rd-provenance--unresolved" in none and "does not declare a measurement side" in none
 
 
 def test_engineer_correction_discloses_the_contradicted_declarations():
