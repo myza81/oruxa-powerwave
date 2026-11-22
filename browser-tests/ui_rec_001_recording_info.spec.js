@@ -133,11 +133,10 @@ test("header and tabs keep their behaviour; Group Details keeps its own layout",
 
   await page.locator("#wwRdGroupsBody .ww-rd-group-item", { hasText: "VOLTAGE" }).first().click();
   await expect(page.locator("#wwRdTabGroupDetails")).toHaveAttribute("aria-selected", "true");
-  // Group Details is not on the card surface, has no Recording Info cards, and keeps the Level 2 control as it was.
+  // Group Details is not on the Recording Info card surface and has no Recording Info cards; it has its own Level 2 card.
   await expect(body(page)).not.toHaveClass(/ww-rd-details-body--info/);
   await expect(body(page).locator(".ww-rd-info-card")).toHaveCount(0);
-  await expect(page.locator("#wwRdSideBaySection")).toBeVisible();
-  await expect(page.locator("#wwRdSideBaySection .ww-rd-side-group--pill")).toHaveCount(0);
+  await expect(page.locator("#wwRdSideGroupSection")).toBeVisible();
 
   await page.locator("#wwRdTabRecordingInfo").click();
   await expect(body(page)).toHaveClass(/ww-rd-details-body--info/);
