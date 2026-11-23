@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.measurement_group import KIND_CURRENT
-from app.domain.measurement_side_config import SIDE_PRIMARY, STATUS_CONFLICT, ChannelSideResolution
+from app.domain.measurement_side_config import SIDE_PRIMARY, ChannelSideResolution
 from app.domain.overcurrent import (
     KNOWN_RECORDING_BASES,
     REASON_BASIS_CONTRADICTS_SIDE,
@@ -37,8 +37,16 @@ from app.domain.overcurrent import (
     REASON_SIDE_UNRESOLVED,
     ct_values_valid,
 )
-from app.services.current_group_config_registry import CurrentGroupConfigRegistry
-from app.services.measurement_side_service import SideAuthority, build_group_view, resolve_effective_measurement_side
+from app.services.recorded_side_authority import (
+    PROBLEM_CALCULATED,
+    PROBLEM_GROUP_CONFLICT,
+    PROBLEM_INFERRED,
+    PROBLEM_UNRESOLVED,
+    ChannelSideAuthority,
+    RecordedAuthority,
+    channel_label,
+    evaluate_channel_side,
+)
 from app.services.protection_instrument_context import (
     CONSUMABLE_AUTHORITIES,
     QUANTITY_CURRENT,
@@ -46,26 +54,12 @@ from app.services.protection_instrument_context import (
     TransformerContext,
     resolve_transformer_context,
 )
-from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 
 _RATIO_REL_TOL = 1e-6
 
 
-@dataclass(frozen=True, slots=True)
-class OvercurrentAuthority:
-    """The registries the recorded Overcurrent authority reads. Build once per request with `from_app_state`."""
-
-    side: SideAuthority
-    current_config_registry: CurrentGroupConfigRegistry
-    voltage_config_registry: VoltageGroupConfigRegistry
-
-    @classmethod
-    def from_app_state(cls, state) -> "OvercurrentAuthority":
-        return cls(
-            side=SideAuthority.from_app_state(state),
-            current_config_registry=state.current_group_config_registry,
-            voltage_config_registry=state.voltage_group_config_registry,
-        )
+#: The registries the recorded Overcurrent authority reads (shared with Impedance and Distance).
+OvercurrentAuthority = RecordedAuthority
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +97,7 @@ class RecordedCurrentAuthority:
         return None
 
 
-def _channel_label(ref: ChannelRef) -> str:
-    return ref.channel_name if ref.kind == "source" else f"calculated:{ref.calculated_channel_id}"
+_channel_label = channel_label
 
 
 def _where_to_set(group_name: str | None) -> str:
@@ -112,29 +105,29 @@ def _where_to_set(group_name: str | None) -> str:
             if group_name else "Set it in Recording Details (the recording, or the channel's Current Measurement Group).")
 
 
-def _side_blocker(ref: ChannelRef, side: ChannelSideResolution, group_name: str | None,
-                  group_in_conflict: bool) -> AuthorityBlocker | None:
+def _side_blocker(ref: ChannelRef, chan: ChannelSideAuthority) -> AuthorityBlocker | None:
     label = _channel_label(ref)
-    if not side.usable:
+    side, group_name = chan.side, chan.group_name
+    if chan.problem is None:
+        return None
+    if chan.problem == PROBLEM_UNRESOLVED:
         return AuthorityBlocker(
             REASON_SIDE_UNRESOLVED,
             f"The measurement side of '{label}' (Primary or Secondary) is not defined by the recording or by "
             f"Recording Details, so the recorded current cannot be interpreted. {_where_to_set(group_name)}",
         )
-    if side.inferred:
+    if chan.problem == PROBLEM_INFERRED:
         return AuthorityBlocker(
             REASON_SIDE_INFERRED,
             f"The measurement side of '{label}' is only inferred from other channels of the recording ({side.side}); "
             f"a recorded calculation needs the channel's own declaration or an engineer's setting. "
             f"{_where_to_set(group_name)}",
         )
-    if group_in_conflict:
-        return AuthorityBlocker(
-            REASON_SIDE_CONFLICT,
-            f"The channels of the Current Measurement Group '{group_name}' declare different measurement sides, so "
-            f"its side is contradictory. Choose Primary or Secondary for the group in Recording Details.",
-        )
-    return None
+    return AuthorityBlocker(
+        REASON_SIDE_CONFLICT,
+        f"The channels of the Current Measurement Group '{group_name}' declare different measurement sides, so "
+        f"its side is contradictory. Choose Primary or Secondary for the group in Recording Details.",
+    )
 
 
 def _other_group_with_ct(workspace_id: str, ref: ChannelRef, own_group_id: str | None,
@@ -203,7 +196,8 @@ def evaluate_recorded_current_authority(
     """Decide whether the recorded current of `channel_ref` may be consumed, and on which side, with which CT.
 
     `requested_basis` / `request_ct` are the legacy request assertions (None when the caller supplied none)."""
-    if channel_ref.kind != "source":
+    chan = evaluate_channel_side(workspace_id, channel_ref, authority=authority)
+    if chan.problem == PROBLEM_CALCULATED:
         return RecordedCurrentAuthority(
             channel_ref, None, None, None, None,
             AuthorityBlocker(
@@ -214,22 +208,14 @@ def evaluate_recorded_current_authority(
                 f"until that support is added; use a recorded (source) current channel or Manual input.",
             ),
         )
-    side = resolve_effective_measurement_side(
-        workspace_id, channel_ref.source_id, channel_ref.channel_name, deps=authority.side,
-    )
-    group = authority.side.group_registry.get(workspace_id, side.group_id) if side.group_id else None
-    group_name = group.display_name if group is not None else None
+    side, group_name = chan.side, chan.group_name
     ct = resolve_transformer_context(
         workspace_id, [channel_ref], QUANTITY_CURRENT,
         group_registry=authority.side.group_registry, voltage_config_registry=authority.voltage_config_registry,
         current_config_registry=authority.current_config_registry, source_registry=authority.side.source_registry,
     )
-    group_in_conflict = False
-    if group is not None:
-        view = build_group_view(workspace_id, channel_ref.source_id, group.id, deps=authority.side)
-        group_in_conflict = view.resolution.status == STATUS_CONFLICT
 
-    blocker = _side_blocker(channel_ref, side, group_name, group_in_conflict)
+    blocker = _side_blocker(channel_ref, chan)
     if blocker is None and requested_basis is not None:
         if requested_basis not in KNOWN_RECORDING_BASES:
             blocker = AuthorityBlocker(REASON_INVALID_RECORDING_BASIS, "Recording current basis must be 'primary' or 'secondary'.")
@@ -240,6 +226,6 @@ def evaluate_recorded_current_authority(
                 f"Recording Details ({side.side}). Recording Details is authoritative; change the side there.",
             )
     if blocker is None and side.side == SIDE_PRIMARY:
-        other = None if ct.ratio_consumable else _other_group_with_ct(workspace_id, channel_ref, group.id if group else None, authority)
+        other = None if ct.ratio_consumable else _other_group_with_ct(workspace_id, channel_ref, chan.group_id, authority)
         blocker = _ct_blocker(channel_ref, ct, group_name, other) or _request_ct_blocker(ct, request_ct)
-    return RecordedCurrentAuthority(channel_ref, group.id if group else None, group_name, side, ct, blocker)
+    return RecordedCurrentAuthority(channel_ref, chan.group_id, group_name, side, ct, blocker)
