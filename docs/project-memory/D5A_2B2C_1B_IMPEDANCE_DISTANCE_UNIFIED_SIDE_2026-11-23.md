@@ -121,7 +121,26 @@ and the specific blocker messages — now produced by the backend and asserted t
 
 ## 7. Verification
 
-_(filled in at the end of the slice — see below)_
+Commits above `f24f1d7`: `3e9cc5f` (shared channel policy), `b7b689d` (backend), `4187680` (legacy-suite adaptation), `843f346` (frontend), and the documentation / evidence commit that holds this file.
+
+| Layer | Result |
+|---|---|
+| Backend, full suite (`pytest tests`, includes every frontend static/Node test) | **14,059 collected: 13,654 passed, 405 skipped, 0 failed** (31 min). The approved baseline (1A final) was 13,528 passed / 405 skipped; the difference is the new and rewritten tests. |
+| New backend suites | oracles **34**, enforcement **52**, all passing |
+| New Node + static frontend suite | **57** passing (the real `D5A-2B2C-1B-BLOCK` run in Node; includes reports from the real endpoint) |
+| Mutation checks (`scripts/diagnostics/d5a_2b2c_1b_mutation_checks.py`) | **17 / 17 mutants killed**: reversed conversion ratio; double conversion of the impedance voltage, the impedance current and a distance voltage leg; a distance current leg not converted; low-current floor not scaled; conversions using the declared instead of the effective side (bypass of the shared authority); assertions not validated; a request ratio replacing the authoritative one; a request ratio compensating for a missing one; a ratio required where none is needed; wrong-group VT/CT borrowing (two variants); mixed group declarations ignored; an inferred side accepted; calculated channels not guarded; the ratio-required flag inverted. Each production file was restored (`git status` clean afterwards). |
+| Browser, affected set (11 spec files: the new `d5a_2b2c_1b_protection_side` (16 cases), `impedance_analysis`, `distance_protection_analysis`, `distance_dynamic_zones`, `distance_manual_input_layout`, `distance_resistive_reach_ux`, `distance_reverse_zone`, `analysis_related_waveforms`, `overcurrent_analysis`, `d5a_2b2c_1a_overcurrent_side`, `d5a_ui_002_group_details`) | **221 passed, 0 failed** (14.9 min, isolated :8102 / :8200) |
+| Browser, `post_upload_readiness` (shared Primary-declared fixture; known baseline failures) | this tree **14 passed / 12 failed**; approved baseline `f24f1d7` **14 passed / 12 failed**; the two failing sets are **identical** (the Overcurrent / Impedance / Distance auto-resolve tests that expect a number on a fixture that declares Primary and has no VT/CT — they already fail on the baseline). |
+| Locus / performance | `test_locus_shared_phasor_preparation.py` 10 / 10: the locus numerically equals independent single-point calls, and static preparation still runs once per role for the whole locus (6 role resolutions for a 50-point locus, not 300). The new suite additionally proves **one** authority evaluation per request, locus included. |
+
+**Not re-run:** the Playback, Playback-ownership and Phasor shared-clock browser specs (they fail identically on the baseline and do not touch this change); the full browser suite.
+
+**Performance / regression observations.** The authority is evaluated once per request (channel sides, group status and the two transformer lookups; no I/O beyond the in-memory registries). A selected-time request costs the same as before plus
+the read; a locus shares one evaluation. The page issues one report read per context / phase|loop / output-side change — never per Playback tick or per locus point. The existing 1 ms-class numeric loop (`prepare_phasor_diagram` once per locus) is unchanged.
+
+**Process notes.** (1) The legacy suites that failed on the first pass (54 tests in ten files) all asserted the retired contract or relied on a fixture that declares every channel `P`; each was restated, none deleted or weakened (§6). (2) Auto-discovery
+creates Measurement Groups on upload, so fixtures configure the existing groups instead of creating new ones. (3) A request ratio that merely restates the authoritative ratio (e.g. 220 000:220 for 110 000:110) is accepted; the authoritative pair is what is echoed.
+
 
 ## 8. Decisions and limitations for the owner
 
@@ -136,4 +155,17 @@ _(filled in at the end of the slice — see below)_
 
 ## 9. DEV UAT checklist (after the owner authorises a push and deploy)
 
-_(filled in at the end of the slice — see below)_
+Use a recording whose Voltage and Current channels are in Measurement Groups with a VT/CT configured, and open Analysis → Impedance Locus, then Distance Protection (Recording input source).
+
+1. **No Recording-basis input.** The panel shows `Impedance basis (output)` only; below it a read-only block "Recorded input — from Recording Details" with Voltage side, VT, Current side, CT. Output Secondary on a Primary recording shows the VT and CT (with their group names) that convert; switch the output to Primary and both show "not needed (… already Primary)" and the result still computes. The impedance basis selector stays editable.
+2. **Independent sides.** In Recording Details set only the Voltage group to Secondary (Level 2): return to the analyzer — Voltage side reads "Secondary (set by engineer for <group>)", the VT row reads "not needed", Current stays Primary with its CT, a note says the recording declared Primary, and the number follows. Repeat with the Current group.
+3. **Recording correction.** Set the recording side (Level 1) — both sides follow, the declaration is unchanged in Recording Details.
+4. **Blockers.** Remove the CT (output Secondary, Primary current): the status row and the block name the group ("CT is not configured for '<group>'"), no number, no zone state, **Configure in Recording Details** opens that group, Related Waveforms still plot the channels. Likewise a missing VT, a group with mixed declarations ("conflicting declarations"), and a recording with no P/S evidence ("only inferred, not usable" / "not defined") until you set a side.
+5. **Same-side needs nothing.** With both quantities on the output side, delete the VT/CT: the result still computes.
+6. **Auto-derived VT.** A group with only a nominal voltage shows "132 kV / 110 V (Auto-derived, <group>)" and calculates.
+7. **Numbers.** With VT 110 000:110, CT 1000:5, V 66 000 V / 66 V and I 400 A / 2 A, every Voltage × Current × output combination gives 165 Ω (Primary) / 33 Ω (Secondary) at ∠30°, in Impedance and in Distance (AB, BC, CA) and along the locus; Distance zones follow the converted impedance.
+8. **Locus and playback.** Scrub and play: no extra requests per tick (network tab: only the two analysis requests, none to `protection-recorded-input`); changing the output side, phase/loop or any Recording Details setting updates the next result and the locus.
+9. **Manual input source.** Unchanged — Voltage/Current basis, CT/VT and output-impedance controls all present; the recorded block is hidden.
+10. **Direct API (optional).** `GET .../impedance?phase=A&analysis_time=…&impedance_basis=primary` with no other parameter computes from Recording Details; adding `voltage_side=secondary` against a Primary recording blocks with `voltage_side_contradicts_recording`; `vt_primary=1&vt_secondary=1` blocks with `request_vt_conflicts_with_authority` when a VT conversion is needed.
+11. **Overcurrent** (D5A-2B2C-1A) behaves as before.
+
