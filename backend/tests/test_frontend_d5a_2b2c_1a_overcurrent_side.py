@@ -7,7 +7,8 @@ from Recording Details, and enforces it. The page only reads the backend's `over
 This file supersedes the D5A-OC-001 frontend tests, which exercised the shared Impedance/Distance `wwCtVt*` plan with a
 user-chosen Recording basis (a design DEC-216 retires). Every behaviour that file protected and that still applies is kept
 here: Manual mode untouched, nothing shown while the read is in flight, stale reads discarded, a reset empties everything,
-Related Waveforms stay available for a blocked result, and Impedance/Distance are unaffected.
+and Related Waveforms stay available for a blocked result. Since D5A-2B2C-1B Impedance and Distance have their own report-driven
+block, tested in `test_frontend_d5a_2b2c_1b_protection_side.py`.
 
 The consumer logic runs the REAL `D5A-2B2C-1A-BLOCK` of frontend/index.html with Node against a fake network (no
 re-implementation).
@@ -22,8 +23,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-from tests.test_frontend_d5a_ctvt_authority import _plan, _quantity, _report as _dist_report, _ct_q
 
 SOURCE = (Path(__file__).resolve().parents[2] / "frontend" / "index.html").read_text(encoding="utf-8")
 BLOCK_START, BLOCK_END = "// D5A-2B2C-1A-BLOCK-START", "// D5A-2B2C-1A-BLOCK-END"
@@ -133,11 +132,12 @@ def test_a_blocked_result_still_feeds_related_waveforms_and_is_never_plotted():
     assert "wwOvercurrentPushRelatedWaveformRoles();" in render and "wwOcRecordedInputMessage()" in render
 
 
-def test_the_shared_ct_vt_block_serves_impedance_and_distance_only():
-    block = SOURCE[SOURCE.index("// ---- D5A: authoritative CT/VT for the RECORDED Impedance Locus and"):SOURCE.index("function wwImpedanceFetchAnalysis(")]
-    code = _code_only(block)
+def test_the_impedance_and_distance_block_is_separate_from_this_one():
+    """The two blocks share no state or helper: the Overcurrent block never reaches into `wwCtVt*` and vice versa."""
+    shared = SOURCE[SOURCE.index("// D5A-2B2C-1B-BLOCK-START"):SOURCE.index("// D5A-2B2C-1B-BLOCK-END")]
+    code = _code_only(shared)
     assert "wwOvercurrent" not in code and '"overcurrent"' not in code
-    assert "strictSides" not in block and "strict" not in code
+    assert "wwCtVt" not in _code_only(_block())
     assert 'wwCtVtPanel("overcurrent")' not in SOURCE and 'wwCtVtRefresh("overcurrent"' not in SOURCE
 
 
@@ -557,19 +557,3 @@ def test_a_mixed_group_blocker_names_the_group_links_to_it_and_a_resolved_one_di
     assert resolved["blocks"] is False
     assert [n["code"] for n in resolved["plan"]["notes"]] == ["SIDE_OVERRIDES_DECLARATION"]
     assert "declares secondary" in resolved["plan"]["notes"][0]["text"]
-
-
-# --------------------------------------------------------------------------- Impedance / Distance are unaffected
-
-
-@pytest.mark.parametrize("kind", ["impedance", "distance"])
-def test_impedance_and_distance_still_treat_a_contradiction_as_a_warning_and_keep_their_params(kind):
-    voltage = _quantity(side="secondary", declared_basis="secondary")
-    current = _ct_q(side="secondary", declared_basis="secondary")
-    out = _plan(_dist_report(voltage, current), "primary", "primary", kind=kind)
-    assert out["plan"]["blockers"] == []
-    assert [w["code"] for w in out["plan"]["warnings"]] == ["RECORDING_BASIS_CONTRADICTS_VOLTAGE", "RECORDING_BASIS_CONTRADICTS_CURRENT"]
-    needed = _plan(_dist_report(_quantity(), _ct_q()), "primary", "secondary", kind=kind)
-    assert needed["params"] == {"recording_basis": "primary", "impedance_basis": "secondary", "vt_primary": "132000",
-                                "vt_secondary": "110", "ct_primary": "1200", "ct_secondary": "1"}
-    assert needed["plan"]["blockers"] == []

@@ -275,7 +275,7 @@ class TestDistanceRXPlotReusesImpedanceScale:
 
     def test_render_plot_reuses_impedance_radius_and_nice_limit(self):
         source = _source()
-        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceCtVtFieldsNeeded")
+        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceUpdateCtVtFieldsVisibility")
         default_view = _function_body(source, "function wwDistanceDefaultView", "function wwDistanceFitZonesView")
         assert "wwImpedanceNiceLimit(maxAbs)" in default_view
         assert "wwDistanceDefaultView()" in fn
@@ -285,7 +285,7 @@ class TestDistanceRXPlotReusesImpedanceScale:
 
     def test_mho_and_quadrilateral_svg_use_the_same_toSvg_transform(self):
         source = _source()
-        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceCtVtFieldsNeeded")
+        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceUpdateCtVtFieldsVisibility")
         assert "wwDistanceMhoCircleSvg(key, z, toSvg, pxPerOhm)" in fn
         assert "wwDistanceQuadrilateralSvg(key, z, toSvg)" in fn
 
@@ -412,7 +412,7 @@ class TestDistanceRXViewportControls:
 
     def test_single_shared_px_per_ohm_for_both_axes(self):
         source = _source()
-        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceCtVtFieldsNeeded")
+        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceUpdateCtVtFieldsVisibility")
         assert "const toSvg = (r, x) => [(r - view.centerR) * pxPerOhm, -(x - view.centerX) * pxPerOhm];" in fn
         assert 'preserveAspectRatio="xMidYMid meet"' in _function_body(source, 'id="wwDistanceSvg"', "</svg>")
 

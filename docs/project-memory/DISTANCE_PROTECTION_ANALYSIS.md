@@ -1,5 +1,11 @@
 # Distance Protection Analysis
 
+> **Recorded-mode input side superseded by D5A-2B2C-1B (2026-11-23, DEC-216 Amendment 6):** the recorded Distance Protection no longer has a Recording-basis input and its
+> requests carry only the requested OUTPUT side (`impedance_basis`). The side of each consumed Voltage and Current channel, and the VT/CT of the Measurement Groups that own them, come from
+> Recording Details, enforced by the backend for every client; `recording_basis`, `voltage_side`, `current_side` and `vt_*`/`ct_*` are optional assertions that can only block on a contradiction.
+> The impedance mathematics, guardrails and Manual mode are unchanged. See [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md). Passages below about a user-chosen Recording basis or request-carried ratios describe the earlier
+> behaviour.
+
 > **Relay Import (Slice 3):** the panel has an additive *Import Relay
 > Settings* control (PDF upload, validated and discarded server-side; no
 > extraction or auto-population yet). Manual entry is unchanged. See
