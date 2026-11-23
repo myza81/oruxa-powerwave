@@ -30,14 +30,11 @@ from app.domain.impedance import (
     IMPEDANCE_STATUS_NEEDS_CONFIGURATION,
     IMPEDANCE_STATUS_NOT_ELIGIBLE,
     REASON_CURRENT_TOO_SMALL,
-    REASON_INVALID_RATIO,
     ImpedanceAnalysisResult,
     ImpedanceLocusPoint,
     ManualImpedanceResult,
     compute_impedance_point,
-    convert_impedance_basis,
     evaluate_manual_impedance,
-    impedance_ratio_valid,
 )
 from app.domain.impedance import MIN_CURRENT_A
 from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
@@ -49,6 +46,7 @@ from app.domain.side_conversion import (
     SidePlan,
     normalise_to_amperes,
     normalise_to_volts,
+    plan_echo,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -88,36 +86,24 @@ def compute_impedance_analysis(
     phase: str,
     analysis_time: float,
     reference_frequency_hz_override: float | None,
-    recording_basis: str,
     impedance_basis: str,
-    vt_primary: float | None,
-    vt_secondary: float | None,
-    ct_primary: float | None,
-    ct_secondary: float | None,
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
-    side_plan: SidePlan | SideBlock | None = None,
+    side_plan: SidePlan | SideBlock,
 ) -> ImpedanceAnalysisResult:
-    """Selected-time-only Recording-mode Impedance for ONE phase
-    (`Za`/`Zb`/`Zc`). `recording_basis` describes the basis the
-    RESOLVED Va/Vb/Vc and Ia/Ib/Ic channels' own `magnitude_rms` values
-    already represent (mirrors Overcurrent's own `recording_basis`
-    concept, extended to cover Voltage too since Impedance needs both);
-    `impedance_basis` is the INDEPENDENT desired OUTPUT basis (task's own
-    section 11 -- never inferred from `recording_basis`). Ratios
-    (`vt_primary`/`vt_secondary`/`ct_primary`/`ct_secondary`) are only
-    required, and only validated, when a genuine conversion is needed
-    (`recording_basis != impedance_basis`) -- if they already match, `Z =
-    V/I` is returned directly with zero ratio dependency, exactly
-    matching the task's own golden-example convention (section 22: "same
-    basis," no CT/VT involved at all)."""
+    """Selected-time-only Recording-mode Impedance for ONE phase (`Za`/`Zb`/`Zc`).
+
+    D5A-2B2C-1B: the recorded side of the Voltage and of the Current and the VT/CT ratios come ONLY from Recording
+    Details, through `side_plan` (see `independent_side_service`); `impedance_basis` is the INDEPENDENT desired OUTPUT
+    basis. `side_plan` is required: a plan is a validated conversion (each quantity goes directly to the output side, a
+    ratio is applied only where a quantity's side differs from it) and a block is a refusal that reports its reason and
+    keeps the resolved channels' identities. There is no legacy path that trusts a request-supplied basis or ratio."""
     if isinstance(side_plan, SideBlock):
         v_key, i_key = "V" + phase.lower(), "I" + phase.lower()
         return _blocked_impedance_result(
             side_plan, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
-            recording_basis=recording_basis, impedance_basis=impedance_basis,
-            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            impedance_basis=impedance_basis,
             voltage_channel_ref=side_plan.role_refs.get(v_key), voltage_unit=side_plan.role_units.get(v_key),
             current_channel_ref=side_plan.role_refs.get(i_key), current_unit=side_plan.role_units.get(i_key),
         )
@@ -128,23 +114,19 @@ def compute_impedance_analysis(
     )
     return _impedance_analysis_from_diagram(
         diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
-        recording_basis=recording_basis, impedance_basis=impedance_basis,
-        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-        side_plan=side_plan,
+        impedance_basis=impedance_basis, side_plan=side_plan,
     )
 
 
 def _blocked_impedance_result(
-    block: SideBlock, *, engineering_context_id: str, phase: str, analysis_time: float, recording_basis, impedance_basis,
-    vt_primary, vt_secondary, ct_primary, ct_secondary,
+    block: SideBlock, *, engineering_context_id: str, phase: str, analysis_time: float, impedance_basis,
     voltage_channel_ref=None, voltage_unit=None, current_channel_ref=None, current_unit=None,
 ) -> ImpedanceAnalysisResult:
-    """Independent-side mode refused: needs_configuration with a machine-readable reason; legacy is not a fallback.
-    The channels that resolved (never an unresolved one) are still identified, so the physical signals stay plottable."""
+    """The authority refused: needs_configuration with a machine-readable reason. The channels that resolved (never an
+    unresolved one) are still identified, so the physical signals stay plottable."""
     return ImpedanceAnalysisResult(
         status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
-        analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
-        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        analysis_time=analysis_time, **plan_echo(block, impedance_basis),
         voltage_channel_ref=voltage_channel_ref, voltage_unit=voltage_unit,
         current_channel_ref=current_channel_ref, current_unit=current_unit,
         reason_code=block.code, message=block.message, side_conversion=block.info,
@@ -153,26 +135,32 @@ def _blocked_impedance_result(
 
 def _strict_impedance_result(
     plan: SidePlan, voltage_role, current_role, *, diagram: PhasorDiagramResult, engineering_context_id: str, phase: str,
-    analysis_time: float, recording_basis, impedance_basis, vt_primary, vt_secondary, ct_primary, ct_secondary,
+    analysis_time: float, impedance_basis,
 ) -> ImpedanceAnalysisResult:
-    """Independent-side conversion: each quantity goes directly to `impedance_basis`, then Z = V / I once."""
+    """Each quantity goes directly to `impedance_basis` (a ratio only where its side differs), then Z = V / I once."""
     echo = dict(
         engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
-        recording_basis=recording_basis, impedance_basis=impedance_basis,
-        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        **plan_echo(plan, impedance_basis),
     )
 
     def refuse(code: str, message: str, quantity: str | None = None) -> ImpedanceAnalysisResult:
         block = SideBlock(code=code, message=message, quantity=quantity, voltage_side=plan.voltage_side,
-                          current_side=plan.current_side, output_side=plan.output_side)
+                          current_side=plan.current_side, output_side=plan.output_side,
+                          voltage_side_authority=plan.voltage_side_authority, current_side_authority=plan.current_side_authority,
+                          voltage_group_ids=plan.voltage_group_ids, current_group_ids=plan.current_group_ids,
+                          voltage_group_names=plan.voltage_group_names, current_group_names=plan.current_group_names)
         return _blocked_impedance_result(
-            block, **echo, voltage_channel_ref=voltage_role.channel_ref, voltage_unit=voltage_role.unit,
+            block, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
+            impedance_basis=impedance_basis, voltage_channel_ref=voltage_role.channel_ref, voltage_unit=voltage_role.unit,
             current_channel_ref=current_role.channel_ref, current_unit=current_role.unit,
         )
 
     if (not plan.validated or set(plan.voltage_refs) != {voltage_role.channel_ref}
             or set(plan.current_refs) != {current_role.channel_ref}):
         return refuse(REASON_CHANNEL_MISMATCH, "The validated channels do not match the channels this analysis consumed.")
+    # D5A-UNIT-001: Z = V / I only in consistent SI quantities. The recorded magnitudes are in the channels' own units
+    # (V/kV, A/kA, ...), so normalise to volts and amperes through the shared unit layer first. An unrecognised unit is
+    # refused, never divided raw and labelled ohms.
     voltage = normalise_to_volts(voltage_role.magnitude_rms, voltage_role.unit)
     if voltage is None:
         return refuse(REASON_UNSUPPORTED_VOLTAGE_UNIT, f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts.", "voltage")
@@ -186,7 +174,7 @@ def _strict_impedance_result(
         current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
         side_conversion=plan.info,
     )
-    # The low-current floor keeps judging the RECORDED current (scaled to the output side) exactly as legacy does.
+    # The low-current floor keeps judging the RECORDED current (scaled to the output side).
     point = compute_impedance_point(
         plan.scale_voltage(voltage), voltage_role.angle_deg_absolute, plan.scale_current(current),
         current_role.angle_deg_absolute, min_current=MIN_CURRENT_A * plan.current_scale,
@@ -209,13 +197,8 @@ def _impedance_analysis_from_diagram(
     engineering_context_id: str,
     phase: str,
     analysis_time: float,
-    recording_basis: str,
     impedance_basis: str,
-    vt_primary: float | None,
-    vt_secondary: float | None,
-    ct_primary: float | None,
-    ct_secondary: float | None,
-    side_plan: SidePlan | None = None,
+    side_plan: SidePlan,
 ) -> ImpedanceAnalysisResult:
     """DEC-114: the `diagram`-consuming remainder of
     `compute_impedance_analysis()`'s own work, factored out so a locus
@@ -227,28 +210,18 @@ def _impedance_analysis_from_diagram(
     reference-frequency/waveform-form-eligibility pipeline for every
     sample time. `compute_impedance_analysis()` itself still calls
     `compute_phasor_diagram()` directly -- its own external behavior for
-    a single selected time is unchanged."""
+    a single selected time is unchanged. The ONE `side_plan` (a single
+    authoritative configuration snapshot) applies to every sample."""
+    echo = plan_echo(side_plan, impedance_basis)
 
     def _short_circuit(status: str, *, reason_code: str | None, message: str) -> ImpedanceAnalysisResult:
         return ImpedanceAnalysisResult(
             status=status, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
-            recording_basis=recording_basis, impedance_basis=impedance_basis,
-            reason_code=reason_code, message=message,
+            reason_code=reason_code, message=message, **echo,
         )
 
     if diagram.status != "computed":
         return _short_circuit(diagram.status, reason_code=diagram.reason_code, message=diagram.message)
-
-    def _blocked_with_channels(reason_code: str, message: str) -> ImpedanceAnalysisResult:
-        """A configuration block where both roles ARE available: same status/reason/message as before, but the
-        resolved channels and their units are kept so the signals can still be shown (identity is not a result)."""
-        return ImpedanceAnalysisResult(
-            status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
-            analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
-            voltage_channel_ref=voltage_role.channel_ref, voltage_unit=voltage_role.unit,
-            current_channel_ref=current_role.channel_ref, current_unit=current_role.unit,
-            reason_code=reason_code, message=message,
-        )
 
     voltage_role = diagram.roles.get("V" + phase.lower())
     current_role = diagram.roles.get("I" + phase.lower())
@@ -259,66 +232,9 @@ def _impedance_analysis_from_diagram(
         status, reason = _worse_role_status(voltage_role, current_role)
         return _short_circuit(status, reason_code=reason, message="One or both required phasors are not available for this phase.")
 
-    if side_plan is not None:
-        return _strict_impedance_result(
-            side_plan, voltage_role, current_role, diagram=diagram, engineering_context_id=engineering_context_id,
-            phase=phase, analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
-            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-        )
-
-    needs_ratios = recording_basis != impedance_basis
-    if needs_ratios and not (
-        vt_primary is not None and vt_secondary is not None and ct_primary is not None and ct_secondary is not None
-        and impedance_ratio_valid(vt_primary, vt_secondary) and impedance_ratio_valid(ct_primary, ct_secondary)
-    ):
-        return _blocked_with_channels(
-            REASON_INVALID_RATIO, "Valid VT and CT ratios are required to convert between Recording and Impedance basis.",
-        )
-
-    # D5A-UNIT-001: Z = V / I only in consistent SI quantities. The recorded magnitudes are in the channels' own
-    # units (V/kV, A/kA, ...), so normalise to volts and amperes through the shared unit layer first. The low-current
-    # floor (1 mA) is therefore judged in amperes. An unrecognised unit is refused, never divided raw and labelled ohms.
-    voltage = normalise_to_volts(voltage_role.magnitude_rms, voltage_role.unit)
-    if voltage is None:
-        return _blocked_with_channels(
-            REASON_UNSUPPORTED_VOLTAGE_UNIT,
-            f"Voltage unit {voltage_role.unit!r} cannot be normalized to volts; impedance in ohms is not available.",
-        )
-    current = normalise_to_amperes(current_role.magnitude_rms, current_role.unit)
-    if current is None:
-        return _blocked_with_channels(
-            REASON_UNSUPPORTED_CURRENT_UNIT,
-            f"Current unit {current_role.unit!r} cannot be normalized to amperes; impedance in ohms is not available.",
-        )
-    point = compute_impedance_point(
-        voltage, voltage_role.angle_deg_absolute, current, current_role.angle_deg_absolute,
-    )
-    if point is None:
-        return ImpedanceAnalysisResult(
-            status=IMPEDANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
-            analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
-            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
-            voltage_channel_ref=voltage_role.channel_ref, voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
-            current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
-            reason_code=REASON_CURRENT_TOO_SMALL, message="Current too small for reliable impedance calculation.",
-        )
-
-    point_out = convert_impedance_basis(
-        point, from_basis=recording_basis, to_basis=impedance_basis,
-        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-    )
-
-    return ImpedanceAnalysisResult(
-        status=IMPEDANCE_STATUS_COMPUTED, engineering_context_id=engineering_context_id, phase=phase,
-        analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
-        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
-        voltage_channel_ref=voltage_role.channel_ref, voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
-        current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
-        resistance_ohm=point_out.resistance_ohm, reactance_ohm=point_out.reactance_ohm,
-        magnitude_ohm=point_out.magnitude_ohm, angle_deg=point_out.angle_deg,
-        message="Impedance computed.",
+    return _strict_impedance_result(
+        side_plan, voltage_role, current_role, diagram=diagram, engineering_context_id=engineering_context_id,
+        phase=phase, analysis_time=analysis_time, impedance_basis=impedance_basis,
     )
 
 
@@ -338,16 +254,11 @@ def compute_impedance_locus(
     end_time: float,
     point_count: int,
     reference_frequency_hz_override: float | None,
-    recording_basis: str,
     impedance_basis: str,
-    vt_primary: float | None,
-    vt_secondary: float | None,
-    ct_primary: float | None,
-    ct_secondary: float | None,
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
-    side_plan: SidePlan | SideBlock | None = None,
+    side_plan: SidePlan | SideBlock,
 ) -> list[ImpedanceLocusPoint]:
     """The static locus/trajectory (task's own section 18-19) --
     deterministic, independent of Playback speed: sampled once, on
@@ -404,9 +315,7 @@ def compute_impedance_locus(
         diagram = evaluate_prepared_phasor_diagram(prepared, t)
         result = _impedance_analysis_from_diagram(
             diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=t,
-            recording_basis=recording_basis, impedance_basis=impedance_basis,
-            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            side_plan=side_plan,
+            impedance_basis=impedance_basis, side_plan=side_plan,
         )
         points.append(ImpedanceLocusPoint(
             analysis_time=t, status=result.status,
