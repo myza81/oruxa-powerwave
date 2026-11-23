@@ -8,6 +8,20 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 
 ---
 
+## D5A-2B2C-1A — Overcurrent unified measurement-side integration (2026-11-23)
+
+**Status:** committed locally on `feature/d5a-2b2c-1a-overcurrent-unified-side` (from the DEV-UAT-approved `ad1b6ed`). NOT pushed, merged or deployed. **Stopped for owner review.**
+Recorded Overcurrent now takes the Primary/Secondary side of its consumed Current channel from Recording Details (`resolve_effective_measurement_side`: Level 2 Current group > Level 1 recording
+correction > channel declaration > inferred (not strict) > unresolved) and the CT of that channel's OWN Measurement Group. The page has no Recording-basis input and sends no basis or CT; the backend
+enforces the authority for every client (legacy `recording_basis`/`ct_*` are optional assertions that block on contradiction). New read-only `GET .../overcurrent-recorded-input`. CT mathematics,
+Manual mode, Impedance, Distance, PU and calculated channels are untouched. DEC-216 Amendment 5. Details, enforcement table, tests, verification, limitations and the DEV UAT checklist:
+[D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md).
+
+**Owner decisions requested:** calculated current channels are blocked for now; recordings with no P/S evidence need an engineer setting; a mixed-declaration Current group blocks its phases (report §8).
+**Next action:** owner review. D5A-2B2C-1B, D5A-2B2D, calculated-channel integration and the PU migration start only after authorisation. This branch does not include the local-only tab-corner commits of `feature/d5a-ui-003-restore-typography-spacing`.
+
+---
+
 ## D5A-UI-003 — Restore original typography and spacing in Recording Details (2026-11-22)
 
 **Status:** committed locally on `feature/d5a-ui-003-restore-typography-spacing` (from the deployed DEV build `d2ecc69`). NOT pushed, merged or deployed.

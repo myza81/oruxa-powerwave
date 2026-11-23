@@ -209,6 +209,8 @@ for the full record.
 
 ## Pickup basis and CT conversion
 
+> **Update (D5A-2B2C-1A, 2026-11-23):** for a RECORDING the basis below is no longer chosen by a request or a page control — it is the effective measurement side that Recording Details decides, and the CT is the CT of the consumed channel's own Measurement Group (see "Recorded side and CT are decided by Recording Details" below). The mathematics is unchanged, and Manual input source keeps its own basis and CT.
+
 **Pickup is always specified in relay-secondary amperes** — an explicit,
 unambiguous basis (owner instruction: "do not leave the pickup basis
 ambiguous... do not implement `% plug setting` yet"). The engineer
@@ -1629,6 +1631,8 @@ unchanged, per change governance):
 
 ## Recording current basis and CT field visibility follow the active input source (2026-10-16)
 
+> **Superseded for the Recording input source (D5A-2B2C-1A, 2026-11-23):** the "Recording current basis" input no longer exists; Recording mode shows the side and CT Recording Details decides, read-only. The Manual input source behaviour in this section is unchanged.
+
 Two owner-requested UI refinements on `main`. First, the Recording current
 basis visibility (commit `c66e6c7`). Then a correction to CT field
 visibility, below.
@@ -1692,6 +1696,8 @@ Tests:
 
 ## Recorded CT is read from Recording Details (D5A-OC-001, 2026-11-22)
 
+> **Superseded in part (D5A-2B2C-1A, 2026-11-23):** the CT is still the Measurement Group's, but the page no longer sends a basis or a CT, no longer pre-selects or asks for a Recording basis, and the side/CT are enforced by the backend (below). The Manual-mode and Related-Waveforms statements still hold.
+
 Details, mathematics and tests: [D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md).
 
 - **Recording input source** no longer has CT inputs. The CT of the Measurement Group that owns the
@@ -1705,6 +1711,21 @@ Details, mathematics and tests: [D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.
   undeclared side is chosen by the engineer and stays marked "unverified". The CT ratio never decides the side.
 - A result blocked by configuration still carries `channel_ref` / `measured_rms_current_unit`, so Related
   Waveforms stay available. Every calculation, curve, pickup and unit rule is unchanged.
+
+## Recorded side and CT are decided by Recording Details (D5A-2B2C-1A, 2026-11-23)
+
+Details, data flow, enforcement, tests and the DEV UAT checklist: [D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md);
+decision: [DEC-216 Amendment 5](DECISIONS.md#dec-216--recording-details-is-the-single-authority-for-recorded-measurement-side-d5a-2b2-unified-model).
+
+- **Side.** The Primary/Secondary side of the recorded current is `resolve_effective_measurement_side()` of the consumed Current channel (Level 2 Current-group setting > Level 1 recording
+  correction > the channel's own declaration > inferred default (not strict-usable) > unresolved). Never inferred from a magnitude or a CT ratio.
+- **CT.** Only the CT of the Measurement Group that owns that channel, applied once and only to a Primary current. Secondary needs no CT.
+- **Backend.** `GET .../overcurrent` takes no required `recording_basis`; the legacy `recording_basis` / `ct_primary` / `ct_secondary` are optional assertions that are validated and never applied. An
+  unresolved, inferred-only or contradictory side, a contradicting assertion, or a Primary current without a usable CT returns `needs_configuration` with a reason code and the channel identity (no number).
+  New fields: `measurement_side`, `measurement_side_authority`, `measurement_group_id`, `ct_authority`; `recording_basis` is the effective side used.
+- **Read-only report.** `GET .../engineering-contexts/{id}/overcurrent-recorded-input?phase=` (same evaluation as the calculation).
+- **Page.** No Recording-basis input; a read-only block shows the side with its provenance, the CT with its group, blockers, and **Configure in Recording Details**. The request carries neither basis nor CT.
+- **Manual input source** is unchanged.
 
 ## Not yet implemented (future slices)
 

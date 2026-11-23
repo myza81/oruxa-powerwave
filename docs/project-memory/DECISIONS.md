@@ -29677,3 +29677,26 @@ Owner decision (supersedes the per-(recording, bay) Level 2 of the original deci
 - The D5A-2B2C safeguard stands: matching sides do not establish shared CT/VT conversion authority; the consumer verifies the consumed channel's own group.
 
 Details, API and verification: [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md).
+
+### Amendment 5 (2026-11-23) — recorded Overcurrent consumes the unified effective side (D5A-2B2C-1A)
+
+First consumer-integration slice under the owner's standing requirement (items 1, 2, 6, 7, 8, 9 above) and Amendment 4. Recorded Overcurrent obtains the Primary/Secondary side of its
+current from Recording Details only; PU, Impedance Locus, Distance Protection and calculated channels are NOT migrated here.
+
+- **One resolver.** For the selected phase the consumed Current channel's side is `resolve_effective_measurement_side()` (precedence: Current-group override > recording correction >
+  channel declaration > inferred default, which is not strict-usable > unresolved). Overcurrent has no side logic of its own and never infers a side from a magnitude or a CT ratio.
+- **CT of the consumed channel's own group.** A Primary current is converted once with the CT of the Measurement Group that owns THAT channel (never another group, phase or recording);
+  a Secondary current is never converted; Primary without a usable CT blocks the conversion; Secondary without a CT computes. `Irelay = Irec * CTs/CTp` (Primary) or `Irec` (Secondary) is unchanged.
+- **The page has no Recording-basis input.** The recorded request carries neither a basis nor a CT; the page shows the side (with provenance), the CT (with its group) and a link to Recording Details,
+  read-only. Manual input source and its CT inputs are unchanged.
+- **Backend enforcement (direct API clients included).** An unresolved side, a side only inferred from sibling channels, or a Current group whose own channels declare different sides blocks the
+  calculation (`needs_configuration`, with a reason and the channel identity kept so Related Waveforms stay available). The legacy request `recording_basis`, `ct_primary` and `ct_secondary`
+  are optional ASSERTIONS: validated against Recording Details, never applied, and a contradiction blocks (`recording_basis_contradicts_measurement_side`, `request_ct_differs_from_authority`).
+  An engineer's explicit correction of an incorrect declaration is authoritative and consumable, with provenance and the original evidence retained.
+- **Read-only report.** `GET .../engineering-contexts/{id}/overcurrent-recorded-input?phase=` reports what the calculation will consume and whether it is blocked, from the same evaluation the calculation
+  uses, so the page and the backend cannot disagree. A change at Level 1 or in the consumed channel's group reaches the next request (the resolver is stateless); an unrelated Voltage group changes nothing.
+- **Known limits, for owner decision.** (a) A calculated current channel is blocked (`calculated_channel_side_unavailable`) until calculated-channel side lineage is decided. (b) A recording with no
+  P/S evidence (BEN, CSV, ...) needs an engineer's Level 1 or group setting before a recorded Overcurrent number is shown; the former "choose an unverified basis in the analyzer" path is gone.
+  (c) A Current group with mixed declarations blocks every phase it owns until the engineer chooses a side for the group.
+
+Details, data flow, tests and DEV UAT checklist: [D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md).

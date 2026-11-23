@@ -1,5 +1,9 @@
 # D5A-OC-001 — Recorded Overcurrent takes its CT from Recording Details
 
+> **Partly superseded by D5A-2B2C-1A (2026-11-23, DEC-216 Amendment 5):** the CT is still the consumed channel's own Measurement Group's, but the Recording-basis control, the basis/CT sent in the request and the
+> page-side side rules described below are gone — Recording Details decides the side and the backend enforces it ([D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md)).
+> This document records the behaviour of the DEV-UAT build `a2b55eb`..`ad1b6ed`.
+
 **Status:** implemented and fully regression-verified on `feature/d5a-oc-001-overcurrent-ct-authority`, branched from the accepted D5A UAT
 commit `082b2a6` (`uat/dev-d5a-20261121`). Owner decisions OC-1..OC-3 approved (§4). **Not pushed, merged or deployed.** Awaiting owner authorisation for DEV deployment and UAT.
 **Scope:** recorded Overcurrent only. Impedance, Distance, PU and physical calibration are untouched. D5A-2B2
