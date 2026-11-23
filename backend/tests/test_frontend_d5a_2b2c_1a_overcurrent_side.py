@@ -104,7 +104,7 @@ def test_the_recorded_request_carries_no_basis_and_no_ct():
 def test_the_page_never_derives_a_side_or_a_ct_itself():
     code = _code_only(_block())
     for forbidden in ("measured_rms_current", "relay_secondary_current", "recording_basis", "recordingBasis", "ratio >", "ratio <",
-                      "ct_primary", "* 1000", "/ 1000"):
+                      "ct_primary", "* 1000", "/ 1000", "mva", "rated", "nameplate", "capacity", "equipment", "nominal_current"):
         assert forbidden not in code
     assert not re.search(r"effective_side\s*=(?!=)", code), "the page must never assign a side"
     # a correction goes through Recording Details only
@@ -212,7 +212,6 @@ def test_a_ready_primary_recording_with_a_ct_blocks_nothing():
     ("measurement_side_inferred", "The measurement side of 'ZBAY_IA' is only inferred from other channels."),
     ("measurement_side_conflict", "The channels of the Current Measurement Group 'KPDN1 CURRENT' declare different measurement sides."),
     ("invalid_ct_values", "CT is not configured for the Current Measurement Group 'KPDN1 CURRENT'."),
-    ("calculated_channel_side_unavailable", "The measurement side of a calculated current channel is not resolved yet."),
 ])
 def test_each_backend_blocker_withholds_the_result_with_its_own_message_and_a_link_to_the_group(code, message):
     out = _plan_of(_blocked(code, message))
@@ -486,6 +485,78 @@ const event = { target: { closest: (sel) => (sel === "[data-oc-configure]" ? {} 
 })();
 """
     assert _node(other, {"report": _report(), "status": "ready"}) == {"navigations": [], "groupReads": []}
+
+
+# --------------------------------------------------------------------------- owner-review hardening: calculated channels, Secondary without CT
+
+
+CALCULATED_MESSAGE = ("Measurement-side support for calculated channels is not available yet: the side of the calculated current channel "
+                      "'calculated:calc-1' is derived from its inputs, and Recording Details does not resolve it, so there is nothing to set there.")
+
+
+def _calculated_report(**over):
+    base = _blocked("calculated_channel_side_unavailable", CALCULATED_MESSAGE,
+                    channel_ref={"kind": "calculated", "source_id": None, "channel_name": None, "calculated_channel_id": "calc-1"},
+                    measurement_group_id=None, measurement_group_name=None, measurement_side=None, ct=None)
+    base.update(over)
+    return base
+
+
+def test_a_calculated_current_says_the_support_is_not_available_and_never_suggests_configuring_anything():
+    out = _html(_calculated_report())
+    html = out["html"]
+    assert out["hidden"] is False
+    assert "not available for a calculated channel" in html and "not defined" not in html
+    assert "data-oc-configure" not in html and "Configure in Recording Details" not in html     # no link: nothing there can fix it
+    assert 'data-oc-row="ct"' not in html                                                        # no CT claim for it either
+    assert 'data-oc-code="calculated_channel_side_unavailable"' in html
+    assert "Measurement-side support for calculated channels is not available yet" in html
+    assert "ww-ctvt-missing" not in html                                                         # a limitation, not a defect to fix
+
+
+def test_a_calculated_current_withholds_the_result_and_has_no_configure_target_even_if_a_source_id_were_present():
+    out = _plan_of(_calculated_report())
+    assert out["blocks"] is True and out["plan"]["target"] is None and out["message"] == CALCULATED_MESSAGE
+    odd = _plan_of(_calculated_report(channel_ref={"kind": "source", "source_id": "s1", "channel_name": "X", "calculated_channel_id": None}))
+    assert odd["plan"]["target"] is None                                                         # keyed on the reason, not only the ref
+
+
+def test_a_calculated_current_never_clears_a_stale_source_current_block_or_shows_a_number():
+    out = _node(
+        """
+const st = wwOcRecordedInputState();
+st.status = "ready"; st.report = input.report;
+process.stdout.write(JSON.stringify({ blocks: wwOcRecordedInputBlocksResult(), message: wwOcRecordedInputMessage() }));
+""", {"report": _calculated_report()})
+    assert out["blocks"] is True and "calculated channels is not available yet" in out["message"]
+
+
+def test_a_secondary_current_without_a_ct_has_no_blocker_and_no_critical_ct_styling():
+    missing = _report(measurement_side=_side("secondary"), conversion="none",
+                      ct={"status": "not_configured", "consumable": False, "primary": None, "secondary": None, "ratio": None,
+                          "authority": "not_configured", "reason": "x", "group_ids": ["g2"]})
+    plan = _plan_of(missing)
+    assert plan["plan"]["ready"] is True and plan["plan"]["blockers"] == [] and plan["blocks"] is False and plan["message"] is None
+    html = _html(missing)["html"]
+    assert "ww-ctvt-missing" not in html and "not needed for a Secondary current" in html
+    assert "data-oc-code" not in html                                                            # no message list at all
+    # the same CT state on a PRIMARY current is the blocker the backend reports, and it is shown as a defect
+    primary = _html(_blocked("invalid_ct_values", "CT is not configured for the Current Measurement Group 'KPDN1 CURRENT'.",
+                             ct=missing["ct"]))["html"]
+    assert "ww-ctvt-missing" in primary and 'data-oc-code="invalid_ct_values"' in primary
+
+
+def test_a_mixed_group_blocker_names_the_group_links_to_it_and_a_resolved_one_discloses_the_declaration():
+    conflict = _plan_of(_blocked("measurement_side_conflict",
+                                 "The channels of the Current Measurement Group 'KPDN1 CURRENT' declare different measurement sides, so its side is contradictory. Choose Primary or Secondary for the group in Recording Details.",
+                                 measurement_side=_side("primary", "recording_channel_declared", "primary")))
+    assert [b["code"] for b in conflict["plan"]["blockers"]] == ["measurement_side_conflict"]
+    assert conflict["plan"]["target"] == {"sourceId": "s1", "groupId": "g2"} and "KPDN1 CURRENT" in conflict["message"]
+    resolved = _plan_of(_report(measurement_side=_side("primary", "engineer_group_override", "secondary", diagnostics=[
+        {"code": "GROUP_OVERRIDE_OVERRIDES_DECLARATION", "severity": "warning", "message": "x", "detail": {}}])))
+    assert resolved["blocks"] is False
+    assert [n["code"] for n in resolved["plan"]["notes"]] == ["SIDE_OVERRIDES_DECLARATION"]
+    assert "declares secondary" in resolved["plan"]["notes"][0]["text"]
 
 
 # --------------------------------------------------------------------------- Impedance / Distance are unaffected

@@ -47,23 +47,26 @@ async function seed(page) {
   return seedFrom(page, "Alpha 1");
 }
 
-// A recording that declares NO Primary/Secondary side at all (the COMTRADE P/S column is empty).
-async function seedUndeclared(page) {
+// A synthetic recording whose channels declare the given COMTRADE P/S flag ("P", "S" or "" = undeclared), by role suffix.
+async function seedSynthetic(page, sideOf) {
   const channels = [];
   for (const [suffix, phase] of ALPHA_ROLES) {
     const isVoltage = suffix[0] === "V";
-    channels.push({ name: `ALPHA1_${suffix}`, phase, unit: isVoltage ? "V" : "A", amplitude: isVoltage ? 100 : 40, frequencyHz: 50, side: "" });
+    channels.push({ name: `ALPHA1_${suffix}`, phase, unit: isVoltage ? "V" : "A", amplitude: isVoltage ? 100 : 40, frequencyHz: 50, side: sideOf(suffix) });
   }
   const files = syntheticComtrade({ station: "ALPHA", startClock: "10:00:00.000000", rateHz: 5000, durationS: 2.0, channels });
   await page.goto("/index.html");
   await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
-  await page.locator("#uploadModalFile_0").setInputFiles({ name: "ALPHA_undeclared.cfg", mimeType: "application/octet-stream", buffer: files.cfg });
-  await page.locator("#uploadModalFile_1").setInputFiles({ name: "ALPHA_undeclared.dat", mimeType: "application/octet-stream", buffer: files.dat });
+  await page.locator("#uploadModalFile_0").setInputFiles({ name: "ALPHA_synthetic.cfg", mimeType: "application/octet-stream", buffer: files.cfg });
+  await page.locator("#uploadModalFile_1").setInputFiles({ name: "ALPHA_synthetic.dat", mimeType: "application/octet-stream", buffer: files.dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   return seedFrom(page, "Alpha 1");
 }
+
+// A recording that declares NO Primary/Secondary side at all (the COMTRADE P/S column is empty).
+const seedUndeclared = (page) => seedSynthetic(page, () => "");
 
 async function putCt(page, s, body) {
   const r = await page.request.put(`${s.base}/sources/${s.sourceId}/measurement-groups/${s.current.id}/current-config`, { data: body });
@@ -208,6 +211,7 @@ test.describe("D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording De
     // Nothing to fix: the only message is the non-blocking disclosure that this setting overrides the declared side.
     await expect(block(page).locator('[data-oc-code]:not([data-oc-code="SIDE_OVERRIDES_DECLARATION"])')).toHaveCount(0);
     await expect(block(page).locator('[data-oc-value="ct"]')).toContainText("not needed for a Secondary current");
+    await expect(block(page).locator(".ww-ctvt-missing")).toHaveCount(0);                              // no critical CT styling
   });
 
   test("a recording that declares no side is blocked until an engineer defines it; Related Waveforms stay available", async ({ page }) => {
@@ -354,6 +358,88 @@ test.describe("D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording De
       return wwOcRecordedInputState().report.ct.primary;
     });
     expect(winner).toBe(1200);                                                                      // never the stale 111
+  });
+
+  test("a calculated current channel is blocked with an explicit not-available-yet limitation, no configure link, and Related Waveforms still work", async ({ page }) => {
+    const s = await seed(page);
+    const created = await page.request.post(`${s.base}/calculated-channels`, { data: {
+      name: "IA_scaled", operation: "multiply_constant", parameters: { constant: 1.0 },
+      inputs: [{ kind: "source", source_id: s.sourceId, channel_name: "ALPHA1_IA" }] } });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const calc = await created.json();
+    const ctx = await page.request.post(`${s.base}/engineering-contexts`, { data: { display_name: "Calculated IA", status: "manual", members: [
+      { channel_ref: { kind: "calculated", calculated_channel_id: calc.id }, phase: "A", phase_source: "engineer_confirmed" }] } });
+    expect(ctx.ok(), await ctx.text()).toBeTruthy();
+    const contextId = (await ctx.json()).id;
+    const calculatedBefore = JSON.stringify(await (await page.request.get(`${s.base}/calculated-channels`)).json());
+
+    await page.reload();
+    await page.locator("#mainNavAnalysisBtn").click();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator(`#wwOvercurrentContextSelect option[value="${contextId}"]`)).toHaveCount(1);
+    await page.locator("#wwOvercurrentContextSelect").selectOption(contextId);
+    await page.waitForFunction(() => wwOcRecordedInputState().status === "ready" && wwOcRecordedInputState().report.reason_code === "calculated_channel_side_unavailable");
+
+    await expect(block(page).locator('[data-oc-value="side"]')).toContainText("not available for a calculated channel");
+    await expect(block(page).locator('[data-oc-value="side"]')).not.toContainText("not defined");
+    await expect(block(page).locator("[data-oc-configure]")).toHaveCount(0);                          // nothing in Recording Details can fix it
+    await expect(block(page).locator('[data-oc-row="ct"]')).toHaveCount(0);
+    await expect(block(page).locator('[data-oc-code="calculated_channel_side_unavailable"]'))
+      .toContainText("Measurement-side support for calculated channels is not available yet");
+    await expect(page.locator("#wwOvercurrentStatusRow")).toContainText("not available yet");
+    await expect(page.locator("#wwOvercurrentStatusRow")).not.toContainText("Measurement Group");      // never suggests configuring one
+    await expect(page.locator("#wwOvercurrentValuesList")).toHaveText("");                            // no number, no guess
+    expect(await relayCurrentFromState(page)).toBeNull();
+
+    // Related Waveforms stay functional for the calculated channel.
+    await expect(page.locator("#wwAnalysisRelatedWaveformsCurrentGroup")).toBeVisible();
+    await expect(async () => {
+      const n = await page.evaluate(() => document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.length);
+      expect(n).toBeGreaterThan(0);
+    }).toPass({ timeout: 8000 });
+    // The valid calculated channel was neither deleted nor modified.
+    expect(JSON.stringify(await (await page.request.get(`${s.base}/calculated-channels`)).json())).toBe(calculatedBefore);
+  });
+
+  test("a Current group with mixed P/S declarations blocks until the engineer resolves it; the declarations and the discrepancy stay visible", async ({ page }) => {
+    const s = await seedSynthetic(page, (suffix) => (suffix === "IB" ? "S" : "P"));             // IA Primary, IB Secondary, IC Primary
+    await putCt(page, s, MANUAL_CT);
+    const groups = await (await page.request.get(`${s.base}/sources/${s.sourceId}/measurement-groups`)).json();
+    const group = groups.find((g) => g.id === s.current.id);
+    expect(group.channel_refs.map((r) => r.channel_name).sort()).toEqual(["ALPHA1_IA", "ALPHA1_IB", "ALPHA1_IC"]);   // one mixed group
+    const declared = async () => (await (await page.request.get(`${s.base}/sources/${s.sourceId}/channels`)).json()).analog_channels
+      .filter((c) => /_I[ABC]$/.test(c.name)).map((c) => `${c.name}:${c.measurement_side}`).sort();
+    const originalDeclarations = ["ALPHA1_IA:primary", "ALPHA1_IB:secondary", "ALPHA1_IC:primary"];
+    expect(await declared()).toEqual(originalDeclarations);
+
+    await openOvercurrent(page, s.contextId);
+    await expect(block(page).locator('[data-oc-code="measurement_side_conflict"]')).toContainText(`'${s.current.display_name}'`);
+    await expect(page.locator("#wwOvercurrentStatusRow")).toContainText("declare different measurement sides");
+    await expect(page.locator("#wwOvercurrentValuesList")).toHaveText("");                            // blocked, never a guess
+    await expect(block(page).locator("[data-oc-configure]")).toHaveCount(1);
+    await expect(page.locator("#wwAnalysisRelatedWaveformsCurrentGroup")).toBeVisible();
+
+    // The link opens the group so the engineer can resolve it; the correction is made there (Level 2).
+    await block(page).locator("[data-oc-configure]").click();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
+    expect(await page.evaluate(() => wwRdState.selectedGroupId)).toBe(s.current.id);
+    await setGroupSide(page, s, s.current.id, "primary");
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
+    await expect(block(page).locator('[data-oc-value="side"]')).toContainText("set by engineer", { timeout: 10000 });
+    await expect(block(page).locator('[data-oc-code="measurement_side_conflict"]')).toHaveCount(0);
+    await expect(async () => {
+      const r = await relayCurrentFromState(page);
+      expect(r && r.basis).toBe("primary");
+      expect(r.authority).toBe("engineer_group_override");
+      expect(r.relay).toBeCloseTo(r.measured / 1200, 9);
+    }).toPass({ timeout: 8000 });
+
+    // Phase B is the channel whose own declaration (Secondary) the correction overrides: the discrepancy is disclosed ...
+    await page.locator("#wwOvercurrentPhaseSelect").selectOption("B");
+    await expect(block(page).locator('[data-oc-code="SIDE_OVERRIDES_DECLARATION"]')).toContainText("declares secondary", { timeout: 10000 });
+    // ... and the recording's original P/S declarations were never rewritten.
+    expect(await declared()).toEqual(originalDeclarations);
   });
 
   test("Manual mode keeps its own CT inputs and hides the recorded block; the typed Manual CT is never used for the recording", async ({ page }) => {
