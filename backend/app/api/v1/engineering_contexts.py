@@ -51,7 +51,7 @@ full architecture.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -60,6 +60,7 @@ from pydantic import ValidationError
 from app.domain.calculated_channel import ChannelRef
 from app.domain.engineering_context import EngineeringContext, EngineeringContextMember, context_phase_display
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.measurement_side import ChannelMeasurementSideOut
 from app.schemas.phase_display import PhaseDisplayOut
 from app.schemas.engineering_context import (
     EngineeringContextCreateRequest,
@@ -99,6 +100,8 @@ from app.schemas.overcurrent_analysis import (
     OvercurrentCurvePointOut,
     OvercurrentManualAnalysisResultOut,
     OvercurrentManualLoadingResultOut,
+    OvercurrentRecordedCtOut,
+    OvercurrentRecordedInputOut,
 )
 from app.schemas.phasor_analysis import (
     PhasorAnalysisResultOut,
@@ -139,7 +142,9 @@ from app.services.overcurrent_analysis_service import (
     compute_overcurrent_equipment_loading_analysis,
     compute_overcurrent_manual_analysis,
     list_known_characteristics,
+    read_recorded_current_input,
 )
+from app.services.overcurrent_recorded_input import OvercurrentAuthority
 from app.services.phasor_analysis_service import (
     check_phasor_diagram_readiness,
     compute_phasor_analysis,
@@ -813,7 +818,59 @@ def _overcurrent_result_to_out(result) -> OvercurrentAnalysisResultOut:
         above_pickup_duration_seconds=result.above_pickup_duration_seconds,
         threshold_exceeded=result.threshold_exceeded,
         warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+        measurement_side=result.measurement_side, measurement_side_authority=result.measurement_side_authority,
+        measurement_group_id=result.measurement_group_id, ct_authority=result.ct_authority,
     )
+
+
+def _overcurrent_recorded_input_to_out(report) -> OvercurrentRecordedInputOut:
+    recorded = report.authority
+    ct = recorded.ct if recorded is not None else None
+    usable = recorded is not None and recorded.blocker is None
+    return OvercurrentRecordedInputOut(
+        status=report.status, engineering_context_id=report.engineering_context_id, phase=report.phase,
+        channel_ref=ChannelRefOut.from_domain(recorded.channel_ref) if recorded is not None else None,
+        channel_unit=report.unit,
+        measurement_group_id=recorded.group_id if recorded is not None else None,
+        measurement_group_name=recorded.group_name if recorded is not None else None,
+        measurement_side=(ChannelMeasurementSideOut.from_domain(recorded.side)
+                          if recorded is not None and recorded.side is not None else None),
+        ct=None if ct is None else OvercurrentRecordedCtOut(
+            status=ct.ratio_status, consumable=ct.ratio_consumable, primary=ct.primary, secondary=ct.secondary,
+            ratio=ct.ratio, authority=ct.authority, reason=ct.reason, group_ids=list(ct.group_ids),
+        ),
+        conversion=(("primary_to_relay_secondary" if recorded.conversion_required else "none") if usable else None),
+        reason_code=report.reason_code, message=report.message,
+    )
+
+
+@router.get(
+    "/engineering-contexts/{engineering_context_id}/overcurrent-recorded-input",
+    response_model=OvercurrentRecordedInputOut,
+)
+def get_overcurrent_recorded_input(
+    workspace_id: str,
+    engineering_context_id: str,
+    phase: Literal["A", "B", "C"],
+    request: Request,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> OvercurrentRecordedInputOut:
+    """D5A-2B2C-1A (DEC-216): read-only report of what the recorded Overcurrent phase `phase` consumes from Recording
+    Details -- the Current channel, its Measurement Group, its effective measurement side with provenance, and the CT
+    of that group -- and whether the calculation is blocked by that configuration. Never computes, converts or stores
+    anything; `.../overcurrent` evaluates the identical authority, so the two cannot disagree."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        report = read_recorded_current_input(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calc_registry, authority=OvercurrentAuthority.from_app_state(request.app.state),
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _overcurrent_recorded_input_to_out(report)
 
 
 @router.get("/engineering-contexts/{engineering_context_id}/overcurrent", response_model=OvercurrentAnalysisResultOut)
@@ -825,7 +882,8 @@ def get_overcurrent_analysis(
     characteristic_id: str,
     tms: float,
     pickup_current_secondary: float,
-    recording_basis: str,
+    request: Request,
+    recording_basis: str | None = None,
     ct_primary: float | None = None,
     ct_secondary: float | None = None,
     reference_frequency_hz: float | None = None,
@@ -849,7 +907,13 @@ def get_overcurrent_analysis(
     a qualified characteristic-analysis observation only -- see
     `app.domain.overcurrent`'s own module footer for the explicit
     non-emulation boundary this must never be presented as crossing.
-    Never persisted."""
+    Never persisted.
+
+    D5A-2B2C-1A (DEC-216): the Primary/Secondary side of the recorded current and the CT applied to it come ONLY from
+    Recording Details (the effective side of the consumed Current channel; the CT of its own Measurement Group).
+    `recording_basis`, `ct_primary` and `ct_secondary` are LEGACY assertions kept for older clients: optional, validated
+    against that authority, and a contradiction blocks the calculation (`needs_configuration`) -- they never override
+    it. An unresolved, inferred-only or contradictory side blocks too."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         result = compute_overcurrent_analysis(
@@ -858,7 +922,7 @@ def get_overcurrent_analysis(
             pickup_current_secondary=pickup_current_secondary, recording_basis=recording_basis,
             ct_primary=ct_primary, ct_secondary=ct_secondary, reference_frequency_hz_override=reference_frequency_hz,
             context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calc_registry,
+            calculated_channel_registry=calc_registry, authority=OvercurrentAuthority.from_app_state(request.app.state),
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc

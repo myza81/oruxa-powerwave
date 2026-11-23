@@ -50,6 +50,7 @@ from app.domain.overcurrent import (
     REASON_INVALID_INPUT_CURRENT,
     REASON_INVALID_LOADING_PERCENT,
     REASON_INVALID_PICKUP,
+    REASON_INVALID_RECORDING_BASIS,
     REASON_INVALID_REFERENCE_FREQUENCY,
     REASON_INVALID_SYSTEM_VOLTAGE,
     REASON_INVALID_TMS,
@@ -78,7 +79,11 @@ from app.services.analysis_input_resolution_service import resolve_analysis_inpu
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
-from app.services.errors import ImportServiceError
+from app.services.overcurrent_recorded_input import (
+    OvercurrentAuthority,
+    RecordedCurrentAuthority,
+    evaluate_recorded_current_authority,
+)
 from app.services.workspace_registry import WorkspaceRegistry
 
 _REQUIREMENT_BY_PHASE = {
@@ -164,40 +169,29 @@ def _short_circuit(
     status: str, *, engineering_context_id: str, phase: str, analysis_time: float,
     reason_code: str | None, message: str,
     channel_ref: ChannelRef | None = None, measured_rms_current_unit: str | None = None,
+    authority: RecordedCurrentAuthority | None = None,
 ) -> OvercurrentAnalysisResult:
     """`channel_ref`/`measured_rms_current_unit` are given ONLY by a configuration block where the current channel
-    DID resolve (identity is not a result), so its signal stays plottable; no number is ever attached."""
-    return OvercurrentAnalysisResult(
+    DID resolve (identity is not a result), so its signal stays plottable; no number is ever attached. `authority`
+    (D5A-2B2C-1A) is given only when Recording Details' side/CT for that channel was evaluated: it reports what was
+    found (side, how it was decided, owning group), never a number."""
+    result = OvercurrentAnalysisResult(
         status=status, engineering_context_id=engineering_context_id, phase=phase,
         analysis_time=analysis_time, reason_code=reason_code, message=message,
         channel_ref=channel_ref, measured_rms_current_unit=measured_rms_current_unit,
     )
+    if authority is not None:
+        _attach_authority(result, authority)
+    return result
 
 
-def _identify_current_channel(
-    requirement, role_key: str, *, workspace_id: str, engineering_context_id: str,
-    context_registry: EngineeringContextRegistry, source_registry: WorkspaceRegistry,
-    calculated_channel_registry: CalculatedChannelRegistry,
-) -> tuple[ChannelRef | None, str | None]:
-    """(channel_ref, unit) of the current channel this phase would use, or (None, None) when it does not resolve.
-    Read-only and best-effort: used only to keep a blocked result's channel identifiable, never to change its
-    status, so a missing context or unreadable channel simply yields no identity."""
-    try:
-        resolution = resolve_analysis_inputs(
-            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
-            analysis_kind=requirement.analysis_kind, mode=requirement.mode,
-            context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calculated_channel_registry,
-        )
-    except ImportServiceError:
-        return None, None
-    if resolution.status != STATUS_RESOLVED:
-        return None, None
-    candidate = _fetch_current_candidate(
-        resolution.resolved_roles[role_key], workspace_id=workspace_id,
-        source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
-    )
-    return (candidate.channel_ref, candidate.unit) if candidate is not None else (None, None)
+def _attach_authority(result: OvercurrentAnalysisResult, authority: RecordedCurrentAuthority) -> None:
+    result.measurement_group_id = authority.group_id
+    if authority.side is not None:
+        result.measurement_side = authority.side.side if authority.side.usable else None
+        result.measurement_side_authority = authority.side.authority
+    if authority.ct_pair is not None and authority.ct is not None:      # provenance of the CT actually APPLIED
+        result.ct_authority = authority.ct.authority
 
 
 def compute_overcurrent_analysis(
@@ -209,19 +203,27 @@ def compute_overcurrent_analysis(
     characteristic_id: str,
     tms: float,
     pickup_current_secondary: float,
-    recording_basis: str,
-    ct_primary: float | None,
-    ct_secondary: float | None,
+    recording_basis: str | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
     reference_frequency_hz_override: float | None,
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    authority: OvercurrentAuthority,
 ) -> OvercurrentAnalysisResult:
     """The one service-layer entry point. Raises `EngineeringContextNotFoundError`/
     `UnknownAnalysisRequirementError` exactly like `resolve_analysis_
     inputs()` itself does (propagated unchanged); every other failure
     mode is returned as an `OvercurrentAnalysisResult` with an explicit
-    `status`/`reason_code`, never an exception."""
+    `status`/`reason_code`, never an exception.
+
+    D5A-2B2C-1A: the Primary/Secondary side of the recorded current and the CT applied to it come ONLY from Recording
+    Details (`authority`, see `overcurrent_recorded_input`). `recording_basis`, `ct_primary` and `ct_secondary` are
+    legacy request ASSERTIONS: omitted, they are not needed; supplied, they are validated against the authority and a
+    contradiction blocks -- they can never override it. When the side is unresolved, only inferred, or contradictory,
+    or a Primary side has no usable CT in the consumed channel's own group, the calculation is blocked with a
+    configuration reason (the channel stays identified so its waveform remains available)."""
     requirement = _REQUIREMENT_BY_PHASE.get(phase)
     if requirement is None:
         return _short_circuit(
@@ -253,25 +255,12 @@ def compute_overcurrent_analysis(
             analysis_time=analysis_time, reason_code=REASON_INVALID_PICKUP,
             message="Pickup current (secondary amperes) must be a finite number greater than zero.",
         )
-    if recording_basis not in KNOWN_RECORDING_BASES:
+    if recording_basis is not None and recording_basis not in KNOWN_RECORDING_BASES:
         return _short_circuit(
             STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
-            analysis_time=analysis_time, reason_code="invalid_recording_basis",
+            analysis_time=analysis_time, reason_code=REASON_INVALID_RECORDING_BASIS,
             message="Recording current basis must be 'primary' or 'secondary'.",
         )
-    if recording_basis == "primary":
-        if ct_primary is None or ct_secondary is None or not ct_values_valid(ct_primary, ct_secondary):
-            blocked_ref, blocked_unit = _identify_current_channel(
-                requirement, role_key, workspace_id=workspace_id, engineering_context_id=engineering_context_id,
-                context_registry=context_registry, source_registry=source_registry,
-                calculated_channel_registry=calculated_channel_registry,
-            )
-            return _short_circuit(
-                STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
-                analysis_time=analysis_time, reason_code=REASON_INVALID_CT_VALUES,
-                message="CT primary and CT secondary current must both be finite numbers greater than zero.",
-                channel_ref=blocked_ref, measured_rms_current_unit=blocked_unit,
-            )
 
     resolution = resolve_analysis_inputs(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
@@ -320,6 +309,21 @@ def compute_overcurrent_analysis(
             message="The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
         )
 
+    # ---- Recording Details is the authority for the side and the CT of THIS channel (decided after the channel's
+    # identity/representation checks, in the same order `check_overcurrent_readiness()` reports them). ----
+    recorded = evaluate_recorded_current_authority(
+        workspace_id, candidate.channel_ref, authority=authority,
+        requested_basis=recording_basis, request_ct=(ct_primary, ct_secondary),
+    )
+    if recorded.blocker is not None:
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, reason_code=recorded.blocker.reason_code, message=recorded.blocker.message,
+            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit, authority=recorded,
+        )
+    recording_basis = recorded.basis
+    ct_primary, ct_secondary = recorded.ct_pair or (None, None)
+
     if candidate.start_epoch is None:
         return _short_circuit(
             STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
@@ -349,7 +353,7 @@ def compute_overcurrent_analysis(
                 f"The resolved current channel's unit {candidate.unit!r} could not be "
                 "normalized to amperes -- Overcurrent requires a recognized current unit."
             ),
-            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit,
+            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit, authority=recorded,
         )
     multiple_of_pickup, expected_operating_time_seconds = evaluate_multiple_and_operating_time(
         characteristic.constants, tms, relay_secondary_current, pickup_current_secondary,
@@ -371,7 +375,7 @@ def compute_overcurrent_analysis(
                 f"The resolved current channel's unit {candidate.unit!r} could not be "
                 "normalized to amperes -- Overcurrent requires a recognized current unit."
             ),
-            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit,
+            channel_ref=candidate.channel_ref, measured_rms_current_unit=candidate.unit, authority=recorded,
         )
     duration_result = continuous_duration_above_pickup(
         candidate.time, relay_secondary_values, analysis_time, reference_frequency_hz, pickup_current_secondary,
@@ -384,7 +388,7 @@ def compute_overcurrent_analysis(
         and above_pickup_duration_seconds > expected_operating_time_seconds
     )
 
-    return OvercurrentAnalysisResult(
+    result = OvercurrentAnalysisResult(
         status=OVERCURRENT_STATUS_COMPUTED, engineering_context_id=engineering_context_id, phase=phase,
         analysis_time=analysis_time, characteristic_id=characteristic_id, tms=tms,
         pickup_current_secondary=pickup_current_secondary, recording_basis=recording_basis,
@@ -398,6 +402,8 @@ def compute_overcurrent_analysis(
         threshold_exceeded=threshold_exceeded,
         message="Overcurrent evaluated at the requested analysis_time.",
     )
+    _attach_authority(result, recorded)
+    return result
 
 
 class OvercurrentReadiness:
@@ -494,6 +500,81 @@ def check_overcurrent_readiness(
     return OvercurrentReadiness(
         status=STATUS_RESOLVED, reason_code=None,
         message="The resolved current channel is eligible for RMS evaluation.",
+    )
+
+
+class RecordedCurrentInput:
+    """D5A-2B2C-1A: what a recorded Overcurrent phase would consume from Recording Details, read without computing
+    anything. `status` is `ready` only when `compute_overcurrent_analysis()` would not be blocked by the side/CT
+    configuration; the two share `evaluate_recorded_current_authority()`, so they cannot disagree."""
+
+    __slots__ = ("status", "engineering_context_id", "phase", "unit", "authority", "reason_code", "message")
+
+    def __init__(self, *, status, engineering_context_id, phase, unit=None, authority=None, reason_code=None, message=""):
+        self.status = status
+        self.engineering_context_id = engineering_context_id
+        self.phase = phase
+        self.unit = unit
+        self.authority = authority
+        self.reason_code = reason_code
+        self.message = message
+
+
+INPUT_STATUS_READY = "ready"
+
+
+def read_recorded_current_input(
+    *,
+    workspace_id: str,
+    engineering_context_id: str,
+    phase: str,
+    context_registry: EngineeringContextRegistry,
+    source_registry: WorkspaceRegistry,
+    calculated_channel_registry: CalculatedChannelRegistry,
+    authority: OvercurrentAuthority,
+) -> RecordedCurrentInput:
+    """Raises `EngineeringContextNotFoundError`/`UnknownAnalysisRequirementError` exactly like `resolve_analysis_
+    inputs()`; every other outcome is returned, never raised."""
+    requirement = _REQUIREMENT_BY_PHASE.get(phase)
+    if requirement is None:
+        return RecordedCurrentInput(
+            status=STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            reason_code="unknown_phase", message=f"Unknown phase {phase!r} -- must be one of 'A'/'B'/'C'.",
+        )
+    resolution = resolve_analysis_inputs(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+        analysis_kind=requirement.analysis_kind, mode=requirement.mode,
+        context_registry=context_registry, source_registry=source_registry,
+        calculated_channel_registry=calculated_channel_registry,
+    )
+    if resolution.status != STATUS_RESOLVED:
+        return RecordedCurrentInput(
+            status=resolution.status, engineering_context_id=engineering_context_id, phase=phase,
+            reason_code=resolution.reason_code, message=resolution.message,
+        )
+    candidate = _fetch_current_candidate(
+        resolution.resolved_roles[_ROLE_KEY_BY_PHASE[phase]], workspace_id=workspace_id,
+        source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+    )
+    if candidate is None:
+        return RecordedCurrentInput(
+            status=STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            reason_code=REASON_CHANNEL_UNAVAILABLE,
+            message=f"Resolved current channel for role '{_ROLE_KEY_BY_PHASE[phase]}' could not be read.",
+        )
+    recorded = evaluate_recorded_current_authority(workspace_id, candidate.channel_ref, authority=authority)
+    if recorded.blocker is not None:
+        return RecordedCurrentInput(
+            status=STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            unit=candidate.unit, authority=recorded, reason_code=recorded.blocker.reason_code,
+            message=recorded.blocker.message,
+        )
+    return RecordedCurrentInput(
+        status=INPUT_STATUS_READY, engineering_context_id=engineering_context_id, phase=phase,
+        unit=candidate.unit, authority=recorded,
+        message=("The recorded current is on the Primary side and is converted with the CT of its own Measurement Group."
+                 if recorded.conversion_required else
+                 "The recorded current is on the Secondary side; no CT conversion is applied."),
     )
 
 

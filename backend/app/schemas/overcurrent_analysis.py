@@ -11,10 +11,12 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.measurement_side import ChannelMeasurementSideOut
 
 OvercurrentAnalysisStatus = Literal["computed", "needs_configuration", "ambiguous", "not_applicable"]
 OvercurrentPhase = Literal["A", "B", "C"]
 OvercurrentRecordingBasis = Literal["primary", "secondary"]
+OvercurrentRecordedSide = Literal["primary", "secondary"]
 
 
 class OvercurrentAnalysisResultOut(BaseModel):
@@ -42,6 +44,13 @@ class OvercurrentAnalysisResultOut(BaseModel):
     warnings: list[str]
     reason_code: str | None
     message: str
+    # D5A-2B2C-1A: the Recording Details authority the result consumed. `recording_basis` is the effective
+    # measurement side of the consumed Current channel (never a request value); a configuration block reports
+    # what was found (side, authority, owning Current Measurement Group) and never a number.
+    measurement_side: OvercurrentRecordedSide | None = None
+    measurement_side_authority: str | None = None
+    measurement_group_id: str | None = None
+    ct_authority: str | None = None
 
 
 class OvercurrentCharacteristicOut(BaseModel):
@@ -117,3 +126,39 @@ class OvercurrentManualLoadingResultOut(OvercurrentManualAnalysisResultOut):
     the loading inputs themselves were invalid."""
 
     equipment_loading: EquipmentLoadingConversionOut | None
+
+
+OvercurrentRecordedInputStatus = Literal["ready", "needs_configuration", "ambiguous", "not_applicable"]
+
+
+class OvercurrentRecordedCtOut(BaseModel):
+    """The CT of the Measurement Group that owns the consumed Current channel (never another group's)."""
+
+    status: str
+    consumable: bool
+    primary: float | None
+    secondary: float | None
+    ratio: float | None
+    authority: str
+    reason: str | None
+    group_ids: list[str]
+
+
+class OvercurrentRecordedInputOut(BaseModel):
+    """D5A-2B2C-1A: read-only report of what one recorded Overcurrent phase consumes from Recording Details -- the
+    consumed Current channel, its Measurement Group, its effective measurement side (with provenance) and the CT of
+    that group -- and whether the calculation is blocked by that configuration. Nothing is computed or stored; the
+    calculation endpoint evaluates the identical authority."""
+
+    status: OvercurrentRecordedInputStatus
+    engineering_context_id: str
+    phase: OvercurrentPhase
+    channel_ref: ChannelRefOut | None
+    channel_unit: str | None
+    measurement_group_id: str | None
+    measurement_group_name: str | None
+    measurement_side: ChannelMeasurementSideOut | None
+    ct: OvercurrentRecordedCtOut | None
+    conversion: Literal["none", "primary_to_relay_secondary"] | None
+    reason_code: str | None
+    message: str
