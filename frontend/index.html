@@ -53267,6 +53267,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_OC_SIDE_TEXT = { primary: "Primary", secondary: "Secondary" };
         const WW_OC_CT_AUTHORITY_TEXT = { manual: "Manual", recording_metadata: "Recording metadata" };
         const WW_OC_OVERRIDE_CODES = ["GROUP_OVERRIDE_OVERRIDES_DECLARATION", "ENGINEER_CORRECTION_OVERRIDES_DECLARATION"];
+        // A calculated current channel has no Measurement Group and no side in Recording Details yet (a known,
+        // temporary limitation): the page says so and offers no link, because nothing there can resolve it.
+        const WW_OC_CALCULATED_REASON = "calculated_channel_side_unavailable";
 
         function wwOcRecordedInputState() {
             return wwOvercurrentState.recordedInput;
@@ -53290,7 +53293,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // The Recording Details target for a correction: the recording and the group that owns the channel.
         function wwOcConfigureTarget(report) {
             const ref = report && report.channel_ref;
-            if (!ref || !ref.source_id) return null;
+            if (!ref || !ref.source_id || report.reason_code === WW_OC_CALCULATED_REASON) return null;
             return { sourceId: ref.source_id, groupId: report.measurement_group_id || null };
         }
 
@@ -53394,6 +53397,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwOcSideValueHtml(report) {
+            if (report.reason_code === WW_OC_CALCULATED_REASON) return '<span class="ww-ctvt-source">not available for a calculated channel</span>';
             if (!wwOcSideKnown(report)) return '<span class="ww-ctvt-missing">not defined</span>';
             const side = report.measurement_side;
             const provenance = wwOcSideProvenance(side, report.measurement_group_name);
