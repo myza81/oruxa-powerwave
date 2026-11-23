@@ -326,15 +326,27 @@ def test_manual_and_zone_geometry_identities_are_unchanged():
 
 
 @pytest.mark.parametrize("path", ["impedance", "impedance-locus", "distance-protection", "distance-protection-locus"])
-def test_openapi_distinguishes_legacy_and_strict_parameters(client, path):
+def test_openapi_documents_recording_details_as_the_authority_and_the_legacy_parameters_as_assertions(client, path):
+    """D5A-2B2C-1B contract wording: Recording Details decides the sides and the VT/CT; the legacy parameters are assertions."""
     spec = client.app.openapi()
     op = spec["paths"][f"/api/v1/workspaces/{{workspace_id}}/engineering-contexts/{{engineering_context_id}}/{path}"]["get"]
     params = {p["name"]: p for p in op["parameters"]}
-    assert params["impedance_basis"]["required"] is True
-    assert "BOTH modes" in params["impedance_basis"]["description"] and "OUTPUT" in params["impedance_basis"]["description"]
+    assert params["impedance_basis"]["required"] is True and "OUTPUT" in params["impedance_basis"]["description"]
+    recording = params["recording_basis"]["description"]
     assert params["recording_basis"]["required"] is False
-    assert "LEGACY" in params["recording_basis"]["description"] and "422" in params["recording_basis"]["description"]
-    assert "ignored" in params["recording_basis"]["description"]
+    assert "LEGACY" in recording and "ASSERTION" in recording and "Recording Details" in recording
+    assert "never select or override" in recording and "does not bypass Recording Details" in recording
     for name in ("voltage_side", "current_side"):
-        assert params[name]["required"] is False and "STRICT" in params[name]["description"]
-    assert "BOTH" in params["voltage_side"]["description"] and "Never inferred" in params["voltage_side"]["description"]
+        assert params[name]["required"] is False and "ASSERTION" in params[name]["description"]
+        assert "Recording Details" in params[name]["description"]
+    for name, code in (("vt_primary", "request_vt_conflicts_with_authority"), ("vt_secondary", "request_vt_conflicts_with_authority"),
+                       ("ct_primary", "request_ct_conflicts_with_authority"), ("ct_secondary", "request_ct_conflicts_with_authority")):
+        assert params[name]["required"] is False
+        description = params[name]["description"]
+        assert "ASSERTION" in description and code in description and "Recording Details" in description and "Ignored when no" in description
+    # the description of the operation itself states the contract, and no longer the retired one
+    summary = " ".join(op["description"].split())            # the docstring wraps lines
+    assert "D5A-2B2C-1B" in summary and "Recording Details" in summary
+    if not path.endswith("-locus"):
+        assert "ONLY from Recording Details" in summary
+    assert "are required only when the two differ" not in summary and "basis the resolved channels" not in summary

@@ -1,7 +1,11 @@
 """A recorded Impedance / Distance result that is BLOCKED by a missing or invalid CT/VT ratio, an unsupported unit, or a
-strict measurement-side check must still identify the channels that resolved, with their units, so the physical signals
-(Related Waveforms) stay plottable. Nothing numerical changes: the status, reason code, message and the absent
-impedance values of a blocked result are exactly as before, and an unresolved channel is never given an identity.
+measurement-side check must still identify the channels that resolved, with their units, so the physical signals
+(Related Waveforms) stay plottable. The blocked result carries no impedance values, and an unresolved channel is never
+given an identity.
+
+D5A-2B2C-1B: the sides and the VT/CT are Recording Details' to decide, so the old "legacy" blocks (a request that omitted or
+mis-stated the ratios) are now the same authority blocks as any other: a request-carried ratio or basis can never stand in for
+Recording Details, and the blocked response still identifies the channels.
 
 The consumer contract is tested by running the REAL frontend functions (read from frontend/index.html, never edited)
 against actual API responses with Node.
@@ -24,7 +28,6 @@ from tests.test_d5a2b1_independent_side_conversion import (  # noqa: F401  (clie
 )
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
-RATIO_MESSAGE = "Valid VT and CT ratios are required to convert between Recording and Impedance basis."
 NUMERIC_IMPEDANCE = ("magnitude_ohm", "resistance_ohm", "reactance_ohm", "angle_deg")
 
 
@@ -51,21 +54,24 @@ def _dist_channels(body: dict, src: str, legs=("VA", "VB", "IA", "IB"), units=("
 
 
 def _legacy(**ratios):
+    """The pre-D5A-2B2C-1B request shape (an asserted recording basis and request-carried ratios). It is still ACCEPTED, as
+    assertions; it can never supply what Recording Details does not have."""
     return dict(recording_basis="primary", impedance_basis="secondary", **ratios)
 
 
-# =========================================================================== legacy: missing / invalid ratios
+# =========================================================================== a request ratio never replaces the VT/CT of Recording Details
 
 
-def test_legacy_missing_ratios_keep_the_message_and_identify_the_channels(client):
+def test_missing_ratios_block_with_the_recording_details_message_and_identify_the_channels(client):
     ws = "refs-legacy-missing"
-    src, ctx = _bay(client, ws, groups=False)
+    src, ctx = _bay(client, ws, groups=False)                 # a Primary recording asked for in Secondary, with no VT/CT configured
     imp = _imp(client, ws, ctx, **_legacy()).json()
-    assert (imp["status"], imp["reason_code"], imp["message"]) == ("needs_configuration", "invalid_ratio", RATIO_MESSAGE)
+    assert (imp["status"], imp["reason_code"]) == ("needs_configuration", "vt_authority_unavailable")
+    assert "Recording Details" in imp["message"] and "VT" in imp["message"]
     _no_numbers(imp)
     _imp_channels(imp, src)
     dist = _dist(client, ws, ctx, **_legacy()).json()
-    assert (dist["status"], dist["reason_code"], dist["message"]) == ("needs_configuration", "invalid_ratio", RATIO_MESSAGE)
+    assert (dist["status"], dist["reason_code"]) == ("needs_configuration", "vt_authority_unavailable")
     _no_numbers(dist)
     _dist_channels(dist, src)
 
@@ -77,20 +83,20 @@ def test_legacy_missing_ratios_keep_the_message_and_identify_the_channels(client
     dict(vt_primary=0.0, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S),     # invalid VT
     dict(vt_primary=VT_P, vt_secondary=VT_S, ct_primary=-1000.0, ct_secondary=CT_S),  # invalid CT
 ], ids=["missing-vt", "missing-ct", "incomplete-ct", "invalid-vt", "invalid-ct"])
-def test_legacy_missing_or_invalid_ratio_cases_identify_the_channels(client, ratios):
+def test_request_ratios_of_any_quality_cannot_stand_in_for_recording_details_and_identify_the_channels(client, ratios):
     ws = f"refs-legacy-{abs(hash(tuple(sorted(ratios.items())))) % 100000}"
     src, ctx = _bay(client, ws, groups=False)
     imp = _imp(client, ws, ctx, **_legacy(**ratios)).json()
-    assert (imp["reason_code"], imp["message"]) == ("invalid_ratio", RATIO_MESSAGE)
+    assert imp["reason_code"] == "vt_authority_unavailable" and "Recording Details" in imp["message"]
     _no_numbers(imp)
     _imp_channels(imp, src)
     dist = _dist(client, ws, ctx, **_legacy(**ratios)).json()
-    assert dist["reason_code"] == "invalid_ratio"
+    assert dist["reason_code"] == "vt_authority_unavailable"
     _no_numbers(dist)
     _dist_channels(dist, src)
 
 
-def test_legacy_other_loops_and_phases_name_their_own_channels(client):
+def test_other_loops_and_phases_name_their_own_channels(client):
     ws = "refs-legacy-loops"
     src, ctx = _bay(client, ws, groups=False)
     assert _imp(client, ws, ctx, phase="B", **_legacy()).json()["voltage_channel_ref"] == _ref(src, "ZBAY_VB")
@@ -100,7 +106,7 @@ def test_legacy_other_loops_and_phases_name_their_own_channels(client):
     _dist_channels(ca, src, legs=("VC", "VA", "IC", "IA"))
 
 
-# =========================================================================== strict: authority and side blocks
+# =========================================================================== authority and side blocks
 
 
 def test_strict_missing_vt_and_missing_ct_identify_the_channels(client):
@@ -137,7 +143,7 @@ def test_strict_invalid_authoritative_ratio_identifies_the_channels(client, ct):
 
 @pytest.mark.parametrize("ps,asserted,code", [
     ({}, ("secondary", "primary"), "voltage_side_contradicts_recording"),            # recording says P, caller asserts S
-    ({"IA": ""}, ("primary", "primary"), "current_side_authority_unavailable"),       # undeclared
+    ({"IA": ""}, ("primary", "primary"), "current_side_inferred"),                   # not established: only inferred
 ])
 def test_strict_side_blocks_identify_the_channels(client, ps, asserted, code):
     ws = f"refs-side-{code}"
@@ -151,20 +157,21 @@ def test_strict_side_blocks_identify_the_channels(client, ps, asserted, code):
     _dist_channels(dist, src)
 
 
-def test_strict_mixed_sides_within_a_loop_identify_the_channels(client):
-    ws = "refs-mixed"
-    src, ctx = _bay(client, ws, ps={"VA": "P", "VB": "S"})
+@pytest.mark.parametrize("groups,code", [(False, "voltage_mixed_side_within_quantity"), (True, "voltage_group_side_conflict")])
+def test_strict_mixed_sides_within_a_loop_identify_the_channels(client, groups, code):
+    ws = f"refs-mixed-{groups}"
+    src, ctx = _bay(client, ws, ps={"VA": "P", "VB": "S"}, groups=groups)
     body = _dist(client, ws, ctx, **_strict("primary", "primary", "primary")).json()
-    assert body["reason_code"] == "voltage_mixed_side_within_quantity"
+    assert body["reason_code"] == code
     _no_numbers(body)
     _dist_channels(body, src)
 
 
 @pytest.mark.parametrize("params,code", [
-    (dict(voltage_side="primary", impedance_basis="primary", recording_basis="primary"), "current_side_required"),
+    (dict(recording_basis="both", impedance_basis="primary"), "invalid_recording_basis"),
     (dict(voltage_side="both", current_side="primary", impedance_basis="primary"), "invalid_voltage_side"),
     (dict(voltage_side="primary", current_side="primary", impedance_basis="both"), "invalid_impedance_basis"),
-], ids=["side-required", "invalid-side", "invalid-output"])
+], ids=["invalid-basis", "invalid-side", "invalid-output"])
 def test_strict_early_validation_blocks_still_identify_resolved_channels(client, params, code):
     """These blocks happen before any conversion check, yet the context's channels are known and must be reported."""
     ws = f"refs-early-{code}"
@@ -230,10 +237,10 @@ def test_fully_configured_results_are_unchanged_and_still_identify_the_channels(
         strict = _imp(client, ws, ctx, **_strict("primary", "primary", out)).json()
         assert strict["status"] == "computed" and strict["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
         _imp_channels(strict, src)
-        legacy = _imp(client, ws, ctx, recording_basis="primary", impedance_basis=out,
-                      vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
-        assert legacy["status"] == "computed" and legacy["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
-        _imp_channels(legacy, src)
+        asserting = _imp(client, ws, ctx, recording_basis="primary", impedance_basis=out,
+                         vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
+        assert asserting["status"] == "computed" and asserting["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
+        _imp_channels(asserting, src)
         dist = _dist(client, ws, ctx, **_strict("primary", "primary", out)).json()
         assert dist["status"] == "computed" and dist["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
         _dist_channels(dist, src)
@@ -243,19 +250,21 @@ def test_fully_configured_results_are_unchanged_and_still_identify_the_channels(
 
 
 def test_locus_responses_keep_their_contract_when_blocked(client):
-    """Locus responses never carried channel references (computed or blocked); that contract is unchanged."""
+    """Locus responses never carried channel references (computed or blocked); that contract is unchanged. A blocked locus reports
+    the reason for every point and the block in `side_conversion`."""
     ws = "refs-locus"
     src, ctx = _bay(client, ws, groups=False)
-    legacy = _imp_locus(client, ws, ctx, **_legacy()).json()
-    assert set(legacy) == {"engineering_context_id", "phase", "points", "side_conversion"}
-    assert [(p["status"], p["reason_code"]) for p in legacy["points"]] == [("needs_configuration", "invalid_ratio")] * 3
-    assert all(p["magnitude_ohm"] is None for p in legacy["points"]) and legacy["side_conversion"] is None
+    old_style = _imp_locus(client, ws, ctx, **_legacy()).json()
+    assert set(old_style) == {"engineering_context_id", "phase", "points", "side_conversion"}
+    assert [(p["status"], p["reason_code"]) for p in old_style["points"]] == [("needs_configuration", "vt_authority_unavailable")] * 3
+    assert all(p["magnitude_ohm"] is None for p in old_style["points"])
+    assert old_style["side_conversion"]["block_code"] == "vt_authority_unavailable"
     strict = _imp_locus(client, ws, ctx, **_strict("primary", "primary", "secondary")).json()
     assert {p["reason_code"] for p in strict["points"]} == {"vt_authority_unavailable"}
     assert strict["side_conversion"]["block_code"] == "vt_authority_unavailable"
     dl = _dist_locus(client, ws, ctx, **_legacy()).json()
     assert set(dl) == {"engineering_context_id", "loop", "points", "side_conversion"}
-    assert {p["reason_code"] for p in dl["points"]} == {"invalid_ratio"}
+    assert {p["reason_code"] for p in dl["points"]} == {"vt_authority_unavailable"}
     ds = _dist_locus(client, ws, ctx, **_strict("primary", "primary", "secondary")).json()
     assert {p["reason_code"] for p in ds["points"]} == {"vt_authority_unavailable"}
 

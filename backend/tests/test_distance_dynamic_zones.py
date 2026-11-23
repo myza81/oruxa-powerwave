@@ -462,7 +462,12 @@ class TestRecordingEndpointsZonesParameter:
             ("DBAY_VA", "V", 100.0 * math.sqrt(2), 0.0), ("DBAY_VB", "V", 100.0 * math.sqrt(2), -120.0), ("DBAY_VC", "V", 100.0 * math.sqrt(2), 120.0),
             ("DBAY_IA", "A", 10.0 * math.sqrt(2), -20.0), ("DBAY_IB", "A", 10.0 * math.sqrt(2), -140.0), ("DBAY_IC", "A", 10.0 * math.sqrt(2), 100.0),
         ])
-        return workspace_id, _create_full_bay(client, workspace_id, source_id)["id"]
+        context_id = _create_full_bay(client, workspace_id, source_id)["id"]
+        # D5A-2B2C-1B: the recorded side is Recording Details' to decide; this builder's channels are all flagged `P`, and the
+        # tests below mean a secondary recording.
+        from tests.recorded_side_support import declare_sides
+        declare_sides(client, workspace_id, source_id)
+        return workspace_id, context_id
 
     def test_recording_mode_evaluates_a_fifth_and_sixth_zone(self, client):
         workspace_id, context_id = self.bay(client)
@@ -487,7 +492,7 @@ class TestRecordingEndpointsZonesParameter:
         workspace_id, context_id = self.bay(client)
         resp = _distance_locus(
             client, workspace_id, context_id, loop="AB", start_time=0.5, end_time=2.5, point_count=5,
-            recording_basis="secondary", impedance_basis="secondary", characteristic="mho",
+            impedance_basis="secondary", characteristic="mho",
             zones=json.dumps([mho_json(f"k{i}", 10) for i in range(7)]),
         )
         assert resp.status_code == 200, resp.text

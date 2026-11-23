@@ -481,3 +481,59 @@ def test_the_report_requires_the_phase_or_loop_of_its_analysis(client):
         assert client.get(f"{_contexts(ws)}/{ctx}/protection-recorded-input", params=params).status_code == 422
     assert client.get(f"{_contexts(ws)}/nope/protection-recorded-input",
                       params={"analysis": "impedance", "phase": "A", "impedance_basis": "primary"}).status_code == 404
+
+
+# =========================================================================== the specific, actionable blocker messages
+
+
+def test_a_channel_outside_any_measurement_group_is_named_and_the_group_to_add_it_to_is_stated(client):
+    ws = "1b-msg-nogroup"
+    _src, ctx = _bay(client, ws, v_side="secondary", i_side="primary", groups=False)
+    body = _imp(client, ws, ctx, impedance_basis="primary").json()
+    _blocked(body, "vt_authority_unavailable", "voltage")
+    assert "ZBAY_VA is not in a Voltage Measurement Group. Add it in Recording Details." in body["message"]
+    assert body["message"].startswith("Converting the voltage to the primary side needs its VT from Recording Details.")
+
+
+def test_an_unconfigured_vt_and_an_unusable_vt_each_get_their_own_message(client):
+    ws = "1b-msg-vt"
+    src, ctx = _bay(client, ws, v_side="secondary", i_side="primary", vt=(None, None))
+    _vt(client, ws, f"vg-{src}", None, None, authority="not_configured")
+    missing = _imp(client, ws, ctx, impedance_basis="primary").json()
+    _blocked(missing, "vt_authority_unavailable", "voltage")
+    assert f"VT is not configured for 'vg-{src}'. Set the nominal voltage, or the VT primary kV and secondary V, in Recording Details." in missing["message"]
+    _vt(client, ws, f"vg-{src}", -110000.0, 110.0)
+    unusable = _imp(client, ws, ctx, impedance_basis="primary").json()
+    _blocked(unusable, "vt_authority_unavailable", "voltage")
+    assert f"The VT in 'vg-{src}' is not usable" in unusable["message"] and "Correct it in Recording Details." in unusable["message"]
+
+
+def test_a_nominal_voltage_that_cannot_yield_a_vt_says_why(client):
+    ws = "1b-msg-nominal"
+    src, ctx = _bay(client, ws, v_side="secondary", i_side="primary")
+    reg = client.app.state.voltage_group_config_registry
+    reg.update_fields(ws, f"vg-{src}", nominal_voltage_ll_kv=110.0, update_nominal=True, vt_primary_v=None,
+                      vt_secondary_v=None, vt_authority="not_configured", update_vt=True)
+    config = reg.get(ws, f"vg-{src}")
+    config.manual_conflict_detected = True
+    reg.upsert(config)
+    body = _imp(client, ws, ctx, impedance_basis="primary").json()
+    _blocked(body, "vt_authority_unavailable", "voltage")
+    assert "cannot be derived from its nominal voltage (110 kV)" in body["message"]
+    assert "conflicts with the channel evidence" in body["message"] and "enter the VT" in body["message"]
+
+
+def test_a_ct_held_by_another_current_group_of_the_recording_is_pointed_out(client):
+    ws = "1b-msg-othergroup"
+    src, ctx = _bay(client, ws, v_side="primary", i_side="secondary", groups=False)
+    _group(client, ws, src, "voltage", ("VA", "VB", "VC"), "vg-bay")
+    _group(client, ws, src, "current", ("IA", "IB"), "ig-bay")
+    _group(client, ws, src, "current", ("IC",), "ig-other")
+    _ct(client, ws, "ig-other", 3000.0, 5.0)                            # only the OTHER group has a CT
+    body = _imp(client, ws, ctx, impedance_basis="primary").json()
+    _blocked(body, "ct_authority_unavailable", "current")
+    assert "CT is not configured for 'ig-bay'. Set primary and secondary A in Recording Details." in body["message"]
+    assert "A CT of 3000 A / 5 A is configured on 'ig-other', but ZBAY_IA belongs to 'ig-bay'." in body["message"]
+    # phase C belongs to the group that HAS the CT, which therefore converts with its own ratio and never the neighbour's
+    c_phase = _imp(client, ws, ctx, impedance_basis="primary", phase="C").json()
+    assert c_phase["side_conversion"]["ct_ratio_applied"] == pytest.approx(600.0)

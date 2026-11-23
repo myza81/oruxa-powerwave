@@ -58,9 +58,14 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import ImportServiceError
 from app.services.protection_context_report_service import InvalidProtectionContextRequest, resolve_analysis_roles
+from app.domain.auto_nominal_vt import REFUSED_BASE_NOT_ACCEPTED, REFUSED_MANUAL_CONFLICT
 from app.services.protection_instrument_context import (
     QUANTITY_CURRENT,
     QUANTITY_VOLTAGE,
+    RATIO_CONFLICT,
+    RATIO_INVALID,
+    RATIO_NO_GROUP,
+    RATIO_UNTRUSTED_AUTHORITY,
     TransformerContext,
     resolve_channel_unit,
     resolve_transformer_context,
@@ -136,6 +141,52 @@ class RecordedInputEvaluation:
     unresolved_roles: tuple[tuple[str, str, str | None], ...] = ()
     role_refs: Mapping[str, ChannelRef] = field(default_factory=dict)
     role_units: Mapping[str, str | None] = field(default_factory=dict)
+
+
+def _num(value: float | None) -> str:
+    return "?" if value is None else f"{float(f'{value:.6g}'):g}"
+
+
+def _ratio_unavailable_message(
+    workspace_id: str, quantity: str, qa: QuantityAuthority, ctx: TransformerContext | None, *, output_side: str,
+    authority: RecordedAuthority,
+) -> str:
+    """The specific, actionable reason one quantity's VT/CT cannot be consumed (the wording the Recording Details owner UAT
+    settled on): which group owns the consumed channels, what is wrong with its ratio and where to correct it. A
+    request-supplied ratio is never the way out, so none is suggested."""
+    tag, kind = _TAG[quantity], _KIND_WORD[quantity]
+    groups = ", ".join(f"'{name}'" for name in qa.group_names) or f"its {kind} Measurement Group"
+    lead = f"Converting the {quantity} to the {output_side} side needs its {tag} from Recording Details. "
+    status = ctx.ratio_status if ctx is not None else None
+    if status == RATIO_NO_GROUP:
+        names = ", ".join(channel_label(c.ref) for c in qa.channels if c.group_id is None) or f"A {quantity} channel"
+        return lead + f"{names} is not in a {kind} Measurement Group. Add it in Recording Details."
+    if status in (RATIO_INVALID, RATIO_UNTRUSTED_AUTHORITY):
+        return lead + f"The {tag} in {groups} is not usable" + (f" ({ctx.reason})" if ctx.reason else "") + ". Correct it in Recording Details."
+    if status == RATIO_CONFLICT:
+        return lead + f"The groups use different {tag} ratios ({groups}). Align them in Recording Details."
+    if quantity == QUANTITY_VOLTAGE:
+        nominal = f"{_num(ctx.nominal_ll_kv)} kV" if ctx is not None and ctx.nominal_ll_kv is not None else None
+        if nominal and ctx.nominal_refused_reason == REFUSED_MANUAL_CONFLICT:
+            return lead + (f"The VT of {groups} cannot be derived from its nominal voltage ({nominal}): it conflicts with the channel "
+                           "evidence. Resolve the nominal voltage in Recording Details, or enter the VT.")
+        if nominal and ctx.nominal_refused_reason == REFUSED_BASE_NOT_ACCEPTED:
+            return lead + (f"The VT of {groups} cannot be derived from its nominal voltage ({nominal}): the voltage base has not "
+                           "been accepted. Accept it in Recording Details, or enter the VT.")
+        return lead + f"VT is not configured for {groups}. Set the nominal voltage, or the VT primary kV and secondary V, in Recording Details."
+    message = lead + f"CT is not configured for {groups}. Set primary and secondary A in Recording Details."
+    # A CT held by ANOTHER Current group of the same recording is a common cause: say so.
+    sources = {c.ref.source_id for c in qa.channels if c.ref.kind == "source" and c.ref.source_id}
+    own = set(qa.group_ids)
+    for source_id in sources:
+        for group in authority.side.group_registry.list_for_source(workspace_id, source_id):
+            config = authority.current_config_registry.get(workspace_id, group.id)
+            if (group.kind == "current" and group.id not in own and config is not None
+                    and config.ct_primary_a is not None and config.ct_secondary_a is not None):
+                channels = ", ".join(channel_label(c.ref) for c in qa.channels) or "this analysis's current channel"
+                return message + (f" A CT of {_num(config.ct_primary_a)} A / {_num(config.ct_secondary_a)} A is configured on "
+                                  f"'{group.display_name}', but {channels} belongs to {groups}.")
+    return message
 
 
 def _quantity_authority(
@@ -332,12 +383,9 @@ def evaluate_recorded_input(
         ctx = qa.transformer
         tag = _TAG[quantity]
         if ctx is None or not ctx.ratio_consumable:
-            where = f" ({', '.join(qa.group_names)})" if qa.group_names else ""
             return make_block(
                 unavailable_code,
-                f"Converting {quantity} needs a {tag} ratio from Recording Details for the Measurement Group{where} that owns "
-                f"the consumed channel(s), which is {ctx.ratio_status if ctx else 'unavailable'}"
-                f"{' (' + ctx.reason + ')' if ctx is not None and ctx.reason else ''}. A request-supplied ratio cannot stand in for it.",
+                _ratio_unavailable_message(workspace_id, quantity, qa, ctx, output_side=impedance_basis, authority=authority),
                 quantity, ratio_status=ctx.ratio_status if ctx else None, reason=ctx.reason if ctx else None,
                 authority=ctx.authority if ctx else None,
             )

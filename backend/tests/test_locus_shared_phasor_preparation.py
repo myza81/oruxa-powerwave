@@ -41,6 +41,7 @@ from app.domain.distance_protection import ZoneSettings
 from app.domain.engineering_context import EngineeringContext, EngineeringContextMember
 from app.domain.metadata import RecordingMetadata
 from app.domain.phase_identity import PHASE_A, PHASE_B, PHASE_C, PHASE_SOURCE_ENGINEER_CONFIRMED
+from app.domain.side_conversion import SidePlan
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
 from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -129,6 +130,17 @@ def _count_calls(monkeypatch, target_module, name):
     return counter
 
 
+def _same_side_plan(*voltage_names, current_names, source_id="src-1", side="secondary"):
+    """D5A-2B2C-1B: the recorded calculations take the side from Recording Details through a `SidePlan`. These tests prove the
+    locus' structure and per-point semantics, not the authority, so they hand the services a validated plan in which every
+    consumed channel is already on the requested output side (no ratio is involved)."""
+    ref = lambda name: ChannelRef(kind="source", source_id=source_id, channel_name=name)      # noqa: E731
+    return SidePlan(voltage_side=side, current_side=side, output_side=side, vt_ratio=None, ct_ratio=None, validated=True,
+                    voltage_refs=tuple(ref(n) for n in voltage_names), current_refs=tuple(ref(n) for n in current_names))
+
+
+IMPEDANCE_PLAN = _same_side_plan("ZBAY_VA", current_names=("ZBAY_IA",))
+DISTANCE_PLAN = _same_side_plan("ZBAY_VA", "ZBAY_VB", current_names=("ZBAY_IA", "ZBAY_IB"))
 DISABLED_ZONE = ZoneSettings(enabled=False)
 
 
@@ -138,8 +150,7 @@ class TestImpedanceLocusEquivalence:
         sample_times = [0.3, 0.7, 1.1, 1.5, 1.9]
         kwargs = dict(
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
-            reference_frequency_hz_override=None, recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         locus_points = compute_impedance_locus(
@@ -165,8 +176,7 @@ class TestImpedanceLocusEquivalence:
         compute_impedance_locus(
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             start_time=0.3, end_time=1.9, point_count=50, reference_frequency_hz_override=None,
-            recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
 
@@ -182,8 +192,7 @@ class TestImpedanceLocusEquivalence:
         points = compute_impedance_locus(
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             start_time=sample_times[0], end_time=sample_times[-1], point_count=len(sample_times),
-            reference_frequency_hz_override=None, recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == len(sample_times)  # never silently dropped
@@ -198,8 +207,7 @@ class TestImpedanceLocusEquivalence:
         points = compute_impedance_locus(
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             start_time=0.3, end_time=1.9, point_count=10, reference_frequency_hz_override=None,
-            recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == 10
@@ -218,8 +226,7 @@ class TestImpedanceLocusEquivalence:
         points = compute_impedance_locus(
             workspace_id=workspace_id, engineering_context_id="ec-conflict", phase="A",
             start_time=0.3, end_time=1.5, point_count=8, reference_frequency_hz_override=None,
-            recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == 8
@@ -232,8 +239,7 @@ class TestDistanceLocusEquivalence:
     def _kwargs(self, registries, workspace_id, context_id):
         return dict(
             workspace_id=workspace_id, engineering_context_id=context_id, loop="AB",
-            reference_frequency_hz_override=None, recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=DISTANCE_PLAN,
             characteristic="mho", zone1=DISABLED_ZONE, zone2=DISABLED_ZONE, zone3=DISABLED_ZONE,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
@@ -304,8 +310,7 @@ class TestDistanceLocusEquivalence:
         ]))
         points = compute_distance_locus(
             start_time=0.3, end_time=1.5, point_count=8, workspace_id=workspace_id, engineering_context_id="ec-conflict",
-            loop="AB", reference_frequency_hz_override=None, recording_basis="secondary", impedance_basis="secondary",
-            vt_primary=None, vt_secondary=None, ct_primary=None, ct_secondary=None,
+            loop="AB", reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=DISTANCE_PLAN,
             characteristic="mho", zone1=DISABLED_ZONE, zone2=DISABLED_ZONE, zone3=DISABLED_ZONE,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )

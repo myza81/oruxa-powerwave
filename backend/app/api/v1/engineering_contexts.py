@@ -957,7 +957,21 @@ _DOC_VOLTAGE_SIDE = (
     "effective side Recording Details defines for the consumed Voltage channels; a contradiction blocks, a match changes nothing."
 )
 _DOC_CURRENT_SIDE = (
-    "Optional ASSERTION of the recorded Current side ('primary'/'secondary'), independent of the voltage side; see voltage_side."
+    "Optional ASSERTION of the recorded Current side ('primary'/'secondary'), independent of the voltage side. Validated against "
+    "the effective side Recording Details defines for the consumed Current channels; a contradiction blocks, a match changes nothing."
+)
+_DOC_REQUEST_VT = (
+    "Optional ASSERTION of the VT (primary V / secondary V, supplied as a pair). The VT used is always the one Recording Details "
+    "holds for the Measurement Group that owns the consumed Voltage channel(s). Checked only where a Voltage conversion is "
+    "needed (the recorded side differs from the output side): a pair whose ratio differs blocks with request_vt_conflicts_with_"
+    "authority, half a pair or a non-positive value with request_vt_invalid, and it can never supply a VT Recording Details "
+    "lacks (vt_authority_unavailable). Ignored when no Voltage conversion is needed."
+)
+_DOC_REQUEST_CT = (
+    "Optional ASSERTION of the CT (primary A / secondary A, supplied as a pair); the CT counterpart of the VT assertion: the CT "
+    "used is always the one Recording Details holds for the Measurement Group that owns the consumed Current channel(s). "
+    "Blocking codes: request_ct_conflicts_with_authority, request_ct_invalid, ct_authority_unavailable. Ignored when no Current "
+    "conversion is needed."
 )
 
 
@@ -1045,10 +1059,10 @@ def get_impedance_analysis(
     recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
     voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
     current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
-    vt_primary: float | None = None,
-    vt_secondary: float | None = None,
-    ct_primary: float | None = None,
-    ct_secondary: float | None = None,
+    vt_primary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    vt_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    ct_primary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
+    ct_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
     reference_frequency_hz: float | None = None,
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
@@ -1058,16 +1072,23 @@ def get_impedance_analysis(
     (`Za`/`Zb`/`Zc`). Reuses the existing, unchanged `compute_phasor_
     diagram()` to resolve Voltage/Current -- never a second phasor
     estimator. `Z = V/I` via direct phasor division (`R = |Z|cos(theta)`,
-    `X = |Z|sin(theta)`), never an RMS-scalar approximation.
-    `recording_basis` is the basis the resolved channels' own values
-    already represent; `impedance_basis` is the INDEPENDENT desired
-    output basis -- `vt_primary`/`vt_secondary`/`ct_primary`/
-    `ct_secondary` are required only when the two differ. Reports
+    `X = |Z|sin(theta)`), never an RMS-scalar approximation, formed once
+    after each quantity is converted to `impedance_basis`. Reports
     `needs_configuration`/`current_too_small` (never an unbounded `|Z|`)
     whenever the resolved current is below the numerical-validity floor.
     This is measurement/visualization only -- NOT Distance Protection
     (no zones/mho/quadrilateral/fault-loop logic exists here). Never
-    persisted."""
+    persisted.
+
+    D5A-2B2C-1B: the recorded side of the Voltage and of the Current, and the
+    VT/CT of the Measurement Groups that own the consumed channels, come ONLY
+    from Recording Details; `impedance_basis` is the requested OUTPUT side.
+    `recording_basis`, `voltage_side`, `current_side` and `vt_*`/`ct_*` are
+    optional legacy ASSERTIONS: a contradiction blocks the calculation with a
+    reason code, a match changes nothing, and none can select a side, supply a
+    missing ratio or be required. A quantity already on the output side needs no
+    ratio. A blocked result carries no impedance but keeps the channel
+    identities, so Related Waveforms still work."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         side_plan = _side_plan(
@@ -1102,10 +1123,10 @@ def get_impedance_locus(
     recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
     voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
     current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
-    vt_primary: float | None = None,
-    vt_secondary: float | None = None,
-    ct_primary: float | None = None,
-    ct_secondary: float | None = None,
+    vt_primary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    vt_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    ct_primary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
+    ct_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
     reference_frequency_hz: float | None = None,
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
@@ -1120,7 +1141,12 @@ def get_impedance_locus(
     tick (mirrors `.../overcurrent-curve`'s own caching precedent). A
     point outside the recording's own valid window is still returned,
     with whatever `status`/`reason_code` it naturally produces -- the
-    caller renders only `computed` points as the path."""
+    caller renders only `computed` points as the path.
+
+    The sides and VT/CT are Recording Details' (D5A-2B2C-1B), evaluated ONCE
+    per request so every point shares one authoritative snapshot; the legacy
+    parameters are assertions only (see `/impedance`). A blocked locus reports
+    the reason on every point and in `side_conversion`."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         side_plan = _side_plan(
@@ -1428,10 +1454,10 @@ def get_distance_protection_analysis(
     recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
     voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
     current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
-    vt_primary: float | None = None,
-    vt_secondary: float | None = None,
-    ct_primary: float | None = None,
-    ct_secondary: float | None = None,
+    vt_primary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    vt_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    ct_primary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
+    ct_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
     reference_frequency_hz: float | None = None,
     zone1_enabled: bool = False, zone1_reach_ohm: float | None = None, zone1_reactive_reach_ohm: float | None = None,
     zone1_resistive_reach_forward_ohm: float | None = None, zone1_resistive_reach_reverse_ohm: float | None = None,
@@ -1466,7 +1492,16 @@ def get_distance_protection_analysis(
     opened, or full relay logic completed; `delay_s` is configuration
     information only, never accumulated or used to assert a trip. This
     is a SEPARATE analyzer from Impedance Locus -- it never mutates or
-    depends on any Impedance Locus state. Never persisted."""
+    depends on any Impedance Locus state. Never persisted.
+
+    D5A-2B2C-1B: the recorded side of the two Voltage legs and of the two
+    Current legs, and the VT/CT of the Measurement Groups that own them, come
+    ONLY from Recording Details (the two Voltage legs must agree with each
+    other, and so the two Current legs; Voltage and Current need not share a
+    side); `impedance_basis` is the requested OUTPUT side. The legacy side and
+    ratio parameters are validated assertions only (see `/impedance`). A
+    blocked result carries no impedance and no zone classification, but keeps
+    the channel identities."""
     workspace_id = _validate_workspace_id(workspace_id)
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
@@ -1508,10 +1543,10 @@ def get_distance_protection_locus(
     recording_basis: Annotated[str | None, Query(description=_DOC_RECORDING_BASIS)] = None,
     voltage_side: Annotated[str | None, Query(description=_DOC_VOLTAGE_SIDE)] = None,
     current_side: Annotated[str | None, Query(description=_DOC_CURRENT_SIDE)] = None,
-    vt_primary: float | None = None,
-    vt_secondary: float | None = None,
-    ct_primary: float | None = None,
-    ct_secondary: float | None = None,
+    vt_primary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    vt_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_VT)] = None,
+    ct_primary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
+    ct_secondary: Annotated[float | None, Query(description=_DOC_REQUEST_CT)] = None,
     reference_frequency_hz: float | None = None,
     zone1_enabled: bool = False, zone1_reach_ohm: float | None = None, zone1_reactive_reach_ohm: float | None = None,
     zone1_resistive_reach_forward_ohm: float | None = None, zone1_resistive_reach_reverse_ohm: float | None = None,
@@ -1546,7 +1581,11 @@ def get_distance_protection_locus(
     protection`) drives Operated/Not-Operated. A point outside the
     recording's own valid window is still returned, with whatever
     `status`/`reason_code` it naturally produces -- the caller renders
-    only `computed` points as the visible trail."""
+    only `computed` points as the visible trail.
+
+    The sides and VT/CT are Recording Details' (D5A-2B2C-1B), evaluated ONCE
+    per request so every point shares one authoritative snapshot; the legacy
+    parameters are assertions only (see `/distance-protection`)."""
     workspace_id = _validate_workspace_id(workspace_id)
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)

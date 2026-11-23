@@ -347,10 +347,12 @@ def test_a_refused_nominal_still_blocks_strict_conversion(client):
 
 
 def test_unknown_recorded_side_cannot_be_confirmed_by_the_caller(client):
+    """D5A-2B2C-1B: a side Recording Details cannot establish (here only inferred from the other channels) blocks, and the
+    caller's assertion of it never makes it usable."""
     ws = "d5a2b1-unknown"
     _, ctx = _bay(client, ws, ps={"IA": ""})
-    _blocked(_imp(client, ws, ctx, **_strict("primary", "primary", "primary")).json(),
-             "current_side_authority_unavailable", "current")
+    _blocked(_imp(client, ws, ctx, **_strict("primary", "primary", "primary")).json(), "current_side_inferred", "current")
+    _blocked(_imp(client, ws, ctx, impedance_basis="primary").json(), "current_side_inferred", "current")      # same without it
 
 
 def test_an_asserted_side_that_contradicts_the_recording_blocks_and_never_falls_back_to_legacy(client):
@@ -371,12 +373,20 @@ def test_current_contradiction_is_reported_for_current(client):
 
 
 def test_a_missing_side_is_never_inferred_from_recording_basis(client):
+    """An undeclared side is not made usable by an asserted `recording_basis` / `voltage_side` / `current_side`; an assertion of
+    only ONE side on a fully declared recording is harmless (it is validated, never required)."""
     ws = "d5a2b1-required"
-    _, ctx = _bay(client, ws)
+    _, ctx = _bay(client, ws, ps={"IA": "", "IB": "", "IC": ""})
     only_v = _imp(client, ws, ctx, voltage_side="primary", impedance_basis="primary", recording_basis="primary").json()
-    _blocked(only_v, "current_side_required", "current")
-    only_i = _imp(client, ws, ctx, current_side="primary", impedance_basis="primary", recording_basis="primary").json()
-    _blocked(only_i, "voltage_side_required", "voltage")
+    _blocked(only_v, "current_side_inferred", "current")
+    ws2 = "d5a2b1-required-v"
+    _, ctx2 = _bay(client, ws2, ps={"VA": "", "VB": "", "VC": ""})
+    only_i = _imp(client, ws2, ctx2, current_side="primary", impedance_basis="primary", recording_basis="primary").json()
+    _blocked(only_i, "voltage_side_inferred", "voltage")
+    ws3 = "d5a2b1-required-ok"
+    _, ctx3 = _bay(client, ws3)
+    assert _imp(client, ws3, ctx3, voltage_side="primary", impedance_basis="primary").json()["status"] == "computed"
+    assert _imp(client, ws3, ctx3, current_side="primary", impedance_basis="primary").json()["status"] == "computed"
 
 
 @pytest.mark.parametrize("params,code", [
@@ -420,22 +430,29 @@ def test_request_ratios_are_never_applied_and_an_equal_pair_is_accepted(client):
 
 def test_mixed_voltage_sides_within_a_distance_loop_are_rejected(client):
     ws = "d5a2b1-mixv"
-    _, ctx = _bay(client, ws, ps={"VA": "P", "VB": "S"})
+    _, ctx = _bay(client, ws, ps={"VA": "P", "VB": "S"}, groups=False)               # no Measurement Group: the legs disagree
     body = _dist(client, ws, ctx, **_strict("primary", "primary", "primary")).json()
     _blocked(body, "voltage_mixed_side_within_quantity", "voltage")
     assert "ZBAY_VA=primary" in body["side_conversion"]["block_detail"]["channels"]
+    # in a Measurement Group the same disagreement is the GROUP's conflict, which the engineer resolves once for the group
+    ws2 = "d5a2b1-mixv-group"
+    _, ctx2 = _bay(client, ws2, ps={"VA": "P", "VB": "S"})
+    _blocked(_dist(client, ws2, ctx2, **_strict("primary", "primary", "primary")).json(), "voltage_group_side_conflict", "voltage")
 
 
 def test_mixed_current_sides_within_a_distance_loop_are_rejected(client):
     ws = "d5a2b1-mixi"
-    _, ctx = _bay(client, ws, ps={"IA": "P", "IB": "S"})
+    _, ctx = _bay(client, ws, ps={"IA": "P", "IB": "S"}, groups=False)
     _blocked(_dist(client, ws, ctx, **_strict("primary", "primary", "primary")).json(),
              "current_mixed_side_within_quantity", "current")
+    ws2 = "d5a2b1-mixi-group"
+    _, ctx2 = _bay(client, ws2, ps={"IA": "P", "IB": "S"})
+    _blocked(_dist(client, ws2, ctx2, **_strict("primary", "primary", "primary")).json(), "current_group_side_conflict", "current")
 
 
 def test_unrelated_unused_channels_never_reject_a_recording(client):
     ws = "d5a2b1-unused"
-    _, ctx = _bay(client, ws, ps={"VC": "S", "IC": ""})            # Vc/Ic are not consumed by loop AB
+    _, ctx = _bay(client, ws, ps={"VC": "S", "IC": ""}, groups=False)               # Vc/Ic are not consumed by loop AB
     ab = _dist(client, ws, ctx, loop="AB", **_strict("primary", "primary", "primary")).json()
     assert ab["status"] == "computed" and ab["magnitude_ohm"] == pytest.approx(Z_PRI, rel=1e-3)
     imp_a = _imp(client, ws, ctx, phase="A", **_strict("primary", "primary", "primary")).json()
@@ -443,16 +460,20 @@ def test_unrelated_unused_channels_never_reject_a_recording(client):
     # ...but a loop that DOES consume them is judged on them
     assert _dist(client, ws, ctx, loop="BC", **_strict("primary", "primary", "primary")).json()["reason_code"] \
         == "voltage_mixed_side_within_quantity"
+    # a Measurement Group is judged as a whole: its undeclared/mixed member blocks every channel of the group (DEC-216)
+    ws2 = "d5a2b1-unused-group"
+    _, ctx2 = _bay(client, ws2, ps={"VC": "S"})
+    assert _dist(client, ws2, ctx2, loop="AB", **_strict("primary", "primary", "primary")).json()["reason_code"] == "voltage_group_side_conflict"
 
 
 def test_blocked_strict_locus_reports_the_reason_for_every_point(client):
     ws = "d5a2b1-blocklocus"
     _, ctx = _bay(client, ws, ps={"IA": ""})
     body = _imp_locus(client, ws, ctx, **_strict("primary", "primary", "primary")).json()
-    assert body["side_conversion"]["block_code"] == "current_side_authority_unavailable"
-    assert [(p["status"], p["reason_code"]) for p in body["points"]] == [("needs_configuration", "current_side_authority_unavailable")] * 3
+    assert body["side_conversion"]["block_code"] == "current_side_inferred"
+    assert [(p["status"], p["reason_code"]) for p in body["points"]] == [("needs_configuration", "current_side_inferred")] * 3
     dist = _dist_locus(client, ws, ctx, **_strict("primary", "primary", "primary")).json()
-    assert {p["reason_code"] for p in dist["points"]} == {"current_side_authority_unavailable"}
+    assert {p["reason_code"] for p in dist["points"]} == {"current_side_inferred"}
 
 
 def test_unresolved_channels_report_their_natural_status_not_a_side_block(client):
@@ -493,18 +514,20 @@ def test_two_recordings_use_their_own_ct_never_each_others(client):
     assert two["side_conversion"]["current_group_ids"] == ["ig-second"]
 
 
-# =========================================================================== legacy path: exact backward compatibility
+# =========================================================================== D5A-2B2C-1B: the legacy path is retired
 
 
-def test_legacy_same_side_call_matches_the_hand_value_and_the_strict_result(client):
+def test_a_same_side_recording_computes_the_hand_value_with_and_without_assertions(client):
     ws = "d5a2b1-legacy-ss"
     _, ctx = _bay(client, ws, v_side="secondary", i_side="secondary")
-    legacy = _imp(client, ws, ctx, recording_basis="secondary", impedance_basis="secondary").json()
-    assert legacy["status"] == "computed" and legacy["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3)
-    assert legacy["side_conversion"] is None and legacy["recording_basis"] == "secondary"
+    plain = _imp(client, ws, ctx, impedance_basis="secondary").json()
+    assert plain["status"] == "computed" and plain["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3)
+    assert plain["side_conversion"]["mode"] == "independent_sides" and plain["recording_basis"] == "secondary"
+    legacy_style = _imp(client, ws, ctx, recording_basis="secondary", impedance_basis="secondary").json()
     strict = _imp(client, ws, ctx, **_strict("secondary", "secondary", "secondary")).json()
-    assert strict["magnitude_ohm"] == pytest.approx(legacy["magnitude_ohm"], rel=1e-12)
-    assert strict["angle_deg"] == pytest.approx(legacy["angle_deg"], rel=1e-12)
+    for other in (legacy_style, strict):
+        assert other["magnitude_ohm"] == pytest.approx(plain["magnitude_ohm"], rel=1e-12)
+        assert other["angle_deg"] == pytest.approx(plain["angle_deg"], rel=1e-12)
 
 
 @pytest.mark.parametrize("basis,out,vs,expected", [
@@ -512,48 +535,53 @@ def test_legacy_same_side_call_matches_the_hand_value_and_the_strict_result(clie
     ("secondary", "primary", "secondary", Z_PRI),
     ("primary", "primary", "primary", Z_PRI),
 ])
-def test_legacy_single_basis_conversions_are_unchanged_and_agree_with_strict_for_same_side_inputs(client, basis, out, vs, expected):
+def test_single_basis_conversions_follow_recording_details_and_agree_with_matching_assertions(client, basis, out, vs, expected):
     ws = f"d5a2b1-legacy-{basis[:1]}{out[:1]}"
     _, ctx = _bay(client, ws, v_side=vs, i_side=vs)
-    legacy = _imp(client, ws, ctx, recording_basis=basis, impedance_basis=out,
-                  vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
-    assert legacy["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
+    plain = _imp(client, ws, ctx, impedance_basis=out).json()
+    assert plain["magnitude_ohm"] == pytest.approx(expected, rel=1e-3)
+    # the pre-D5A-2B2C-1B request shape (recording_basis + request ratios) is accepted as ASSERTIONS and changes nothing
+    legacy_style = _imp(client, ws, ctx, recording_basis=basis, impedance_basis=out,
+                        vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
+    assert legacy_style["magnitude_ohm"] == pytest.approx(plain["magnitude_ohm"], rel=1e-9)
     strict = _imp(client, ws, ctx, **_strict(vs, vs, out)).json()
-    assert strict["magnitude_ohm"] == pytest.approx(legacy["magnitude_ohm"], rel=1e-9)
+    assert strict["magnitude_ohm"] == pytest.approx(plain["magnitude_ohm"], rel=1e-9)
 
 
-def test_legacy_distance_and_locus_are_unchanged(client):
+def test_distance_and_locus_follow_recording_details(client):
     ws = "d5a2b1-legacy-dist"
     _, ctx = _bay(client, ws, v_side="primary", i_side="primary")
     d = _dist(client, ws, ctx, recording_basis="primary", impedance_basis="secondary",
               vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
-    assert d["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3) and d["side_conversion"] is None
+    assert d["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3) and d["side_conversion"]["mode"] == "independent_sides"
     loc = _dist_locus(client, ws, ctx, recording_basis="primary", impedance_basis="primary").json()
-    assert loc["side_conversion"] is None and all(p["magnitude_ohm"] == pytest.approx(Z_PRI, rel=1e-3) for p in loc["points"])
+    assert loc["side_conversion"]["mode"] == "independent_sides"
+    assert all(p["magnitude_ohm"] == pytest.approx(Z_PRI, rel=1e-3) for p in loc["points"])
 
 
-def test_legacy_mixed_side_error_is_the_documented_defect_strict_mode_fixes(client):
-    """Characterisation, not an endorsement: legacy cannot represent V primary / I secondary. Strict mode can."""
+def test_the_old_single_basis_defect_can_no_longer_produce_a_wrong_number(client):
+    """Before D5A-2B2C-1B a single `recording_basis` could not represent V primary / I secondary: the legacy path silently computed
+    a value wrong by the CT ratio (6 600 ohm). The same request is now refused (the asserted basis contradicts the recorded
+    current) and the request without it computes the correct value."""
     ws = "d5a2b1-legacy-mixed"
     _, ctx = _bay(client, ws, v_side="primary", i_side="secondary")
-    legacy = _imp(client, ws, ctx, recording_basis="primary", impedance_basis="secondary",
-                  vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
-    assert legacy["magnitude_ohm"] == pytest.approx(33000.0 * 200.0 / 1000.0, rel=1e-3)   # 6 600 ohm, wrong by the CT ratio
+    old_request = _imp(client, ws, ctx, recording_basis="primary", impedance_basis="secondary",
+                       vt_primary=VT_P, vt_secondary=VT_S, ct_primary=CT_P, ct_secondary=CT_S).json()
+    _blocked(old_request, "current_side_contradicts_recording", "current")
+    assert old_request["magnitude_ohm"] is None
     strict = _imp(client, ws, ctx, **_strict("primary", "secondary", "secondary")).json()
     assert strict["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3)
+    assert _imp(client, ws, ctx, impedance_basis="secondary").json()["magnitude_ohm"] == pytest.approx(Z_SEC, rel=1e-3)
 
 
-def test_recording_basis_stays_required_on_the_legacy_path_with_the_same_422(client):
+def test_impedance_basis_stays_required_and_recording_basis_is_now_optional(client):
     ws = "d5a2b1-422"
     _, ctx = _bay(client, ws)
-    missing_basis = _imp(client, ws, ctx, impedance_basis="secondary")
-    missing_out = _imp(client, ws, ctx, recording_basis="secondary")
-    assert missing_basis.status_code == missing_out.status_code == 422
-    a, b = missing_basis.json()["detail"][0], missing_out.json()["detail"][0]
-    assert a["loc"] == ["query", "recording_basis"] and b["loc"] == ["query", "impedance_basis"]
-    assert {k: v for k, v in a.items() if k != "loc"} == {k: v for k, v in b.items() if k != "loc"}   # identical error shape
-    for route in (_imp_locus, _dist, _dist_locus):
-        assert route(client, ws, ctx, impedance_basis="secondary").status_code == 422
+    for route in (_imp, _imp_locus, _dist, _dist_locus):
+        missing_out = route(client, ws, ctx, recording_basis="primary")
+        assert missing_out.status_code == 422
+        assert missing_out.json()["detail"][0]["loc"] == ["query", "impedance_basis"]
+        assert route(client, ws, ctx, impedance_basis="primary").status_code == 200        # recording_basis is no longer required
 
 
 def test_unknown_context_is_still_404_in_strict_mode(client):
