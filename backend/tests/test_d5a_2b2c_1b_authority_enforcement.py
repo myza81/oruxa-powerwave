@@ -537,3 +537,20 @@ def test_a_ct_held_by_another_current_group_of_the_recording_is_pointed_out(clie
     # phase C belongs to the group that HAS the CT, which therefore converts with its own ratio and never the neighbour's
     c_phase = _imp(client, ws, ctx, impedance_basis="primary", phase="C").json()
     assert c_phase["side_conversion"]["ct_ratio_applied"] == pytest.approx(600.0)
+
+
+def test_a_measurement_group_spanning_several_engineering_contexts_is_not_ambiguous(client):
+    """Group membership, not the Engineering Context, is the authority: two contexts of one recording (phase A and phase B) share
+    the Voltage group and the Current group, and each converts with that one group's VT/CT -- never a 'which bay' ambiguity."""
+    ws = "1b-two-contexts"
+    src, ctx_a = _bay(client, ws, v_side="secondary", i_side="secondary", members=("VA", "IA"))
+    ctx_b = _context(client, ws, src, members=("VB", "IB"))
+    assert ctx_a != ctx_b
+    for ctx, phase in ((ctx_a, "A"), (ctx_b, "B")):
+        for out in SIDES:
+            body = _imp(client, ws, ctx, impedance_basis=out, phase=phase).json()
+            assert body["status"] == "computed", body
+            assert body["magnitude_ohm"] == pytest.approx(165.0 if out == "primary" else 33.0, rel=1e-3)
+            assert body["side_conversion"]["voltage_group_ids"] == [f"vg-{src}"] and body["side_conversion"]["current_group_ids"] == [f"ig-{src}"]
+    report = _report(client, ws, ctx_b, impedance_basis="primary", phase="B")
+    assert report["status"] == "ready" and report["voltage"]["group_ids"] == [f"vg-{src}"]

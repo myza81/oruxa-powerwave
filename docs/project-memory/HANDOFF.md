@@ -8,6 +8,23 @@ Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — a
 
 ---
 
+## D5A-2B2C-1B — Impedance Locus and Distance Protection unified measurement-side integration (2026-11-23)
+
+**Status:** committed locally on `feature/d5a-2b2c-1b-impedance-distance-unified-side` (from the DEV-UAT-approved `f24f1d7`). NOT pushed, merged or deployed. **Stopped for owner review.**
+Recorded Impedance Locus and Distance Protection (selected-time and locus) now take the Primary/Secondary side of **each consumed Voltage and Current channel** from Recording Details
+(`resolve_effective_measurement_side` + the shared consumer policy in `recorded_side_authority.py`, which Overcurrent also uses) and the VT/CT of the Measurement Groups that **own** those channels,
+only where a conversion is needed. Voltage and Current are independent (V Primary / I Secondary calculates). The page has no Recording-basis input (the Impedance basis (output) selector stays) and
+sends only `impedance_basis`; the backend enforces the authority for every client — `recording_basis`, `voltage_side`, `current_side`, `vt_*`, `ct_*` are optional assertions that can only block on a
+contradiction, and the old bypass (omit `voltage_side`/`current_side` → the request decides) is closed. New read-only `GET .../protection-recorded-input`. The mathematics, guardrails, zone geometry,
+Manual mode, Overcurrent, PU and calculated channels are untouched. DEC-216 Amendment 6. Details, data flow, oracles, reason-code matrix, tests, verification, limitations and the DEV UAT checklist:
+[D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
+
+**Owner decisions requested:** calculated V/I channels are blocked for now (same as Overcurrent); recordings with no P/S evidence need an engineer setting; a mixed-declaration Measurement Group blocks every channel it
+owns; the two legs of a loop must agree on a side (report §8).
+**Next action:** owner review. D5A-2B2D (retire the legacy parameters), calculated-channel integration and the PU migration start only after authorisation.
+
+---
+
 ## D5A-2B2C-1A — Overcurrent unified measurement-side integration (2026-11-23)
 
 **Status:** committed locally on `feature/d5a-2b2c-1a-overcurrent-unified-side` (from the DEV-UAT-approved `ad1b6ed`). NOT pushed, merged or deployed. **Stopped for owner review.**
