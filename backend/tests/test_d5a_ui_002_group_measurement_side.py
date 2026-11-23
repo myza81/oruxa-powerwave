@@ -48,7 +48,6 @@ from tests.test_d5a2a_protection_instrument_context_api import _clear, _contexts
 from tests.test_d5a2b1_independent_side_conversion import (
     CT_P, CT_S, VT_P, VT_S, _ALL, _comtrade, _imp, _strict, _upload,
 )
-from tests.test_d5a_oc_001_overcurrent_ct_authority import _oc
 
 V, I = ("VA", "VB", "VC"), ("IA", "IB", "IC")
 
@@ -880,9 +879,10 @@ def test_overview_lists_recordings_and_groups_without_channel_detail(client):
 
 
 def _snapshot(client, ws, src, ctx):
-    """Every existing PU / protection response this slice must not move."""
+    """Every existing PU / protection response this slice must not move. Recorded Overcurrent is deliberately NOT in this
+    list since D5A-2B2C-1A: it now consumes the unified side by design (see test_d5a_2b2c_1a_overcurrent_unified_side.py).
+    Impedance, Distance, PU and the protection-context report are not migrated and must stay exactly as they were."""
     calls = [
-        ("oc", lambda: _oc(client, ws, ctx)),
         ("imp_legacy", lambda: _imp(client, ws, ctx, recording_basis="primary", impedance_basis="primary")),
         ("imp_strict", lambda: _imp(client, ws, ctx, **_strict("primary", "primary", "primary"))),
         ("context_oc", lambda: client.get(f"{_contexts(ws)}/{ctx}/protection-instrument-context",
@@ -902,7 +902,7 @@ def test_existing_pu_and_protection_results_are_unchanged_by_side_configuration(
     _vt(client, ws, gv, VT_P, VT_S, note="VT")
     _ct(client, ws, gi, CT_P, CT_S, note="CT")
     before = _snapshot(client, ws, src, ctx)
-    assert before["oc"][0] == 200 and before["imp_legacy"][0] == 200            # the oracle itself is meaningful
+    assert before["imp_legacy"][0] == 200 and before["context_oc"][0] == 200    # the oracle itself is meaningful
     _set_rec(client, ws, src, "secondary", note="correction")
     assert _snapshot(client, ws, src, ctx) == before
     _put(client, ws, src, gv, "primary")

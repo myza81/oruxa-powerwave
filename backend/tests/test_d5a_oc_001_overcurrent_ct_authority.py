@@ -33,7 +33,7 @@ from tests.test_d5a2b1_independent_side_conversion import (  # noqa: F401  (clie
     CT_P, CT_S, I_PRI, I_SEC, VT_P, VT_S, _bay, client,
 )
 from tests.test_overcurrent_analysis_service import (  # noqa: F401  (registries is the shared fixture)
-    _add_context, _current_source, _member, registries,
+    _add_context, _authority, _current_source, _member, registries,
 )
 
 RELAY_SECONDARY_A = I_PRI * CT_S / CT_P          # 2.0 A, hand-derived above
@@ -272,8 +272,11 @@ def test_a_primary_request_without_ct_is_blocked_but_still_identifies_the_channe
     src, ctx = _bay(client, ws, groups=False)
     body = _oc(client, ws, ctx, recording_basis="primary").json()
     _blocked(body, "invalid_ct_values")
-    assert body["message"] == "CT primary and CT secondary current must both be finite numbers greater than zero."
+    # D5A-2B2C-1A: the CT comes from the channel's own Current Measurement Group, so the message names where it is missing
+    # (this channel is in no group) instead of asking for request values.
+    assert "not in a Current Measurement Group" in body["message"] and "Recording Details" in body["message"]
     assert body["channel_ref"] == _src_ref(src, "ZBAY_IA") and body["measured_rms_current_unit"] == "A"
+    assert body["measurement_side"] == "primary" and body["measurement_group_id"] is None
 
 
 @pytest.mark.parametrize("ct", [
@@ -301,14 +304,19 @@ def test_an_unresolved_channel_is_never_given_an_identity(client):
     ws = "ocblock-unresolved"
     _src, ctx = _bay(client, ws, members=("VA", "VB", "VC"))          # no current channels in the context
     body = _oc(client, ws, ctx, recording_basis="primary").json()
-    _blocked(body, "invalid_ct_values")
+    # D5A-2B2C-1A: no current channel resolved, so there is nothing to read a side or a CT for; the resolver's own
+    # answer is reported (it used to be pre-empted by the request-CT check, which no longer exists).
+    assert body["status"] == "needs_configuration" and body["reason_code"] not in (None, "invalid_ct_values"), body
+    assert all(body[k] is None for k in NUMBERS), body
     assert body["channel_ref"] is None and body["measured_rms_current_unit"] is None
+    assert body["measurement_side"] is None and body["measurement_group_id"] is None
 
 
-def test_an_unknown_context_still_reports_the_ct_block_not_an_error(client):
-    body = _oc(client, "ocblock-nocontext", "no-such-context", recording_basis="primary").json()
-    _blocked(body, "invalid_ct_values")
-    assert body["channel_ref"] is None
+def test_an_unknown_context_is_a_404_for_every_recorded_request(client):
+    # D5A-2B2C-1A: a Primary request without a CT used to answer 200 `invalid_ct_values` here because the CT check ran
+    # before any resolution; the side/CT now come from the resolved channel, so it behaves like every other request.
+    for basis in ("primary", "secondary"):
+        assert _oc(client, "ocblock-nocontext", "no-such-context", recording_basis=basis).status_code == 404
 
 
 def test_an_unsupported_unit_keeps_the_channel_identity(registries):
@@ -319,7 +327,7 @@ def test_an_unsupported_unit_keeps_the_channel_identity(registries):
         characteristic_id="iec_standard_inverse", tms=0.1, pickup_current_secondary=1.0,
         recording_basis="secondary", ct_primary=None, ct_secondary=None, reference_frequency_hz_override=None,
         context_registry=registries["context"], source_registry=registries["source"],
-        calculated_channel_registry=registries["calc"],
+        calculated_channel_registry=registries["calc"], authority=_authority(registries),
     )
     assert (result.status, result.reason_code) == (STATUS_NEEDS_CONFIGURATION, "unsupported_current_unit")
     assert result.channel_ref is not None and result.channel_ref.channel_name == "ALPHA1_IA"
@@ -337,7 +345,9 @@ def test_reading_the_report_leaves_the_compute_endpoint_unchanged(client):
     before = _oc(client, ws, ctx, **request).json()
     report = _report(client, ws, ctx, **request)
     after = _oc(client, ws, ctx, **request).json()
-    assert before == after
-    assert after["ct_primary"] == 1234.0 and after["ct_secondary"] == 5.0           # the request's own values, never overwritten
+    assert before == after                                                          # reading changes nothing
+    # D5A-2B2C-1A: a request CT that disagrees with Recording Details is no longer applied; it blocks, with no number
+    _blocked(after, "request_ct_differs_from_authority")
+    assert after["ct_primary"] is None and after["ct_secondary"] is None
     assert report["current"]["primary"] == CT_P                                     # while the authority still says 1000
     assert "REQUEST_CT_DIFFERS_FROM_AUTHORITY" in [d["code"] for d in report["diagnostics"]]
