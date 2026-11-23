@@ -1,3 +1,4 @@
+// WUI-001: Y actions now use the owning pane; global X/cursor/t0 contracts remain.
 // Waveform global Y-axis zoom (owner ticket): a page-level Y Zoom In/Out
 // pair mirroring Event Reconstruction's own global wwErZoomYInBtn/
 // wwErZoomYOutBtn (same icons, same "Zoom In/Out — Selected Y Axis"
@@ -47,6 +48,7 @@ async function uploadFixture(page, stem) {
 // sidebar, the same flow every Waveform browser test already uses.
 async function displayChannel(page, sourceId, channelName) {
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+  await page.locator("#mainNavWaveformBtn").click();
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -59,13 +61,18 @@ async function displayChannel(page, sourceId, channelName) {
   await expect(row).toHaveAttribute("aria-pressed", "true");
 }
 
+async function clickPaneY(page, action) {
+  const id = await page.evaluate(() => wwActivePanel()?.id);
+  await page.locator(`#viewWaveform .ww-panel[data-panel-id="${id}"] [data-pane-y="${action}"]`).click();
+}
+
 function waveformState(page) {
   return page.evaluate(() => ({
     activeGroupKey: ww.activePanelGroupKey,
-    zoomInDisabled: document.getElementById("wwZoomYInBtn").disabled,
-    zoomOutDisabled: document.getElementById("wwZoomYOutBtn").disabled,
-    zoomInTitle: document.getElementById("wwZoomYInBtn").title,
-    zoomOutTitle: document.getElementById("wwZoomYOutBtn").title,
+    zoomInDisabled: wwActivePanel()?.headerEl.querySelector('[data-pane-y="in"]').disabled ?? true,
+    zoomOutDisabled: wwActivePanel()?.headerEl.querySelector('[data-pane-y="out"]').disabled ?? true,
+    zoomInTitle: wwActivePanel()?.headerEl.querySelector('[data-pane-y="in"]').title ?? null,
+    zoomOutTitle: wwActivePanel()?.headerEl.querySelector('[data-pane-y="out"]').title ?? null,
     panels: ww.panels.map((p) => ({
       id: p.id,
       groupKey: p.groupKey,
@@ -94,7 +101,7 @@ async function clickPanelHeader(page, groupId, nth = 0) {
 // alongside clickPanelHeader(page, groupId, ...), it plays no role in
 // resolving the actual target.
 async function clickAutoscaleY(page, groupId) {
-  await page.locator("#wwAutoscaleYBtn").click();
+  await clickPaneY(page, "auto");
 }
 
 // Two panels in ONE Time Group: a Voltage channel and a Current channel
@@ -143,7 +150,7 @@ async function setupTwoTimeGroups(page) {
   return { sourceIdA, sourceIdB, groupIdA, groupIdB };
 }
 
-test.describe("Waveform global Y Zoom -- single Time Group, two panels", () => {
+test.describe("Waveform pane-local Y Zoom -- single Time Group, two panels", () => {
   test("Zoom Y In targets only the selected (active) panel's axis", async ({ page }) => {
     const { groupId } = await setupTwoPanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 0);
@@ -151,7 +158,7 @@ test.describe("Waveform global Y Zoom -- single Time Group, two panels", () => {
     expect(before.zoomInDisabled).toBe(false);
     const targetId = before.activeGroupKey;
 
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
     const after = await waveformState(page);
 
     for (const panel of after.panels) {
@@ -174,7 +181,7 @@ test.describe("Waveform global Y Zoom -- single Time Group, two panels", () => {
     const before = await waveformState(page);
     const targetId = before.activeGroupKey;
 
-    await page.locator("#wwZoomYOutBtn").click();
+    await clickPaneY(page, "out");
     const after = await waveformState(page);
 
     for (const panel of after.panels) {
@@ -199,7 +206,7 @@ test.describe("Waveform global Y Zoom -- single Time Group, two panels", () => {
     expect(state.activeGroupKey).not.toBe(firstTarget);
 
     const before = state.panels.map((p) => ({ id: p.id, yRange: p.yRange }));
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
     const after = await waveformState(page);
     for (const panel of after.panels) {
       const prior = before.find((p) => p.id === panel.id);
@@ -209,7 +216,7 @@ test.describe("Waveform global Y Zoom -- single Time Group, two panels", () => {
   });
 });
 
-test.describe("Waveform global Y Zoom -- multiple Time Groups", () => {
+test.describe("Waveform pane-local Y Zoom -- multiple Time Groups", () => {
   test("zooming the active panel never touches another Time Group's own panel", async ({ page }) => {
     const { groupIdA, groupIdB } = await setupTwoTimeGroups(page);
     await clickPanelHeader(page, groupIdB, 0);
@@ -217,7 +224,7 @@ test.describe("Waveform global Y Zoom -- multiple Time Groups", () => {
     expect(before.panels.find((p) => p.groupKey === before.activeGroupKey).timeGroupId).toBe(groupIdB);
     const otherPanel = before.panels.find((p) => p.timeGroupId === groupIdA);
 
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
     const after = await waveformState(page);
     const otherAfter = after.panels.find((p) => p.timeGroupId === groupIdA);
     expect(otherAfter.yRange).toEqual(otherPanel.yRange);
@@ -240,7 +247,7 @@ test.describe("Waveform global Y Zoom -- multiple Time Groups", () => {
     expect([groupIdA, groupIdB]).toContain(before.panels[0].timeGroupId);
     const fallbackTarget = before.panels[0];
 
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
     const after = await waveformState(page);
     for (const panel of after.panels) {
       const prior = before.panels.find((p) => p.id === panel.id);
@@ -250,37 +257,38 @@ test.describe("Waveform global Y Zoom -- multiple Time Groups", () => {
   });
 });
 
-test.describe("Waveform global Y Zoom -- no valid target", () => {
+test.describe("Waveform pane-local Y Zoom -- no valid target", () => {
   test("no recordings at all: Y Zoom In/Out stay disabled", async ({ page }) => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     const state = await waveformState(page);
     expect(state.zoomInDisabled).toBe(true);
     expect(state.zoomOutDisabled).toBe(true);
-    expect(state.zoomInTitle).toBe("Zoom In — Selected Y Axis");
+    await expect(page.locator("#viewWaveform [data-pane-y]")).toHaveCount(0);
   });
 
   test("a recording exists but no channel is displayed yet: still disabled", async ({ page }) => {
     await uploadFixture(page, "synth_playback");
     const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
     await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    await page.locator("#mainNavWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const state = await waveformState(page);
     expect(state.zoomInDisabled).toBe(true);
     expect(state.zoomOutDisabled).toBe(true);
   });
 
-  test("the tooltip names the targeted panel's own label once a target exists", async ({ page }) => {
+  test("the local controls have accessible action tooltips", async ({ page }) => {
     const { groupId } = await setupTwoPanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 0);
     const state = await waveformState(page);
     const target = state.panels.find((p) => p.groupKey === state.activeGroupKey);
-    expect(state.zoomInTitle).toBe("Zoom In — " + target.label);
-    expect(state.zoomOutTitle).toBe("Zoom Out — " + target.label);
+    expect(state.zoomInTitle).toBe("Zoom Y In");
+    expect(state.zoomOutTitle).toBe("Zoom Y Out");
   });
 });
 
-test.describe("Waveform global Y Zoom -- Autoscale Y interaction", () => {
+test.describe("Waveform pane-local Y Zoom -- Autoscale Y interaction", () => {
   test("Autoscale Y restores the correct automatic range for the same target axis after a manual zoom", async ({ page }) => {
     const { groupId } = await setupTwoPanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 0);
@@ -288,8 +296,8 @@ test.describe("Waveform global Y Zoom -- Autoscale Y interaction", () => {
     const targetId = before.activeGroupKey;
     const originalRange = before.panels.find((p) => p.groupKey === targetId).yRange;
 
-    await page.locator("#wwZoomYInBtn").click();
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
+    await clickPaneY(page, "in");
     const zoomed = await waveformState(page);
     const zoomedRange = zoomed.panels.find((p) => p.groupKey === targetId).yRange;
     expect(zoomedRange).not.toEqual(originalRange);

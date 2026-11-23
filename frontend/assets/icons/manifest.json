@@ -51,5 +51,13 @@
   "ANNOTATION_TEXT_NOTE": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
   "ANNOTATION_CALLOUT": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
   "ANNOTATION_PEAK_MAX": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
-  "ANNOTATION_PEAK_MIN": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" }
+  "ANNOTATION_PEAK_MIN": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "WUI002_ZOOM_X_IN": {"file": "waveform/wui-002/plus.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup plus SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_ZOOM_X_OUT": {"file": "waveform/wui-002/minus.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup minus SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_AUTOSCALE_X": {"file": "waveform/wui-002/fit.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup fit SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_CURSORS_AB": {"file": "waveform/wui-002/ruler.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup ruler SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_ANNOTATE": {"file": "waveform/wui-002/tag.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup tag SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_VIEW_SPLIT": {"file": "waveform/wui-002/columns.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup columns SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_EDIT_GROUPS": {"file": "waveform/wui-002/settings.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup settings SVG. See waveform/wui-002/provenance.json."},
+  "WUI002_CLEAR_WAVEFORMS": {"file": "waveform/wui-002/clear.svg", "source": "owner-supplied", "note": "WUI-002 global Waveform toolbar only; exact mockup clear SVG. See waveform/wui-002/provenance.json."}
 }

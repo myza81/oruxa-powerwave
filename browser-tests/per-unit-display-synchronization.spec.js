@@ -428,10 +428,11 @@ test("unit round trips preserve all physical samples, cursor positions, t0 and v
   expect(normalized.time).toEqual(engineering.time);
   expect(normalized.values).toHaveLength(engineering.values.length);
   expect(Math.max(...normalized.values.map((v, i) => Math.abs(v - engineering.values[i] / (275 / Math.sqrt(3)))))).toBeLessThan(1e-10);
-  await expect(page.locator("#wwYAxisReadout")).toHaveText("Y: Voltage (pu)");
+  await expect.poll(()=>page.evaluate(()=>wwActivePanel()?.label)).toBe("Voltage (pu)");
+  await expect(page.locator("#wwYAxisReadout")).toHaveCount(0);
   await switchMode(page, "engineering");
   expect(await snapshot()).toEqual(engineering);
-  await expect(page.locator("#wwYAxisReadout")).toHaveText("Y: Voltage");
+  await expect.poll(()=>page.evaluate(()=>wwActivePanel()?.label)).toBe("Voltage");
   await expect(row(page, source).locator(".channel-name-text")).toHaveText("VA (kV)");
 });
 

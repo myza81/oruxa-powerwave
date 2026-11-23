@@ -4,9 +4,31 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-18** — RD-0B committed; RD-1 Slice B implemented — awaiting owner UAT before Slice C.
+Last updated: **2026-11-23** — controlled WUI-001–004 consolidation; owner subsequently authorized exact-SHA DEV deployment after verification. Earlier engineering handoffs retain their original implementation context.
 
 ---
+
+## Controlled WUI-001–004 consolidation
+
+[UAT] Owner accepted final UI `d513fba`. Current DEV advanced to **`f24f1d7`**;
+remote branch, frontend build and API health match. Its successful deployment is
+**45136061375**; it is the baseline/rollback checkpoint for this consolidation.
+Dedicated branch `integration/wui-001-004-dev-f24f1d7`, worktree
+`.local-data/wui-001-004-current-dev`, preserves the released Overcurrent changes
+and Recording Details refinements. Claude's newer unpublished `3e9cc5f` and active
+backend edits are excluded and untouched. All 562 protected frontend functions
+match DEV; no backend application/infrastructure change.
+
+Candidate **http://127.0.0.1:30441/** / API 30440; exact baseline 30431/30430,
+isolated storage. See [the consolidation report](WUI_001_004_DEV_CONSOLIDATION_REPORT.md)
+for final verification, source/manifest evidence, screenshots and deployment gates.
+Deployment/rollback recreates both containers and clears ephemeral workspace,
+Measurement Group, CT/VT and other registry state. Coordinate users and state
+recreation. The owner subsequently authorized publishing the dedicated verified
+branch and deploying its exact SHA to DEV independently: Claude's D5A-2B2C-1B
+work is isolated and has no scheduled deployment. Complete verification/CI, deploy
+DEV, validate and report the new exact checkpoint for Claude's later integration.
+Do not merge to `main`, change production or start WUI-005.
 
 ## D5A-2B2C-1A — Overcurrent unified measurement-side integration (2026-11-23)
 

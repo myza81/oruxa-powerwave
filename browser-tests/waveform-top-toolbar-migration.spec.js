@@ -1,3 +1,4 @@
+// WUI-001: Y actions now use the owning pane; global X/cursor/t0 contracts remain.
 // Waveform top-toolbar migration (owner ticket): Zoom X In/Out,
 // Autoscale X, Autoscale Y and A/B Cursors move from each Time Group
 // Canvas's own local toolbar to the page-level #wwToolbar, joining the
@@ -36,6 +37,7 @@ async function uploadFixture(page, stem) {
 
 async function displayChannel(page, sourceId, channelName) {
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+  await page.locator("#mainNavWaveformBtn").click();
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -48,20 +50,30 @@ async function displayChannel(page, sourceId, channelName) {
   await expect(row).toHaveAttribute("aria-pressed", "true");
 }
 
+async function clickPaneY(page, action) {
+  const id = await page.evaluate(() => wwActivePanel()?.id);
+  await page.locator(`#viewWaveform .ww-panel[data-panel-id="${id}"] [data-pane-y="${action}"]`).click();
+}
+
 function waveformState(page) {
   return page.evaluate(() => {
-    const ids = ["wwZoomXInBtn", "wwZoomXOutBtn", "wwZoomYInBtn", "wwZoomYOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"];
+    const ids = ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"];
     const buttons = {};
     for (const id of ids) {
       const el = document.getElementById(id);
       buttons[id] = { disabled: el.disabled, title: el.title, ariaPressed: el.getAttribute("aria-pressed") };
     }
-    const readoutEl = document.getElementById("wwYAxisReadout");
+    const active = wwActivePanel();
+    const paneY = Object.fromEntries(['in','out','auto'].map(action => {
+      const el = active?.headerEl.querySelector(`[data-pane-y="${action}"]`);
+      return [action, {disabled:el?.disabled ?? true,title:el?.title ?? null}];
+    }));
     return {
       activeGroupId: wwActiveTimeGroupId(),
       activePanelGroupKey: wwActivePanel() ? wwActivePanel().groupKey : null,
-      readout: { text: readoutEl.textContent, title: readoutEl.title },
-      buttons,
+      activePanelId: active ? active.id : null,
+      activePanelLabel: active ? active.label : null,
+      buttons, paneY,
       panels: ww.panels.map((p) => ({
         id: p.id,
         groupKey: p.groupKey,
@@ -145,7 +157,7 @@ async function setupTwoTimeGroups(page) {
 test.describe("Waveform top toolbar -- controls present and complete", () => {
   test("Zoom X/Y, Autoscale X/Y and A/B Cursors all render in the page-level toolbar", async ({ page }) => {
     await page.goto("/index.html");
-    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwZoomYInBtn", "wwZoomYOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"]) {
+    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"]) {
       await expect(page.locator("#" + id)).toHaveCount(1);
     }
   });
@@ -158,14 +170,12 @@ test.describe("Waveform top toolbar -- controls present and complete", () => {
     await expect(page.locator("#wwToolbar")).toBeVisible();
     await expect(page.locator("#wwEmptyState")).toBeVisible();
     const state = await waveformState(page);
-    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"]) {
+    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"]) {
       await expect(page.locator("#" + id)).toBeVisible();
       expect(state.buttons[id].disabled).toBe(true);
     }
-    // Y-axis target readout: visible (toolbar structure stays stable),
-    // empty-state wording matching Event Reconstruction's own exactly.
-    await expect(page.locator("#wwYAxisReadout")).toBeVisible();
-    expect(state.readout.text).toBe("Y: Select axis");
+    await expect(page.locator("#wwYAxisReadout")).toHaveCount(0);
+    expect(state.activePanelId).toBeNull();
     // View/layout controls stay right-aligned, unaffected by this ticket.
     await expect(page.locator("#layoutModeToggle")).toBeVisible();
     expect(consoleErrors).toEqual([]);
@@ -175,9 +185,10 @@ test.describe("Waveform top toolbar -- controls present and complete", () => {
     await uploadFixture(page, "synth_playback");
     const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
     await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    await page.locator("#mainNavWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const state = await waveformState(page);
-    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"]) {
+    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"]) {
       expect(state.buttons[id].disabled).toBe(true);
     }
   });
@@ -190,12 +201,12 @@ test.describe("Waveform top toolbar -- controls present and complete", () => {
     // at its own full bounds, and Zoom Out reads as unavailable there
     // (the same nuance the now-removed local Zoom Out button had) --
     // every other control has no such "already at the limit" case.
-    for (const id of ["wwZoomXInBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn", "wwZoomYInBtn", "wwZoomYOutBtn"]) {
+    for (const id of ["wwZoomXInBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"]) {
       expect(state.buttons[id].disabled, id).toBe(false);
     }
     expect(state.buttons.wwZoomXOutBtn.disabled).toBe(true);
-    // First valid axis becomes the fallback readout target.
-    expect(state.readout.text).toBe("Y: " + state.panels[0].label);
+    // The first valid axis remains the fallback target without a global label.
+    expect(state.activePanelId).toBe(state.panels[0].id);
   });
 });
 
@@ -316,8 +327,8 @@ test.describe("Waveform top toolbar -- Autoscale Y shares Zoom Y's own target", 
     const others = before.panels.filter((p) => p.groupKey !== targetId);
     expect(others).toHaveLength(2); // Voltage and Frequency
 
-    await page.locator("#wwZoomYInBtn").click();
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
+    await clickPaneY(page, "in");
     const zoomed = await waveformState(page);
     const zoomedTarget = zoomed.panels.find((p) => p.groupKey === targetId);
     expect(zoomedTarget.yRange).not.toEqual(before.panels.find((p) => p.groupKey === targetId).yRange);
@@ -325,7 +336,7 @@ test.describe("Waveform top toolbar -- Autoscale Y shares Zoom Y's own target", 
       expect(zoomed.panels.find((p) => p.id === other.id).yRange, "Zoom Y never touches other axes").toEqual(other.yRange);
     }
 
-    await page.locator("#wwAutoscaleYBtn").click();
+    await clickPaneY(page, "auto");
     await expect.poll(async () => {
       const state = await waveformState(page);
       return state.panels.find((p) => p.groupKey === targetId).yRange;
@@ -351,8 +362,8 @@ test.describe("Waveform top toolbar -- Autoscale Y shares Zoom Y's own target", 
     const before = await waveformState(page);
     const otherGroupPanel = before.panels.find((p) => p.timeGroupId === groupIdA);
 
-    await page.locator("#wwZoomYInBtn").click();
-    await page.locator("#wwAutoscaleYBtn").click();
+    await clickPaneY(page, "in");
+    await clickPaneY(page, "auto");
     await page.waitForTimeout(200);
     const after = await waveformState(page);
     const otherGroupAfter = after.panels.find((p) => p.timeGroupId === groupIdA);
@@ -362,15 +373,15 @@ test.describe("Waveform top toolbar -- Autoscale Y shares Zoom Y's own target", 
   test("no explicit selection: Autoscale Y falls back to ww.panels[0], the exact same panel Zoom Y falls back to", async ({ page }) => {
     const { groupIdA, groupIdB } = await setupTwoTimeGroups(page);
     const state = await waveformState(page);
-    expect(state.buttons.wwAutoscaleYBtn.disabled).toBe(false);
+    expect(state.paneY.auto.disabled).toBe(false);
     const fallbackPanel = state.panels[0];
 
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
     const zoomed = await waveformState(page);
     const zoomedFallback = zoomed.panels.find((p) => p.id === fallbackPanel.id);
     expect(zoomedFallback.yRange).not.toEqual(fallbackPanel.yRange);
 
-    await page.locator("#wwAutoscaleYBtn").click();
+    await clickPaneY(page, "auto");
     await expect.poll(async () => {
       const s = await waveformState(page);
       return s.panels.find((p) => p.id === fallbackPanel.id).yRange;
@@ -389,62 +400,63 @@ test.describe("Waveform top toolbar -- Autoscale Y shares Zoom Y's own target", 
     const { groupId } = await setupThreePanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 0);
     const first = await waveformState(page);
-    expect(first.buttons.wwZoomYInBtn.title).toBe(first.buttons.wwAutoscaleYBtn.title.replace("Autoscale Y — ", "Zoom In — "));
+    expect(first.paneY.in.title).toBe("Zoom Y In");
+    expect(first.paneY.auto.title).toBe("Autoscale Y");
 
     await clickPanelHeader(page, groupId, 2);
     const second = await waveformState(page);
-    expect(second.buttons.wwZoomYInBtn.title).not.toBe(first.buttons.wwZoomYInBtn.title); // target actually moved
-    expect(second.buttons.wwZoomYInBtn.title).toBe(second.buttons.wwAutoscaleYBtn.title.replace("Autoscale Y — ", "Zoom In — "));
+    expect(second.activePanelGroupKey).not.toBe(first.activePanelGroupKey);
+    expect(second.paneY.in.title).toBe("Zoom Y In");
+    expect(second.paneY.auto.title).toBe("Autoscale Y");
   });
 
   test("no valid Y-axis: Autoscale Y stays visible but disabled, matching Zoom Y exactly", async ({ page }) => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     const state = await waveformState(page);
-    expect(state.buttons.wwAutoscaleYBtn.disabled).toBe(true);
-    expect(state.buttons.wwZoomYInBtn.disabled).toBe(true);
-    await expect(page.locator("#wwAutoscaleYBtn")).toBeVisible();
+    expect(state.paneY.auto.disabled).toBe(true);
+    expect(state.paneY.in.disabled).toBe(true);
+    await expect(page.locator("#viewWaveform [data-pane-y]")).toHaveCount(0);
   });
 });
 
-test.describe("Waveform top toolbar -- Y-axis target readout", () => {
-  test("no data: readout shows 'Y: Select axis'", async ({ page }) => {
+test.describe("Waveform active-pane authority without a global Y readout", () => {
+  test("no data: no active pane and no obsolete readout", async ({ page }) => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     const state = await waveformState(page);
-    expect(state.readout.text).toBe("Y: Select axis");
-    expect(state.readout.title).toBe("");
-    await expect(page.locator("#wwYAxisReadout")).toBeVisible();
+    expect(state.activePanelId).toBeNull();
+    expect(state.activeGroupId).toBeNull();
+    await expect(page.locator("#wwYAxisReadout")).toHaveCount(0);
   });
 
-  test("the first valid Waveform axis becomes the fallback readout target", async ({ page }) => {
+  test("the first valid Waveform axis remains the fallback target", async ({ page }) => {
     const { groupId } = await setupOneGroup(page);
     const state = await waveformState(page);
     expect(state.panels).toHaveLength(1);
-    expect(state.readout.text).toBe("Y: " + state.panels[0].label);
-    expect(state.readout.title).toBe(state.readout.text);
+    expect(state.activePanelId).toBe(state.panels[0].id);
+    expect(state.activeGroupId).toBe(groupId);
   });
 
-  test("readout updates when another Y-axis becomes active", async ({ page }) => {
+  test("selecting another Y-axis changes the actual active pane", async ({ page }) => {
     const { groupId } = await setupThreePanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 0);
     const first = await waveformState(page);
     await clickPanelHeader(page, groupId, 2);
     const second = await waveformState(page);
-    expect(second.readout.text).not.toBe(first.readout.text);
-    expect(second.readout.text).toBe("Y: " + second.panels.find((p) => p.groupKey === second.activePanelGroupKey).label);
+    expect(second.activePanelId).not.toBe(first.activePanelId);
+    expect(second.activePanelId).toBe(second.panels.find((p) => p.groupKey === second.activePanelGroupKey).id);
   });
 
-  test("Zoom Y affects exactly the axis shown in the readout", async ({ page }) => {
+  test("Zoom Y affects exactly the selected pane", async ({ page }) => {
     const { groupId } = await setupThreePanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 1);
     const before = await waveformState(page);
-    const targetLabel = before.readout.text.slice("Y: ".length);
-    const targetPanel = before.panels.find((p) => p.label === targetLabel);
+    const targetPanel = before.panels.find((p) => p.id === before.activePanelId);
 
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
     const after = await waveformState(page);
-    expect(after.readout.text).toBe(before.readout.text); // same axis, label unchanged
+    expect(after.activePanelId).toBe(before.activePanelId);
     const changed = after.panels.find((p) => p.id === targetPanel.id);
     expect(changed.yRange).not.toEqual(targetPanel.yRange);
     for (const other of before.panels.filter((p) => p.id !== targetPanel.id)) {
@@ -452,37 +464,36 @@ test.describe("Waveform top toolbar -- Y-axis target readout", () => {
     }
   });
 
-  test("Autoscale Y affects exactly the same axis shown in the readout", async ({ page }) => {
+  test("Autoscale Y affects exactly the selected pane", async ({ page }) => {
     const { groupId } = await setupThreePanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 1);
     const before = await waveformState(page);
-    const targetLabel = before.readout.text.slice("Y: ".length);
-    const targetPanel = before.panels.find((p) => p.label === targetLabel);
+    const targetPanel = before.panels.find((p) => p.id === before.activePanelId);
 
-    await page.locator("#wwZoomYInBtn").click();
-    await page.locator("#wwZoomYInBtn").click();
+    await clickPaneY(page, "in");
+    await clickPaneY(page, "in");
     const zoomed = await waveformState(page);
     const zoomedTarget = zoomed.panels.find((p) => p.id === targetPanel.id);
     expect(zoomedTarget.yRange).not.toEqual(targetPanel.yRange);
-    expect(zoomed.readout.text).toBe(before.readout.text); // readout still names the same axis
+    expect(zoomed.activePanelId).toBe(before.activePanelId);
 
-    await page.locator("#wwAutoscaleYBtn").click();
+    await clickPaneY(page, "auto");
     await expect.poll(async () => {
       const s = await waveformState(page);
       return s.panels.find((p) => p.id === targetPanel.id).yRange;
     }).not.toEqual(zoomedTarget.yRange);
     const restored = await waveformState(page);
-    expect(restored.readout.text).toBe(before.readout.text); // Autoscale Y never changes WHICH axis is shown
+    expect(restored.activePanelId).toBe(before.activePanelId);
     for (const other of before.panels.filter((p) => p.id !== targetPanel.id)) {
       expect(restored.panels.find((p) => p.id === other.id).yRange).toEqual(other.yRange);
     }
   });
 
-  test("removing the active axis selects the correct fallback; no stale label remains", async ({ page }) => {
+  test("removing the active axis selects a valid remaining pane", async ({ page }) => {
     const { sourceId, groupId } = await setupThreePanelsOneGroup(page);
     await clickPanelHeader(page, groupId, 1); // Current
     const before = await waveformState(page);
-    expect(before.readout.text).toContain("Current"); // Current's own quantity
+    expect(before.activePanelLabel).toContain("Current");
 
     // Deselect the Current channel -- its own axis disappears entirely.
     const row = page.locator(
@@ -493,33 +504,31 @@ test.describe("Waveform top toolbar -- Y-axis target readout", () => {
     await expect(page.locator(".ww-panel")).toHaveCount(2);
 
     const after = await waveformState(page);
-    expect(after.readout.text).not.toBe(before.readout.text); // no stale "Current" label
-    expect(after.readout.text).not.toBe("Y: Select axis"); // two valid axes remain
-    expect(["Y: " + after.panels[0].label, "Y: " + after.panels[1].label]).toContain(after.readout.text);
+    expect(after.activePanelId).not.toBe(before.activePanelId);
+    expect(after.activePanelId).not.toBeNull();
+    expect(after.panels.map(p=>p.id)).toContain(after.activePanelId);
   });
 
-  test("clearing the workspace resets the readout to the empty state", async ({ page }) => {
+  test("clearing the workspace clears the actual active pane", async ({ page }) => {
     await setupOneGroup(page);
-    await expect(page.locator("#wwYAxisReadout")).not.toHaveText("Y: Select axis");
+    expect((await waveformState(page)).activePanelId).not.toBeNull();
     await page.locator("#clearWorkspaceBtn").click();
     const state = await waveformState(page);
-    expect(state.readout.text).toBe("Y: Select axis");
+    expect(state.activePanelId).toBeNull();
     expect(state.panels).toHaveLength(0);
   });
 
-  test("no stale label remains after switching the active Time Group", async ({ page }) => {
+  test("switching panes targets the owning Time Group", async ({ page }) => {
     const { groupIdA, groupIdB } = await setupTwoTimeGroups(page);
     await clickPanelHeader(page, groupIdA, 0);
     const stateA = await waveformState(page);
-    const labelA = stateA.panels.find((p) => p.timeGroupId === groupIdA).label;
-    expect(stateA.readout.text).toBe("Y: " + labelA); // correct for Group A while it is active
+    expect(stateA.activeGroupId).toBe(groupIdA);
+    expect(stateA.panels.find(p=>p.id===stateA.activePanelId).timeGroupId).toBe(groupIdA);
 
     await clickPanelHeader(page, groupIdB, 0);
     const stateB = await waveformState(page);
-    const labelB = stateB.panels.find((p) => p.timeGroupId === groupIdB).label;
-    // Readout always matches whichever panel is ACTUALLY active now --
-    // never Group A's own label lingering after the switch.
-    expect(stateB.readout.text).toBe("Y: " + labelB);
+    expect(stateB.activeGroupId).toBe(groupIdB);
+    expect(stateB.panels.find(p=>p.id===stateB.activePanelId).timeGroupId).toBe(groupIdB);
     expect(stateB.activePanelGroupKey).not.toBe(stateA.activePanelGroupKey);
   });
 });
@@ -537,16 +546,17 @@ test.describe("Event Reconstruction -- active axis readout no regression", () =>
   });
 });
 
-test.describe("Waveform top toolbar -- spacing fix (no empty group between Time and Unit Mode)", () => {
-  test("Time Display and Unit Mode sit with normal single-separator spacing, both when the hidden Detect Event button is absent and if it were present", async ({ page }) => {
+test.describe("Waveform top toolbar -- spacing after Voltage Display relocation", () => {
+  test("Time and horizontal controls have no vacant Voltage Display family", async ({ page }) => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     await expect(page.locator("#wwDetectEventBtn")).toBeHidden();
     await expect(page.locator("#wwDetectEventSep")).toBeHidden();
 
     const timeBox = await page.locator("#timeModeToggle").boundingBox();
-    const unitBox = await page.locator("#wwUnitModeToggle").boundingBox();
-    const gap = unitBox.x - (timeBox.x + timeBox.width);
+    const navigationBox = await page.locator("#wwZoomXOutBtn").boundingBox();
+    await expect(page.locator("#wwToolbar #wwUnitModeToggle")).toHaveCount(0);
+    const gap = navigationBox.x - (timeBox.x + timeBox.width);
     // A normal single-separator family gap: sep width (1px) + its own
     // 4px side margins + the toolbar's own 2px flex gaps on each side
     // of it -- comfortably under the ~20px a doubled pair of adjacent
@@ -596,7 +606,8 @@ test.describe("Waveform top toolbar -- Clear Waveforms restored to the left oper
     await expect(btn).toBeDisabled();
     const iconSpan = btn.locator(".ww-icon");
     const maskImage = await iconSpan.evaluate((el) => getComputedStyle(el).webkitMaskImage || getComputedStyle(el).maskImage);
-    expect(maskImage).toContain("clear_waveforms.svg");
+    // WUI-002: exact owner mockup artwork; the disabled-state contract is unchanged.
+    expect(maskImage).toContain("/waveform/wui-002/clear.svg");
   });
 
   test("sits on the left, after Annotations and before the right-aligned view/layout group", async ({ page }) => {
@@ -659,7 +670,7 @@ test.describe("Waveform top toolbar -- themes, layout, console", () => {
     const consoleErrors = [];
     page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
     await setupOneGroup(page);
-    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwZoomYInBtn", "wwZoomYOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"]) {
+    for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"]) {
       await expect(page.locator("#" + id)).toHaveCount(1); // exactly one instance document-wide, no leftover local duplicate
     }
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));

@@ -102,23 +102,23 @@ class TestSecondaryAxisLazyCreation:
 
 
 class TestAxisTitles:
-    """Task section J: right axis title is always the safe literal
-    "Angle", never a guessed unit ("deg"/"rad"), never "Undefined"."""
+    """WUI-004 moves unit presentation to horizontal caps, preserving
+    the established axis assignments and avoiding guessed angle units."""
 
     def test_secondary_axis_title_is_the_literal_angle(self):
         source = _source()
         body = _function_body(source, "function wwPanelYAxis2Layout(colors)", "function wwSyncPanelAngleAxis(panel)")
-        assert '{ text: "Angle" }' in body
+        assert '{ text: "" }' in body
         for forbidden in ("deg", "rad", "°"):
             assert forbidden not in body.lower()
 
     def test_primary_axis_title_unchanged_for_non_angle_panels(self):
         source = _source()
         body = _function_body(source, "function wwPanelYAxisTitle(panel)", "function wwPanelYAxis2Layout(colors)")
-        # Existing "first channel's own unit" rule, verbatim.
-        assert "panel.channels.length ? panel.channels[0].unit : \"\"" in body
-        # Angle-only exception.
-        assert 'return "Angle";' in body
+        assert 'return { text: "" };' in body
+        units = _function_body(source, "function wwWaveformAxisUnit(panel, axisId)", "function wwSyncWaveformAxisUnits(panel)")
+        assert 'channel.unit.trim()' in units
+        assert '"Mixed units"' in units
 
 
 class TestSeparateModeAngleOnlyPanel:
@@ -136,8 +136,9 @@ class TestSeparateModeAngleOnlyPanel:
 
     def test_angle_only_panel_retitles_its_one_axis(self):
         source = _source()
-        body = _function_body(source, "function wwPanelYAxisTitle(panel)", "function wwPanelYAxis2Layout(colors)")
-        assert "panel.channels.every(wwChannelUsesAngleQuantity)" in body
+        body = _function_body(source, "function wwWaveformAxisUnit(panel, axisId)", "function wwSyncWaveformAxisUnits(panel)")
+        assert 'wwChannelUsesAngleQuantity(channel)' in body
+        assert '"Angle (unit n/a)"' in body
 
 
 class TestDynamicPanelMembershipReconciliation:
@@ -175,7 +176,7 @@ class TestGroupingUnchanged:
 
     def test_panel_group_key_still_keyed_on_broad_engineering_type_only(self):
         source = _source()
-        body = _function_body(source, "function wwPanelGroupKeyFor(channel)", "function wwTimeGroupLabelSuffix(channel)")
+        body = _function_body(source, "function wwPanelGroupKeyFor(", "function wwTimeGroupLabelSuffix(channel)")
         assert 'baseKey = channel.engineeringType || "Undefined";' in body
         assert "engineeringQuantity" not in body
 

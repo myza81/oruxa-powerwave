@@ -9,6 +9,21 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## WUI-001–004 controlled DEV consolidation (2026-11-23)
+
+[UAT] The owner accepted WUI-001 through WUI-004, final UI commit `d513fba`.
+The isolated integration branch `integration/wui-001-004-dev-f24f1d7` starts at
+current remote/deployed DEV **`f24f1d7`**, preserving the released Overcurrent
+authority and Recording Details work. Earlier engineering paragraphs below are
+historical implementation snapshots; current runtime evidence is in
+[the consolidation report](WUI_001_004_DEV_CONSOLIDATION_REPORT.md).
+Claude's newer unpublished work and active files remain untouched and excluded.
+Candidate local frontend/API: **30441/30440**, independent baseline **30431/30430**.
+The owner subsequently authorized publishing the verified dedicated branch and
+deploying its exact SHA to DEV independently; Claude has no scheduled deployment.
+Require passing local verification/CI and runtime validation, then give Claude the
+deployed integration checkpoint. No shared-branch merge, production, `main` or WUI-005 work.
+
 ## D5A-2B2B — Recording Details measurement-side UI (2026-11-22)
 
 [FACT] Implemented locally on `feature/d5a-2b2b-recording-details-side-ui`; NOT pushed, merged or deployed. Recording Info shows one Primary/Secondary selector for the recording (Level 1);

@@ -175,20 +175,21 @@ class TestPanelSplittingByTimeGroup:
 
     def test_panel_group_key_is_prefixed_with_the_channels_own_time_group(self):
         source = _source()
-        fn_idx = source.index("function wwPanelGroupKeyFor(channel)")
+        fn_idx = source.index("function wwPanelGroupKeyFor(")
         fn_body = source[fn_idx : source.index("function wwTimeGroupLabelSuffix", fn_idx)]
         assert "wwTimeGroupIdForDisplaySourceId(channel.sourceId)" in fn_body
         assert 'baseKey = timeGroupId + "::" + baseKey;' in fn_body
 
     def test_separate_and_custom_layout_modes_are_untouched(self):
-        """Separate mode already gives every channel its own panel;
-        Custom is the engineer's own explicit, deliberate grouping choice
-        -- neither should be prefixed by time-group id."""
+        """Separate keeps one channel per pane; Custom keeps its explicit
+        membership inside the existing hard Time Group boundary."""
         source = _source()
-        fn_idx = source.index("function wwPanelGroupKeyFor(channel)")
+        fn_idx = source.index("function wwPanelGroupKeyFor(")
         fn_body = source[fn_idx : source.index("function wwTimeGroupLabelSuffix", fn_idx)]
-        separate_idx = fn_body.index('if (ww.layoutMode === "separate")')
-        custom_idx = fn_body.index('if (ww.layoutMode === "custom")')
+        assert 'layoutMode = ww.layoutMode' in fn_body
+        separate_idx = fn_body.index('if (layoutMode === "separate")')
+        custom_idx = fn_body.index('if (layoutMode === "custom")')
+        assert 'customPrefix + "custom:" + group.id' in fn_body
         prefix_idx = fn_body.index("timeGroupId + ")
         assert separate_idx < custom_idx < prefix_idx
 

@@ -190,10 +190,10 @@ class TestUnitModeSwitchingUnchanged:
         source = _source()
         wiring = _function_body(
             source,
-            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
-            '// Waveform toolbar refinement (owner ticket)',
+            'async function wwApplyPaneUnitMode(panel, button)',
+            'function wwWaveformPaneHeaderHtml',
         )
-        assert 'await wwApplyUnitMode("per_unit");' in wiring
+        assert 'wwApplyUnitMode(button.dataset.paneUnitMode)' in wiring
         assert "wwOpenChannelPerUnitModal" not in wiring
 
 

@@ -1,3 +1,5 @@
+# WUI-001 supersedes global Y markup/dispatch expectations below.
+# Existing math, group isolation and global X/cursor/t0 contracts remain.
 """Static regression checks for TG-D1 -- migrating Zoom In/Zoom Out
 (staged, X/Y split-button), Reset Time View, and Autoscale Y into each
 Time Group Canvas's own local navigation toolbar.
@@ -191,39 +193,33 @@ class TestActivePanelForGroupExcludesOtherGroups:
         assert "ww.activePanelGroupKey =" not in fn_body
 
 
-class TestWaveformGlobalYAxisZoom:
-    """Waveform Y-axis zoom (owner ticket): a page-level Y Zoom In/Out
-    pair, matching Event Reconstruction's own global wwErZoomYInBtn/
-    wwErZoomYOutBtn (same icons, same "Zoom In/Out — Selected Y Axis"
-    tooltip wording, same button order) but targeting Waveform's own
-    workspace-wide wwActivePanel() (self-healing to the first available
-    panel when nothing was explicitly clicked) rather than Event
-    Reconstruction's own stricter "several axes, none chosen -> stay
-    disabled" rule -- Waveform has exactly one Y axis per panel, never
-    several in one panel, so a deterministic fallback is unambiguous."""
+class TestWaveformPaneLocalYAxisZoom:
+    """WUI-001: local native controls share existing primary-axis helpers.
+    Remaining global tools still follow the same active-pane authority."""
 
-    def test_markup_mirrors_event_reconstructions_global_y_zoom_buttons(self):
+    def test_pane_markup_has_three_named_native_y_controls_without_global_duplicates(self):
         source = _source()
-        assert 'id="wwZoomYOutBtn" title="Zoom Out — Selected Y Axis" aria-label="Zoom Out — Selected Y Axis" disabled' in source
-        assert 'id="wwZoomYInBtn" title="Zoom In — Selected Y Axis" aria-label="Zoom In — Selected Y Axis" disabled' in source
-        out_idx = source.index('id="wwZoomYOutBtn"')
-        in_idx = source.index('id="wwZoomYInBtn"')
-        assert out_idx < in_idx  # same order as Event Reconstruction's own pair
+        markup = _function_body(source, "function wwWaveformPaneHeaderHtml(label)", "\n        }\n")
+        for action, label in (("out", "Zoom Y Out"), ("in", "Zoom Y In"), ("auto", "Autoscale Y")):
+            assert "['" + action + "', '" + label + "'" in markup
+        assert "\" title=\"' + text + '\" aria-label=\"' + text + '\" disabled>" in markup
+        assert 'id="wwZoomYInBtn"' not in source
+        assert 'id="wwZoomYOutBtn"' not in source
 
     def test_icon_keys_are_the_same_dedicated_per_axis_assets(self):
         source = _source()
-        out_btn = source[source.index('id="wwZoomYOutBtn"') - 80 : source.index("</button>", source.index('id="wwZoomYOutBtn"'))]
-        in_btn = source[source.index('id="wwZoomYInBtn"') - 80 : source.index("</button>", source.index('id="wwZoomYInBtn"'))]
-        assert 'data-ww-icon="ZOOM_Y_OUT"' in out_btn
-        assert 'data-ww-icon="ZOOM_Y_IN"' in in_btn
+        markup = _function_body(source, "function wwWaveformPaneHeaderHtml(label)", "\n        }\n")
+        for icon in ("ZOOM_Y_OUT", "ZOOM_Y_IN", "AUTOSCALE_Y"):
+            assert "'" + icon + "'" in markup
+        assert 'wwApplyToolIcons(header);' in source
 
-    def test_click_handlers_reuse_the_shared_zoom_core_against_wwactivepanel(self):
-        """Not wwActivePanelForGroup(groupId) -- this pair is workspace-
-        wide, resolved through the SAME self-healing wwActivePanel()
-        Autoscale Y and panel-click selection already establish."""
+    def test_local_click_activates_owning_live_pane_before_shared_y_helper(self):
         source = _source()
-        assert 'document.getElementById("wwZoomYInBtn").addEventListener("click", () => wwStepZoomYPanel(wwActivePanel(), "in"));' in source
-        assert 'document.getElementById("wwZoomYOutBtn").addEventListener("click", () => wwStepZoomYPanel(wwActivePanel(), "out"));' in source
+        body = _function_body(source, "function wwWireActivePanelSelection(panel)", "\n        }\n")
+        assert 'if (!ww.panels.includes(panel)) return;' in body
+        assert body.index('wwSetActivePanel(panel);') < body.index('wwStepZoomYPanel(panel, button.dataset.paneY);')
+        assert 'wwAutoscaleYPanel(panel);' in body
+        assert 'keydown' not in body  # native buttons own Enter/Space once
 
     def test_shared_core_is_extracted_not_duplicated(self):
         """wwStepZoomYPanel(panel, direction) is the ONE place the
@@ -240,18 +236,14 @@ class TestWaveformGlobalYAxisZoom:
         assert "wwStepZoomYPanel(wwActivePanelForGroup(groupId), direction);" in step_zoom_y
         assert "Math.max(newSpan, WW_MIN_Y_SPAN)" not in step_zoom_y
 
-    def test_sync_function_disables_only_when_truly_no_panel_exists(self):
-        """wwSyncGlobalZoomYControls() was renamed/broadened into
-        wwSyncGlobalWaveformToolbar() by the Waveform top-toolbar
-        migration (owner ticket) -- same Y-zoom logic, now one of
-        several controls it syncs (see TestWaveformTopToolbarMigration
-        for the rest)."""
+    def test_local_controls_require_live_ready_chart_with_primary_axis(self):
         source = _source()
-        fn_idx = source.index("function wwSyncGlobalWaveformToolbar()")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "const yZoomPanel = wwActivePanel();" in fn_body
-        assert "zoomYIn.disabled = !yZoomPanel;" in fn_body
-        assert "zoomYOut.disabled = !yZoomPanel;" in fn_body
+        body = _function_body(source, "function wwSyncPaneYControls(panel)", "\n        }\n")
+        assert 'panel.plotlyReady && ww.panels.includes(panel) && !!axis' in body
+        assert 'button.disabled = !ready;' in body
+        # WUI-004 keeps the same ready callback and also paints axis units.
+        assert 'Promise.resolve(ready).then(() => { wwSyncPaneYControls(panel); wwSyncWaveformAxisUnits(panel); });' in source
+        assert 'panel.chartEl.on("plotly_afterplot", () => wwSyncWaveformAxisUnits(panel));' in source
 
     def test_sync_is_called_on_empty_state_update_and_on_active_panel_change(self):
         """Refreshed from two points so the tooltip's own axis name is
@@ -267,87 +259,48 @@ class TestWaveformGlobalYAxisZoom:
         assert "wwSyncGlobalWaveformToolbar();" in set_active_fn
 
     def test_this_pair_is_never_hidden_only_disabled(self):
-        """Panel-header tool visibility rule: Y-axis zoom is genuinely
-        relevant to Waveform (unlike a page-unsupported tool), so it is
-        never hidden -- only disabled when there is truly nothing to
-        target."""
         source = _source()
-        for btn_id in ("wwZoomYInBtn", "wwZoomYOutBtn"):
-            button = source[source.index('id="' + btn_id + '"') - 80 : source.index("</button>", source.index('id="' + btn_id + '"'))]
-            assert "hidden" not in button
+        markup = _function_body(source, "function wwWaveformPaneHeaderHtml(label)", "\n        }\n")
+        assert ' hidden' not in markup  # aria-hidden on the decorative marker is unrelated
+        assert '#viewWaveform .ww-tg-panels.ww-panels-unified .ww-panel-header { display: flex;' in source
 
 
-class TestWaveformYAxisTargetReadout:
-    """Waveform Y-axis target reference/readout (owner ticket): a
-    compact "Y: <axis>" label beside the page-level Zoom Y In/Out
-    buttons, reusing Event Reconstruction's own
-    `.ww-er-active-axis-readout` class/typography/spacing and its own
-    "Y: Select axis" empty-state wording verbatim -- no new CSS. ONE
-    source of truth: the readout is written from the SAME `yZoomPanel`
-    variable wwSyncGlobalWaveformToolbar() already resolves for Zoom Y
-    and Autoscale Y, never a second/parallel target computation."""
+class TestWaveformActiveTargetWithoutReadout:
+    """The obsolete Waveform label is gone; active-pane/Time Group authority stays."""
 
-    def test_markup_sits_beside_zoom_y_in_reusing_ers_own_class(self):
+    def test_no_waveform_readout_markup_or_scoped_css_survives(self):
         source = _source()
-        assert '<span class="ww-er-active-axis-readout" id="wwYAxisReadout">Y: Select axis</span>' in source
-        zoom_y_in_idx = source.index('id="wwZoomYInBtn"')
-        readout_idx = source.index('id="wwYAxisReadout"')
-        sep_after_idx = source.index('<span class="ww-toolbar-sep"', zoom_y_in_idx)
-        assert zoom_y_in_idx < readout_idx < sep_after_idx  # between Zoom Y In and the next separator
+        assert 'wwYAxisReadout' not in source
 
-    def test_no_new_css_rule_was_added_for_the_readout(self):
-        """The shared `.ww-er-active-axis-readout` rule (typography,
-        130px max-width ellipsis, spacing) is defined exactly once and
-        styles both pages' own readout elements -- never a second,
-        Waveform-specific copy of this rule."""
+    def test_event_reconstruction_keeps_its_existing_readout_and_shared_style(self):
         source = _source()
-        assert source.count(".ww-er-active-axis-readout {") == 1
+        assert 'id="wwErActiveAxisReadout"' in source
+        assert source.count('.ww-er-active-axis-readout {') == 1
+        er_body = _function_body(source, 'function wwErSyncActiveAxisReadout(entry)', '\n        }\n')
+        assert 'el.textContent = "Y: Select axis";' in er_body
 
-    def test_readout_text_is_written_from_the_same_yzoompanel_variable_zoom_y_uses(self):
-        """The one-source-of-truth guarantee: this assertion locates the
-        readout's own text assignment and confirms it reads `yZoomPanel`
-        -- the exact variable `zoomYIn.disabled`/`autoscaleY.disabled`
-        above it already use -- never a fresh wwActivePanel() call or
-        any other resolver."""
-        source = _source()
-        fn_idx = source.index("function wwSyncGlobalWaveformToolbar()")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        zoom_y_panel_idx = fn_body.index("const yZoomPanel = wwActivePanel();")
-        readout_idx = fn_body.index('getElementById("wwYAxisReadout")')
-        assert zoom_y_panel_idx < readout_idx  # declared before first use, same scope
-        readout_block = fn_body[readout_idx - 20 : readout_idx + 300]
-        assert '"Y: " + (yZoomPanel ? yZoomPanel.label : "Select axis")' in readout_block
-        assert "wwActivePanel()" not in readout_block  # no second resolver call
+    def test_fallback_activation_precedes_global_time_group_resolution(self):
+        body = _function_body(_source(), 'function wwSyncGlobalWaveformToolbar()', '\n        }\n')
+        assert body.index('wwActivePanel();') < body.index('const groupId = wwActiveTimeGroupId();')
+        assert 'ww.activePanelGroupKey =' not in body
 
-    def test_empty_state_wording_matches_event_reconstructions_own_exactly(self):
-        source = _source()
-        assert '"Y: " + (yZoomPanel ? yZoomPanel.label : "Select axis")' in source
-        # Event Reconstruction's own equivalent, for direct comparison.
-        er_fn_idx = source.index("function wwErSyncActiveAxisReadout(entry)")
-        er_fn_body = source[er_fn_idx : source.index("\n        }\n", er_fn_idx)]
-        assert 'el.textContent = "Y: Select axis";' in er_fn_body
+    def test_time_group_target_remains_a_projection_of_the_actual_active_panel(self):
+        body = _function_body(_source(), 'function wwActiveTimeGroupId()', '\n        }\n')
+        assert 'const panel = wwActivePanel();' in body
+        assert 'return panel ? wwPanelTimeGroupId(panel) : null;' in body
 
-    def test_readout_title_cleared_when_disabled_set_when_targeted(self):
-        """Matches wwErSyncActiveAxisReadout()'s own pattern: an empty
-        `title` when nothing is targeted (nothing useful to show on
-        hover), the full text as the title once a target exists (so a
-        truncated label is still readable via the native tooltip)."""
+    def test_existing_global_x_and_cursor_commands_keep_their_group_resolver(self):
         source = _source()
-        fn_idx = source.index("function wwSyncGlobalWaveformToolbar()")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert 'yAxisReadout.title = yZoomPanel ? yAxisText : "";' in fn_body
+        for handler in ('wwStepZoomX(wwActiveTimeGroupId(), "in")',
+                        'wwStepZoomX(wwActiveTimeGroupId(), "out")',
+                        'wwResetOneTimeGroupView(wwActiveTimeGroupId())',
+                        'wwToggleMeasurementCursors(wwActiveTimeGroupId())'):
+            assert handler in source
 
-    def test_sync_is_called_from_the_same_hook_points_as_zoom_y(self):
-        """No new trigger plumbing needed -- the readout is synced by
-        the SAME wwSyncGlobalWaveformToolbar() calls wwUpdateEmptyState()/
-        wwSetActivePanel() already make for Zoom Y/Autoscale Y, so every
-        existing trigger (channel add/remove, workspace clear, active
-        panel change) already keeps it fresh."""
+    def test_existing_active_panel_and_empty_state_hooks_still_synchronize_controls(self):
         source = _source()
-        empty_state_fn = source[source.index("function wwUpdateEmptyState()") : source.index("\n        }\n", source.index("function wwUpdateEmptyState()"))]
-        assert "wwSyncGlobalWaveformToolbar();" in empty_state_fn
-        set_active_fn = source[source.index("function wwSetActivePanel(panel)") : source.index("\n        }\n", source.index("function wwSetActivePanel(panel)"))]
-        assert "wwSyncGlobalWaveformToolbar();" in set_active_fn
+        for signature in ('function wwUpdateEmptyState()', 'function wwSetActivePanel(panel)'):
+            assert 'wwSyncGlobalWaveformToolbar();' in _function_body(source, signature, '\n        }\n')
 
 
 class TestWaveformToolbarSpacingAndIconsFollowup:
@@ -365,31 +318,15 @@ class TestWaveformToolbarSpacingAndIconsFollowup:
         assert 'document.getElementById("wwDetectEventSep").hidden = !WW_DETECT_EVENT_UI_ENABLED;' in source
         assert 'document.getElementById("wwDetectEventBtn").hidden = !WW_DETECT_EVENT_UI_ENABLED;' in source
 
-    def test_no_two_toolbar_seps_sit_back_to_back_in_the_wwtoolbar_markup(self):
-        """Structural proof the gap-doubling root cause cannot recur
-        silently: between #wwToolbar's own opening tag and the
-        toolbar-spacer, every `.ww-toolbar-sep` is separated from the
-        next by at least one non-comment, non-whitespace markup line
-        (a button or group), EXCEPT the one pair deliberately toggled
-        together above."""
+    def test_visual_families_replace_flat_separators_without_empty_groups(self):
         source = _source()
-        toolbar_idx = source.index('<div class="ww-toolbar" id="wwToolbar">')
-        spacer_idx = source.index('<div class="toolbar-spacer">', toolbar_idx)
-        toolbar_markup = source[toolbar_idx:spacer_idx]
-        sep_positions = []
-        start = 0
-        while True:
-            idx = toolbar_markup.find('class="ww-toolbar-sep"', start)
-            if idx == -1:
-                break
-            sep_positions.append(idx)
-            start = idx + 1
-        assert len(sep_positions) >= 2
-        for i in range(len(sep_positions) - 1):
-            between = toolbar_markup[sep_positions[i] : sep_positions[i + 1]]
-            # A real control (an id=, or a nested group div) sits between
-            # this pair of separators -- i.e. they are not adjacent.
-            assert "id=" in between, "two separators with nothing rendered between them at position " + str(i)
+        for key in ("time", "navigation", "measurement", "annotation", "workspace", "layout"):
+            assert source.count('data-toolbar-group="' + key + '"') == 1
+        assert 'data-toolbar-group="voltage"' not in source
+        assert 'data-pane-unit-mode="per_unit"' in source
+        assert '#wwToolbar > .ww-toolbar-sep { display: none; }' in source
+        assert 'document.getElementById("wwDetectEventSep").hidden = !WW_DETECT_EVENT_UI_ENABLED;' in source
+
 
     def test_per_unit_settings_button_uses_the_registered_asset_not_inline_svg(self):
         """PU-UI-001 Slice B: the Hub (#wwOpenPerUnitSettingsBtn) is retired;
@@ -400,15 +337,17 @@ class TestWaveformToolbarSpacingAndIconsFollowup:
         # The asset registration (PU_SETTINGS) may still exist; that is not
         # a problem -- unused registered assets are harmless.
         # The ENG/PU toggle buttons remain.
-        assert 'id="wwUnitEngineeringBtn"' in source
-        assert 'id="wwUnitPerUnitBtn"' in source
+        assert 'data-pane-unit-mode="engineering"' in source
+        assert 'data-pane-unit-mode="per_unit"' in source
 
     def test_clear_waveforms_button_uses_the_registered_asset_not_inline_svg(self):
         source = _source()
         btn_idx = source.index('id="clearWorkspaceBtn"')
         btn = source[btn_idx - 40 : source.index("</button>", btn_idx)]
-        assert 'data-ww-icon="CLEAR_WAVEFORMS"' in btn
+        assert 'data-ww-icon="WUI002_CLEAR_WAVEFORMS"' in btn
         assert "<svg" not in btn
+        assert 'WUI002_CLEAR_WAVEFORMS: "assets/icons/waveform/wui-002/clear.svg"' in source
+        # Shared pages keep their existing owner-approved asset.
         assert 'CLEAR_WAVEFORMS: "assets/icons/waveform/clear_waveforms.svg"' in source
         assert 'title="Clear displayed waveforms" aria-label="Clear Waveforms"' in btn
 
@@ -480,7 +419,7 @@ class TestWaveformTopToolbarMigration:
     def test_autoscale_and_cursor_markup_reuses_event_reconstructions_shared_classes(self):
         source = _source()
         assert '<button type="button" class="ww-icon-btn ww-tg-reset-view-btn" id="wwAutoscaleXBtn"' in source
-        assert '<button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwAutoscaleYBtn"' in source
+        assert "['auto', 'Autoscale Y', 'AUTOSCALE_Y']" in source
         assert '<button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwCursorModeBtn"' in source
 
     def test_click_handlers_reuse_existing_core_functions_unchanged(self):
@@ -492,7 +431,7 @@ class TestWaveformTopToolbarMigration:
         assert 'document.getElementById("wwZoomXInBtn").addEventListener("click", () => wwStepZoomX(wwActiveTimeGroupId(), "in"));' in source
         assert 'document.getElementById("wwZoomXOutBtn").addEventListener("click", () => wwStepZoomX(wwActiveTimeGroupId(), "out"));' in source
         assert 'document.getElementById("wwAutoscaleXBtn").addEventListener("click", () => wwResetOneTimeGroupView(wwActiveTimeGroupId()));' in source
-        assert 'document.getElementById("wwAutoscaleYBtn").addEventListener("click", () => wwAutoscaleYPanel(wwActivePanel()));' in source
+        assert 'if (button.dataset.paneY === "auto") wwAutoscaleYPanel(panel);' in source
         assert 'document.getElementById("wwCursorModeBtn").addEventListener("click", () => wwToggleMeasurementCursors(wwActiveTimeGroupId()));' in source
 
     def test_sync_function_covers_every_new_control(self):
@@ -501,7 +440,7 @@ class TestWaveformTopToolbarMigration:
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "const groupId = wwActiveTimeGroupId();" in fn_body
         assert "const hasGroup = groupId !== null;" in fn_body
-        for btn in ("wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"):
+        for btn in ("wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"):
             assert ('getElementById("' + btn + '")') in fn_body, btn
 
     def test_zoom_x_out_also_disables_at_this_groups_own_full_range(self):
@@ -542,7 +481,7 @@ class TestWaveformTopToolbarMigration:
         relevant to Waveform -- only disabled when there is truly no
         Time Group to target, never hidden outright."""
         source = _source()
-        for btn_id in ("wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"):
+        for btn_id in ("wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwCursorModeBtn"):
             button = source[source.index('id="' + btn_id + '"') - 80 : source.index("</button>", source.index('id="' + btn_id + '"'))]
             assert "hidden" not in button
 
@@ -592,35 +531,24 @@ class TestAutoscaleYSharesZoomYsTarget:
         assert "Plotly.relayout(panel.chartEl, { \"yaxis.autorange\": true });" in fn_body
         assert "for (const panel of ww.panels)" not in fn_body  # never loops every panel
 
-    def test_autoscale_y_click_handler_resolves_wwactivepanel_directly(self):
-        """Not wwActiveTimeGroupId() -- the same wwActivePanel() Zoom Y
-        itself resolves, so the two controls can never disagree."""
+    def test_local_autoscale_dispatch_uses_same_owning_pane_as_zoom(self):
         source = _source()
-        assert 'document.getElementById("wwAutoscaleYBtn").addEventListener("click", () => wwAutoscaleYPanel(wwActivePanel()));' in source
+        body = _function_body(source, "function wwWireActivePanelSelection(panel)", "\n        }\n")
+        assert 'if (button.dataset.paneY === "auto") wwAutoscaleYPanel(panel);' in body
+        assert 'else wwStepZoomYPanel(panel, button.dataset.paneY);' in body
 
     def test_sync_function_disables_autoscale_y_with_the_same_condition_as_zoom_y(self):
-        """Target-resolution contract point 4: no valid Y-axis -> stays
-        visible, disabled -- the SAME `!yZoomPanel` condition Zoom Y
-        itself uses, not a group-based one."""
         source = _source()
-        fn_idx = source.index("function wwSyncGlobalWaveformToolbar()")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        # Autoscale Y's own disabled/title assignment sits in the SAME
-        # block as Zoom Y's (both keyed off `yZoomPanel`), before the
-        # group-scoped `groupId`/`hasGroup` resolution used by Zoom X/
-        # Autoscale X/Cursors -- proving it shares Zoom Y's target
-        # rather than the group's.
-        autoscale_y_idx = fn_body.index('getElementById("wwAutoscaleYBtn")')
-        group_id_idx = fn_body.index("const groupId = wwActiveTimeGroupId();")
-        assert autoscale_y_idx < group_id_idx
-        autoscale_y_block = fn_body[autoscale_y_idx - 20 : group_id_idx]
-        assert "autoscaleY.disabled = !yZoomPanel;" in autoscale_y_block
-        assert "autoscaleY.title = \"Autoscale Y — \" + ySuffix;" in autoscale_y_block
+        body = _function_body(source, "function wwSyncPaneYControls(panel)", "\n        }\n")
+        assert "querySelectorAll('[data-pane-y]')" in body
+        assert 'button.disabled = !ready;' in body  # all three share one readiness condition
+        assert 'id="wwAutoscaleYBtn"' not in source
 
     def test_never_hidden_only_disabled(self):
         source = _source()
-        button = source[source.index('id="wwAutoscaleYBtn"') - 80 : source.index("</button>", source.index('id="wwAutoscaleYBtn"'))]
-        assert "hidden" not in button
+        markup = _function_body(source, "function wwWaveformPaneHeaderHtml(label)", "\n        }\n")
+        assert "['auto', 'Autoscale Y', 'AUTOSCALE_Y']" in markup
+        assert ' hidden' not in markup  # aria-hidden on the decorative marker is unrelated
 
 
 class TestResetIsGroupScopedOnly:
@@ -674,17 +602,11 @@ class TestAutoscaleIsGroupScopedOnly:
         source = _source()
         assert "function wwAutoscaleYForGroup(" not in source
 
-    def test_global_autoscale_y_button_wired_to_the_single_axis_function(self):
-        """Waveform top-toolbar migration, owner correction: the local
-        per-canvas `.ww-tg-autoscale-btn` wiring stays gone from
-        wwWireTimeGroupToolbar(); the page-level #wwAutoscaleYBtn calls
-        the SAME wwActivePanel() Zoom Y targets, via the new
-        single-axis wwAutoscaleYPanel(panel)."""
+    def test_local_autoscale_y_button_wired_to_the_single_axis_function(self):
         source = _source()
-        fn_idx = source.index("function wwWireTimeGroupToolbar(canvasEl, groupId)")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "ww-tg-autoscale-btn" not in fn_body
-        assert 'document.getElementById("wwAutoscaleYBtn").addEventListener("click", () => wwAutoscaleYPanel(wwActivePanel()));' in source
+        body = _function_body(source, "function wwWireTimeGroupToolbar(canvasEl, groupId)", "\n        }\n")
+        assert 'ww-tg-autoscale-btn' not in body
+        assert 'if (button.dataset.paneY === "auto") wwAutoscaleYPanel(panel);' in source
 
     def test_workspace_wide_autoscale_y_kept_only_as_a_compatibility_wrapper(self):
         source = _source()
@@ -906,8 +828,7 @@ class TestGlobalDuplicatesRemoved:
         for still_global_id in (
             "layoutModeGroupedBtn",
             "timeModeAbsoluteBtn",
-            "wwUnitEngineeringBtn",
-            "wwRdUploadBtn",   # PU-UI-001: successor of the Recordings page's recordingsUploadBtn
+            "wwRdUploadBtn",   # Current DEV upload entry; Voltage Display is pane-local.
         ):
             assert f'id="{still_global_id}"' in source, f"expected still-global control id={still_global_id} to remain"
 

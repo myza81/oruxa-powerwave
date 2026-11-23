@@ -77,12 +77,13 @@ def test_apply_unit_mode_refetches_and_regroups():
 
 def test_panel_group_key_never_mixes_configured_and_base_required():
     source = _source()
-    body = _function_body(source, "function wwPanelGroupKeyFor(channel)", "function wwPanelLabelFor(channel)")
+    body = _function_body(source, "function wwPanelGroupKeyFor(", "function wwPanelLabelFor(channel)")
     # Separate/Custom modes return early -- the per-unit branch below is
     # reached only in Grouped mode (one channel-per-panel already can't
     # mix anything in Separate; Custom groups are explicit, user-owned).
-    assert body.index('ww.layoutMode === "separate"') < body.index('ww.unitMode === "per_unit"')
-    assert body.index('ww.layoutMode === "custom"') < body.index('ww.unitMode === "per_unit"')
+    assert 'layoutMode = ww.layoutMode' in body
+    assert body.index('layoutMode === "separate"') < body.index('ww.unitMode === "per_unit"')
+    assert body.index('layoutMode === "custom"') < body.index('ww.unitMode === "per_unit"')
     assert 'return baseKey + ":pu";' in body
     assert 'return baseKey + ":base_required";' in body
 
@@ -181,12 +182,12 @@ def test_calculated_channel_preview_uses_the_same_global_unit_mode():
 
 def test_manage_per_unit_bases_toolbar_control_exists_in_html():
     """PU-UI-001 Step B: Hub and SD modal are both removed.  Only the
-    ENG/PU toggle buttons remain in the toolbar for display-mode switching;
+    ENG/PU toggle buttons remain in Voltage pane headers for display switching;
     all PU configuration goes through Recording Details."""
     source = _source()
-    # Waveform toolbar migration: two direct icon buttons, no dropdown.
-    assert 'id="wwUnitEngineeringBtn"' in source
-    assert 'id="wwUnitPerUnitBtn"' in source
+    # Pane-header relocation: native ENG/PU buttons, one workspace-wide state.
+    assert 'data-pane-unit-mode="engineering"' in source
+    assert 'data-pane-unit-mode="per_unit"' in source
     # Hub and SD modal are gone.
     assert 'id="wwOpenPerUnitSettingsBtn"' not in source
     assert 'id="perUnitProfilesOverlay"' not in source
@@ -204,10 +205,10 @@ def test_selecting_per_unit_never_auto_opens_any_configuration_surface():
     a valid regression contract (the Per Unit click must ONLY change
     display mode, nothing else)."""
     source = _source()
-    start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
-    end = source.index("});", start) + 3
+    start = source.index('async function wwApplyPaneUnitMode(panel, button)')
+    end = source.index("function wwWaveformPaneHeaderHtml", start)
     body = source[start:end]
-    assert "await wwApplyUnitMode(\"per_unit\");" in body
+    assert "wwApplyUnitMode(button.dataset.paneUnitMode)" in body
     assert "wwOpenPerUnitProfilesModal" not in body
     assert "wwOpenPerUnitSettingsModal" not in body
     assert "wwOpenMeasurementGroupsModal" not in body

@@ -1,0 +1,35 @@
+const {test,expect}=require('./support/test');
+const {setupToolbarGroups,toolbarRanges,activateToolbarGroup,placeToolbarCursors}=require('./support/waveform_toolbar_refinement_helpers');
+const before=process.env.REFINEMENT_PHASE==='before';
+test.setTimeout(90000);
+
+for(const layout of ['Grouped','Separate','Custom'])test(`global X, cursors and t0 keep the owning Time Group in ${layout}`,async({page},info)=>{
+  await page.setViewportSize({width:1280,height:800});
+  const groups=await setupToolbarGroups(page,{layout});expect(groups).toHaveLength(2);
+  await expect(page.locator('#wwYAxisReadout')).toHaveCount(before?1:0);
+  const initial=await toolbarRanges(page),target=groups[1],other=groups[0];
+  await activateToolbarGroup(page,target);
+  const yBefore=await page.evaluate(()=>ww.panels.map(p=>({id:p.id,range:p.chartEl._fullLayout.yaxis.range.slice()})));
+  await page.locator('#wwZoomXInBtn').click();
+  await expect.poll(async()=> (await toolbarRanges(page))[target]).not.toEqual(initial[target]);
+  expect((await toolbarRanges(page))[other]).toEqual(initial[other]);
+  await page.locator('#wwZoomXOutBtn').click();
+  await expect.poll(async()=> {const r=(await toolbarRanges(page))[target];return Math.abs(r.start-initial[target].start)+Math.abs(r.end-initial[target].end)}).toBeLessThan(1e-9);
+  await page.locator('#wwZoomXInBtn').click();await page.locator('#wwAutoscaleXBtn').click();
+  await expect.poll(async()=> {const r=(await toolbarRanges(page))[target];return Math.abs(r.start-initial[target].start)+Math.abs(r.end-initial[target].end)}).toBeLessThan(1e-9);
+  expect(await page.evaluate(()=>ww.panels.map(p=>({id:p.id,range:p.chartEl._fullLayout.yaxis.range.slice()})))).toEqual(yBefore);
+  await page.locator('#wwCursorModeBtn').click();
+  expect(await page.evaluate(ids=>ids.map(id=>wwTimeGroupCursorState(id).enabled),[target,other])).toEqual([true,false]);
+  const cursors=await placeToolbarCursors(page,target);
+  const meta=await page.locator(`.ww-time-group-canvas[data-time-group-id="${target}"] .ww-tg-header-meta`).textContent();
+  await page.locator('#wwT0Btn').click();
+  await expect.poll(()=>page.evaluate(ids=>ids.map(id=>wwT0ForGroup(id)),[target,other])).toEqual([cursors.a,null]);
+  await page.locator('#wwT0Btn').click();
+  await expect.poll(()=>page.evaluate(id=>wwHasT0(id),target)).toBe(false);
+  expect(await page.locator(`.ww-time-group-canvas[data-time-group-id="${target}"] .ww-tg-header-meta`).textContent()).toBe(meta);
+  await activateToolbarGroup(page,other);await page.locator('#wwCursorModeBtn').click();
+  expect(await page.evaluate(ids=>ids.map(id=>wwTimeGroupCursorState(id).enabled),groups)).toEqual([true,true]);
+  await expect(page.locator('#viewWaveform [data-pane-y]')).toHaveCount(yBefore.length*3);
+  await expect(page.locator('#viewWaveform .ww-pane-unit-mode:visible').first()).toBeVisible();
+  await info.attach('targeting-state.json',{body:JSON.stringify({layout,groups,ranges:await toolbarRanges(page),meta}),contentType:'application/json'});
+});

@@ -160,6 +160,7 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
   test("empty workspace shows the left panel, the workspace shell and the toolbar", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
+    await page.evaluate(() => PowerwaveTheme.setTheme("light"));
     await openEventReconstruction(page);
 
     const sidebar = page.locator("#wwErSidebar");
@@ -193,9 +194,14 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
         const style = getComputedStyle(el);
         return { backgroundImage: style.backgroundImage, borderBottom: style.borderBottom, padding: style.padding, gap: style.gap };
       };
-      return { er: pick(document.getElementById("wwErToolbar")), waveform: pick(document.getElementById("wwToolbar")) };
+      return pick(document.getElementById("wwErToolbar"));
     });
-    expect(toolbarStyles.er).toEqual(toolbarStyles.waveform);
+    // WUI-002 redesigns Waveform only. Preserve ER's a2b55eb light-theme
+    // appearance independently instead of coupling it to the new toolbar.
+    expect(toolbarStyles).toEqual({
+      backgroundImage: "linear-gradient(rgb(248, 249, 252), rgb(255, 255, 255))",
+      borderBottom: "1px solid rgb(217, 223, 234)", padding: "7px 10px", gap: "6px 2px",
+    });
 
     expect(consoleErrors).toEqual([]);
   });

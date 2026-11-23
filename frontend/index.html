@@ -5543,6 +5543,51 @@
             box-shadow: inset 0 1px 0 var(--surface-tint), inset 0 -1px 0 var(--surface-tint);
         }
         .ww-toolbar[hidden] { display: none; }
+        /* WUI-002: Waveform-only visual groups; control ids and all bindings stay unchanged. */
+        #wwToolbar {
+            gap: 3px; row-gap: 8px; padding: 8px; margin: 6px 8px;
+            border: 1px solid var(--panel-border); border-radius: 10px;
+            background: var(--panel); box-shadow: 0 2px 8px var(--surface-tint);
+            flex: 0 0 auto; align-items: flex-end;
+        }
+        #wwToolbar .ww-toolbar-family {
+            display: flex; flex-direction: column; gap: 4px;
+            flex: 0 0 auto; min-width: 0; padding: 0 4px;
+            border-right: 1px solid var(--panel-border);
+        }
+        #wwToolbar .ww-toolbar-family:last-child { border-right: 0; padding-right: 0; }
+        #wwToolbar .ww-toolbar-caption {
+            display: block; color: var(--text-dim); font-size: 9px; line-height: 12px;
+            font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+        }
+        #wwToolbar .ww-toolbar-controls { display: flex; align-items: center; gap: 2px; min-height: 36px; }
+        #wwToolbar .theme-toggle.ww-icon-group {
+            padding: 2px; gap: 2px; border: 1px solid var(--panel-border);
+            border-radius: 8px; background: var(--toolbar-surface); box-shadow: none;
+        }
+        #wwToolbar button:not(.ww-split-menu-item) {
+            display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+            width: 32px; height: 32px; padding: 0; flex: 0 0 auto;
+            border: 1px solid transparent; border-radius: 6px; box-shadow: none;
+            color: var(--text-dim); background: transparent; font-size: 11px; font-weight: 550;
+        }
+        #wwToolbar .ww-icon { width: 17px; height: 17px; flex: 0 0 auto; }
+        #wwToolbar #editChannelGroupsBtn { width: auto; padding: 0 8px; border-color: var(--panel-border); white-space: nowrap; }
+        #wwToolbar button:not(.ww-split-menu-item):hover:not(:disabled) {
+            color: var(--text); background: var(--hover-tint); border-color: var(--panel-border);
+        }
+        #wwToolbar button:not(.ww-split-menu-item)[aria-pressed="true"] {
+            color: var(--accent); background: var(--accent-wash); border-color: var(--accent-dim);
+        }
+        #wwToolbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        #wwToolbar button:not(.ww-split-menu-item):disabled {
+            opacity: .42; color: var(--text-dim); background: transparent; border-color: transparent; cursor: not-allowed;
+        }
+        #wwToolbar .ww-split-btn { box-shadow: none; }
+        #wwToolbar .ww-split-menu { border-radius: 9px; padding: 5px; }
+        #wwToolbar > .ww-toolbar-sep { display: none; }
+        #wwToolbar [hidden], #wwToolbar button[hidden] { display: none; }
+
         .toolbar-spacer { flex: 1; }
 
         /* Phase 4D (section 17-19): the waveform toolbar's own icon
@@ -5891,6 +5936,108 @@
            background fill, no shadow -- deliberately restrained per that
            section's own explicit "do not create a large or distracting
            selection state" instruction. */
+        /* WUI-001: pane-local vertical actions, scoped away from other pages. */
+        #viewWaveform .ww-panel-header { display: flex; align-items: center; gap: 8px; cursor: default; }
+        #viewWaveform .ww-pane-identity { flex: 1; min-width: 0; text-align: left; color: var(--text);
+            background: transparent; border: 0; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; }
+        #viewWaveform .ww-pane-y-tools { display: flex; flex: none; align-items: center; gap: 3px; }
+        #viewWaveform .ww-pane-y-tools button { display: inline-flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; padding: 4px; border: 1px solid transparent; border-radius: 6px;
+            background: transparent; color: var(--text-dim); }
+        #viewWaveform .ww-pane-y-tools button:hover { background: var(--hover-tint); border-color: var(--panel-border); }
+        #viewWaveform .ww-pane-y-tools button:disabled { opacity: .4; cursor: not-allowed; }
+        #viewWaveform .ww-pane-y-tools button:focus-visible,
+        #viewWaveform .ww-pane-identity:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        #viewWaveform .ww-tg-panels.ww-panels-unified .ww-panel-header { display: flex; margin-bottom: 0; min-height: 28px; }
+        /* Synchronized Voltage Display selectors; Waveform headers only. */
+        #viewWaveform .ww-panel-header { flex-wrap: wrap; }
+        #viewWaveform .ww-pane-identity { flex-basis: 100px; white-space: nowrap; }
+        #viewWaveform .ww-pane-header-tools { display: flex; flex: none; align-items: center; gap: 8px; margin-left: auto; }
+        #viewWaveform .ww-pane-unit-mode { display: flex; align-items: center; gap: 5px; flex: none; padding-right: 8px; border-right: 1px solid var(--panel-border); }
+        #viewWaveform .ww-pane-unit-mode[hidden], #viewWaveform .ww-pane-unit-mode [hidden] { display: none; }
+        #viewWaveform .ww-pane-unit-scope { color: var(--text-dim); font-size: 10px; }
+        #viewWaveform .ww-pane-unit-mode .theme-toggle { padding: 0; gap: 2px; border: 0; background: transparent; box-shadow: none; }
+        #viewWaveform .ww-pane-unit-mode button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; flex: none;
+            width: auto; min-width: 34px; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: 999px;
+            color: var(--text-dim); background: transparent; font-size: 10px; position: relative; box-shadow: none; }
+        #viewWaveform .ww-pane-unit-mode .ww-unit-mode-warning { font-size: 11px; }
+        #viewWaveform .ww-pane-unit-mode button:hover { color: var(--text); background: var(--hover-tint); border-color: var(--panel-border); }
+        #viewWaveform .ww-pane-unit-mode button[aria-pressed="true"] { color: var(--text); background: var(--hover-tint); }
+        #viewWaveform .ww-pane-unit-mode button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        /* WUI-003: presentation belongs to Waveform, including unified lanes.
+           Plotly's height, margins, data and axis authority stay unchanged. */
+        #viewWaveform .ww-panel { display: flex; flex-direction: column; border-radius: 12px;
+            box-shadow: 0 1px 4px var(--surface-tint); min-width: 0; }
+        #viewWaveform .ww-panel-header { order: 0; min-height: 34px; margin-bottom: 8px; gap: 10px; position: relative; z-index: 4; }
+        #viewWaveform .ww-panel-header:hover { background: transparent; }
+        #viewWaveform .ww-pane-identity { display: flex; align-items: center; gap: 8px; padding: 0; }
+        #viewWaveform .ww-pane-marker { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--accent); }
+        #viewWaveform .ww-pane-heading { display: block; min-width: 0; flex: 1; }
+        #viewWaveform .ww-pane-heading-line { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
+        #viewWaveform .ww-panel-label { font-size: 12px; font-weight: 650; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        #viewWaveform .ww-pane-time-group { color: var(--text-dim); font-size: 10px; font-weight: 450;
+            flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
+        #viewWaveform .ww-pane-subtitle { display: block; color: var(--text-dim); font-size: 9.5px;
+            font-weight: 400; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #viewWaveform .ww-chart-wrap { order: 1; border: 0; border-radius: 0; box-shadow: none; }
+        /* WUI-004: use the existing Plotly top margin; no plot-area padding. */
+        #viewWaveform .ww-axis-unit {
+            position: absolute; z-index: 2; pointer-events: none;
+            font-size: 10px; line-height: 10px; color: var(--text-dim);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        #viewWaveform .ww-error { order: 3; }
+        #viewWaveform .ww-resize-handle { order: 4; }
+        #viewWaveform .ww-tg-panels.ww-panels-unified { border-radius: 12px; }
+        #viewWaveform .ww-tg-panels.ww-panels-unified .ww-panel { border-radius: 0; box-shadow: none; padding: 8px 14px; }
+        #viewWaveform .ww-tg-panels.ww-panels-unified .ww-panel-header { min-height: 34px; margin-bottom: 6px; }
+        #viewWaveform .ww-legend { order: 2; position: relative; top: auto; right: auto; transform: none;
+            display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; min-width: 0;
+            height: 26px; min-height: 26px; margin: 6px 0 0; overflow: hidden; pointer-events: auto; z-index: 4; }
+        #viewWaveform .ww-legend-item { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px;
+            max-width: min(320px, 100%); height: 24px; padding: 0; background: transparent;
+            border: 0; border-radius: 4px; box-shadow: none; font-size: 0.65rem; color: var(--text); overflow: hidden; }
+        #viewWaveform .ww-legend-label { max-width: 140px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        #viewWaveform .ww-legend-toggle { display: inline-flex; align-items: center; gap: 5px; min-width: 24px;
+            min-height: 24px; max-width: 100%; padding: 2px 3px; border: 0; border-radius: 4px;
+            background: transparent; color: var(--text); font: inherit; line-height: 1.3; text-align: left; }
+        #viewWaveform .ww-legend-toggle:hover, .ww-pane-legend-toggle:hover { background: var(--hover-tint); }
+        #viewWaveform .ww-legend-toggle:focus-visible, .ww-pane-legend-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        #viewWaveform .ww-legend-toggle[aria-pressed="false"], .ww-pane-legend-toggle[aria-pressed="false"] { color: var(--text-dim); }
+        #viewWaveform .ww-legend-toggle[aria-pressed="false"] .ww-legend-dot,
+        .ww-pane-legend-toggle[aria-pressed="false"] .ww-legend-dot { opacity: .4; }
+        #viewWaveform .ww-legend-toggle:disabled, .ww-pane-legend-toggle:disabled { cursor: not-allowed; color: var(--text-dim); }
+        #viewWaveform .ww-legend-dot { width: 12px; height: 2px; border-radius: 2px; }
+        #viewWaveform .ww-legend-remove { width: 18px; height: 18px; padding: 0; flex: none; font-size: 14px; }
+        #viewWaveform .ww-legend-item .ww-pu-reference-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #viewWaveform .ww-legend-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        #viewWaveform .ww-pane-legend-more { flex: none; height: 24px; padding: 2px 6px; border: 1px solid transparent;
+            border-radius: 5px; background: transparent; color: var(--accent); font-size: 0.65rem; white-space: nowrap;
+            font-variant-numeric: tabular-nums; }
+        #viewWaveform .ww-pane-legend-more:hover, #viewWaveform .ww-pane-legend-more[aria-expanded="true"] {
+            background: var(--hover-tint); border-color: var(--panel-border); }
+        #viewWaveform .ww-pane-legend-more:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        #viewWaveform .ww-legend [hidden] { display: none; }
+        /* Floating surfaces are created only by Waveform and disposed with their pane. */
+        .ww-pane-legend-tip, .ww-pane-legend-popover { position: fixed; z-index: 60; box-sizing: border-box;
+            color: var(--text); background: var(--panel); border: 1px solid var(--panel-border); border-radius: 9px;
+            box-shadow: 0 8px 25px rgb(0 0 0 / 15%); font-size: 11px; }
+        .ww-pane-legend-tip { max-width: min(400px, calc(100vw - 24px)); padding: 7px 10px; pointer-events: none; overflow-wrap: anywhere; }
+        .ww-pane-legend-popover { width: min(390px, calc(100vw - 24px)); padding: 8px; max-height: min(360px, calc(100vh - 24px));
+            display: flex; flex-direction: column; }
+        .ww-pane-legend-popover-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 7px; gap: 12px; }
+        .ww-pane-legend-popover-head strong { font-size: 12px; }
+        .ww-pane-legend-close { background: transparent; border: 0; color: var(--text-dim); width: 24px; height: 24px; padding: 0; font-size: 18px; }
+        .ww-pane-legend-list { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 0; }
+        .ww-pane-legend-list li { margin: 0; padding: 0; }
+        .ww-pane-legend-toggle { display: grid; width: 100%; min-height: 32px; border: 0; background: transparent;
+            color: var(--text); font-size: 0.7rem; line-height: 1.35; text-align: left; grid-template-columns: 12px minmax(0, 1fr); gap: 4px 8px;
+            padding: 8px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+        .ww-pane-legend-list li:focus-visible, .ww-pane-legend-close:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .ww-pane-legend-list .ww-legend-dot { width: 12px; height: 2px; margin-top: 7px; border-radius: 2px; }
+        .ww-pane-legend-context { grid-column: 2; color: var(--text-dim); font-size: 0.65rem; }
+        .ww-pane-legend-qualification { grid-column: 2; display: flex; flex-wrap: wrap; gap: 5px; }
         .ww-panel--active { border-color: var(--accent-dim); }
         .ww-panel-header { cursor: pointer; border-radius: calc(var(--radius) - 2px); }
         .ww-panel-header:hover { background: var(--hover-tint); }
@@ -6924,6 +7071,21 @@
            applying. */
         .ww-cursor-readout-a .ww-tg-cursor-readout-value { color: var(--accent); }
         .ww-cursor-readout-b .ww-tg-cursor-readout-value { color: var(--error); }
+        /* Waveform-only header: source metadata belongs to its title;
+           the existing cursor readout remains in the same sticky stack. */
+        #viewWaveform .ww-tg-header { align-items: center; flex-wrap: wrap; gap: 4px 14px; }
+        #viewWaveform .ww-tg-header-identity {
+            display: flex; flex-direction: column; gap: 3px;
+            flex: 1 1 240px; min-width: 0; max-width: 100%;
+        }
+        #viewWaveform .ww-tg-header-meta { overflow-wrap: anywhere; }
+        #viewWaveform .ww-tg-header > .ww-tg-cursor-readout {
+            flex: 0 1 auto; min-width: 0; max-width: 100%; justify-content: flex-end;
+        }
+        #viewWaveform .ww-tg-header .ww-tg-cursor-readout-item { padding: 3px 0; white-space: nowrap; }
+        /* Keep dormant group navigation wired, without an empty spacer row. */
+        #viewWaveform .ww-tg-toolbar-row { margin-bottom: 0; }
+        #viewWaveform .ww-tg-toolbar { padding: 0; }
         /* Phase 4A: digital channel region. Visually distinguishable from
            analog .ww-panel cards (own subtle background tint, compact
            title) but still reads as part of the same analysis canvas --
@@ -10984,37 +11146,10 @@
                          toolbar disappearing. See wwUpdateEmptyState()'s
                          own comment and #wwEmptyWorkspaceHeader's. -->
                     <div class="ww-toolbar" id="wwToolbar">
-                        <!-- DEC-144: Box Zoom is retired; Pan is the only
-                             plot-area interaction mode now, so there is no
-                             longer a "drag mode" to select -- the former
-                             dragModeToggle (Box Zoom/Pan) is gone. Pan's own
-                             presence is now communicated by cursor feedback
-                             (grab/grabbing over the plot area) rather than a
-                             toolbar control -- see .ww-panel .draglayer
-                             .nsewdrag's own CSS comment. -->
-
-                        <!-- TG-D1: Zoom In/Zoom Out split buttons (Phase 4D)
-                             moved into each Time Group Canvas's own local
-                             toolbar -- see wwCreateTimeGroupCanvasDom()'s
-                             own HTML and wwWireTimeGroupToolbar() for the
-                             interaction wiring, wwSyncTimeGroupZoomControls()
-                             for the tooltip/aria-label/checkmark/disabled-
-                             state sync. No longer duplicated here. -->
-
-                        <!-- DEC-140: the global Time Display family (Elapsed /
-                             Relative / Absolute) -- the same shared buttons on
-                             every waveform-capable page. Panel-header tool
-                             visibility (owner correction, supersedes this
-                             comment's own former "disables, never hides"
-                             policy): a mode this page can NEVER support is
-                             hidden outright, not shown disabled -- Relative
-                             Time has no concept of "relative to an event" on
-                             Waveform (that is Event Reconstruction's own
-                             idea), so it is not merely disabled here, it does
-                             not render at all. Elapsed/Absolute are both
-                             genuinely usable, so both render, each still
-                             getting its ordinary enable/disable state. -->
-                        <div class="theme-toggle ww-icon-group" id="timeModeToggle" role="group" aria-label="Time axis mode">
+<div class="ww-toolbar-family" data-toolbar-group="time" role="group" aria-label="Time">
+<span class="ww-toolbar-caption" aria-hidden="true">Time</span>
+<div class="ww-toolbar-controls">
+<div class="theme-toggle ww-icon-group" id="timeModeToggle" role="group" aria-label="Time axis mode">
                             <button type="button" id="timeModeElapsedBtn" aria-pressed="false" title="Elapsed Time" aria-label="Elapsed Time">
                                 <span class="ww-icon" data-ww-icon="TIME_ELAPSED"></span>
                             </button>
@@ -11025,304 +11160,40 @@
                                 <span class="ww-icon" data-ww-icon="TIME_ABSOLUTE"></span>
                             </button>
                         </div>
-
-                        <!-- TG-D1: Reset Time View/Autoscale Y (formerly
-                             #wwResetViewBtn/#wwAutoscaleBtn here) moved into
-                             each Time Group Canvas's own local toolbar --
-                             see wwCreateTimeGroupCanvasDom()'s own HTML.
-                             No longer duplicated here. -->
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- TG-D2: A/B Time Cursors moved into each Time
-                             Group Canvas's own local toolbar
-                             (`.ww-tg-cursor-mode-btn`, see
-                             wwCreateTimeGroupCanvasDom()'s own HTML) -- no
-                             longer duplicated here. -->
-
-                        <!-- TG-E moved "Set Cursor A as t=0"/"Clear t=0"
-                             into each Time Group Canvas's own local
-                             toolbar; the Waveform toolbar refinement
-                             (owner ticket, later) moved it back out to a
-                             page-level button again -- see #wwT0Btn,
-                             further down this same toolbar beside
-                             #wwCursorModeBtn, not duplicated here. Unlike
-                             the old pre-TG-E global button/#statusBarT0
-                             readout this once superseded, the new one
-                             targets the active (self-healing first-valid)
-                             Time Group deterministically, via
-                             wwActiveTimeGroupId() -- never ambiguous. -->
-
-                        <!-- Slice 3 of waveform time synchronization
-                             ("assisted event t=0 detection"): opens the
-                             Detect Event Origin modal (#wwDetectEventOverlay).
-                             Advisory only -- this button never sets t0 by
-                             itself, it only opens the picker/analysis
-                             workflow; t0 is only ever set from inside
-                             that modal's own explicit "Set as t=0"
-                             action (task section 1's own governing
-                             principle: "never silently set t=0"). TG-E
-                             (owner decision): this element is HIDDEN by
-                             default (`.hidden` set at init time from
-                             WW_DETECT_EVENT_UI_ENABLED, see that
-                             constant's own docstring) -- the capability
-                             stays fully implemented and internally
-                             Time-Group-aware underneath, only its normal
-                             product exposure is disabled. -->
-                        <button class="ww-icon-btn" type="button" id="wwDetectEventBtn" title="Detect Event Origin" aria-label="Detect Event Origin">
+</div></div>
+<button class="ww-icon-btn" type="button" id="wwDetectEventBtn" title="Detect Event Origin" aria-label="Detect Event Origin">
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M2.5 10.5 6.5 10.5 8 6.5 10 13 11.5 10.5 15.5 10.5" fill="none" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
                         </button>
-
-                        <!-- Toolbar spacing fix (owner ticket): this
-                             separator and the one above both flank
-                             #wwDetectEventBtn -- a real three-family
-                             boundary (Time | Detect Event | Unit Mode)
-                             ONLY while that button is visible. While it is
-                             hidden (WW_DETECT_EVENT_UI_ENABLED === false,
-                             the current/default state), leaving BOTH
-                             separators in the flex flow put them directly
-                             adjacent with nothing visible between them --
-                             each one's own 4px side margin plus the
-                             toolbar's own 2px flex gap stacked into a
-                             double-width gap between Time Display and Unit
-                             Mode (no empty element was still occupying
-                             space; .ww-toolbar-sep sets no `display` of
-                             its own, so native `[hidden]` already hides it
-                             correctly -- the excess space came from two
-                             REAL, visible separators with nothing between
-                             them, not from a hidden one). This one is now
-                             toggled together with the button itself (see
-                             the wwDetectEventBtn.hidden assignment) so
-                             only ONE separator remains when the button is
-                             hidden, and the original three-family spacing
-                             returns automatically if the feature flag is
-                             ever re-enabled. -->
-                        <span class="ww-toolbar-sep" id="wwDetectEventSep" aria-hidden="true"></span>
-
-                        <!-- Waveform toolbar migration: Engineering Units
-                             and Per Unit are now two individual icon
-                             buttons (UNIT_ENGINEERING/UNIT_PER_UNIT),
-                             matching Event Reconstruction's own pair
-                             (DEC-143) exactly -- same
-                             .theme-toggle.ww-icon-group pattern Waveform's
-                             own Time Display/View Mode groups already use,
-                             never a single text-label dropdown trigger any
-                             more (supersedes Phase 5C/DEC-049's own
-                             "ENG"/"PU" trigger). A warning glyph is toggled
-                             on the Per Unit button itself (see
-                             wwUpdateUnitModeWarningBadge()) when Per Unit
-                             is active and >=1 displayed eligible channel is
-                             Base required -- same condition, same function,
-                             just relocated from the old trigger onto its
-                             own button. PU configuration is managed via
-                             Recording Details (PU-UI-001). -->
-                        <div class="theme-toggle ww-icon-group" id="wwUnitModeToggle" role="group" aria-label="Voltage Display">
-                            <button type="button" id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units">
-                                <span class="ww-icon" data-ww-icon="UNIT_ENGINEERING"></span>
-                            </button>
-                            <button type="button" id="wwUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit">
-                                <span class="ww-icon" data-ww-icon="UNIT_PER_UNIT"></span>
-                                <span class="ww-unit-mode-warning" id="wwUnitModeWarning" hidden aria-hidden="true">&#9888;</span>
-                            </button>
-                        </div>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- Waveform top-toolbar migration (owner ticket):
-                             page-level Zoom X In/Out, matching Event
-                             Reconstruction's own global wwErZoomInBtn/
-                             wwErZoomOutBtn (same icons, same "Zoom In/Out
-                             — Time Axis" wording). Targets the SAME
-                             active-Time-Group concept Autoscale X and A/B
-                             Cursors below share (wwActiveTimeGroupId(),
-                             derived from wwActivePanel()'s own groupKey
-                             via wwPanelTimeGroupId() -- the explicitly
-                             clicked panel's own Time Group if one was
-                             chosen, else the first Time Group that has a
-                             displayed channel; `null` only when no Time
-                             Group exists at all). Deliberately the SAME
-                             underlying state Zoom Y/Autoscale Y below
-                             already resolve through, so X and Y (and
-                             Cursors) can never silently disagree on which
-                             Time Group is targeted. Reuses wwStepZoomX(),
-                             the existing per-Time-Group X step-zoom core
-                             (DEC-043), unchanged -- only how its groupId
-                             argument is resolved is new. See
-                             wwSyncGlobalWaveformToolbar()'s own comment
-                             for the full enable/disable/tooltip story,
-                             including why Zoom Out also disables at this
-                             group's own full range (same nuance the
-                             now-removed per-Time-Group local zoom button
-                             had). -->
-                        <button type="button" class="ww-icon-btn" id="wwZoomXOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>
-                            <span class="ww-icon" data-ww-icon="ZOOM_X_OUT"></span>
+<span class="ww-toolbar-sep" id="wwDetectEventSep" aria-hidden="true"></span>
+<div class="ww-toolbar-family" data-toolbar-group="navigation" role="group" aria-label="Time axis">
+<span class="ww-toolbar-caption" aria-hidden="true">Time axis</span>
+<div class="ww-toolbar-controls">
+<button type="button" class="ww-icon-btn" id="wwZoomXOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>
+                            <span class="ww-icon" data-ww-icon="WUI002_ZOOM_X_OUT"></span>
                         </button>
-                        <button type="button" class="ww-icon-btn" id="wwZoomXInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis" disabled>
-                            <span class="ww-icon" data-ww-icon="ZOOM_X_IN"></span>
+<button type="button" class="ww-icon-btn" id="wwZoomXInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis" disabled>
+                            <span class="ww-icon" data-ww-icon="WUI002_ZOOM_X_IN"></span>
                         </button>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- Waveform Y-axis zoom (owner ticket): a
-                             page-level Y Zoom In/Out pair, matching Event
-                             Reconstruction's own global wwErZoomYInBtn/
-                             wwErZoomYOutBtn exactly (same icons, same
-                             "Zoom In/Out — Selected Y Axis" tooltip
-                             wording, same button order). Targeting
-                             differs from Event Reconstruction by design
-                             (Waveform has one Y axis per panel, never
-                             several in one panel the way Event
-                             Reconstruction's Combined view can) --
-                             resolved through the EXISTING, already
-                             self-healing wwActivePanel() (Phase 4D's own
-                             "active Y-zoom panel" concept, already used
-                             by Autoscale Y and the per-Time-Group
-                             dropdown-driven Y step zoom): the explicitly
-                             clicked panel if one was chosen, else the
-                             first panel in ww.panels -- which, by
-                             construction, always belongs to the first
-                             Time Group that actually has a displayed
-                             channel (an empty Time Group never creates a
-                             panel at all, so "the first Time Group with
-                             no valid axis" cannot occur). Disabled only
-                             when ww.panels.length === 0 (nothing to
-                             target anywhere -- see wwUpdateEmptyState()'s
-                             own sync). Reuses wwStepZoomYPanel(), the
-                             exact factor/center/min-span math every
-                             other Y-zoom path (Event Reconstruction's
-                             wwErStepZoomY, the per-Time-Group
-                             wwStepZoomY()) already shares -- see that
-                             function's own comment. -->
-                        <button type="button" class="ww-icon-btn" id="wwZoomYOutBtn" title="Zoom Out — Selected Y Axis" aria-label="Zoom Out — Selected Y Axis" disabled>
-                            <span class="ww-icon" data-ww-icon="ZOOM_Y_OUT"></span>
+<button type="button" class="ww-icon-btn ww-tg-reset-view-btn" id="wwAutoscaleXBtn" title="Autoscale X" aria-label="Autoscale X" disabled>
+                            <span class="ww-icon" data-ww-icon="WUI002_AUTOSCALE_X"></span>
                         </button>
-                        <button type="button" class="ww-icon-btn" id="wwZoomYInBtn" title="Zoom In — Selected Y Axis" aria-label="Zoom In — Selected Y Axis" disabled>
-                            <span class="ww-icon" data-ww-icon="ZOOM_Y_IN"></span>
+</div></div>
+<div class="ww-toolbar-family" data-toolbar-group="measurement" role="group" aria-label="Measure">
+<span class="ww-toolbar-caption" aria-hidden="true">Measure</span>
+<div class="ww-toolbar-controls">
+<button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors" disabled>
+                            <span class="ww-icon" data-ww-icon="WUI002_CURSORS_AB"></span>
                         </button>
-                        <!-- Waveform Y-axis target readout (owner ticket):
-                             the compact "Y: <axis>" reference beside Zoom
-                             Y, reusing Event Reconstruction's own
-                             `.ww-er-active-axis-readout` class verbatim
-                             (same typography/spacing/ellipsis-overflow
-                             treatment, no new CSS) and its own "Y: Select
-                             axis" empty-state wording exactly. Shows
-                             whichever panel wwActivePanel() currently
-                             resolves to -- the SAME single target Zoom Y
-                             In/Out and Autoscale Y already act on (see
-                             wwSyncGlobalWaveformToolbar()'s own comment);
-                             this is read-only presentation, written from
-                             that one shared resolver, never a second
-                             target computation. -->
-                        <span class="ww-er-active-axis-readout" id="wwYAxisReadout">Y: Select axis</span>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- Waveform top-toolbar migration (owner ticket):
-                             page-level Autoscale X/Autoscale Y, matching
-                             Event Reconstruction's own global
-                             wwErResetViewBtn/wwErAutoscaleYBtn -- same
-                             classes (`.ww-tg-reset-view-btn`/
-                             `.ww-tg-autoscale-btn`, already shared with
-                             Event Reconstruction's own pair; the
-                             `.ww-tg-toolbar`-scoped CSS override that used
-                             to style these as local per-canvas buttons
-                             does not apply here, so no new CSS is
-                             needed), same icons, same canonical wording.
-                             Autoscale X targets the active Time Group
-                             (wwActiveTimeGroupId(), see Zoom X's own
-                             comment above) via the EXISTING, unchanged
-                             wwResetOneTimeGroupView(groupId). Autoscale Y
-                             (owner correction) targets the SAME single
-                             Y-axis Zoom Y targets -- wwActivePanel()
-                             directly, via the new wwAutoscaleYPanel(panel)
-                             (restores autorange for that one panel only).
-                             This deliberately diverges from Event
-                             Reconstruction's own wwErAutoscaleY() (every
-                             axis across every panel) and from this app's
-                             own prior group-wide draft of this same
-                             button: the owner's explicit, later
-                             correction is that Waveform's Y-axis
-                             operations -- Zoom Y AND Autoscale Y alike --
-                             must resolve exactly the same one-axis
-                             target, never "every axis in the group." -->
-                        <button type="button" class="ww-icon-btn ww-tg-reset-view-btn" id="wwAutoscaleXBtn" title="Autoscale X" aria-label="Autoscale X" disabled>
-                            <span class="ww-icon" data-ww-icon="AUTOSCALE_X"></span>
-                        </button>
-                        <button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>
-                            <span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>
-                        </button>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- Waveform top-toolbar migration (owner ticket):
-                             page-level A/B Time Cursors, matching Event
-                             Reconstruction's own global wwErCursorModeBtn
-                             (same class `.ww-tg-cursor-mode-btn`, same
-                             icon, same wording). Targets the active Time
-                             Group only (wwActiveTimeGroupId()) via the
-                             EXISTING, unchanged wwToggleMeasurementCursors
-                             (groupId) -- cursors remain a genuinely
-                             per-Time-Group concept (each group keeps its
-                             own independent A/B state,
-                             ww.timeGroupCursorState keyed by groupId);
-                             this button only changes WHICH group's
-                             cursors it acts on next, never "every Time
-                             Group at once." aria-pressed reflects that
-                             target's own wwTimeGroupCursorState(groupId)
-                             .enabled, kept fresh by
-                             wwSyncGlobalWaveformToolbar(). -->
-                        <button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors" disabled>
-                            <span class="ww-icon" data-ww-icon="CURSORS_AB"></span>
-                        </button>
-
-                        <!-- Waveform toolbar refinement (owner ticket):
-                             page-level "Set Cursor A as t=0"/"Clear t=0",
-                             moved out of each Time Group Canvas's own
-                             local toolbar (`.ww-tg-t0-btn`) beside the
-                             A/B Cursors control above -- same deterministic
-                             targeting model (wwActiveTimeGroupId(): active
-                             Time Group, self-healing to the first valid one,
-                             else disabled). Reuses the EXISTING, unchanged
-                             wwHandleSetOrClearT0ClickForGroup(groupId) --
-                             t0 itself still means exactly what it always
-                             has (Cursor A of the resolved Time Group,
-                             never any other group); only the button's own
-                             location and target-resolution moved. Stays
-                             visible always (never hidden merely because no
-                             recording is loaded, per the panel-header tool
-                             visibility rule already applied to every other
-                             migrated control) -- disabled only when there
-                             is no valid Time Group, or that group has
-                             neither an existing t0 to clear nor a placed
-                             Cursor A to promote: the exact precondition the
-                             former per-canvas wwSyncT0ControlsForGroup()
-                             used to check, now inlined directly into
-                             wwSyncGlobalWaveformToolbar() against this
-                             button's own id (that now-deleted function had
-                             no other caller once the local button it
-                             targeted was removed). Same icon the former
-                             local button (and, before it, the original
-                             global #wwSetT0Btn) already used verbatim. -->
-                        <button type="button" class="ww-icon-btn" id="wwT0Btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>
+<button type="button" class="ww-icon-btn" id="wwT0Btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.3" stroke-dasharray="2.2,1.6"/><text x="9" y="14.5" font-size="5.5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">0</text></svg></span>
                         </button>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- Phase 4E (DEC-044): the generic annotation
-                             framework's first UI surface. "Annotate" is a
-                             plain dropdown (not a Phase 4D split-button --
-                             there is no sensible "repeat last annotation
-                             type" default action to give a main icon,
-                             unlike Zoom In/Out's X/Y axis memory), opening
-                             a menu that currently holds only "Text Note"
-                             but is structured (one .ww-split-menu-item per
-                             annotation type, each carrying its own
-                             data-annotation-type) so a future type is one
-                             more menu item, never a menu redesign. -->
-                        <div class="ww-split-btn" id="wwAnnotateSplit">
+</div></div>
+<div class="ww-toolbar-family" data-toolbar-group="annotation" role="group" aria-label="Annotations">
+<span class="ww-toolbar-caption" aria-hidden="true">Annotations</span>
+<div class="ww-toolbar-controls">
+<div class="ww-split-btn" id="wwAnnotateSplit">
                             <button type="button" class="ww-icon-btn" id="wwAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">
-                                <span class="ww-icon" data-ww-icon="ANNOTATE"></span>
+                                <span class="ww-icon" data-ww-icon="WUI002_ANNOTATE"></span>
                             </button>
                             <div class="ww-split-menu" id="wwAnnotateMenu" role="menu" aria-label="Annotation type" hidden>
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="text_note" aria-pressed="false">
@@ -11356,54 +11227,23 @@
                                 </button>
                             </div>
                         </div>
-                        <button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">
+<button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">
                             <span class="ww-icon" data-ww-icon="ANNOTATIONS"></span>
                             <span class="ww-annotation-count-badge" id="wwAnnotationCountBadge" hidden>0</span>
                         </button>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- Toolbar operational-actions placement (owner
-                             ticket): "Clear Waveforms" (#clearWorkspaceBtn)
-                             moved here from its former position on the
-                             right side, beside Edit Channel Groups/Split
-                             View (a layout/view family it was never
-                             actually part of) -- it mutates WHICH channels
-                             are displayed, the same kind of operational
-                             action as Zoom/Autoscale/Cursors above, not a
-                             view-mode/layout control, so it belongs with
-                             them on the left. Same unchanged handler
-                             (wwClearWorkspace -- display-only, clears every
-                             displayed panel/channel, never touches the
-                             underlying source recording server-side) and
-                             tooltip/aria-label. Panel-header tool
-                             visibility (owner correction, applied here for
-                             the first time to this control): genuinely a
-                             supported Waveform action regardless of
-                             workspace state, so it now stays VISIBLE and
-                             DISABLES when there is nothing to clear
-                             (wwUpdateEmptyState()'s own `empty` flag),
-                             rather than disappearing outright the way its
-                             former hidden-when-empty behaviour did --
-                             consistent with every other control already
-                             migrated to this toolbar. -->
-                        <button class="ww-icon-btn" type="button" id="clearWorkspaceBtn" disabled title="Clear displayed waveforms" aria-label="Clear Waveforms">
-                            <span class="ww-icon" data-ww-icon="CLEAR_WAVEFORMS"></span>
+</div></div>
+<div class="ww-toolbar-family" data-toolbar-group="workspace" role="group" aria-label="Clear">
+<span class="ww-toolbar-caption" aria-hidden="true">Clear</span>
+<div class="ww-toolbar-controls">
+<button class="ww-icon-btn" type="button" id="clearWorkspaceBtn" disabled title="Clear displayed waveforms" aria-label="Clear Waveforms">
+                            <span class="ww-icon" data-ww-icon="WUI002_CLEAR_WAVEFORMS"></span>
                         </button>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <!-- TG-F moved "Synchronize Sources" into each
-                             Time Group Canvas's own local toolbar; the
-                             Waveform toolbar refinement (owner ticket,
-                             later) removed it outright (UI-only, no
-                             other caller) -- see the removed
-                             #wwSyncOverlay markup's own replacement
-                             comment for the full audit. Not duplicated
-                             here, or anywhere else. -->
-
-                        <div class="toolbar-spacer"></div>
-                        <div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
+</div></div>
+<div class="toolbar-spacer"></div>
+<div class="ww-toolbar-family" data-toolbar-group="layout" role="group" aria-label="Layout">
+<span class="ww-toolbar-caption" aria-hidden="true">Layout</span>
+<div class="ww-toolbar-controls">
+<div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
                             <button type="button" id="layoutModeGroupedBtn" aria-pressed="true" title="Grouped Layout" aria-label="Grouped Layout">
                                 <span class="ww-icon" data-ww-icon="VIEW_GROUPED"></span>
                             </button>
@@ -11414,26 +11254,12 @@
                                 <span class="ww-icon" data-ww-icon="VIEW_CUSTOM"></span>
                             </button>
                         </div>
-                        <!-- Owner-approved cleanup: Split View moved here from
-                             the now-removed top-right Waveform/Table/Split
-                             selector -- it is a Waveform-workspace layout/
-                             view function (not a separate main workspace),
-                             so it belongs beside Custom Layout, not inside
-                             that mutually-exclusive layout-mode group
-                             (Split is independently toggleable, never part
-                             of the Grouped/Separate/Custom radio set). A
-                             standalone `.ww-icon-btn`, same toolbar-button
-                             convention as #wwAnnotationListBtn -- never the
-                             old page-tab style. Click wiring/aria-pressed
-                             sync live in shellSetActiveView() (unchanged
-                             mechanism, new trigger only); behavior itself
-                             (layout, synchronization, persistence) is
-                             explicitly out of scope for this cleanup. -->
-                        <button class="ww-icon-btn" type="button" id="wwSplitViewBtn" aria-pressed="false" title="Split View — Show waveform and table side by side" aria-label="Split View — Show waveform and table side by side">
-                            <span class="ww-icon" data-ww-icon="VIEW_SPLIT"></span>
+<button class="ww-icon-btn" type="button" id="wwSplitViewBtn" aria-pressed="false" title="Split View — Show waveform and table side by side" aria-label="Split View — Show waveform and table side by side">
+                            <span class="ww-icon" data-ww-icon="WUI002_VIEW_SPLIT"></span>
                         </button>
-                        <button class="secondary" type="button" id="editChannelGroupsBtn" hidden>Edit Channel Groups</button>
-                    </div>
+<button class="secondary" type="button" id="editChannelGroupsBtn" title="Edit Channel Groups" aria-label="Edit Channel Groups" hidden><span class="ww-icon" data-ww-icon="WUI002_EDIT_GROUPS"></span>Edit groups</button>
+</div></div>
+</div>
 
                     <!-- Phase 4G-UAT (DEC-046 addendum): persistent
                          annotation-placement guidance ribbon. A normal
@@ -11533,8 +11359,10 @@
                                  placeholder stays hidden. -->
                             <div class="ww-tg-sticky-top" id="wwEmptyWorkspaceHeader">
                                 <div class="ww-tg-header">
-                                    <span class="ww-tg-header-title">Waveform</span>
-                                    <span class="ww-tg-header-meta">No recordings loaded</span>
+                                    <div class="ww-tg-header-identity">
+                                        <span class="ww-tg-header-title">Waveform</span>
+                                        <span class="ww-tg-header-meta">No recordings loaded</span>
+                                    </div>
                                 </div>
                             </div>
                             <p class="empty-state" id="wwEmptyState">Select channels from the sidebar to display waveforms.</p>
@@ -16515,6 +16343,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // path, read by every split-button's own dropdown trigger on
         // both pages.
         const WW_TOOL_ICONS = {
+            // Owner-approved WUI-002 global Waveform artwork. Shared keys
+            // below retain their existing assets for other pages and panes.
+            WUI002_ZOOM_X_IN: "assets/icons/waveform/wui-002/plus.svg",
+            WUI002_ZOOM_X_OUT: "assets/icons/waveform/wui-002/minus.svg",
+            WUI002_AUTOSCALE_X: "assets/icons/waveform/wui-002/fit.svg",
+            WUI002_CURSORS_AB: "assets/icons/waveform/wui-002/ruler.svg",
+            WUI002_ANNOTATE: "assets/icons/waveform/wui-002/tag.svg",
+            WUI002_VIEW_SPLIT: "assets/icons/waveform/wui-002/columns.svg",
+            WUI002_EDIT_GROUPS: "assets/icons/waveform/wui-002/settings.svg",
+            WUI002_CLEAR_WAVEFORMS: "assets/icons/waveform/wui-002/clear.svg",
             // -- Time Navigation. Box Zoom is retired (DEC-144) -- its own
             // BOX_ZOOM entry (an inline composite, never an owner asset)
             // is removed, not left as an unused stub: nothing reads it any
@@ -30273,6 +30111,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 btn.setAttribute("aria-label", label);
                 btn.title = label;
             }
+            wwRememberLegendGrouping();
+            for (const panel of ww.panels) wwRenderLegend(panel);
         }
 
         // Phase 4A-UAT9: every currently-rendered channel row belonging to
@@ -31764,6 +31604,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const labelEl = panel.headerEl && panel.headerEl.querySelector(".ww-panel-label");
                 if (labelEl) labelEl.textContent = freshLabel;
             }
+            ww.panels.forEach(wwSyncWaveformPaneHeader);
         }
 
         // Multi-source sidebar redesign (task section 12: "all uploaded
@@ -32180,8 +32021,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // choice), Autoscale X and Autoscale Y are no longer
                     // duplicated here -- they moved to the page-level
                     // #wwToolbar (wwZoomXInBtn/wwZoomXOutBtn/
-                    // wwZoomYInBtn/wwZoomYOutBtn/wwAutoscaleXBtn/
-                    // wwAutoscaleYBtn), which now targets the active (or
+                    // wwAutoscaleXBtn); Y controls are pane-local (WUI-001).
+                    // The global toolbar targets the active (or
                     // self-healing first-valid) Time Group deterministically
                     // -- see wwActiveTimeGroupId()'s own comment. Waveform
                     // toolbar refinement (owner ticket): t0 has now ALSO
@@ -32280,6 +32121,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // `rulerRect`-relative X-projection this required.
                     '<div class="ww-tg-cursor-label-layer" hidden></div>' +
                 '</div>';
+            // Move the existing presentation nodes only. Metadata stays UTC;
+            // cursor formatting, state, selectors and update paths are unchanged.
+            const header = section.querySelector(".ww-tg-header");
+            const identity = document.createElement("div");
+            identity.className = "ww-tg-header-identity";
+            identity.append(header.querySelector(".ww-tg-header-title"), header.querySelector(".ww-tg-header-meta"));
+            header.prepend(identity);
+            header.append(section.querySelector(".ww-tg-cursor-readout"));
             wwApplyToolIcons(section); // DEC-140: this canvas's own icon placeholders
             wwWireTimeGroupToolbar(section, groupId);
             wwWireTimeGroupCursorOverlay(section, groupId);
@@ -33209,7 +33058,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         }, [idx]);
                     }
                 }
-                if (ww.layoutMode === "separate") wwRenderLegend(panel);
+                wwRenderLegend(panel);
             }
             // Cheap, text-only, no-op-when-unchanged -- covers a Separate-
             // mode panel's own header title (one channel = one panel there)
@@ -33226,6 +33075,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 keys: [wwIsCalculatedSourceId(sourceId) ? "calculated:" + sourceId : "raw:analog:" + wwChannelKey(sourceId, channelName)],
                 channelKey: wwChannelKey(sourceId, channelName),
             });
+            for (const panel of ww.panels) wwRenderLegend(panel);
         }
 
         function wwSetChannelColorOverride(sourceId, channelName, color) {
@@ -33771,8 +33621,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return (calc && calc.engineering_type) || "Undefined";
         }
 
-        function wwPanelGroupKeyFor(channel) {
-            if (ww.layoutMode === "separate") return wwChannelKey(channel.sourceId, channel.channelName);
+        function wwPanelGroupKeyFor(channel, layoutMode = ww.layoutMode) {
+            if (layoutMode === "separate") return wwChannelKey(channel.sourceId, channel.channelName);
             // Time Group Canvas (task section 16): "Time Group remains a
             // hard time-domain boundary... even in Custom mode, channels
             // from unrelated Time Groups must not share one physical
@@ -33791,7 +33641,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // completely unaffected (same single panel as before).
             const customTimeGroupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
             const customPrefix = customTimeGroupId !== null ? customTimeGroupId + "::" : "";
-            if (ww.layoutMode === "custom") {
+            if (layoutMode === "custom") {
                 const group = wwCustomGroupFor(channel);
                 return group ? (customPrefix + "custom:" + group.id) : (customPrefix + "custom-solo:" + wwChannelKey(channel.sourceId, channel.channelName));
             }
@@ -34763,7 +34613,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Same "first channel's own unit" rule wwBuildLayout()
                     // already uses for the axis title at panel-creation
                     // time -- reused here verbatim, never a second rule.
-                    if (ww.layoutMode === "separate") wwRenderLegend(panel);
+                    wwRenderLegend(panel);
                     // Angle-axis enhancement (DEC-078): reuses the SAME
                     // title rule wwBuildLayout() itself uses, never a
                     // second one -- keeps an angle-only panel's "Angle"
@@ -34804,11 +34654,83 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // one waveform panel (header label, legend, chart, loading,
         // error, height-resize handle). Placement and wiring stay with
         // the caller.
-        function wwPanelMarkupHtml(label) {
-            return '<div class="ww-panel-header" tabindex="0" role="button" ' +
+        // UI only: every selector projects the same workspace-wide voltage display state.
+        function wwPaneUnitModeHtml() {
+            return '<div class="ww-pane-unit-mode" role="group" aria-label="Voltage Display (all panes)" ' +
+                'title="Voltage Display - shared across all waveform panes" hidden>' +
+                '<span class="ww-pane-unit-scope" hidden>Voltage</span>' +
+                '<div class="theme-toggle ww-icon-group">' +
+                '<button type="button" data-pane-unit-mode="engineering" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units">' +
+                'ENG</button>' +
+                '<button type="button" data-pane-unit-mode="per_unit" aria-pressed="false" title="Per Unit" aria-label="Per Unit">' +
+                'PU' +
+                '<span class="ww-unit-mode-warning" data-pane-unit-warning hidden aria-hidden="true">&#9888;</span></button></div></div>';
+        }
+
+        function wwSyncPaneUnitModeControls(panel) {
+            const group = panel.headerEl && panel.headerEl.querySelector('.ww-pane-unit-mode');
+            if (!group) return;
+            // Authoritative engineering metadata, never a pane title or channel-name guess.
+            const type = channel => wwIsCalculatedSourceId(channel.sourceId) ? wwCalculatedEngineeringTypeFor(channel.sourceId) : channel.engineeringType;
+            const hasVoltage = panel.channels.some(channel => type(channel) === "Voltage" && !wwChannelUsesAngleQuantity(channel));
+            // DEV already permits calculated Current PU display. Keep that
+            // existing operation reachable when no Voltage pane is displayed.
+            const hasCalculatedCurrent = panel.channels.some(channel => wwIsCalculatedSourceId(channel.sourceId) &&
+                type(channel) === "Current" && !wwChannelUsesAngleQuantity(channel));
+            group.hidden = !hasVoltage && !hasCalculatedCurrent;
+            const mixed = panel.channels.some(channel => type(channel) !== "Voltage" || wwChannelUsesAngleQuantity(channel));
+            const scope = group.querySelector('.ww-pane-unit-scope');
+            scope.hidden = !hasCalculatedCurrent && !mixed;
+            scope.textContent = hasCalculatedCurrent ? (hasVoltage ? "Display" : "Calculated Current") : "Voltage";
+            const displayLabel = hasCalculatedCurrent
+                ? (hasVoltage ? "Waveform Display" : "Calculated Current Display") : "Voltage Display";
+            group.setAttribute('aria-label', displayLabel + " (all panes)");
+            group.title = displayLabel + " - shared across all waveform panes";
+            group.querySelectorAll('[data-pane-unit-mode]').forEach(button => {
+                button.setAttribute('aria-pressed', String(button.dataset.paneUnitMode === ww.unitMode));
+                if (button.dataset.paneUnitMode === 'per_unit') button.setAttribute('aria-label', 'Per Unit');
+            });
+        }
+
+        async function wwApplyPaneUnitMode(panel, button) {
+            const keys = new Set(panel.channels.map(channel => wwChannelKey(channel.sourceId, channel.channelName)));
+            let restoreFocus = document.activeElement === button;
+            const trackFocus = event => { if (event.target !== button) restoreFocus = false; };
+            document.addEventListener('focusin', trackFocus);
+            try {
+                const job = wwApplyUnitMode(button.dataset.paneUnitMode);
+                const generation = wwUnitModeGeneration;
+                await job;
+                if (!restoreFocus || generation !== wwUnitModeGeneration) return;
+                const replacement = ww.panels.find(candidate => candidate.channels.some(channel => keys.has(wwChannelKey(channel.sourceId, channel.channelName))));
+                const target = replacement && replacement.headerEl.querySelector('[data-pane-unit-mode="' + button.dataset.paneUnitMode + '"]');
+                if (target && !target.closest('[hidden]')) target.focus({ preventScroll: true });
+            } finally {
+                document.removeEventListener('focusin', trackFocus);
+            }
+        }
+
+        function wwWaveformPaneHeaderHtml(label) {
+            return '<div class="ww-panel-header">' +
+                '<button type="button" class="ww-pane-identity" title="Select pane" aria-label="Select ' + escapeHtml(label) + ' pane">' +
+                '<span class="ww-pane-marker" aria-hidden="true"></span><span class="ww-pane-heading">' +
+                '<span class="ww-pane-heading-line"><span class="ww-panel-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ww-pane-time-group"></span></span><span class="ww-pane-subtitle"></span></span></button>' +
+                '<div class="ww-pane-header-tools">' + wwPaneUnitModeHtml() +
+                '<div class="ww-pane-y-tools" role="group" aria-label="Vertical scale">' +
+                [['out', 'Zoom Y Out', 'ZOOM_Y_OUT'], ['in', 'Zoom Y In', 'ZOOM_Y_IN'],
+                 ['auto', 'Autoscale Y', 'AUTOSCALE_Y']].map(([action, text, icon]) =>
+                    '<button type="button" class="ww-icon-btn" data-pane-y="' + action +
+                    '" title="' + text + '" aria-label="' + text + '" disabled>' +
+                    '<span class="ww-icon" data-ww-icon="' + icon + '"></span></button>').join('') + '</div></div></div>';
+        }
+
+        // Waveform opts in; Event Reconstruction retains its existing header.
+        function wwPanelMarkupHtml(label, paneYControls = false) {
+            return (paneYControls ? wwWaveformPaneHeaderHtml(label) : '<div class="ww-panel-header" tabindex="0" role="button" ' +
                     'aria-label="Set ' + escapeHtml(label) + ' as the active panel for Y step zoom" ' +
                     'title="Click to make this the active Y-zoom panel">' +
-                    '<span class="ww-panel-label">' + escapeHtml(label) + '</span></div>' +
+                    '<span class="ww-panel-label">' + escapeHtml(label) + '</span></div>') +
                 '<div class="ww-legend"></div>' +
                 '<div class="ww-chart-wrap">' +
                     '<div class="ww-chart"></div>' +
@@ -34823,7 +34745,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const container = document.createElement("div");
             container.className = "ww-panel";
             container.dataset.panelId = panel.id;
-            container.innerHTML = wwPanelMarkupHtml(panel.label);
+            container.innerHTML = wwPanelMarkupHtml(panel.label, true);
 
             // Time Group Canvas (task section 6): routes into THIS
             // panel's own group's canvas -- lazily created if this is
@@ -34952,19 +34874,50 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // inside the chart area, a legend-chip click, or the resize
         // handle's own pointer-capture drag; the header is a small,
         // clearly-bounded target uninvolved in any of those. Keyboard
-        // users can Tab to the header (tabindex="0", role="button" set in
-        // wwCreatePanelDom) and press Enter/Space, same activation keys
-        // every other row/button control in this file already honors.
+        // users select via the native identity button; local Y buttons use
+        // the same live pane authority and native Enter/Space activation.
+        function wwSyncPaneYControls(panel) {
+            wwSyncWaveformPaneHeader(panel);
+            const axis = panel.chartEl && panel.chartEl._fullLayout && panel.chartEl._fullLayout.yaxis;
+            const ready = panel.plotlyReady && ww.panels.includes(panel) && !!axis;
+            panel.headerEl.querySelectorAll('[data-pane-y]').forEach(button => { button.disabled = !ready; });
+            // The existing fixed Annotations drawer overlays the chart. Keep
+            // relocated header actions in its uncovered area without resizing
+            // the waveform, moving annotations, or changing drawer behavior.
+            const drawer = document.getElementById('wwAnnotationDrawer');
+            const open = drawer && drawer.classList.contains('ww-annotation-drawer--open');
+            const inset = open ? Math.max(0, panel.headerEl.getBoundingClientRect().right -
+                (window.innerWidth - drawer.getBoundingClientRect().width) + 8) : 0;
+            panel.headerEl.style.paddingRight = inset + 'px';
+        }
+
         function wwWireActivePanelSelection(panel) {
             const header = panel.headerEl;
             if (!header) return;
-            header.addEventListener("click", () => wwSetActivePanel(panel));
-            header.addEventListener("keydown", (event) => {
-                if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-                    event.preventDefault();
-                    wwSetActivePanel(panel);
-                }
+            // Native focus scrolling cannot see the sticky Time Group header's occlusion.
+            // Reveal this header on keyboard focus without changing the active pane or time viewport.
+            header.addEventListener("focusin", () => {
+                const scrollEl = document.getElementById("activeViewArea");
+                const canvasEl = panel.containerEl.closest(".ww-time-group-canvas");
+                const stickyEl = canvasEl && canvasEl.querySelector(".ww-tg-sticky-top");
+                if (!scrollEl || !stickyEl) return;
+                const overlap = stickyEl.getBoundingClientRect().bottom - header.getBoundingClientRect().top;
+                if (overlap > 0) scrollEl.scrollTop -= overlap + 4;
             });
+            // Native buttons own Enter/Space; their wrapper is not an interactive element.
+            header.addEventListener("click", (event) => {
+                if (!ww.panels.includes(panel)) return;
+                const button = event.target.closest("[data-pane-y]");
+                if (button && (button.disabled || !panel.plotlyReady || !panel.chartEl._fullLayout)) return;
+                wwSetActivePanel(panel);
+                const unitButton = event.target.closest('[data-pane-unit-mode]');
+                if (unitButton) { wwApplyPaneUnitMode(panel, unitButton); return; }
+                if (!button) return;
+                if (button.dataset.paneY === "auto") wwAutoscaleYPanel(panel);
+                else wwStepZoomYPanel(panel, button.dataset.paneY);
+            });
+            wwApplyToolIcons(header);
+            wwSyncPaneUnitModeControls(panel);
         }
 
         // Phase 4A-UAT4 (owner clarification): Separate-mode-ONLY now --
@@ -34981,26 +34934,367 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // that branch. `channel.color` is wwColorForChannel()'s value --
         // the same one color authority the sidebar dot and the Plotly
         // trace both already use (section 5), never a second assignment.
-        function wwRenderLegend(panel) {
-            let html = "";
-            for (const channel of panel.channels) {
-                const displayName = wwChannelDisplayName(channel.sourceId, channel.channelName);
-                html += '<span class="ww-legend-item">' +
-                    '<span class="ww-legend-dot" style="background:' + channel.color + '"></span>' +
-                    '<span class="ww-legend-label">' + wwRichLabelHtml(wwChannelDisplayNameHtml(channel.sourceId, channel.channelName) +
-                    (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "")) + '</span>' +
-                    wwPuReferenceBadgeHtml(wwDisplayedReference(channel.sourceId, channel.channelName)) +
-                    '<button type="button" class="ww-legend-remove" data-source-id="' + escapeHtml(channel.sourceId) +
-                    '" data-channel-name="' + escapeHtml(channel.channelName) + '" title="Remove from display" ' +
-                    'aria-label="Remove ' + escapeHtml(displayName) + ' from display">&times;</button>' +
-                    '</span>';
+        // WUI-003: transient presentation derived from the existing pane. It is
+        // never a channel registry, visibility authority, or engineering input.
+
+        // Only descriptive membership is retained here, in the existing metadata
+        // registry. Visibility, plotted channels and pane creation remain canonical.
+        function wwRememberLegendGrouping(panel = null) {
+            const entries = panel ? panel.channels.map(channel => [wwChannelKey(channel.sourceId, channel.channelName), { panel, channel }]) : ww.displayed;
+            for (const [key, entry] of entries) {
+                const meta = ww.channelMeta.get(key);
+                if (!meta) continue;
+                if (!meta.legendGroups) meta.legendGroups = {};
+                meta.legendGroups[ww.unitMode] = {
+                    key: wwPanelGroupKeyFor(entry.channel, 'grouped'),
+                    timeGroupId: wwPanelTimeGroupId(entry.panel),
+                };
             }
-            panel.legendEl.innerHTML = html;
-            panel.legendEl.querySelectorAll(".ww-legend-remove").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    wwRemoveChannelByKey(wwChannelKey(btn.dataset.sourceId, btn.dataset.channelName));
-                });
+        }
+
+        function wwLegendSidebarRow(meta) {
+            const identity = '[data-source-id="' + CSS.escape(meta.sourceId) + '"][data-channel-name="' + CSS.escape(meta.channelName) + '"]';
+            return document.querySelector('#channelGroups tr.channel-row--toggle' + identity +
+                ', #calculatedChannelsSidebarBody tr.channel-row--toggle' + identity);
+        }
+
+        function wwLegendChannelAvailable(meta) {
+            const row = wwLegendSidebarRow(meta);
+            if (row && row.getAttribute('aria-disabled') === 'true') return false;
+            if (wwIsCalculatedSourceId(meta.sourceId)) return ww.calculatedChannels.has(meta.sourceId);
+            // The existing sidebar row supplies canonical channel membership;
+            // the source cache is invalidated by the existing source lifecycle.
+            return !!row && ww.sourceChannelsData.has(meta.sourceId);
+        }
+
+        function wwPaneLegendChannels(panel) {
+            wwRememberLegendGrouping(panel);
+            if (ww.layoutMode === 'separate') return panel.channels;
+            const channels = [];
+            for (const [key, meta] of ww.channelMeta) {
+                const displayed = ww.displayed.get(key);
+                if (displayed) {
+                    if (displayed.panel === panel) channels.push(displayed.channel);
+                    continue;
+                }
+                if (!wwLegendChannelAvailable(meta)) continue;
+                const remembered = meta.legendGroups && meta.legendGroups[ww.unitMode];
+                let groupKey;
+                if (ww.layoutMode === 'custom' || ww.unitMode === 'engineering') {
+                    groupKey = wwPanelGroupKeyFor(meta);
+                } else if (remembered && remembered.timeGroupId === wwPanelTimeGroupId(panel)) {
+                    // A previously resolved PU pane association is presentation
+                    // history only. Never infer new PU eligibility for a hidden
+                    // channel. Restoration follows the normal backend fetch path.
+                    groupKey = remembered.key;
+                }
+                if (groupKey === panel.groupKey) channels.push({ ...meta,
+                    // Hidden rows disclose the source/definition unit. A new
+                    // display unit is authoritative only after normal restore.
+                    unit: wwIsCalculatedSourceId(meta.sourceId) ? ww.calculatedChannels.get(meta.sourceId).unit : meta.unit,
+                    color: wwColorForChannel(meta.sourceId, meta.channelName) });
+            }
+            return channels;
+        }
+
+        function wwToggleLegendChannel(panel, key) {
+            if (!ww.panels.includes(panel)) return;
+            const meta = ww.channelMeta.get(key);
+            if (!meta || !wwLegendChannelAvailable(meta)) return;
+            if (wwIsCalculatedSourceId(meta.sourceId)) wwToggleCalculatedChannelDisplay(ww.calculatedChannels.get(meta.sourceId));
+            else wwToggleAnalogChannelDisplay(wwLegendSidebarRow(meta));
+        }
+
+        function wwSyncLegendControlState(panel) {
+            const controls = [...panel.legendEl.querySelectorAll('[data-legend-toggle]'),
+                ...(panel.legendPopover ? panel.legendPopover.querySelectorAll('[data-legend-toggle]') : [])];
+            for (const control of controls) {
+                const meta = ww.channelMeta.get(control.dataset.channelKey);
+                const visible = ww.displayed.has(control.dataset.channelKey);
+                control.setAttribute('aria-pressed', String(visible));
+                control.setAttribute('aria-label', (visible ? 'Hide ' : 'Show ') + control.dataset.fullIdentity);
+                control.disabled = !meta || !wwLegendChannelAvailable(meta);
+            }
+        }
+
+        function wwWireLegendToggle(panel, button) {
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                wwToggleLegendChannel(panel, button.dataset.channelKey);
             });
+            // Native buttons own activation. Suppress held-key repeats, without
+            // adding a second Enter/Space activation handler.
+            button.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.stopPropagation();
+                    if (event.repeat) event.preventDefault();
+                }
+            });
+        }
+
+        function wwPaneLegendRecords(panel) {
+            const calibrationBySource = new Map();
+            const records = wwPaneLegendChannels(panel).map(channel => {
+                const calc = ww.calculatedChannels.get(channel.sourceId);
+                const data = ww.sourceChannelsData.get(channel.sourceId);
+                const source = data && data.source;
+                const displayName = wwChannelDisplayName(channel.sourceId, channel.channelName);
+                const base = calc && displayName === channel.channelName ? wwCalculatedChannelDisplayText(calc) : displayName;
+                const sourceName = source ? recordingDisplayName(source) : (channel.sourceName || (calc ? 'Calculated Channels' : 'Recording'));
+                const filename = source ? recordingCfgFilename(source) : '';
+                const context = sourceName + (filename && filename !== sourceName ? ' · ' + filename : '');
+                const reference = wwDisplayedReference(channel.sourceId, channel.channelName);
+                if (!calibrationBySource.has(channel.sourceId)) calibrationBySource.set(channel.sourceId,
+                    new Map(((data && data.analog_channels) || []).map(item => [item.name, item])));
+                const inventory = calibrationBySource.get(channel.sourceId).get(channel.channelName);
+                const qualification = wwPuReferenceBadgeHtml(reference) + (calc ? wwCalcChannelProvenanceBadgeHtml(calc) : wwSourceCalibrationBadgeHtml(inventory));
+                return { channel, key: wwChannelKey(channel.sourceId, channel.channelName), base,
+                    baseHtml: wwChannelDisplayNameHtml(channel.sourceId, channel.channelName), sourceName, context,
+                    label: base, prefix: '', qualification, reference };
+            });
+            // Add context only for collisions. Never strip prefixes, guess bays,
+            // parse phases, or abbreviate a source/custom name. IDs are the last
+            // resort when the available human-readable metadata still collides.
+            for (let level = 0; level < 4; level++) {
+                const buckets = new Map();
+                for (const record of records) {
+                    if (!buckets.has(record.label)) buckets.set(record.label, []);
+                    buckets.get(record.label).push(record);
+                }
+                for (const bucket of buckets.values()) {
+                    if (bucket.length < 2) continue;
+                    for (const record of bucket) {
+                        if (level === 0) record.prefix = record.sourceName;
+                        if (level === 1) record.prefix = record.context;
+                        if (level === 2) record.prefix = record.context + ' · ' + record.channel.channelName;
+                        if (level === 3) {
+                            const ids = [...new Set(bucket.map(item => item.channel.sourceId))];
+                            let length = 6;
+                            while (length < record.channel.sourceId.length && ids.some(id => id !== record.channel.sourceId && id.slice(0, length) === record.channel.sourceId.slice(0, length))) length++;
+                            record.prefix = '[' + record.channel.sourceId.slice(0, length) + '] ' + record.context + ' · ' + record.channel.channelName;
+                        }
+                        record.label = record.prefix + ' · ' + record.base;
+                    }
+                }
+            }
+            for (const record of records) {
+                // Separate keeps its established channel + display-unit tag.
+                // Grouped/Custom use compact names; their full disclosure has units.
+                const unitTag = ww.layoutMode === 'separate' && record.channel.unit ? ' (' + record.channel.unit + ')' : '';
+                record.html = wwRichLabelHtml((record.prefix ? escapeHtml(record.prefix) + ' · ' : '') + record.baseHtml + escapeHtml(unitTag));
+                record.label += unitTag;
+                // Native attributes and plain tooltips cannot render rich symbols.
+                record.fullText = [record.base, record.context,
+                    record.base !== record.channel.channelName ? 'Original: ' + record.channel.channelName : '',
+                    record.prefix.startsWith('[') ? 'Source ID: ' + record.channel.sourceId : '', record.channel.unit,
+                    record.reference ? record.reference.label + ': ' + record.reference.detail : ''].filter(Boolean).join(' · ');
+            }
+            return records;
+        }
+
+        function wwSyncWaveformPaneHeader(panel) {
+            if (!panel.headerEl || !panel.channels.length) return;
+            const first = panel.channels[0];
+            const canvas = panel.containerEl.closest('.ww-time-group-canvas');
+            const title = canvas && canvas.querySelector('.ww-tg-header-title');
+            const groupText = title ? title.textContent : '';
+            const group = panel.headerEl.querySelector('.ww-pane-time-group');
+            const groupedSuffix = ww.layoutMode === 'grouped' && wwTimeGroupLabelSuffix(first);
+            group.hidden = !groupText || !!groupedSuffix;
+            group.textContent = groupText ? '— ' + groupText : '';
+            const label = panel.headerEl.querySelector('.ww-panel-label');
+            const rich = ww.layoutMode === 'separate' ? wwChannelDisplayNameHtml(first.sourceId, first.channelName) : escapeHtml(panel.label);
+            if (label.innerHTML !== rich) label.innerHTML = rich;
+            const identity = panel.headerEl.querySelector('.ww-pane-identity');
+            identity.title = panel.label + (!groupedSuffix && groupText ? ' — ' + groupText : '');
+            identity.setAttribute('aria-label', 'Select ' + panel.label + ' pane');
+            const quantities = [...new Set(panel.channels.map(channel => wwIsCalculatedSourceId(channel.sourceId)
+                ? wwCalculatedEngineeringTypeFor(channel.sourceId) : channel.engineeringType).filter(Boolean))];
+            panel.headerEl.querySelector('.ww-pane-subtitle').textContent = panel.channels.length +
+                (panel.channels.length === 1 ? ' channel' : ' channels') +
+                (ww.layoutMode !== 'grouped' && quantities.length ? ' · ' + quantities.join(' / ') : '');
+            panel.headerEl.querySelector('.ww-pane-marker').style.backgroundColor = wwColorForChannel(first.sourceId, first.channelName);
+        }
+
+        function wwPositionPaneLegendSurface(surface, anchor) {
+            const rect = anchor.getBoundingClientRect();
+            surface.style.left = Math.max(12, Math.min(rect.left, window.innerWidth - surface.offsetWidth - 12)) + 'px';
+            const below = rect.bottom + 6;
+            surface.style.top = Math.max(12, Math.min(below + surface.offsetHeight <= window.innerHeight - 12
+                ? below : rect.top - surface.offsetHeight - 6, window.innerHeight - surface.offsetHeight - 12)) + 'px';
+        }
+
+        function wwHidePaneLegendTip(panel) {
+            if (panel.legendTipAnchor) panel.legendTipAnchor.removeAttribute('aria-describedby');
+            if (panel.legendTip) panel.legendTip.remove();
+            panel.legendTip = null; panel.legendTipAnchor = null;
+        }
+
+        function wwShowPaneLegendTip(panel, anchor) {
+            wwHidePaneLegendTip(panel);
+            const tip = document.createElement('div');
+            tip.className = 'ww-pane-legend-tip'; tip.id = panel.id + '-legend-tip'; tip.setAttribute('role', 'tooltip');
+            tip.textContent = anchor.dataset.fullIdentity; document.body.appendChild(tip);
+            anchor.setAttribute('aria-describedby', tip.id);
+            panel.legendTip = tip; panel.legendTipAnchor = anchor;
+            wwPositionPaneLegendSurface(tip, anchor);
+        }
+
+        function wwClosePaneLegendPopover(panel, restoreFocus = false) {
+            if (panel.legendPopoverEvents) panel.legendPopoverEvents.abort();
+            if (panel.legendPopover) panel.legendPopover.remove();
+            panel.legendPopover = null; panel.legendPopoverEvents = null;
+            const button = panel.legendEl && panel.legendEl.querySelector('.ww-pane-legend-more');
+            if (button) {
+                button.setAttribute('aria-expanded', 'false'); button.removeAttribute('aria-controls');
+                if (restoreFocus && !button.hidden) button.focus({ preventScroll: true });
+            }
+        }
+
+        function wwOpenPaneLegendPopover(panel) {
+            if (panel.legendPopover) { wwClosePaneLegendPopover(panel, true); return; }
+            wwHidePaneLegendTip(panel);
+            const records = wwPaneLegendRecords(panel);
+            const button = panel.legendEl.querySelector('.ww-pane-legend-more');
+            const popover = document.createElement('div');
+            popover.id = panel.id + '-legend-popover'; popover.className = 'ww-pane-legend-popover';
+            popover.setAttribute('role', 'dialog'); popover.setAttribute('aria-label', 'Channels in ' + panel.label);
+            popover.innerHTML = '<div class="ww-pane-legend-popover-head"><strong>Channels (' + records.length + ')</strong>' +
+                '<button type="button" class="ww-pane-legend-close" aria-label="Close channel legend">&times;</button></div>' +
+                '<ul class="ww-pane-legend-list">' + records.map(record => '<li><button type="button" class="ww-pane-legend-toggle" data-legend-toggle data-channel-key="' + escapeHtml(record.key) +
+                    '" data-full-identity="' + escapeHtml(record.fullText) + '"><span class="ww-legend-dot" style="background:' + escapeHtml(record.channel.color) + '"></span>' +
+                    '<span class="ww-pane-legend-name">' + wwRichLabelHtml(record.baseHtml + (record.channel.unit ? ' (' + escapeHtml(record.channel.unit) + ')' : '')) + '</span>' +
+                    '<span class="ww-pane-legend-context">' + escapeHtml(record.context) +
+                    (record.base !== record.channel.channelName ? ' · Original: ' + escapeHtml(record.channel.channelName) : '') +
+                    (record.prefix.startsWith('[') ? ' · ' + escapeHtml(record.prefix) : '') + '</span>' +
+                    (record.qualification ? '<span class="ww-pane-legend-qualification">' + record.qualification + '</span>' : '') + '</button></li>').join('') + '</ul>';
+            document.body.appendChild(popover); panel.legendPopover = popover;
+            const events = new AbortController(); panel.legendPopoverEvents = events;
+            button.setAttribute('aria-expanded', 'true'); button.setAttribute('aria-controls', popover.id);
+            const rows = [...popover.querySelectorAll('[data-legend-toggle]')];
+            for (const row of rows) wwWireLegendToggle(panel, row);
+            wwSyncLegendControlState(panel);
+            popover.querySelector('.ww-pane-legend-close').addEventListener('click', () => wwClosePaneLegendPopover(panel, true));
+            popover.addEventListener('keydown', event => {
+                if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); wwClosePaneLegendPopover(panel, true); return; }
+                const index = rows.indexOf(document.activeElement);
+                if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                    event.preventDefault(); event.stopPropagation();
+                    const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 :
+                        (index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+                    rows[next].focus();
+                }
+            });
+            document.addEventListener('click', event => {
+                if (!popover.contains(event.target) && !button.contains(event.target)) wwClosePaneLegendPopover(panel);
+            }, { capture: true, signal: events.signal });
+            window.addEventListener('scroll', event => {
+                if (!popover.contains(event.target)) wwClosePaneLegendPopover(panel);
+            }, { capture: true, signal: events.signal });
+            window.addEventListener('resize', () => wwPositionPaneLegendSurface(popover, button), { signal: events.signal });
+            wwPositionPaneLegendSurface(popover, button);
+            rows[0]?.focus({ preventScroll: true });
+        }
+
+        function wwFitPaneLegend(panel, measure = false) {
+            const legend = panel.legendEl;
+            if (!legend || !legend.isConnected) return;
+            const entries = [...legend.querySelectorAll(':scope > .ww-legend-item')];
+            const more = legend.querySelector('.ww-pane-legend-more');
+            if (!more) return;
+            if (measure || !panel.legendWidths) {
+                for (const entry of entries) { entry.hidden = false; entry.style.maxWidth = '320px'; }
+                panel.legendWidths = entries.map(entry => entry.getBoundingClientRect().width);
+                for (const entry of entries) entry.style.maxWidth = '';
+                panel.legendMoreWidths = {};
+            }
+            const available = legend.clientWidth;
+            if (!available) return;
+            const gap = parseFloat(getComputedStyle(legend).columnGap) || 0;
+            const widths = panel.legendWidths;
+            const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, entries.length - 1) * gap;
+            let visible = entries.length;
+            if (total > available && !(ww.layoutMode === 'separate' && entries.length === 1)) {
+                visible = 0;
+                // A cached measurement per digit count, with tabular digits,
+                // reserves exactly the current overflow control's width.
+                for (let pass = 0; pass <= String(entries.length).length; pass++) {
+                    const hidden = entries.length - visible;
+                    const digits = String(hidden).length;
+                    if (!panel.legendMoreWidths[digits]) {
+                        more.hidden = false; more.textContent = '+' + hidden + ' more';
+                        panel.legendMoreWidths[digits] = more.getBoundingClientRect().width;
+                    }
+                    let used = panel.legendMoreWidths[digits], count = 0;
+                    while (count < entries.length && used + widths[count] + gap <= available) { used += widths[count] + gap; count++; }
+                    if (count === visible) break;
+                    visible = count;
+                }
+            }
+            entries.forEach((entry, index) => { entry.hidden = index >= visible; });
+            more.hidden = visible === entries.length;
+            more.textContent = '+' + (entries.length - visible) + ' more';
+            legend.style.visibility = '';
+            wwHidePaneLegendTip(panel);
+            if (more.hidden) wwClosePaneLegendPopover(panel);
+            else if (panel.legendPopover) wwPositionPaneLegendSurface(panel.legendPopover, more);
+        }
+
+        function wwDisposePanePresentation(panel) {
+            if (panel.legendObserver) panel.legendObserver.disconnect();
+            if (panel.legendFitFrame) cancelAnimationFrame(panel.legendFitFrame);
+            panel.legendObserver = null; panel.legendFitFrame = null;
+            wwHidePaneLegendTip(panel); wwClosePaneLegendPopover(panel);
+        }
+
+        function wwRenderLegend(panel) {
+            if (!panel.legendEl || !ww.panels.includes(panel)) return;
+            const records = wwPaneLegendRecords(panel);
+            wwSyncWaveformPaneHeader(panel);
+            const signature = JSON.stringify([ww.layoutMode, records.map(record => [record.key, record.label, record.html,
+                record.fullText, record.channel.unit, record.channel.color, record.qualification])]);
+            if (signature === panel.legendSignature) { wwSyncLegendControlState(panel); return; }
+            const wasOpen = !!panel.legendPopover;
+            const focused = document.activeElement && document.activeElement.closest('[data-legend-toggle]');
+            const focusedKey = focused && (panel.legendEl.contains(focused) || panel.legendPopover?.contains(focused)) ? focused.dataset.channelKey : null;
+            wwDisposePanePresentation(panel); panel.legendSignature = signature; panel.legendWidths = null;
+            panel.legendEl.setAttribute('role', 'group'); panel.legendEl.setAttribute('aria-label', 'Channels in ' + panel.label);
+            panel.legendEl.style.visibility = 'hidden';
+            panel.legendEl.innerHTML = records.map(record => '<span class="ww-legend-item" data-channel-key="' +
+                escapeHtml(record.key) + '" data-compact-label="' + escapeHtml(record.label) + '" data-full-identity="' +
+                escapeHtml(record.fullText) + '"><button type="button" class="ww-legend-toggle" data-legend-toggle data-channel-key="' +
+                escapeHtml(record.key) + '" data-full-identity="' + escapeHtml(record.fullText) + '">' +
+                '<span class="ww-legend-dot" style="background:' + escapeHtml(record.channel.color) + '"></span>' +
+                '<span class="ww-legend-label">' + record.html + '</span>' + record.qualification + '</button>' +
+                (ww.layoutMode === 'separate' ? '<button type="button" class="ww-legend-remove" data-source-id="' +
+                    escapeHtml(record.channel.sourceId) + '" data-channel-name="' + escapeHtml(record.channel.channelName) +
+                    '" title="Remove from display" aria-label="Remove ' + escapeHtml(record.base) + ' from display">&times;</button>' : '') + '</span>').join('') +
+                '<button type="button" class="ww-pane-legend-more" aria-haspopup="dialog" aria-expanded="false" aria-label="Show all ' + records.length + ' channels in ' + escapeHtml(panel.label) + '"></button>';
+            for (const entry of panel.legendEl.querySelectorAll('.ww-legend-item')) {
+                const toggle = entry.querySelector('[data-legend-toggle]'); wwWireLegendToggle(panel, toggle);
+                entry.addEventListener('mouseenter', () => wwShowPaneLegendTip(panel, entry));
+                entry.addEventListener('focusin', () => wwShowPaneLegendTip(panel, entry));
+                entry.addEventListener('mouseleave', () => { if (!entry.contains(document.activeElement)) wwHidePaneLegendTip(panel); });
+                entry.addEventListener('focusout', event => { if (!entry.contains(event.relatedTarget)) wwHidePaneLegendTip(panel); });
+            }
+            panel.legendEl.querySelectorAll('.ww-legend-remove').forEach(button => button.addEventListener('click', event => {
+                event.stopPropagation(); wwRemoveChannelByKey(wwChannelKey(button.dataset.sourceId, button.dataset.channelName));
+            }));
+            panel.legendEl.querySelector('.ww-pane-legend-more').addEventListener('click', () => wwOpenPaneLegendPopover(panel));
+            wwSyncLegendControlState(panel);
+            const schedule = () => {
+                if (panel.legendFitFrame) return;
+                panel.legendFitFrame = requestAnimationFrame(() => { panel.legendFitFrame = null; wwFitPaneLegend(panel); });
+            };
+            if (window.ResizeObserver) {
+                panel.legendObserver = new ResizeObserver(schedule); panel.legendObserver.observe(panel.legendEl);
+            }
+            panel.legendFitFrame = requestAnimationFrame(() => { panel.legendFitFrame = null; wwFitPaneLegend(panel, true); });
+            if (wasOpen) wwOpenPaneLegendPopover(panel);
+            if (focusedKey) {
+                const scope = wasOpen ? panel.legendPopover : panel.legendEl;
+                [...scope.querySelectorAll('[data-legend-toggle]')].find(control => control.dataset.channelKey === focusedKey)?.focus({ preventScroll: true });
+            }
         }
 
         // Slice 2 (task section 21): event-relative takes precedence over
@@ -35073,25 +35367,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return angleCount > 0 && angleCount < panel.channels.length;
         }
 
-        // The primary axis's own title: the first channel's `unit`
-        // string, EXACTLY like before this enhancement (task section J:
-        // "existing left-axis behavior should remain unchanged") -- with
-        // one addition, an angle-ONLY panel (never mixed with a magnitude
-        // channel, so wwPanelNeedsSecondaryAxis() is false but the panel
-        // is not simply a normal non-angle panel either) is retitled the
-        // safe, literal "Angle" rather than a blank unit string (CSV/Excel
-        // AnalogChannel.unit is always "" today -- task section J: never
-        // guess "deg"/"rad", no angle-unit metadata exists yet).
+        // WUI-004 replaces Waveform's rotated titles with compact axis caps.
+        // Units come from resolved plotted channels, never the first channel
+        // alone (a Custom axis may contain incompatible units).
         function wwPanelYAxisTitle(panel) {
-            if (!wwPanelNeedsSecondaryAxis(panel) && panel.channels.length && panel.channels.every(wwChannelUsesAngleQuantity)) {
-                return "Angle";
-            }
-            return panel.channels.length ? panel.channels[0].unit : "";
+            return { text: "" };
         }
 
-        // The secondary axis's own fixed layout -- title is always the
-        // safe literal "Angle" (task section J), never a unit string
-        // (none exists for this quantity yet). `overlaying: "y", side:
+        // The secondary axis's own fixed layout. WUI-004 uses a compact
+        // unit cap instead of a rotated title. `overlaying: "y", side:
         // "right"` is the standard Plotly dual-axis pattern (task section
         // E/Q) -- no gridlines of its own (`showgrid: false`) so it never
         // visually competes with the primary axis's own grid.
@@ -35104,7 +35388,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // same way Plotly.newPlot()'s own initial layout
                 // construction does; the explicit `{text: ...}` form
                 // works identically in both.
-                title: { text: "Angle" }, overlaying: "y", side: "right",
+                title: { text: "" }, overlaying: "y", side: "right",
                 gridcolor: colors.grid, zeroline: false, showgrid: false,
             };
         }
@@ -35126,6 +35410,55 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 "yaxis.title": wwPanelYAxisTitle(panel),
                 yaxis2: needsSecondary ? wwPanelYAxis2Layout(colors) : null,
             });
+        }
+
+        // Presentation only. Trace.meta is the canonical channel key; the
+        // channel.unit beside its current sample array is set by the waveform
+        // response. Reading both avoids names, physical-unit guesses, global
+        // ENG/PU assumptions, and hidden legend membership as unit authority.
+        function wwWaveformAxisUnit(panel, axisId) {
+            const traces = (panel.chartEl.data || []).filter(trace =>
+                (trace.yaxis || "y") === axisId && trace.visible !== false);
+            const channels = new Map(panel.channels.map(channel =>
+                [wwChannelKey(channel.sourceId, channel.channelName), channel]));
+            const members = traces.map(trace => channels.get(trace.meta));
+            const resolved = members.map(channel => typeof channel?.unit === "string" ? channel.unit.trim() : "");
+            const units = [...new Set(resolved.filter(Boolean))];
+            const unavailable = !members.length || resolved.some(unit => !unit);
+            const angle = members.length > 0 && members.every(channel => channel && wwChannelUsesAngleQuantity(channel));
+            const meaning = angle ? "Angle axis" : "Y-axis";
+            const detail = units.length ? units.join(", ") : "unavailable";
+            return {
+                text: unavailable ? (units.length ? "Units incomplete" : (angle ? "Angle (unit n/a)" : "Unit n/a")) :
+                    units.length > 1 ? "Mixed units" : units[0],
+                description: meaning + " units: " + detail + (unavailable && units.length ? "; some units unavailable" : ""),
+            };
+        }
+
+        function wwSyncWaveformAxisUnits(panel) {
+            const chart = panel.chartEl, size = chart?._fullLayout?._size;
+            if (!size || !ww.panels.includes(panel) || !panel.containerEl?.closest('#viewWaveform')) return;
+            const wrap = chart.parentElement;
+            for (const [axisId, layoutId] of [["y", "yaxis"], ["y2", "yaxis2"]]) {
+                let label = wrap.querySelector('[data-waveform-axis-unit="' + axisId + '"]');
+                const exists = chart._fullLayout[layoutId] &&
+                    (chart.data || []).some(trace => (trace.yaxis || "y") === axisId);
+                if (!exists) { label?.remove(); continue; }
+                if (!label) {
+                    label = document.createElement('span'); label.className = 'ww-axis-unit';
+                    label.dataset.waveformAxisUnit = axisId; wrap.appendChild(label);
+                }
+                const unit = wwWaveformAxisUnit(panel, axisId);
+                label.textContent = unit.text; label.title = unit.description;
+                label.setAttribute('aria-label', unit.description);
+                // Each cap is inside the horizontal plot bounds, above its
+                // traces; tick numbers stay outside those bounds. The existing
+                // 10px top margin is retained. The two caps cannot meet.
+                label.style.top = Math.max(0, size.t - 10) + 'px';
+                label.style.maxWidth = Math.max(0, (size.w - 8) / 2) + 'px';
+                label.style.left = axisId === 'y' ? (size.l + 3) + 'px' : '';
+                label.style.right = axisId === 'y2' ? (size.r + 3) + 'px' : '';
+            }
         }
 
         // Phase 2C-C3, refined by the sub-ms precision fix: x values are
@@ -35268,8 +35601,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const layout = wwBuildLayout(panel, colors);
             const config = { responsive: true, displayModeBar: false };
 
-            Plotly.newPlot(panel.chartEl, traces, layout, config);
+            const ready = Plotly.newPlot(panel.chartEl, traces, layout, config);
             panel.plotlyReady = true;
+            // afterplot covers restyle, relayout, resize, membership and mode
+            // changes without initiating another Plotly operation or fetch.
+            panel.chartEl.on("plotly_afterplot", () => wwSyncWaveformAxisUnits(panel));
+            Promise.resolve(ready).then(() => { wwSyncPaneYControls(panel); wwSyncWaveformAxisUnits(panel); });
             // Pan cursor feedback (DEC-144): grab/grabbing over the plot
             // area's own interior drag region -- see
             // wwWirePlotAreaGrabCursor()'s own comment.
@@ -35781,10 +36118,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwSyncUnitModeControls() {
-            const eng = document.getElementById("wwUnitEngineeringBtn");
-            const pu = document.getElementById("wwUnitPerUnitBtn");
-            if (eng) eng.setAttribute("aria-pressed", String(ww.unitMode !== "per_unit"));
-            if (pu) pu.setAttribute("aria-pressed", String(ww.unitMode === "per_unit"));
+            ww.panels.forEach(wwSyncPaneUnitModeControls);
+            // Keep existing integration selectors unique on the first applicable
+            // local group. Every pane has its own synchronized data-attribute controls.
+            const ids = ['wwUnitModeToggle', 'wwUnitEngineeringBtn', 'wwUnitPerUnitBtn', 'wwUnitModeWarning'];
+            for (const id of ids) {
+                const previous = document.getElementById(id);
+                if (previous) previous.removeAttribute('id');
+            }
+            const first = document.querySelector('#viewWaveform .ww-pane-unit-mode:not([hidden])');
+            if (first) {
+                first.id = ids[0];
+                first.querySelector('[data-pane-unit-mode="engineering"]').id = ids[1];
+                first.querySelector('[data-pane-unit-mode="per_unit"]').id = ids[2];
+                first.querySelector('[data-pane-unit-warning]').id = ids[3];
+            }
+            wwUpdateUnitModeWarningBadge();
         }
 
         // Section 66: a subtle warning glyph on the Per Unit button when
@@ -35794,10 +36143,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // second eligibility computation.
         function wwUpdateUnitModeWarningBadge() {
             const warning = document.getElementById("wwUnitModeWarning");
-            if (!warning) return;
+            const localWarnings = document.querySelectorAll("#viewWaveform [data-pane-unit-warning]");
             const banner = document.getElementById("wwPuConfigBanner");
             if (ww.unitMode !== "per_unit") {
-                warning.hidden = true;
+                if (warning) warning.hidden = true;
+                localWarnings.forEach(glyph => { glyph.hidden = true; });
                 if (banner) banner.hidden = true;
                 return;
             }
@@ -35809,7 +36159,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     if (!firstSourceId) firstSourceId = entry.channel.sourceId;
                 }
             }
-            warning.hidden = baseRequiredCount === 0;
+            if (warning) warning.hidden = baseRequiredCount === 0;
+            localWarnings.forEach(glyph => { glyph.hidden = baseRequiredCount === 0; });
+            document.querySelectorAll('#viewWaveform [data-pane-unit-mode="per_unit"]').forEach(button => {
+                button.setAttribute('aria-label', baseRequiredCount > 0
+                    ? "Per Unit (" + baseRequiredCount + " channel(s) need a per-unit base)" : "Per Unit");
+            });
             const btn = document.getElementById("wwUnitPerUnitBtn");
             if (btn) {
                 btn.setAttribute(
@@ -37736,8 +38091,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // scaling across panels is explicitly not implemented yet.
         // Kept as a workspace-wide COMPATIBILITY WRAPPER (same reasoning
         // as wwResetTimeView() above) -- no longer wired to any button.
-        // The page-level #wwAutoscaleYBtn (DEC-158, corrected) calls
-        // wwAutoscaleYPanel(wwActivePanel()) instead -- single-axis,
+        // The pane-local Autoscale Y button calls
+        // wwAutoscaleYPanel(panel) instead -- single-axis,
         // not workspace-wide; see that function's own comment.
         function wwAutoscaleY() {
             for (const panel of ww.panels) {
@@ -37903,7 +38258,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wiring (see wwWireTimeGroupToolbar()'s own comment). Zoom
         // In/Out X now always goes through the page-level
         // #wwZoomXInBtn/#wwZoomXOutBtn (wwStepZoomX directly); Y through
-        // #wwZoomYInBtn/#wwZoomYOutBtn (wwStepZoomYPanel directly) --
+        // each pane's local Y buttons (wwStepZoomYPanel directly) --
         // neither needs a per-group "which axis was last chosen"
         // preference any more, since each now has its own dedicated
         // button. wwZoomStepAxisForGroup()/ww.zoomStepAxisByGroup
@@ -39406,6 +39761,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 btn.setAttribute("aria-expanded", String(open));
             }
             if (open) wwRenderAnnotationList(); // cheap; guarantees freshest state every time it opens
+            ww.panels.forEach(wwSyncPaneYControls);
         }
 
         function wwToggleAnnotationDrawer() {
@@ -39453,6 +39809,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwAnnotationPlacementClickHandler(event) {
             const type = ww.annotationPlacementType;
             if (!type) return;
+            // Exclude local controls before the capture-phase placement handler consumes clicks.
+            if (event.target.closest("#viewWaveform .ww-panel-header")) return;
+            if (event.target.closest('#viewWaveform .ww-legend, .ww-pane-legend-popover, .ww-pane-legend-tip')) return;
             // Phase 4F (section 13/14) + Phase 4G (section 15/16): Callout
             // AND +Peak/-Peak creation all happen entirely through each
             // analog panel's own `plotly_click` handler (see
@@ -39991,6 +40350,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwAnnotationPlacementKeydownHandler(event) {
+            // The legend dialog owns Escape while focused. Dismissing it must
+            // not cancel the engineer's active annotation tool.
+            if (event.target instanceof Element && event.target.closest('.ww-pane-legend-popover')) return;
             if (event.key === "Escape") {
                 event.preventDefault();
                 wwExitAnnotationPlacementMode();
@@ -40246,10 +40608,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // per-lane legend chip is unchanged and still needs
             // (re-)rendering here -- see wwRenderLegend()'s own comment
             // for why Grouped/Custom never call it.
-            if (ww.layoutMode === "separate") {
-                const touchedPanels = new Set(jobs.map((job) => job.panel));
-                for (const panel of touchedPanels) wwRenderLegend(panel);
-            }
+            const touchedPanels = new Set(jobs.map((job) => job.panel));
+            for (const panel of touchedPanels) wwRenderLegend(panel);
             wwApplyTimeAxisChrome();
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17): shows the sticky ruler on the
@@ -40332,6 +40692,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // yaxis assignment and the layout's secondary axis so
                 // nothing is left stranded on a now-meaningless axis.
                 wwSyncPanelAngleAxis(panel);
+                wwRenderLegend(panel);
             }
             wwUpdateEmptyState();
             wwApplyTimeAxisChrome();
@@ -40367,6 +40728,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwRemovePanelDom(panel) {
+            wwDisposePanePresentation(panel);
             // Owner UAT fix: same rAF-deferred purge as wwRebuildLayout()'s
             // own panel-purge loop (see that loop's own comment for the
             // full mechanism) -- this is the OTHER place a panel's own
@@ -40433,6 +40795,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Angle-axis enhancement (DEC-078): same reconciliation
                     // wwRemoveChannel() performs, batched per panel here.
                     wwSyncPanelAngleAxis(panel);
+                    wwRenderLegend(panel);
                 }
             }
             wwUpdateEmptyState();
@@ -44945,6 +45308,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // untouched here.
             wwAnalysisResetRelatedWaveformsState();
             for (const panel of ww.panels) {
+                wwDisposePanePresentation(panel);
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
             }
             // Time Group Canvas: clears every canvas root at once --
@@ -49407,6 +49771,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
 
             for (const panel of ww.panels) {
+                wwDisposePanePresentation(panel);
                 // Time Group Canvas: purge deferred one animation frame --
                 // a panel whose own Plotly.newPlot() fired synchronously
                 // earlier in THIS same call chain (e.g. wwCreatePanelDom()
@@ -49464,7 +49829,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // renders it fresh here; switching OUT of it is a no-op
                 // (Grouped/Custom panels never had a .ww-legend element
                 // populated in the first place).
-                if (ww.layoutMode === "separate") wwRenderLegend(panel);
+                wwRenderLegend(panel);
             }
             wwApplyTimeAxisChrome();
             // Note: the DISPLAYED set itself is unchanged by a layout-mode
@@ -49591,7 +49956,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Waveform top-toolbar migration (owner ticket): the ONE
         // consolidated sync for every page-level Waveform tool this
-        // ticket adds or already had (Zoom X/Y, Autoscale X/Y, A/B
+        // ticket adds or already had (Zoom X, Autoscale X, A/B
         // Cursors) -- mirroring Event Reconstruction's own single
         // wwErSyncToolbar() structure exactly, rather than scattering a
         // separate sync function per control. Called from
@@ -49605,34 +49970,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // this sync is strictly a presentation refresh, never a
         // correctness dependency.
         function wwSyncGlobalWaveformToolbar() {
-            const yZoomPanel = wwActivePanel();
-            const zoomYIn = document.getElementById("wwZoomYInBtn");
-            const zoomYOut = document.getElementById("wwZoomYOutBtn");
-            zoomYIn.disabled = !yZoomPanel;
-            zoomYOut.disabled = !yZoomPanel;
-            const ySuffix = yZoomPanel ? yZoomPanel.label : "Selected Y Axis";
-            zoomYIn.title = "Zoom In — " + ySuffix;
-            zoomYOut.title = "Zoom Out — " + ySuffix;
-            zoomYIn.setAttribute("aria-label", zoomYIn.title);
-            zoomYOut.setAttribute("aria-label", zoomYOut.title);
-
-            // Owner correction: Autoscale Y shares Zoom Y's own exact
-            // target (wwActivePanel(), the same yZoomPanel/ySuffix
-            // above) -- never the active Time Group's every panel.
-            const autoscaleY = document.getElementById("wwAutoscaleYBtn");
-            autoscaleY.disabled = !yZoomPanel;
-            autoscaleY.title = "Autoscale Y — " + ySuffix;
-            autoscaleY.setAttribute("aria-label", autoscaleY.title);
-
-            // Y-axis target readout (owner ticket): ONE source of truth --
-            // reads the SAME yZoomPanel this function already resolved
-            // for Zoom Y/Autoscale Y above, never a second target
-            // computation. Mirrors wwErSyncActiveAxisReadout()'s own
-            // "Y: <title>" / "Y: Select axis" exactly.
-            const yAxisReadout = document.getElementById("wwYAxisReadout");
-            const yAxisText = "Y: " + (yZoomPanel ? yZoomPanel.label : "Select axis");
-            yAxisReadout.textContent = yAxisText;
-            yAxisReadout.title = yZoomPanel ? yAxisText : "";
+            wwSyncUnitModeControls();
+            // Preserve fallback activation before resolving global Time Group
+            // commands. The former visible Y-target readout is retired.
+            wwActivePanel();
 
             const groupId = wwActiveTimeGroupId();
             const hasGroup = groupId !== null;
@@ -67504,6 +67845,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // this case too, at negligible cost (rAF-coalesced, and a no-op
         // resize is cheap/idempotent).
         window.addEventListener("resize", wwScheduleResizeAllVisiblePlots);
+        // Header-only geometry follows view/split/sidebar resizing independently
+        // of Plotly and of the annotation drawer's overlay contract.
+        if (window.ResizeObserver) new ResizeObserver(() => ww.panels.forEach(wwSyncPaneYControls))
+            .observe(document.getElementById('viewWaveform'));
 
         // Phase 4B-UAT3: keeps the A/B cursor overlay's main lines/range
         // band correctly rendered while the user scrolls #activeViewArea
@@ -67546,10 +67891,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
         document.getElementById("wwZoomXInBtn").addEventListener("click", () => wwStepZoomX(wwActiveTimeGroupId(), "in"));
         document.getElementById("wwZoomXOutBtn").addEventListener("click", () => wwStepZoomX(wwActiveTimeGroupId(), "out"));
-        document.getElementById("wwZoomYInBtn").addEventListener("click", () => wwStepZoomYPanel(wwActivePanel(), "in"));
-        document.getElementById("wwZoomYOutBtn").addEventListener("click", () => wwStepZoomYPanel(wwActivePanel(), "out"));
         document.getElementById("wwAutoscaleXBtn").addEventListener("click", () => wwResetOneTimeGroupView(wwActiveTimeGroupId()));
-        document.getElementById("wwAutoscaleYBtn").addEventListener("click", () => wwAutoscaleYPanel(wwActivePanel()));
         document.getElementById("wwCursorModeBtn").addEventListener("click", () => wwToggleMeasurementCursors(wwActiveTimeGroupId()));
         // Waveform toolbar refinement (owner ticket): "Set Cursor A as
         // t=0" / "Clear t=0" moved AGAIN -- this time from each Time
@@ -67611,26 +67953,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (drawer && drawer.classList.contains("ww-annotation-drawer--open")) wwSetAnnotationDrawerOpen(false);
         });
 
-        // Waveform toolbar migration: Engineering Units / Per Unit are
-        // now two direct icon-button toggles (no dropdown any more,
-        // matching Event Reconstruction's own wwErSetUnitMode() wiring
-        // exactly) -- supersedes Phase 5C/DEC-049's own dropdown wiring.
-        document.getElementById("wwUnitEngineeringBtn").addEventListener("click", () => wwApplyUnitMode("engineering"));
-        document.getElementById("wwUnitPerUnitBtn").addEventListener("click", async () => {
-            // Slice 1 UAT fix (Per-Unit Settings hierarchy): this
-            // previously auto-opened the source-wide setup modal
-            // whenever no source had a configured DEC-049 profile yet
-            // (the original "Section 68" convenience, from before the
-            // Measurement Groups/Source Default hierarchy existed).
-            // Removed outright -- with the new Per-Unit Settings parent
-            // surface, auto-opening Source Default here would make it
-            // look like the automatic/default configuration path and
-            // undermine the Recommended/Fallback hierarchy. Selecting
-            // Per Unit now ONLY changes display mode; PU configuration
-            // is managed via Recording Details (PU-UI-001 Slice B).
-            await wwApplyUnitMode("per_unit");
-        });
-
+        // Voltage Display is wired by each Waveform header's native buttons.
+        // No page-level selector or duplicate click listener remains.
 
         // Waveform toolbar refinement (owner ticket): "Synchronize
         // Sources" (the modal, its Reset All/Close wiring, and its own

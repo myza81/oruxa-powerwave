@@ -1006,7 +1006,7 @@ class TestEventReconstructionGroupedView:
 
     def test_waveform_grouping_is_untouched(self):
         source = _source()
-        for waveform_fn in ("function wwPanelGroupKeyFor(channel) {", "function wwPanelLabelFor(channel) {"):
+        for waveform_fn in ("function wwPanelGroupKeyFor(", "function wwPanelLabelFor(channel) {"):
             body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
             assert "wwEr" not in body and "display_axis" not in body
 
@@ -1461,7 +1461,7 @@ class TestPowerwaveIconSystem:
         source = _source()
         registry = _icon_registry(source)
         used = set()
-        for match in __import__("re").finditer(r'data-ww-icon="([A-Z_]+)"', source):
+        for match in __import__("re").finditer(r'data-ww-icon="([A-Z0-9_]+)"', source):
             assert match.group(1) in registry, match.group(1)
             used.add(match.group(1))
         assert len(used) >= 15  # every family this slice wires, not a token few
@@ -1487,11 +1487,10 @@ class TestPowerwaveIconSystem:
         for key, markup in inline.items():
             assert 'viewBox="0 0 18 18"' in markup, key
 
-    def test_same_function_same_registry_key_waveform_and_er(self):
-        """Section 1/22: the literal proof that Waveform and Event
-        Reconstruction reference the SAME icon for the same function --
-        not that their markup happens to match, but that they name the
-        identical registry key."""
+    def test_shared_icons_and_owner_approved_waveform_scoped_icons(self):
+        """WUI-002 explicitly scopes the mockup artwork to the global
+        Waveform toolbar. ER and WUI-001 retain the shared owner assets;
+        controls without a mockup equivalent still share their keys."""
         source = _source()
         page = _er_page(source)
         pairs = [
@@ -1502,7 +1501,8 @@ class TestPowerwaveIconSystem:
             ("layoutModeGroupedBtn", "wwErViewGroupedBtn", "VIEW_GROUPED"),
         ]
         for wf_id, er_id, key in pairs:
-            assert _icon_key(_element(source, wf_id, "button")) == key, wf_id
+            wf_key = "WUI002_" + key if wf_id in {"wwAnnotateBtn", "wwCursorModeBtn", "wwAutoscaleXBtn", "wwZoomXInBtn", "wwZoomXOutBtn"} else key
+            assert _icon_key(_element(source, wf_id, "button")) == wf_key, wf_id
             assert _icon_key(_element(page, er_id, "button")) == key, er_id
         # Waveform's Relative Time (disabled stub) and Event
         # Reconstruction's own Relative Time (enabled) also share one key.
@@ -1522,14 +1522,21 @@ class TestPowerwaveIconSystem:
         for wf_id, er_id, key in (
             ("wwCursorModeBtn", "wwErCursorModeBtn", "CURSORS_AB"),
             ("wwAutoscaleXBtn", "wwErResetViewBtn", "AUTOSCALE_X"),
-            ("wwAutoscaleYBtn", "wwErAutoscaleYBtn", "AUTOSCALE_Y"),
             ("wwZoomXInBtn", "wwErZoomInBtn", "ZOOM_X_IN"),
             ("wwZoomXOutBtn", "wwErZoomOutBtn", "ZOOM_X_OUT"),
-            ("wwZoomYInBtn", "wwErZoomYInBtn", "ZOOM_Y_IN"),
-            ("wwZoomYOutBtn", "wwErZoomYOutBtn", "ZOOM_Y_OUT"),
         ):
-            assert _icon_key(_element(source, wf_id, "button")) == key, wf_id
+            wf_key = "WUI002_" + key if wf_id in {"wwAnnotateBtn", "wwCursorModeBtn", "wwAutoscaleXBtn", "wwZoomXInBtn", "wwZoomXOutBtn"} else key
+            assert _icon_key(_element(source, wf_id, "button")) == wf_key, wf_id
             assert _icon_key(_element(page, er_id, "button")) == key, er_id
+        # WUI-001: Waveform's Y controls are generated per pane; registry keys stay shared.
+        header = _between(source, "function wwWaveformPaneHeaderHtml(label)", "\n        }\n")
+        for action, label, er_id, key in (
+            ("in", "Zoom Y In", "wwErZoomYInBtn", "ZOOM_Y_IN"),
+            ("out", "Zoom Y Out", "wwErZoomYOutBtn", "ZOOM_Y_OUT"),
+            ("auto", "Autoscale Y", "wwErAutoscaleYBtn", "AUTOSCALE_Y"),
+        ):
+            assert "['" + action + "', '" + label + "', '" + key + "']" in header
+            assert _icon_key(_element(page, er_id, "button")) == key
         # Fit Selected Record: Waveform's own disabled-and-hidden stub
         # (no "active record" concept of its own) stays canvas-local,
         # unaffected by this ticket -- genuinely unrelated to the
@@ -1666,7 +1673,7 @@ class TestEventReconstructionToolConsistency:
         assert 'class="ww-icon-btn" id="wwErZoomInBtn"' in page
         assert 'class="ww-icon-btn" id="wwErZoomOutBtn"' in page
         assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwAutoscaleXBtn"' in source
-        assert 'class="ww-icon-btn ww-tg-autoscale-btn" id="wwAutoscaleYBtn"' in source
+        assert "['auto', 'Autoscale Y', 'AUTOSCALE_Y']" in source
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwCursorModeBtn"' in source
         assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
         assert 'class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
@@ -1682,7 +1689,6 @@ class TestEventReconstructionToolConsistency:
             'id="wwZoomXInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis" disabled>',
             'id="wwZoomXOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>',
             'id="wwAutoscaleXBtn" title="Autoscale X" aria-label="Autoscale X" disabled>',
-            'id="wwAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>',
         ):
             assert markup in source, markup
         # The former per-Time-Group X/Y axis-choice dropdown wording is
@@ -1694,14 +1700,14 @@ class TestEventReconstructionToolConsistency:
                     "Event Reconstruction zooms the time axis only", "— X axis", "— Y axis"):
             assert old not in page, old
 
-    def test_ab_cursors_icon_is_byte_identical_to_waveform(self):
+    def test_ab_cursors_keep_shared_er_and_scoped_waveform_artwork(self):
         source = _source()
         page = _er_page(source)
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         assert "CURSORS_AB" not in canvas  # page-level only now, see wwCursorModeBtn
         wf_cursor = _element(source, "wwCursorModeBtn", "button")
         er_cursor = _element(page, "wwErCursorModeBtn", "button")
-        assert _icon_key(wf_cursor) == "CURSORS_AB"
+        assert _icon_key(wf_cursor) == "WUI002_CURSORS_AB"
         assert _icon_key(er_cursor) == "CURSORS_AB"
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn"' in wf_cursor
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn"' in er_cursor
@@ -1972,7 +1978,7 @@ class TestGlobalViewModeFamily:
         # a second definition.
         assert _icon_key(_element(source, "layoutModeSeparateBtn", "button")) == "VIEW_SEPARATE"
         assert _icon_key(_element(source, "layoutModeCustomBtn", "button")) == "VIEW_CUSTOM"
-        assert _icon_key(_element(source, "wwSplitViewBtn", "button")) == "VIEW_SPLIT"
+        assert _icon_key(_element(source, "wwSplitViewBtn", "button")) == "WUI002_VIEW_SPLIT"
 
 
 class TestEventReconstructionPerUnitDisplay:
@@ -1992,11 +1998,11 @@ class TestEventReconstructionPerUnitDisplay:
         assert 'id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in toggle
         assert 'id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in toggle
         assert ">Units</span>" not in page  # the former text label is gone
-        # Waveform toolbar carries the same rename (DEC-212).
-        wf_toggle = _between(source, '<div class="theme-toggle ww-icon-group" id="wwUnitModeToggle"', "</div>")
-        assert 'role="group" aria-label="Voltage Display"' in wf_toggle
-        assert 'id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in wf_toggle
-        assert 'id="wwUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in wf_toggle
+        # Waveform now projects one workspace-wide mode in each applicable pane.
+        wf_toggle = _between(source, "function wwPaneUnitModeHtml()", "function wwSyncPaneUnitModeControls")
+        assert 'aria-label="Voltage Display (all panes)"' in wf_toggle
+        assert 'data-pane-unit-mode="engineering" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in wf_toggle
+        assert 'data-pane-unit-mode="per_unit" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in wf_toggle
         # Default Engineering.
         assert 'unitMode: "engineering",' in _between(source, "const wwErState = {", "};")
 
@@ -2431,8 +2437,10 @@ class TestEventReconstructionPanelResize:
         and Event Reconstruction's -- never a second, page-specific
         copy."""
         source = _source()
-        assert source.count(".ww-resize-handle {") == 1
-        rule = _between(source, ".ww-resize-handle {", "\n        }\n")
+        # Shared resize geometry stays single; Waveform's flex-order override
+        # does not restyle ER's handle or create another shared definition.
+        assert source.count("\n        .ww-resize-handle {") == 1
+        rule = _between(source, "\n        .ww-resize-handle {", "\n        }\n")
         assert "cursor: ns-resize;" in rule
         assert "touch-action: none;" in rule
 

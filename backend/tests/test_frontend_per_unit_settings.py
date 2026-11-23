@@ -45,8 +45,8 @@ class TestUnitModeToolbarAfterHubRemoval:
         assert 'id="wwManageMeasurementGroupsBtn"' not in source
         assert 'id="wwManagePerUnitBasesBtn"' not in source
         # ENG/PU display-mode toggle remains
-        assert 'id="wwUnitEngineeringBtn"' in source
-        assert 'id="wwUnitPerUnitBtn"' in source
+        assert 'data-pane-unit-mode="engineering"' in source
+        assert 'data-pane-unit-mode="per_unit"' in source
 
     def test_hub_open_and_close_functions_are_removed(self):
         source = _source()
@@ -167,17 +167,17 @@ class TestUnitModeControlsUnchanged:
 
     def test_unit_mode_buttons_unchanged(self):
         source = _source()
-        assert 'id="wwUnitEngineeringBtn"' in source
-        assert 'id="wwUnitPerUnitBtn"' in source
+        assert 'data-pane-unit-mode="engineering"' in source
+        assert 'data-pane-unit-mode="per_unit"' in source
 
     def test_per_unit_selection_still_calls_apply_unit_mode(self):
         source = _source()
         # Bound directly by the handler's closing }); — exact same pattern
         # as test_frontend_per_unit_mode.py's own version.
-        start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
-        end = source.index("});", start) + 3
+        start = source.index('async function wwApplyPaneUnitMode(panel, button)')
+        end = source.index("function wwWaveformPaneHeaderHtml", start)
         wiring = source[start:end]
-        assert 'await wwApplyUnitMode("per_unit");' in wiring
+        assert 'wwApplyUnitMode(button.dataset.paneUnitMode)' in wiring
 
     def test_hub_button_is_absent_no_separate_settings_action(self):
         """PU-UI-001 Slice B: the Hub settings button is gone; clicking
@@ -190,8 +190,8 @@ class TestUnitModeControlsUnchanged:
         """UAT fix preserved: wwUnitPerUnitBtn's own listener must ONLY
         call wwApplyUnitMode, never open any configuration overlay."""
         source = _source()
-        start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
-        end = source.index("});", start) + 3
+        start = source.index('async function wwApplyPaneUnitMode(panel, button)')
+        end = source.index("function wwWaveformPaneHeaderHtml", start)
         wiring = source[start:end]
         assert "wwOpenPerUnitProfilesModal" not in wiring
         assert "wwOpenPerUnitSettingsModal" not in wiring

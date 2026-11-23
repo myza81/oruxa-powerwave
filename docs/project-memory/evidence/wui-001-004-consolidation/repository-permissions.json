@@ -1,0 +1,34 @@
+{
+  "id": "1328716910",
+  "name": "oruxa-powerwave",
+  "owner": {
+    "login": "myza81",
+    "id": 142100706,
+    "type": "User",
+    "avatar_url": "https://avatars.githubusercontent.com/u/142100706?v=4",
+    "url": "https://api.github.com/users/myza81"
+  },
+  "repository_full_name": "myza81/oruxa-powerwave",
+  "permissions": {
+    "admin": true,
+    "maintain": true,
+    "pull": true,
+    "push": true,
+    "triage": true
+  },
+  "allow_auto_merge": false,
+  "allow_merge_commit": true,
+  "allow_rebase_merge": true,
+  "allow_squash_merge": true,
+  "allow_update_branch": false,
+  "clone_url": "https://github.com/myza81/oruxa-powerwave.git",
+  "size": 37053,
+  "default_branch": "main",
+  "git_commits_url": "https://api.github.com/repos/myza81/oruxa-powerwave/git/commits{/sha}",
+  "git_refs_url": "https://api.github.com/repos/myza81/oruxa-powerwave/git/refs{/sha}",
+  "git_url": "git://github.com/myza81/oruxa-powerwave.git",
+  "master_branch": null,
+  "visibility": "public",
+  "archived": false,
+  "is_code_search_indexed": null
+}

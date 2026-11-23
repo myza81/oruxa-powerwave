@@ -88,8 +88,8 @@ class TestModalAndDrawerRemovedInPuUi001:
         assert 'id="wwManageMeasurementGroupsBtn"' not in source
         assert 'id="wwManagePerUnitBasesBtn"' not in source
         # ENG/PU toggle buttons remain
-        assert 'id="wwUnitEngineeringBtn"' in source
-        assert 'id="wwUnitPerUnitBtn"' in source
+        assert 'data-pane-unit-mode="engineering"' in source
+        assert 'data-pane-unit-mode="per_unit"' in source
 
 
 class TestDec049CoexistenceAfterPuUi001:

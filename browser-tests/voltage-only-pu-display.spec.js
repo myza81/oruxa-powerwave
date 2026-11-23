@@ -118,7 +118,18 @@ function channelState(page, sourceId, name) {
 
 test("VD-01: Waveform toolbar Voltage Display toggle has correct aria-label", async ({ page }) => {
   await page.goto("/index.html");
-  await expect(page.locator("#wwUnitModeToggle")).toHaveAttribute("aria-label", "Voltage Display");
+  // WUI-002 supersedes this case's original global-toolbar placement. Verify
+  // the same accessible operation in an applicable pane, without a duplicate.
+  await expect(page.locator("#wwToolbar #wwUnitModeToggle")).toHaveCount(0);
+  await uploadBasicRecording(page, "VD01");
+  const sid=await sourceIdFor(page,"VD01");
+  await page.locator("#mainNavWaveformBtn").click();
+  const details=page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if(!(await details.evaluate(el=>el.open))) await details.locator(':scope > summary').click();
+  await page.locator(`tr.channel-row--toggle[data-source-id="${sid}"][data-channel-name="VA"]`).click();
+  const group=page.locator('#viewWaveform .ww-pane-unit-mode:visible');
+  await expect(group).toHaveCount(1);await expect(group).toBeVisible();
+  await expect(group).toHaveAttribute("aria-label", "Voltage Display (all panes)");
   // Buttons retain descriptive individual labels.
   await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-label", "Engineering Units");
   await expect(page.locator("#wwUnitPerUnitBtn")).toHaveAttribute("aria-label", "Per Unit");
