@@ -1,19 +1,27 @@
-// Overcurrent (D5A-OC-001) pre-selects the Recording current basis from the side the recording declares, so
-// the shared `phasor_smoke_three_phase` fixture (which declares PRIMARY) now needs a CT before it shows a
-// number. Specs that are about something else (layout, chart, playback, related waveforms) leave the side
-// undeclared instead, which keeps the explicit engineer-selected basis they were written for.
-async function leaveCurrentSideUndeclared(page) {
-  await page.route("**/protection-instrument-context?*", async (route) => {
-    try {
-      const response = await route.fetch();
-      const body = await response.json();
-      if (body.current) Object.assign(body.current, { declared_basis: null, side_status: "unknown", side: "unknown" });
-      for (const channel of body.channels || []) if (channel.quantity === "current") channel.declared_side = "unknown";
-      await route.fulfill({ response, json: body });
-    } catch (error) {
-      // The page was closed while the report was in flight (end of a test): nothing left to answer.
-    }
-  });
+// Recorded Overcurrent (D5A-2B2C-1A, DEC-216) takes the Primary/Secondary side of its current channel from Recording
+// Details (Level 1: the recording, Level 2: the Current Measurement Group); the page has no basis input. The shared
+// `phasor_smoke_three_phase` fixture declares PRIMARY, so a recorded number would need a CT. Specs that are about
+// something else (layout, chart, playback, related waveforms) set the uploaded recording's side to SECONDARY through the
+// same API Recording Details saves through -- as an engineer would -- which needs no CT (`setRecordedSide`).
+
+const BACKEND = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
+
+// Level 1 (the recording) through the Recording Details API. `side: null` returns to the recording's own evidence.
+async function setRecordedSide(page, { workspaceId, sourceId }, side, note = null) {
+  const r = await page.request.put(
+    `${BACKEND}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/measurement-side`,
+    { data: { side, note } },
+  );
+  if (!r.ok()) throw new Error(`PUT measurement-side failed (${r.status()}): ${await r.text()}`);
 }
 
-module.exports = { leaveCurrentSideUndeclared };
+// Level 2 (one Measurement Group) through the Recording Details API.
+async function setGroupSide(page, { workspaceId, sourceId }, groupId, side) {
+  const r = await page.request.put(
+    `${BACKEND}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/measurement-groups/${encodeURIComponent(groupId)}/measurement-side`,
+    { data: { side } },
+  );
+  if (!r.ok()) throw new Error(`PUT group measurement-side failed (${r.status()}): ${await r.text()}`);
+}
+
+module.exports = { setRecordedSide, setGroupSide };

@@ -18,14 +18,13 @@
 const { test, expect } = require("./support/test");
 const path = require("path");
 const { clearContexts, postContext, reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
-const { leaveCurrentSideUndeclared } = require("./support/current_side_helpers");
+const { setRecordedSide } = require("./support/current_side_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const STEM = "phasor_smoke_three_phase";
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await leaveCurrentSideUndeclared(page);   // see support/current_side_helpers.js
   await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
@@ -51,6 +50,9 @@ async function uploadAndCreateContext(page) {
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
   const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
+  // The fixture declares PRIMARY; a recorded number then needs a CT. These specs are about something else, so the
+  // engineer sets the recording to SECONDARY in Recording Details (D5A-2B2C-1A; see support/current_side_helpers.js).
+  await setRecordedSide(page, { workspaceId, sourceId }, "secondary");
   return { workspaceId, sourceId, contextId: context.id };
 }
 

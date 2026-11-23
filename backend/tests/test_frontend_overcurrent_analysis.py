@@ -101,11 +101,14 @@ class TestOvercurrentPanelStructure:
         assert 'id="wwOvercurrentPickupInput"' in source
         assert 'id="wwOvercurrentTmsInput"' in source
 
-    def test_recording_basis_selector_exists(self):
+    def test_recorded_mode_has_no_recording_basis_selector_only_a_read_only_authority_host(self):
+        """D5A-2B2C-1A (DEC-216): Recording Details decides whether the recorded current is Primary or Secondary, so the
+        page has no `Recording current basis` input -- it shows the answer read-only in `#wwOvercurrentCtVtAuthority`."""
         source = _source()
-        assert 'id="wwOvercurrentBasisSelect"' in source
-        assert '<option value="secondary" selected>Secondary</option>' in source
-        assert '<option value="primary">Primary</option>' in source
+        assert 'id="wwOvercurrentBasisSelect"' not in source and 'id="wwOvercurrentBasisField"' not in source
+        assert "Recording current basis" not in source
+        host = re.search(r'<div class="ww-ctvt-authority[^>]*id="wwOvercurrentCtVtAuthority"[^>]*>', source).group(0)
+        assert "hidden" in host and "<input" not in host and "<select" not in host
 
     def test_ct_fields_exist_and_hidden_by_default(self):
         """CT Primary/Secondary render but start `hidden` -- shown only
@@ -148,18 +151,16 @@ class TestOvercurrentPanelStructure:
         assert "ctPrimary =" not in fn and "ctSecondary =" not in fn
         assert ".value" not in fn
 
-    def test_recording_basis_field_follows_the_recording_input_source_gate(self):
-        """The Recording current basis label + select are hidden together
-        in Manual (Direct Current and Equipment Loading) by the existing
-        input-source visibility function -- never removed, and the gate
-        never touches the selection/state."""
+    def test_the_read_only_authority_block_follows_the_recording_input_source_gate(self):
+        """The recorded section is hidden in Manual by the existing visibility function, and the read-only side/CT block
+        hides itself in Manual and while idle; neither touches any setting."""
         source = _source()
-        field = _function_body(source, 'id="wwOvercurrentBasisField"', "</label>")
-        assert 'id="wwOvercurrentBasisSelect"' in field
         fn = _function_body(source, "function wwOvercurrentUpdateRecordingSectionVisibility()", "function wwOvercurrentUpdateInputSourceAvailability")
-        assert 'getElementById("wwOvercurrentBasisField")' in fn
-        assert "basisField.hidden = !isRecording;" in fn
-        assert "recordingBasis" not in fn
+        assert "section.hidden = !isRecording;" in fn
+        assert "BasisField" not in fn and "recordingBasis" not in fn
+        render = _function_body(source, "function wwOcRecordedInputRender()", "function wwOcRecordedInputHandleClick")
+        assert 'wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING || st.status === "idle"' in render
+        assert "host.hidden = true;" in render
 
     def test_numeric_result_fields_render(self):
         source = _source()
@@ -1134,10 +1135,10 @@ class TestSettingsFormLayoutCorrection:
         assert "outline: none;" in focus_rule
         assert "border-color: var(--accent-dim);" in focus_rule
 
-    def test_characteristic_and_basis_span_the_full_row_never_squeezed_to_half_width(self):
+    def test_characteristic_and_the_authority_block_span_the_full_row_never_squeezed_to_half_width(self):
         source = _source()
         assert 'class="ww-phasor-field ww-oc-field-full">\n                                            <span class="ww-phasor-field-label">Characteristic</span>' in source
-        assert 'class="ww-phasor-field ww-oc-field-full" id="wwOvercurrentBasisField">\n                                            <span class="ww-phasor-field-label">Recording current basis</span>' in source
+        assert 'class="ww-ctvt-authority ww-oc-field-full" id="wwOvercurrentCtVtAuthority"' in source
         css_rule = _function_body(source, ".ww-oc-field-full {", "}")
         assert "grid-column: 1 / -1;" in css_rule
         # Pickup/TMS and the two CT fields deliberately do NOT get this
@@ -1162,7 +1163,7 @@ class TestSettingsFormLayoutCorrection:
         source = _source()
         assert '<span class="ww-phasor-field-label">Characteristic</span>' in source
         assert '<span class="ww-phasor-field-label">TMS</span>' in source
-        assert '<span class="ww-phasor-field-label">Recording current basis</span>' in source
+        assert '<span class="ww-phasor-field-label">Recording current basis</span>' not in source   # D5A-2B2C-1A
         assert '<span class="ww-phasor-field-label">CT Primary (A)</span>' in source
         assert '<span class="ww-phasor-field-label">CT Secondary (A)</span>' in source
 
@@ -1175,7 +1176,7 @@ class TestSettingsFormLayoutCorrection:
         assert 'type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">' in source
         assert 'type="number" id="wwOvercurrentCtPrimaryInput" min="0" step="1">' in source
         assert 'type="number" id="wwOvercurrentCtSecondaryInput" min="0" step="0.01">' in source
-        assert 'id="wwOvercurrentBasisSelect">' in source
+        assert 'id="wwOvercurrentBasisSelect"' not in source        # D5A-2B2C-1A: no Recording-basis input any more
 
     def test_responsive_fallback_uses_a_container_query_scoped_to_the_settings_card_not_the_viewport(self):
         """Owner's own explicit instruction: "the important dimension is
