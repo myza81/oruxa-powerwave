@@ -23,6 +23,7 @@ import math
 from dataclasses import dataclass
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.measurement_group import KIND_CURRENT
 from app.domain.measurement_side_config import SIDE_PRIMARY, STATUS_CONFLICT, ChannelSideResolution
 from app.domain.overcurrent import (
     KNOWN_RECORDING_BASES,
@@ -39,6 +40,7 @@ from app.domain.overcurrent import (
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_side_service import SideAuthority, build_group_view, resolve_effective_measurement_side
 from app.services.protection_instrument_context import (
+    CONSUMABLE_AUTHORITIES,
     QUANTITY_CURRENT,
     RATIO_NO_GROUP,
     TransformerContext,
@@ -135,7 +137,24 @@ def _side_blocker(ref: ChannelRef, side: ChannelSideResolution, group_name: str 
     return None
 
 
-def _ct_blocker(ref: ChannelRef, ct: TransformerContext, group_name: str | None) -> AuthorityBlocker | None:
+def _other_group_with_ct(workspace_id: str, ref: ChannelRef, own_group_id: str | None,
+                         authority: "OvercurrentAuthority") -> tuple[str, float, float] | None:
+    """(group name, CT primary, CT secondary) of ANOTHER Current group of the same recording that holds a usable CT.
+    Only used to explain a missing CT -- never to supply one: a CT is never borrowed from another group."""
+    for group in authority.side.group_registry.list_for_workspace(workspace_id):
+        if group.kind != KIND_CURRENT or group.source_id != ref.source_id or group.id == own_group_id:
+            continue
+        config = authority.current_config_registry.get(workspace_id, group.id)
+        if config is None or config.ct_authority not in CONSUMABLE_AUTHORITIES:
+            continue
+        primary, secondary = config.ct_primary_a, config.ct_secondary_a
+        if primary is not None and secondary is not None and ct_values_valid(primary, secondary):
+            return group.display_name, float(primary), float(secondary)
+    return None
+
+
+def _ct_blocker(ref: ChannelRef, ct: TransformerContext, group_name: str | None,
+                other: tuple[str, float, float] | None = None) -> AuthorityBlocker | None:
     """The reason the CT of the consumed channel's own group cannot be applied (None when it can)."""
     if ct.ratio_consumable:
         return None
@@ -149,6 +168,9 @@ def _ct_blocker(ref: ChannelRef, ct: TransformerContext, group_name: str | None)
     else:
         text = (f"CT is not configured for the Current Measurement Group '{group_name}'. Set primary and secondary A "
                 f"in Recording Details.")
+    if other is not None:
+        text += (f" A CT of {other[1]:g} A / {other[2]:g} A is configured on '{other[0]}', but '{label}' belongs to "
+                 f"'{group_name or 'no group'}' and a CT is never borrowed from another group.")
     return AuthorityBlocker(REASON_INVALID_CT_VALUES, text)
 
 
@@ -186,8 +208,10 @@ def evaluate_recorded_current_authority(
             channel_ref, None, None, None, None,
             AuthorityBlocker(
                 REASON_CALCULATED_SIDE,
-                "The measurement side of a calculated current channel is derived from its inputs and is not "
-                "resolved by Recording Details yet, so a recorded Overcurrent calculation cannot consume it.",
+                f"Measurement-side support for calculated channels is not available yet: the side of the calculated "
+                f"current channel '{_channel_label(channel_ref)}' is derived from its inputs, and Recording Details does "
+                f"not resolve it, so there is nothing to set there. A recorded Overcurrent calculation cannot use it "
+                f"until that support is added; use a recorded (source) current channel or Manual input.",
             ),
         )
     side = resolve_effective_measurement_side(
@@ -216,5 +240,6 @@ def evaluate_recorded_current_authority(
                 f"Recording Details ({side.side}). Recording Details is authoritative; change the side there.",
             )
     if blocker is None and side.side == SIDE_PRIMARY:
-        blocker = _ct_blocker(channel_ref, ct, group_name) or _request_ct_blocker(ct, request_ct)
+        other = None if ct.ratio_consumable else _other_group_with_ct(workspace_id, channel_ref, group.id if group else None, authority)
+        blocker = _ct_blocker(channel_ref, ct, group_name, other) or _request_ct_blocker(ct, request_ct)
     return RecordedCurrentAuthority(channel_ref, group.id if group else None, group_name, side, ct, blocker)
