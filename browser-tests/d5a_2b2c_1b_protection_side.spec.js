@@ -249,3 +249,26 @@ for (const kind of ["impedance", "distance"]) {
     });
   });
 }
+
+// Owner review of 1B: a recorded Distance result with no valid loop impedance evaluates no zone, so the page says
+// "Not evaluated" -- never "Not Operated", which is the geometric result of a valid impedance.
+test.describe("D5A-2B2C-1B Distance zone state without a valid impedance", () => {
+  test("a blocked result shows Not evaluated for every zone; fixing the cause restores the geometric states", async ({ page }) => {
+    const s = await seed(page);
+    await putVt(page, s, MANUAL_VT);                      // the CT is missing: a Primary current cannot be converted
+    await openPanel(page, "distance", s.contextId);
+    const list = page.locator("#wwDistanceZoneStateList");
+    await expect(page.locator("#wwDistanceStatusRow")).toContainText("CT is not configured for");
+    await expect(list).toContainText("Not evaluated");
+    await expect(list).not.toContainText("Not Operated");
+    await expect(list.locator(".ww-dist-zone-state-badge--not-evaluated")).not.toHaveCount(0);
+    await expect(list.locator(".ww-dist-zone-state-badge--not-operated, .ww-dist-zone-state-badge--operated")).toHaveCount(0);
+
+    await putCt(page, s, MANUAL_CT);                      // the engineer configures the CT in Recording Details and returns
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwDistanceStatusRow")).toBeHidden({ timeout: 10000 });
+    await expect(list).not.toContainText("Not evaluated");
+    await expect(list.locator(".ww-dist-zone-state-badge--not-operated")).not.toHaveCount(0);     // valid impedance, zones evaluated
+  });
+});

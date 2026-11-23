@@ -482,11 +482,20 @@ class TestRecordingEndpointsZonesParameter:
             ("zp", "operated"), ("z6", "not_operated"),
         ]
 
-    def test_recording_mode_reports_every_zone_even_when_the_loop_cannot_be_computed(self, client):
+    def test_recording_mode_reports_no_zone_when_the_loop_cannot_be_computed(self, client):
+        """D5A-2B2C-1B (owner review): this test used to assert that every requested zone is listed, as Not Operated, even when
+        the loop impedance could not be computed. `not_operated` is the geometric result of a VALID impedance, so a result
+        without one evaluates no zone: `zones` is empty and `zone1`..`zone4` are null. The zone definitions are the request's
+        own; they are not echoed back as if they were results."""
         workspace_id, context_id = self.bay(client)
         resp = _distance(client, workspace_id, context_id, analysis_time=99.0, zones=json.dumps([mho_json("a", 5), mho_json("b", 5)]))
         body = resp.json()
-        assert body["status"] != "computed" and [z["zone_key"] for z in body["zones"]] == ["a", "b"]
+        assert body["status"] != "computed" and body["zones"] == []
+        assert [body[k] for k in ("zone1", "zone2", "zone3", "zone4")] == [None] * 4
+        assert body["magnitude_ohm"] is None and body["reason_code"]
+        # the same request at a valid time lists both zones, so the empty list above is the absence of an evaluation
+        ok = _distance(client, workspace_id, context_id, analysis_time=1.5, zones=json.dumps([mho_json("a", 5), mho_json("b", 5)])).json()
+        assert ok["status"] == "computed" and [z["zone_key"] for z in ok["zones"]] == ["a", "b"]
 
     def test_the_locus_endpoint_accepts_the_generic_collection(self, client):
         workspace_id, context_id = self.bay(client)

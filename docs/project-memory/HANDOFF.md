@@ -19,6 +19,8 @@ contradiction, and the old bypass (omit `voltage_side`/`current_side` → the re
 Manual mode, Overcurrent, PU and calculated channels are untouched. DEC-216 Amendment 6. Details, data flow, oracles, reason-code matrix, tests, verification, limitations and the DEV UAT checklist:
 [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
 
+**Owner-review hardening (same branch):** a recorded Distance result without a valid impedance now reports no zone (`zone1`..`zone4` null, `zones` empty) and the page shows "Not evaluated", instead of a `not_operated` placeholder — no schema change, report §3a.
+
 **Owner decisions requested:** calculated V/I channels are blocked for now (same as Overcurrent); recordings with no P/S evidence need an engineer setting; a mixed-declaration Measurement Group blocks every channel it
 owns; the two legs of a loop must agree on a side (report §8).
 **Next action:** owner review. D5A-2B2D (retire the legacy parameters), calculated-channel integration and the PU migration start only after authorisation.

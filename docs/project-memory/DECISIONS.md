@@ -29732,4 +29732,8 @@ distance mathematics, the low-current guardrails, the zone geometry, the Manual 
   "choose an unverified basis in the analyzer" path is gone. (c) A Measurement Group with mixed declarations blocks every channel it owns until the engineer chooses a side. (d) The legacy request
   parameters can be removed in D5A-2B2D.
 
+- **Owner-review hardening (2026-11-23): no valid impedance, no zone evaluation.** `not_operated` is the geometric result of a VALID impedance. A recorded Distance result whose `status` is not `computed` (blocked by Recording Details,
+  a missing/ambiguous phasor, a loop current below the floor, ...) now reports `zone1`..`zone4` = null and `zones` = [] instead of a `not_operated` placeholder, and the page shows "Not evaluated". No public schema change (the fields were already
+  nullable / empty by default); an intentional change to the blocked-result contract, which previously listed every requested zone. Valid results, the zone geometry, the Manual calculator and the locus are unchanged.
+
 Details, data flow, oracles, tests and DEV UAT checklist: [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).

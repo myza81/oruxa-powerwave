@@ -126,21 +126,29 @@ def compute_distance_analysis(
     )
 
 
+#: The zones of a recorded result that has NO valid loop impedance (blocked by Recording Details, a missing / ambiguous
+#: phasor, an ineligible waveform, a loop current below the floor, ...). `Operated` / `Not Operated` are geometric
+#: states of a VALID impedance against a zone; with none, no zone was evaluated, so none is reported -- never a
+#: `not_operated` placeholder. The result's `zone1`..`zone4` stay null and `zones` stays empty; the configured zone
+#: definitions are the caller's own request, not an evaluation result.
+NOT_EVALUATED_ZONES: tuple = ()
+
+
 def _blocked_distance_result(
     block: SideBlock, *, engineering_context_id: str, loop: str, analysis_time: float, impedance_basis,
     characteristic: str, zones,
     v1_channel_ref=None, v2_channel_ref=None, i1_channel_ref=None, i2_channel_ref=None,
     voltage_unit=None, current_unit=None,
 ) -> DistanceAnalysisResult:
-    """The authority refused: needs_configuration with a machine-readable reason, and NO zone classification is fabricated
-    (every zone is reported as not evaluated). The channels that resolved (never an unresolved one) are still identified, so the
-    physical signals stay plottable."""
+    """The authority refused: needs_configuration with a machine-readable reason, and NO zone is evaluated or reported
+    (`NOT_EVALUATED_ZONES`). The channels that resolved (never an unresolved one) are still identified, so the physical signals
+    stay plottable."""
     return DistanceAnalysisResult(
         status=DISTANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, loop=loop,
         analysis_time=analysis_time, **plan_echo(block, impedance_basis),
         v1_channel_ref=v1_channel_ref, v2_channel_ref=v2_channel_ref, i1_channel_ref=i1_channel_ref,
         i2_channel_ref=i2_channel_ref, voltage_unit=voltage_unit, current_unit=current_unit,
-        characteristic=characteristic, zones=evaluate_zones(None, characteristic=characteristic, zones=zones),
+        characteristic=characteristic, zones=NOT_EVALUATED_ZONES,
         reason_code=block.code, message=block.message, side_conversion=block.info,
     )
 
@@ -197,7 +205,7 @@ def _strict_distance_result(
     if point is None:
         return DistanceAnalysisResult(
             status=DISTANCE_STATUS_NEEDS_CONFIGURATION,
-            **{**echo, "zones": evaluate_zones(None, characteristic=characteristic, zones=zones)}, **common,
+            **{**echo, "zones": NOT_EVALUATED_ZONES}, **common,
             reason_code=REASON_LOOP_CURRENT_TOO_SMALL, message="Loop current too small for reliable impedance calculation.",
         )
     return DistanceAnalysisResult(
@@ -233,10 +241,10 @@ def _distance_analysis_from_diagram(
     authoritative configuration snapshot) applies to every sample."""
     echo = plan_echo(side_plan, impedance_basis)
 
-    def _short_circuit(status: str, *, reason_code: str | None, message: str, point=None) -> DistanceAnalysisResult:
+    def _short_circuit(status: str, *, reason_code: str | None, message: str) -> DistanceAnalysisResult:
         return DistanceAnalysisResult(
             status=status, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
-            characteristic=characteristic, zones=evaluate_zones(point, characteristic=characteristic, zones=zones),
+            characteristic=characteristic, zones=NOT_EVALUATED_ZONES,
             reason_code=reason_code, message=message, **echo,
         )
 
@@ -259,7 +267,7 @@ def _distance_analysis_from_diagram(
             status=status, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
             v1_channel_ref=v1_role.channel_ref, v2_channel_ref=v2_role.channel_ref,
             i1_channel_ref=i1_role.channel_ref, i2_channel_ref=i2_role.channel_ref,
-            characteristic=characteristic, zones=evaluate_zones(None, characteristic=characteristic, zones=zones),
+            characteristic=characteristic, zones=NOT_EVALUATED_ZONES,
             reason_code=reason, message="One or more required phasors are not available for this fault loop.", **echo,
         )
 

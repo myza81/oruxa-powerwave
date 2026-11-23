@@ -219,8 +219,9 @@ def test_a_blocked_result_still_feeds_related_waveforms_and_is_never_plotted(kin
 
 def test_a_blocked_distance_result_never_shows_a_zone_classification():
     render = _function("wwDistanceRenderResult")
-    assert "wwDistanceRenderZoneStateList(result && !sideBlocked ? wwDistanceZoneResultMap(result) : null);" in render
-    assert "result.side_conversion.block_code" in render
+    # (owner review) no valid impedance -> no zone evaluated -> "Not evaluated", whatever the status or the blocker
+    assert "wwDistanceRenderZoneStateList(null, true);" in render
+    assert "sideBlocked" not in render and "wwDistanceZoneResultMap(result) : null" not in render
 
 
 # --------------------------------------------------------------------------- Node harness over the real block
@@ -636,3 +637,73 @@ def test_a_real_missing_vt_blocks_with_the_specific_message_and_keeps_the_resolv
     assert out["blocks"] is True and out["plan"]["blockers"][0]["code"] == "vt_authority_unavailable"
     assert "VT is not configured" in out["message"] and "Recording Details" in out["message"]
     assert [c["channel_name"] for c in report["voltage"]["channels"]] == ["ZBAY_VA"]       # identities survive a blocker
+
+
+# --------------------------------------------------------------------------- owner review: "Not evaluated" is not "Not Operated"
+
+
+def _zone_list(zones, not_evaluated=None):
+    """Run the REAL `wwDistanceRenderZoneStateList` in Node with the page's own zone configuration."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = f"""
+const input = JSON.parse(require("fs").readFileSync(0, "utf8"));
+function escapeHtml(s) {{ return String(s); }}
+const host = {{ innerHTML: "" }};
+const document = {{ getElementById: () => host }};
+const wwDistanceState = {{ zones: {{
+  zone1: {{ enabled: true, delaySeconds: 0 }}, zone2: {{ enabled: false, delaySeconds: 0.45 }}, zone3: {{ enabled: true, delaySeconds: null }},
+}} }};
+function wwDistanceZoneKeys() {{ return Object.keys(wwDistanceState.zones); }}
+function wwDistanceZoneLabel(key) {{ return key.toUpperCase(); }}
+function wwDistanceZoneColorVar(key) {{ return "var(--c-" + key + ")"; }}
+function wwDistanceZoneDefaultsOnBlank() {{ return false; }}
+{_function("wwDistanceRenderZoneStateList")}
+}}
+wwDistanceRenderZoneStateList(input.zones, input.notEvaluated);
+process.stdout.write(JSON.stringify(host.innerHTML));
+"""
+    done = subprocess.run([node, "-e", script],
+                          input=json.dumps({"zones": zones, "notEvaluated": not_evaluated}), capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_a_result_without_a_valid_impedance_shows_not_evaluated_never_not_operated():
+    html = _zone_list(None, True)
+    assert html.count("Not evaluated") == 3 and "Not Operated" not in html and "Operated</span>" not in html
+    assert html.count("ww-dist-zone-state-badge--not-evaluated") == 3
+    assert "ww-dist-zone-state-badge--not-operated" not in html and "ww-dist-zone-state-badge--operated" not in html
+    # the rows show the page's OWN configuration: zone2 is disabled there, the delays are the configured ones
+    assert "ZONE2 (disabled)" in html and "ZONE1 (disabled)" not in html and "ZONE3 (disabled)" not in html
+    assert "delay 0.00s" in html and "delay 0.45s" in html and "delay not configured" in html      # zone3: enabled, no delay yet
+    # whatever stale map is supplied, a not-evaluated list never uses it
+    stale = {"zone1": {"state": "operated", "enabled": True, "delay_s": 9.0}}
+    assert "Operated" not in _zone_list(stale, True).replace("Not Operated", "")
+
+
+def test_a_valid_result_still_shows_operated_and_not_operated_from_the_backend():
+    zones = {"zone1": {"zone_key": "zone1", "state": "operated", "enabled": True, "delay_s": 0.0},
+             "zone2": {"zone_key": "zone2", "state": "not_operated", "enabled": False, "delay_s": 0.45},
+             "zone3": {"zone_key": "zone3", "state": "not_operated", "enabled": True, "delay_s": None}}
+    html = _zone_list(zones)
+    assert "ww-dist-zone-state-badge--operated" in html and ">Operated<" in html and html.count("Not Operated") == 2
+    assert "Not evaluated" not in html and "--not-evaluated" not in html
+    assert "ZONE2 (disabled)" in html
+
+
+def test_the_manual_source_is_unchanged():
+    """The Manual calculator never passes `notEvaluated`: no result yet / an unavailable manual result still reads Not Operated."""
+    assert _zone_list(None).count("Not Operated") == 3 and "Not evaluated" not in _zone_list(None)
+    assert 'wwDistanceRenderZoneStateList(result ? wwDistanceZoneResultMap(result) : null);' in SOURCE        # the manual render, untouched
+
+
+def test_every_recorded_path_without_a_valid_impedance_asks_for_not_evaluated():
+    render = _function("wwDistanceRenderResult")
+    assert "wwDistanceRenderZoneStateList(null, true);" in render
+    assert "wwDistanceRenderZoneStateList(wwDistanceZoneResultMap(result));" in render                  # the computed branch, unchanged
+    assert render.index("wwDistanceRenderZoneStateList(null, true);") < render.index("wwDistanceRenderZoneStateList(wwDistanceZoneResultMap(result));")
+    replaced = _function("wwDistanceConfigurationReplaced")
+    assert "recordedNotEvaluated" in replaced and 'shownResult.status !== "computed"' in replaced and 'wwCtVtBlocksResult("distance")' in replaced
+    assert "ww-dist-zone-state-badge--not-evaluated" in SOURCE

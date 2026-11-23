@@ -58,7 +58,7 @@ Voltage and Current are on different sides; the echoed VT/CT are the authoritati
 | current below the floor | `current_too_small` / `loop_current_too_small` (unchanged) |
 | unknown Engineering Context | 404 |
 
-A blocked result carries no impedance (never a fabricated zero or infinity), **no zone classification** (every zone reports the established not-operated placeholder; the page shows none), and keeps the resolved
+A blocked result carries no impedance (never a fabricated zero or infinity), **no zone evaluation** (`zone1`..`zone4` are null and `zones` is empty — see §3a), and keeps the resolved
 channel identities and units, so Related Waveforms keep working. A blocked locus reports the reason on every point and in `side_conversion`.
 
 Retired reason codes: `voltage_side_required`, `current_side_required` (and the legacy `invalid_ratio` message for a missing request ratio, now `vt_authority_unavailable` / `ct_authority_unavailable`).
@@ -66,6 +66,35 @@ Retired reason codes: `voltage_side_required`, `current_side_required` (and the 
 
 New read-only endpoint: `GET /engineering-contexts/{id}/protection-recorded-input?analysis=impedance|distance_protection&phase|loop=&impedance_basis=` (per quantity: channels, effective side + authority, the
 original declarations, group ids/names, whether a ratio is required, the VT/CT with its authority, a configure target, the blocker; plus the conversion that will apply and the overall status).
+
+## 3a. Owner review: a result without a valid impedance evaluates no zone (hardening)
+
+**Issue.** A recorded Distance result with no valid loop impedance reported every zone as `not_operated`. `not_operated` means "a valid impedance was evaluated and does not satisfy the zone"; for a blocked or unavailable result
+it was a placeholder that a downstream consumer could mistake for a genuine result. (The same placeholder was produced for every non-computed recorded result — a missing or ambiguous phasor, an ineligible waveform, a loop
+current below the floor — not only for the side-authority blocks, so all of them are corrected.)
+
+**Correction.** Every recorded Distance result whose `status` is not `computed` now has `zone1`..`zone4` = `null` and `zones` = `[]`: no zone was evaluated, so none is reported. The service uses one constant,
+`distance_protection_analysis_service.NOT_EVALUATED_ZONES`. Valid results are byte-for-byte unchanged: every zone (including a disabled zone or an enabled zone still missing its delay/angle) keeps its
+`operated` / `not_operated`; `evaluate_zone_state`, `evaluate_zones` and the Mho/Quadrilateral geometry are untouched, and so are the Manual calculator (still lists its zones for a non-computed manual result) and the locus (never carried zone state).
+The resolved channel references, units and the side-conversion block of a blocked result are kept, so Related Waveforms stay available.
+
+**API compatibility assessment.**
+
+| Aspect | Assessment |
+|---|---|
+| Schema | **No public schema change.** `zone1`..`zone3` were already `ZoneResultOut \| null`, `zone4` optional, `zones` an empty-by-default list, and `ZoneResultOut.state` is still the two-valued `operated`/`not_operated`. OpenAPI changes only in descriptions. |
+| Behaviour | **Intentional change to the blocked-result contract**, recorded here and in DEC-216 Amendment 6: a non-computed recorded result no longer lists the requested zones. The Slice 10 test `test_recording_mode_reports_every_zone_even_when_the_loop_cannot_be_computed` asserted the old listing; it is restated as `…reports_no_zone_when_the_loop_cannot_be_computed` (the same request at a valid time still lists every zone). The docstring of `zones` already said "every *evaluated* zone". |
+| Configured zone definitions | They are the caller's request (the page owns them); the response never echoed them as definitions, only as results, so nothing is lost. The page shows its own configuration (enabled, delay) next to "Not evaluated". |
+| Consumers that read `zone.state` | A consumer that dereferences `zone1` without a null check already had to handle `null` by the schema; one that iterates `zones` simply sees none. Safer than before: nothing can read `not_operated` from a result with no impedance. |
+| Alternative considered | Keep the entries and make `state` nullable (a schema change; breaks strictly-typed clients and still lists non-results). Not needed, so not done. |
+
+**Frontend.** A recorded result without a valid impedance (blocked, unavailable, loading) shows every zone row as **Not evaluated** (neutral dashed badge, same size/typography), with the page's own enabled / delay values; never
+"Not Operated" or "Operated". Computed results and the Manual source are unchanged.
+
+**Tests.** `test_d5a_2b2c_1b_zone_not_evaluated.py` (18, direct API): valid inside → Operated, outside → Not Operated (both output sides, boundaries ±1 %), disabled zone of a valid result, dynamic and standard collections intact, no zone for
+each blocker (undefined side, undeclared current, missing VT, missing CT, mixed group, mixed legs, contradicting assertion, calculated channel), loop current below the floor, a time outside the recording, an unresolved current channel (identities kept,
+nothing invented), the blocked → valid transition driven only by Recording Details, Manual unchanged, locus unchanged, schema unchanged. Frontend: the real renderer in Node (4) and a browser case on a real backend. The two tests that encoded the
+placeholder were restated (Slice 10 listing; the 1B zone-classification test).
 
 ## 4. Recorded-mode UI
 
@@ -127,6 +156,7 @@ Commits above `f24f1d7`: `3e9cc5f` (shared channel policy), `b7b689d` (backend),
 |---|---|
 | Backend, full suite (`pytest tests`, includes every frontend static/Node test) | **14,059 collected: 13,654 passed, 405 skipped, 0 failed** (31 min). The approved baseline (1A final) was 13,528 passed / 405 skipped; the difference is the new and rewritten tests. |
 | New backend suites | oracles **34**, enforcement **52**, all passing |
+| **Owner-review hardening (§3a)** — full suite after the change | **13,676 passed, 405 skipped, 0 failed** (16 min); new `test_d5a_2b2c_1b_zone_not_evaluated.py` 18 + 4 Node tests; browser Distance + Related Waveforms + the 1B spec **106 / 106 passed** (includes the new blocked → "Not evaluated" → valid case). |
 | New Node + static frontend suite | **57** passing (the real `D5A-2B2C-1B-BLOCK` run in Node; includes reports from the real endpoint) |
 | Mutation checks (`scripts/diagnostics/d5a_2b2c_1b_mutation_checks.py`) | **17 / 17 mutants killed**: reversed conversion ratio; double conversion of the impedance voltage, the impedance current and a distance voltage leg; a distance current leg not converted; low-current floor not scaled; conversions using the declared instead of the effective side (bypass of the shared authority); assertions not validated; a request ratio replacing the authoritative one; a request ratio compensating for a missing one; a ratio required where none is needed; wrong-group VT/CT borrowing (two variants); mixed group declarations ignored; an inferred side accepted; calculated channels not guarded; the ratio-required flag inverted. Each production file was restored (`git status` clean afterwards). |
 | Browser, affected set (11 spec files: the new `d5a_2b2c_1b_protection_side` (16 cases), `impedance_analysis`, `distance_protection_analysis`, `distance_dynamic_zones`, `distance_manual_input_layout`, `distance_resistive_reach_ux`, `distance_reverse_zone`, `analysis_related_waveforms`, `overcurrent_analysis`, `d5a_2b2c_1a_overcurrent_side`, `d5a_ui_002_group_details`) | **221 passed, 0 failed** (14.9 min, isolated :8102 / :8200) |
@@ -151,7 +181,7 @@ creates Measurement Groups on upload, so fixtures configure the existing groups 
 4. **A Measurement Group with mixed declarations blocks every channel it owns** — even a loop whose own legs agree — until the engineer chooses a side for the group (consistent with Group Details).
 5. **A multi-group quantity with different ratios** keeps the existing behaviour (`conflict` → blocked); no common ratio is invented.
 6. **The two voltage legs of a distance loop must agree on a side** (and so the two current legs); Voltage and Current need not agree with each other.
-7. **Zone classification while blocked** is the established "not operated" placeholder of the response schema (it has only two states); the page shows no classification at all.
+7. **Zone state without a valid impedance** — superseded by the owner-review hardening (§3a): no zone is evaluated or reported, and the page says "Not evaluated".
 
 ## 9. DEV UAT checklist (after the owner authorises a push and deploy)
 

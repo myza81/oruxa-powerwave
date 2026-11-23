@@ -100,6 +100,11 @@ class DistanceAnalysisResultOut(BaseModel):
     magnitude_ohm: float | None
     angle_deg: float | None
     characteristic: str | None
+    #: D5A-2B2C-1B: `zone1`..`zone4` and `zones` carry the geometric state of a VALID loop impedance only. A recorded
+    #: result with no valid impedance (`status` other than `computed`: blocked by Recording Details, a missing or ambiguous
+    #: phasor, a loop current below the floor, ...) evaluated no zone, so `zone1`..`zone4` are null and `zones` is empty --
+    #: never a `not_operated` placeholder. (`not_operated` means "a valid impedance was evaluated and does not satisfy the
+    #: zone".) The configured zone definitions are the caller's own request; they are not echoed as results.
     zone1: ZoneResultOut | None
     zone2: ZoneResultOut | None
     zone3: ZoneResultOut | None
@@ -107,7 +112,7 @@ class DistanceAnalysisResultOut(BaseModel):
     #: older consumers that ignore it keep working.
     zone4: ZoneResultOut | None = None
     #: Slice 10: every evaluated zone, in request order, each under the key it was
-    #: requested with. zone1..zone4 above are the entries with those keys.
+    #: requested with. zone1..zone4 above are the entries with those keys. Empty when no zone was evaluated (see above).
     zones: list[ZoneResultOut] = []
     warnings: list[str]
     reason_code: str | None

@@ -10405,6 +10405,13 @@
             color: var(--text-dim);
             background: transparent;
         }
+        /* No valid loop impedance, so no zone was evaluated (a recorded result that is blocked or unavailable). Not the same
+           as Not Operated, which is a geometric result for a valid impedance. */
+        .ww-dist-zone-state-badge--not-evaluated {
+            color: var(--text-dim);
+            background: transparent;
+            border-style: dashed;
+        }
         .ww-oc-values-list {
             display: flex;
             flex-direction: column;
@@ -59248,21 +59255,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // hypothetical future trip-output state in one list). `zones` may
         // be null (e.g. no result yet) -- rendered as three Not-Operated
         // rows so the Zone State section is never structurally empty.
-        function wwDistanceRenderZoneStateList(zones) {
+        // `notEvaluated` (D5A-2B2C-1B): the recorded result has no valid loop impedance (blocked by Recording Details, a
+        // missing phasor, a loop current below the floor, ...), so no zone was evaluated and the backend reports none. The
+        // rows then show the page's OWN configuration (enabled, delay) with a "Not evaluated" state -- never "Not Operated",
+        // which is the geometric result of a valid impedance. The Manual source passes nothing and is unchanged.
+        function wwDistanceRenderZoneStateList(zones, notEvaluated) {
             const list = document.getElementById("wwDistanceZoneStateList");
             if (!list) return;
             const rows = [];
             for (const key of wwDistanceZoneKeys()) {
-                const z = zones && zones[key];
+                const z = notEvaluated ? null : zones && zones[key];
                 const operated = !!(z && z.state === "operated");
-                const enabled = !!(z && z.enabled);
+                const enabled = notEvaluated ? !!wwDistanceState.zones[key].enabled : !!(z && z.enabled);
                 const delaySeconds = z ? z.delay_s : wwDistanceState.zones[key].delaySeconds;
                 const delayNotSet = !Number.isFinite(delaySeconds);
+                const badgeClass = notEvaluated ? "ww-dist-zone-state-badge--not-evaluated"
+                    : (operated ? "ww-dist-zone-state-badge--operated" : "ww-dist-zone-state-badge--not-operated");
+                const badgeText = notEvaluated ? "Not evaluated" : (operated ? "Operated" : "Not Operated");
                 rows.push(
                     '<div class="ww-oc-value-row"><span class="ww-oc-value-row-label">' + escapeHtml(wwDistanceZoneLabel(key)) +
                     (enabled ? "" : " (disabled)") + '</span><span class="ww-oc-value-row-value">' +
-                    '<span class="ww-dist-zone-state-badge ' + (operated ? "ww-dist-zone-state-badge--operated" : "ww-dist-zone-state-badge--not-operated") +
-                    '" style="--zone-color: ' + wwDistanceZoneColorVar(key) + '">' + (operated ? "Operated" : "Not Operated") + '</span>' +
+                    '<span class="ww-dist-zone-state-badge ' + badgeClass +
+                    '" style="--zone-color: ' + wwDistanceZoneColorVar(key) + '">' + badgeText + '</span>' +
                     ' <span class="ww-oc-field-unit">' + (delayNotSet ? (!wwDistanceZoneDefaultsOnBlank(key) && enabled ? "delay not configured" : "delay not set") : 'delay ' + delaySeconds.toFixed(2) + 's') + '</span>' +
                     '</span></div>'
                 );
@@ -59276,7 +59290,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const valuesList = document.getElementById("wwDistanceValuesList");
             if (!statusRow || !valuesList) return;
 
-            // D5A-2B2C-1B: see wwImpedanceRenderResult -- and a blocked result never shows a zone classification.
+            // D5A-2B2C-1B: see wwImpedanceRenderResult -- and a result without a valid impedance evaluates no zone.
             const configurationBlocked = wwCtVtBlocksResult("distance");
             if (!result || result.status !== "computed" || configurationBlocked) {
                 statusRow.hidden = false;
@@ -59286,8 +59300,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 statusRow.className = "ww-phasor-status-row" +
                     (configurationBlocked || (result && result.status !== "computed") ? " ww-phasor-status--needs-configuration" : "");
                 valuesList.innerHTML = "";
-                const sideBlocked = configurationBlocked || !!(result && result.side_conversion && result.side_conversion.block_code);
-                wwDistanceRenderZoneStateList(result && !sideBlocked ? wwDistanceZoneResultMap(result) : null);
+                // A recorded result without a valid loop impedance evaluated no zone: "Not evaluated", never "Not Operated".
+                wwDistanceRenderZoneStateList(null, true);
                 wwDistancePushRelatedWaveformRoles();
                 wwDistanceRenderPlot();
                 return;
@@ -61488,9 +61502,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceSyncSettingsFields();
             // The Zone state rows follow the new collection at once: a removed zone's row goes, a new one
             // appears (Not Operated until the re-request below answers); retained zones keep their state.
-            wwDistanceRenderZoneStateList(wwDistanceZoneResultMap(
-                wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL ? wwDistanceState.manual.latestResult : wwDistanceState.latestResult
-            ));
+            const recordedMode = wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            const shownResult = recordedMode ? wwDistanceState.latestResult : wwDistanceState.manual.latestResult;
+            const recordedNotEvaluated = recordedMode && (!shownResult || shownResult.status !== "computed" || wwCtVtBlocksResult("distance"));
+            wwDistanceRenderZoneStateList(wwDistanceZoneResultMap(shownResult), recordedNotEvaluated);
             wwDistanceHandleCharacteristicChanged(); // field visibility + the normal re-request
             wwDistanceRenderPlot();
         }

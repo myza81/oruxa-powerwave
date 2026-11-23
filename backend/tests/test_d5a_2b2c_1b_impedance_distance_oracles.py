@@ -317,9 +317,10 @@ def test_a_blocked_calculation_never_fabricates_a_zone_classification(client):
     _src, ctx = _bay(client, ws, v_side="primary", i_side="primary", ps={n: "" for n in _ALL})     # sides not defined
     body = _dist(client, ws, ctx, impedance_basis="primary", **_mho_zone_params(1, reach_ohm=1.0e9, characteristic_angle_deg=ANGLE)).json()
     assert body["status"] == "needs_configuration" and body["magnitude_ohm"] is None
-    # The zone schema has only operated / not_operated, and the established no-impedance convention is not_operated. A reach of
-    # 1e9 ohm would classify ANY computed impedance as operated, so "not_operated" here proves nothing was classified.
-    assert all(zone["state"] == "not_operated" for zone in (body["zone1"], body["zone2"], body["zone3"]))
+    # No impedance, so no zone was evaluated: none is reported. A reach of 1e9 ohm would classify ANY valid impedance as operated.
+    # (Owner review of 1B: `not_operated` is the result of a valid impedance, never a placeholder -- see
+    # test_d5a_2b2c_1b_zone_not_evaluated.py.)
+    assert body["zones"] == [] and [body[k] for k in ("zone1", "zone2", "zone3", "zone4")] == [None] * 4
 
 
 # =========================================================================== Manual mode is unchanged

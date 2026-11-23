@@ -4,7 +4,8 @@
 > requests carry only the requested OUTPUT side (`impedance_basis`). The side of each consumed Voltage and Current channel, and the VT/CT of the Measurement Groups that own them, come from
 > Recording Details, enforced by the backend for every client; `recording_basis`, `voltage_side`, `current_side` and `vt_*`/`ct_*` are optional assertions that can only block on a contradiction.
 > The impedance mathematics, guardrails and Manual mode are unchanged. See [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md). Passages below about a user-chosen Recording basis or request-carried ratios describe the earlier
-> behaviour.
+> behaviour. Also changed there (§3a): a recorded result **without a valid loop impedance reports no zone** (`zone1`..`zone4` null, `zones` empty; the page shows "Not evaluated") instead of `not_operated`; statements below that every zone is
+> reported "even when the loop cannot be computed" describe the earlier behaviour. Valid results and the Manual calculator are unchanged.
 
 > **Relay Import (Slice 3):** the panel has an additive *Import Relay
 > Settings* control (PDF upload, validated and discarded server-side; no
