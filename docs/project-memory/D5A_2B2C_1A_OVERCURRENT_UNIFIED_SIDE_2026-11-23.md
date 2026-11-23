@@ -106,7 +106,23 @@ The 15 requested areas map to: 1–4 the four oracles; 5 Level 1 Primary + Level
 
 ## 7. Verification
 
-{{VERIFICATION}}
+Final tree `49f7825` (five commits above `ad1b6ed`).
+
+| Layer | Result |
+|---|---|
+| Backend, full suite (`pytest`, whole `backend/`) | **13,933 collected: 13,528 passed, 405 skipped, 0 failed** (18.3 min). An earlier full run had one failure — the D5A-UI-002 "results unchanged by side configuration" guard still listed the Overcurrent endpoint, which now follows the side by design; the guard was updated (Impedance, Distance, PU, the protection-context report, channels and groups remain asserted unchanged) and the file re-run. |
+| Frontend static + Node (`tests/test_frontend*.py`, real helper blocks run in Node) | **2,214 passed, 0 failed** (includes the 41 new Node/static tests; the 32 retired D5A-OC-001 frontend tests are replaced by them). |
+| New backend suite | 34 tests, all passing; mutation checks: six enforcement mutants killed, the no-op control mutant survived as expected. |
+| Browser, new spec `d5a_2b2c_1a_overcurrent_side.spec.js` | **13 / 13 passed.** |
+| Browser, affected set (16 spec files: Overcurrent, Related Waveforms, Impedance, Distance ×5, Sequence, Phasor, Playback, Playback ownership, post-upload readiness, `d5a_ctvt_authority`, `d5a_ui_002_group_details`, the new spec) | **310 passed, 41 failed** (20.5 min). All 41 are in four spec files — `playback` (27), `playback_waveform_ownership` (8), `phasor_analysis` (1), `post_upload_readiness` (5) — which also fail on the **untouched approved baseline `ad1b6ed`** (41 failures across the same four files there). `overcurrent_analysis`, `analysis_related_waveforms`, `d5a_ctvt_authority`, `d5a_ui_002_group_details`, every `distance_*`, `impedance_analysis` and `sequence_components_analysis` spec pass. |
+
+**Baseline comparison.** The four spec files above were run on the baseline frontend and compared test by test. The only titles that differed between runs were in `post_upload_readiness` and are flaky in
+that file on both trees (three of them passed 6/6 and 5/5 on this tree; the baseline itself failed 1 of 6 on one of them); none involves the Overcurrent side/CT change. The Playback failures occur in Waveform-page setup
+(`#channelGroups` hidden) before any analysis code runs. The post-upload Overcurrent tests expect a number on a Primary-declared fixture with no CT, which D5A-OC-001 already withheld on the baseline.
+No unrelated application code was edited and no failing pre-existing test was weakened.
+
+**Process note.** A first version of the browser helper intercepted the upload request to set the side; it left the upload dialog hanging (82 timeouts, a 118-minute run). It was replaced by an explicit
+Recording Details API call after each upload (`setRecordedSide`), and the set was re-run from scratch.
 
 ## 8. Decisions and limitations for the owner
 
