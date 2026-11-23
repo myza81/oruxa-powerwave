@@ -18,7 +18,7 @@ Manual mode, Impedance, Distance, PU and calculated channels are untouched. DEC-
 [D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md).
 
 **Owner decisions requested:** calculated current channels are blocked for now; recordings with no P/S evidence need an engineer setting; a mixed-declaration Current group blocks its phases (report §8).
-**Next action:** owner review. D5A-2B2C-1B, D5A-2B2D, calculated-channel integration and the PU migration start only after authorisation. This branch does not include the local-only tab-corner commits of `feature/d5a-ui-003-restore-typography-spacing`.
+**Next action:** owner review. D5A-2B2C-1B, D5A-2B2D, calculated-channel integration and the PU migration start only after authorisation. The two approved tab-corner commits of `feature/d5a-ui-003-restore-typography-spacing` were cherry-picked into this branch (owner review, 2026-11-23). Owner-review hardening (calculated channels, Secondary without CT, mixed declarations, retired-test coverage) is recorded in §10 of the slice report; calculated-channel lineage remains a future enhancement.
 
 ---
 

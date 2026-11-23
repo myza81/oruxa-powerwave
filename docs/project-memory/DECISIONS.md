@@ -29695,7 +29695,7 @@ current from Recording Details only; PU, Impedance Locus, Distance Protection an
   An engineer's explicit correction of an incorrect declaration is authoritative and consumable, with provenance and the original evidence retained.
 - **Read-only report.** `GET .../engineering-contexts/{id}/overcurrent-recorded-input?phase=` reports what the calculation will consume and whether it is blocked, from the same evaluation the calculation
   uses, so the page and the backend cannot disagree. A change at Level 1 or in the consumed channel's group reaches the next request (the resolver is stateless); an unrelated Voltage group changes nothing.
-- **Known limits, for owner decision.** (a) A calculated current channel is blocked (`calculated_channel_side_unavailable`) until calculated-channel side lineage is decided. (b) A recording with no
+- **Known limits, for owner decision.** (a) A calculated current channel is blocked (`calculated_channel_side_unavailable`) — owner-accepted safe blocking and a **temporary functional regression**: the legacy basis override is deliberately not restored, and a future lineage-aware enhancement (a calculated channel's side derived from its inputs) is required. The page states that the support is not available yet and offers nothing to configure. (b) A recording with no
   P/S evidence (BEN, CSV, ...) needs an engineer's Level 1 or group setting before a recorded Overcurrent number is shown; the former "choose an unverified basis in the analyzer" path is gone.
   (c) A Current group with mixed declarations blocks every phase it owns until the engineer chooses a side for the group.
 
