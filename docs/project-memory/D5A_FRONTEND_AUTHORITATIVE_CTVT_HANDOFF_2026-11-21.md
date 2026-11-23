@@ -1,5 +1,9 @@
 # D5A — Frontend hand-off: consume authoritative CT/VT in Impedance Locus and Distance Protection
 
+> **Superseded in part (D5A-2B2C-1B, 2026-11-23):** Impedance Locus and Distance Protection no longer send `vt_*`/`ct_*` or a `recording_basis`, no longer read `protection-instrument-context` to build a plan, and have no
+> Recording-basis input; they show the backend's `protection-recorded-input` report read-only. The statements below about the page choosing and sending ratios describe the earlier design. See
+> [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
+
 > **Superseded in part (DEC-215, 2026-11-21):** a nominal-derived (`auto_nominal`) VT is now valid, consumable engineering configuration. Statements below that call it display-only / not consumable describe the earlier D5A rule. See [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
 
 **For:** Codex (Waveform Analysis redesign) and the owner · **From:** Claude (backend / API, and — per the §7 update — this Impedance/Distance frontend change) · **Status:** backend fix committed separately; frontend change implemented in its own commit, pending owner review.

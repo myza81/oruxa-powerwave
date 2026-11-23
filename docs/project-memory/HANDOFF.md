@@ -4,7 +4,7 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-23** — controlled WUI-001–004 consolidation; owner subsequently authorized exact-SHA DEV deployment after verification. Earlier engineering handoffs retain their original implementation context.
+Last updated: **2026-11-24** — D5A-2B2C-1B integrated onto the deployed WUI-001–004 baseline `3ed200c` (candidate branch, DEV release prepared); WUI-001–004 consolidation and its DEV deployment recorded below. Earlier engineering handoffs retain their original implementation context.
 
 ---
 
@@ -29,6 +29,27 @@ branch and deploying its exact SHA to DEV independently: Claude's D5A-2B2C-1B
 work is isolated and has no scheduled deployment. Complete verification/CI, deploy
 DEV, validate and report the new exact checkpoint for Claude's later integration.
 Do not merge to `main`, change production or start WUI-005.
+
+---
+
+## D5A-2B2C-1B — Impedance Locus and Distance Protection unified measurement-side integration (2026-11-23)
+
+**Status (2026-11-24):** the seven 1B commits (`3e9cc5f`..`2144893`, authored on the DEV-UAT-approved `f24f1d7`) are integrated onto the accepted WUI-001–004 DEV baseline **`3ed200c`** on `integration/d5a-2b2c-1b-on-wui-3ed200c` by a three-way merge (owner-authorised DEV-only release; no `main` merge, no PROD). The only textual conflict was this file; `frontend/index.html` merged automatically and was then verified at source level (see the integration report). The bullet below describes the 1B slice itself.
+Recorded Impedance Locus and Distance Protection (selected-time and locus) now take the Primary/Secondary side of **each consumed Voltage and Current channel** from Recording Details
+(`resolve_effective_measurement_side` + the shared consumer policy in `recorded_side_authority.py`, which Overcurrent also uses) and the VT/CT of the Measurement Groups that **own** those channels,
+only where a conversion is needed. Voltage and Current are independent (V Primary / I Secondary calculates). The page has no Recording-basis input (the Impedance basis (output) selector stays) and
+sends only `impedance_basis`; the backend enforces the authority for every client — `recording_basis`, `voltage_side`, `current_side`, `vt_*`, `ct_*` are optional assertions that can only block on a
+contradiction, and the old bypass (omit `voltage_side`/`current_side` → the request decides) is closed. New read-only `GET .../protection-recorded-input`. The mathematics, guardrails, zone geometry,
+Manual mode, Overcurrent, PU and calculated channels are untouched. DEC-216 Amendment 6. Details, data flow, oracles, reason-code matrix, tests, verification, limitations and the DEV UAT checklist:
+[D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
+
+**Owner-review hardening (same branch):** a recorded Distance result without a valid impedance now reports no zone (`zone1`..`zone4` null, `zones` empty) and the page shows "Not evaluated", instead of a `not_operated` placeholder — no schema change, report §3a.
+
+**Owner decisions requested:** calculated V/I channels are blocked for now (same as Overcurrent); recordings with no P/S evidence need an engineer setting; a mixed-declaration Measurement Group blocks every channel it
+owns; the two legs of a loop must agree on a side (report §8).
+**Next action:** owner review. D5A-2B2D (retire the legacy parameters), calculated-channel integration and the PU migration start only after authorisation.
+
+---
 
 ## D5A-2B2C-1A — Overcurrent unified measurement-side integration (2026-11-23)
 

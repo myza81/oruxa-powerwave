@@ -462,7 +462,12 @@ class TestRecordingEndpointsZonesParameter:
             ("DBAY_VA", "V", 100.0 * math.sqrt(2), 0.0), ("DBAY_VB", "V", 100.0 * math.sqrt(2), -120.0), ("DBAY_VC", "V", 100.0 * math.sqrt(2), 120.0),
             ("DBAY_IA", "A", 10.0 * math.sqrt(2), -20.0), ("DBAY_IB", "A", 10.0 * math.sqrt(2), -140.0), ("DBAY_IC", "A", 10.0 * math.sqrt(2), 100.0),
         ])
-        return workspace_id, _create_full_bay(client, workspace_id, source_id)["id"]
+        context_id = _create_full_bay(client, workspace_id, source_id)["id"]
+        # D5A-2B2C-1B: the recorded side is Recording Details' to decide; this builder's channels are all flagged `P`, and the
+        # tests below mean a secondary recording.
+        from tests.recorded_side_support import declare_sides
+        declare_sides(client, workspace_id, source_id)
+        return workspace_id, context_id
 
     def test_recording_mode_evaluates_a_fifth_and_sixth_zone(self, client):
         workspace_id, context_id = self.bay(client)
@@ -477,17 +482,26 @@ class TestRecordingEndpointsZonesParameter:
             ("zp", "operated"), ("z6", "not_operated"),
         ]
 
-    def test_recording_mode_reports_every_zone_even_when_the_loop_cannot_be_computed(self, client):
+    def test_recording_mode_reports_no_zone_when_the_loop_cannot_be_computed(self, client):
+        """D5A-2B2C-1B (owner review): this test used to assert that every requested zone is listed, as Not Operated, even when
+        the loop impedance could not be computed. `not_operated` is the geometric result of a VALID impedance, so a result
+        without one evaluates no zone: `zones` is empty and `zone1`..`zone4` are null. The zone definitions are the request's
+        own; they are not echoed back as if they were results."""
         workspace_id, context_id = self.bay(client)
         resp = _distance(client, workspace_id, context_id, analysis_time=99.0, zones=json.dumps([mho_json("a", 5), mho_json("b", 5)]))
         body = resp.json()
-        assert body["status"] != "computed" and [z["zone_key"] for z in body["zones"]] == ["a", "b"]
+        assert body["status"] != "computed" and body["zones"] == []
+        assert [body[k] for k in ("zone1", "zone2", "zone3", "zone4")] == [None] * 4
+        assert body["magnitude_ohm"] is None and body["reason_code"]
+        # the same request at a valid time lists both zones, so the empty list above is the absence of an evaluation
+        ok = _distance(client, workspace_id, context_id, analysis_time=1.5, zones=json.dumps([mho_json("a", 5), mho_json("b", 5)])).json()
+        assert ok["status"] == "computed" and [z["zone_key"] for z in ok["zones"]] == ["a", "b"]
 
     def test_the_locus_endpoint_accepts_the_generic_collection(self, client):
         workspace_id, context_id = self.bay(client)
         resp = _distance_locus(
             client, workspace_id, context_id, loop="AB", start_time=0.5, end_time=2.5, point_count=5,
-            recording_basis="secondary", impedance_basis="secondary", characteristic="mho",
+            impedance_basis="secondary", characteristic="mho",
             zones=json.dumps([mho_json(f"k{i}", 10) for i in range(7)]),
         )
         assert resp.status_code == 200, resp.text

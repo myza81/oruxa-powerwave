@@ -17,6 +17,9 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
+from tests.recorded_side_support import declare_sides  # noqa: E402
+
+
 @pytest.fixture
 def client(settings):
     app = create_app(settings)
@@ -107,11 +110,9 @@ def _create_full_bay(client, workspace_id, source_id, prefix="ZBAY"):
     return resp.json()
 
 
-def _impedance(client, workspace_id, context_id, *, phase="A", analysis_time=1.5, recording_basis="secondary", impedance_basis="secondary", **extra):
-    params = {
-        "phase": phase, "analysis_time": analysis_time,
-        "recording_basis": recording_basis, "impedance_basis": impedance_basis,
-    }
+def _impedance(client, workspace_id, context_id, *, phase="A", analysis_time=1.5, impedance_basis="secondary", **extra):
+    # D5A-2B2C-1B: the request carries only the requested OUTPUT side; the recorded sides come from Recording Details.
+    params = {"phase": phase, "analysis_time": analysis_time, "impedance_basis": impedance_basis}
     params.update(extra)
     return client.get(f"{_contexts_url(workspace_id)}/{context_id}/impedance", params=params)
 
@@ -128,7 +129,7 @@ def _impedance_manual(client, workspace_id, **params):
 
 
 class TestRecordingImpedanceViaHttp:
-    def _bay_with_known_zabc(self, client, workspace_id="ws-imp-1"):
+    def _bay_with_known_zabc(self, client, workspace_id="ws-imp-1", side="secondary", ratios=None):
         # Va = 100 V / 0deg, Ia = 1 A / -30deg -> Za = 100 ohm / +30deg (R~86.60, X=50)
         # Vb/Ib, Vc/Ic balanced three-phase equivalents.
         source_id = _upload_sine_source(client, workspace_id, channels=[
@@ -136,6 +137,7 @@ class TestRecordingImpedanceViaHttp:
             ("ZBAY_IA", "A", 1.0 * math.sqrt(2), -30.0), ("ZBAY_IB", "A", 1.0 * math.sqrt(2), -150.0), ("ZBAY_IC", "A", 1.0 * math.sqrt(2), 90.0),
         ])
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id, side, ratios=ratios)
         return workspace_id, context["id"]
 
     def test_golden_za_via_http(self, client):
@@ -173,6 +175,7 @@ class TestRecordingImpedanceViaHttp:
             ("ZBAY_IA", "A", 1e-6, -30.0), ("ZBAY_IB", "A", 1e-6, -150.0), ("ZBAY_IC", "A", 1e-6, 90.0),
         ])
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id)
         resp = _impedance(client, workspace_id, context["id"], phase="A", analysis_time=1.5)
         body = resp.json()
         assert body["status"] == "needs_configuration"
@@ -194,32 +197,39 @@ class TestRecordingImpedanceViaHttp:
         assert body["status"] == "computed"
         assert body["magnitude_ohm"] == pytest.approx(100.0, rel=1e-3)
 
-    def test_recording_basis_equal_to_impedance_basis_needs_no_ratios(self, client):
-        workspace_id, context_id = self._bay_with_known_zabc(client)
-        resp = _impedance(client, workspace_id, context_id, recording_basis="primary", impedance_basis="primary")
+    def test_a_recording_already_on_the_output_side_needs_no_ratios(self, client):
+        workspace_id, context_id = self._bay_with_known_zabc(client, side="primary")
+        resp = _impedance(client, workspace_id, context_id, impedance_basis="primary")
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["status"] == "computed"
         assert body["magnitude_ohm"] == pytest.approx(100.0, rel=1e-3)
+        assert (body["vt_primary"], body["ct_primary"]) == (None, None)
 
-    def test_basis_conversion_requires_ratios(self, client):
+    def test_basis_conversion_requires_the_ratios_of_recording_details(self, client):
+        """A Secondary recording asked for in Primary needs the VT and CT of the Measurement Groups that own the channels; there
+        are none, so the calculation is blocked -- a ratio in the request can never stand in for them."""
         workspace_id, context_id = self._bay_with_known_zabc(client)
-        resp = _impedance(client, workspace_id, context_id, recording_basis="secondary", impedance_basis="primary")
+        resp = _impedance(client, workspace_id, context_id, impedance_basis="primary")
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["status"] == "needs_configuration"
-        assert body["reason_code"] == "invalid_ratio"
+        assert body["reason_code"] == "vt_authority_unavailable"
+        assert body["magnitude_ohm"] is None and body["voltage_channel_ref"] is not None
+        with_request_ratios = _impedance(client, workspace_id, context_id, impedance_basis="primary",
+                                         vt_primary=1200, vt_secondary=1, ct_primary=1200, ct_secondary=1).json()
+        assert with_request_ratios["reason_code"] == "vt_authority_unavailable" and with_request_ratios["magnitude_ohm"] is None
 
-    def test_basis_conversion_with_ratios_scales_correctly(self, client):
-        workspace_id, context_id = self._bay_with_known_zabc(client)
-        resp = _impedance(
-            client, workspace_id, context_id, recording_basis="secondary", impedance_basis="primary",
-            vt_primary=1200, vt_secondary=1, ct_primary=1200, ct_secondary=1,
-        )
+    def test_basis_conversion_with_recording_details_ratios_scales_correctly(self, client):
+        workspace_id, context_id = self._bay_with_known_zabc(client, ratios=(1200, 1, 1200, 1))
+        resp = _impedance(client, workspace_id, context_id, impedance_basis="primary")
         body = resp.json()
         assert body["status"] == "computed"
         # vt_ratio == ct_ratio -> factor 1
         assert body["magnitude_ohm"] == pytest.approx(100.0, rel=1e-3)
+        # a different VT:CT pair scales by vt_ratio / ct_ratio: 100 ohm x 2400 / 1200
+        other_ws, other_ctx = self._bay_with_known_zabc(client, workspace_id="ws-imp-2", ratios=(2400, 1, 1200, 1))
+        assert _impedance(client, other_ws, other_ctx, impedance_basis="primary").json()["magnitude_ohm"] == pytest.approx(200.0, rel=1e-3)
 
     def test_low_current_guardrail_via_recording(self, client):
         workspace_id = "ws-imp-lowcurrent"
@@ -228,6 +238,7 @@ class TestRecordingImpedanceViaHttp:
             ("ZBAY_IA", "A", 1e-6, -30.0), ("ZBAY_IB", "A", 1e-6, -150.0), ("ZBAY_IC", "A", 1e-6, 90.0),
         ])
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id)
         resp = _impedance(client, workspace_id, context["id"], phase="A", analysis_time=1.5)
         body = resp.json()
         assert body["status"] == "needs_configuration"
@@ -247,9 +258,10 @@ class TestImpedanceLocusViaHttp:
             ("ZBAY_IA", "A", 1.0, -30.0), ("ZBAY_IB", "A", 1.0, -150.0), ("ZBAY_IC", "A", 1.0, 90.0),
         ], duration_s=2.0)
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id)
         resp = _impedance_locus(
             client, workspace_id, context["id"], phase="A", start_time=0.5, end_time=1.5, point_count=20,
-            recording_basis="secondary", impedance_basis="secondary",
+            impedance_basis="secondary",
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -271,9 +283,10 @@ class TestImpedanceLocusViaHttp:
             ],
         })
         context = resp.json()
+        declare_sides(client, workspace_id, source_id)
         resp = _impedance_locus(
             client, workspace_id, context["id"], phase="A", start_time=0.0, end_time=1.0, point_count=10_000,
-            recording_basis="secondary", impedance_basis="secondary",
+            impedance_basis="secondary",
         )
         assert resp.status_code == 200, resp.text
         assert len(resp.json()["points"]) <= 300
@@ -290,7 +303,8 @@ class TestImpedanceLocusViaHttp:
             ],
         })
         context_id = resp.json()["id"]
-        params = dict(phase="A", start_time=0.5, end_time=1.5, point_count=15, recording_basis="secondary", impedance_basis="secondary")
+        declare_sides(client, workspace_id, source_id)
+        params = dict(phase="A", start_time=0.5, end_time=1.5, point_count=15, impedance_basis="secondary")
         first = _impedance_locus(client, workspace_id, context_id, **params).json()
         second = _impedance_locus(client, workspace_id, context_id, **params).json()
         assert first == second

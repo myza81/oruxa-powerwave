@@ -466,7 +466,10 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     state across time"). A disabled zone, or no valid point at all
     (e.g. the loop-current guardrail blocked calculation), is always
     `ZONE_STATE_NOT_OPERATED` -- never a fabricated Operated state, and
-    never an exception. Each zone is evaluated completely
+    never an exception. (D5A-2B2C-1B: the RECORDED analysis no longer calls
+    this without a valid point -- a result with no valid impedance reports no
+    zone at all, see `distance_protection_analysis_service.NOT_EVALUATED_ZONES`;
+    the Manual calculator path keeps this behaviour unchanged.) Each zone is evaluated completely
     INDEPENDENTLY (task's own section 15: "do not force only one zone
     to operate" -- Zone 1/2/3 can legitimately all be `Operated`
     simultaneously for a nested characteristic set; this function has

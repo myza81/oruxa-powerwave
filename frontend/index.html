@@ -10567,6 +10567,13 @@
             color: var(--text-dim);
             background: transparent;
         }
+        /* No valid loop impedance, so no zone was evaluated (a recorded result that is blocked or unavailable). Not the same
+           as Not Operated, which is a geometric result for a valid impedance. */
+        .ww-dist-zone-state-badge--not-evaluated {
+            color: var(--text-dim);
+            background: transparent;
+            border-style: dashed;
+        }
         .ww-oc-values-list {
             display: flex;
             flex-direction: column;
@@ -12643,15 +12650,9 @@
                                                 <option value="primary">Primary</option>
                                             </select>
                                         </label>
-                                        <label class="ww-phasor-field ww-oc-field-full" id="wwImpedanceRecordingBasisField">
-                                            <span class="ww-phasor-field-label">Recording basis (as recorded)</span>
-                                            <select id="wwImpedanceRecordingBasisSelect">
-                                                <option value="secondary" selected>Secondary</option>
-                                                <option value="primary">Primary</option>
-                                            </select>
-                                        </label>
-                                        <!-- D5A: read-only CT/VT from the Recording Details Measurement Group
-                                             (never an editor; Recording input source only). Filled by wwCtVtRender(). -->
+                                        <!-- D5A-2B2C-1B: what this recorded analysis consumes from Recording Details -- the Voltage and Current
+                                             measurement sides, the VT/CT of the owning Measurement Groups and any blocker. Read-only (never an
+                                             editor; Recording input source only); there is no Recording-basis input any more. Filled by wwCtVtRender(). -->
                                         <div class="ww-ctvt-authority ww-oc-field-full" id="wwImpedanceCtVtAuthority" role="status" aria-live="polite" hidden></div>
                                     </div>
 
@@ -13118,15 +13119,9 @@
                                                 <option value="primary">Primary</option>
                                             </select>
                                         </label>
-                                        <label class="ww-phasor-field ww-oc-field-full" id="wwDistanceRecordingBasisField">
-                                            <span class="ww-phasor-field-label">Recording basis (as recorded)</span>
-                                            <select id="wwDistanceRecordingBasisSelect">
-                                                <option value="secondary" selected>Secondary</option>
-                                                <option value="primary">Primary</option>
-                                            </select>
-                                        </label>
-                                        <!-- D5A: read-only CT/VT from the Recording Details Measurement Group
-                                             (never an editor; Recording input source only). Filled by wwCtVtRender(). -->
+                                        <!-- D5A-2B2C-1B: what this recorded analysis consumes from Recording Details -- the Voltage and Current
+                                             measurement sides, the VT/CT of the owning Measurement Groups and any blocker. Read-only (never an
+                                             editor; Recording input source only); there is no Recording-basis input any more. Filled by wwCtVtRender(). -->
                                         <div class="ww-ctvt-authority ww-oc-field-full" id="wwDistanceCtVtAuthority" role="status" aria-live="polite" hidden></div>
                                     </div>
 
@@ -53839,12 +53834,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             activeTimeGroupId: null,
             analysisTime: null,
             phase: "A",
+            // Only the requested OUTPUT side is a setting; the recorded sides come from Recording Details (DEC-216).
             settings: {
-                recordingBasis: "secondary",
                 outputBasis: "secondary",
-                // True once the user chose the Recording basis; until then it may be
-                // pre-selected from consistent declared evidence (wwCtVtApplyPreselection).
-                recordingBasisExplicit: false,
             },
             latestResult: null,
             requestGeneration: 0,
@@ -53877,43 +53869,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             manualRequestGeneration: 0,
         };
 
-        // ---- D5A: authoritative CT/VT for the RECORDED Impedance Locus and
-        // Distance Protection analyses. ----
-        // The Recording Details Measurement Group is the ONLY recorded-mode
-        // source of VT/CT. It is read through the read-only D5A-2A
-        // `protection-instrument-context` API and shown read-only; there is
-        // deliberately NO VT/CT editor here (the correction path is
-        // wwNavigateToRdForGroup()). Only ratios the API marks
-        // `ratio_consumable` are ever sent, and never a partial VT/CT set. A VT
-        // Recording Details derives from the accepted nominal voltage
-        // (authority `auto_nominal`, nominal kV over a 110 V secondary) is valid
-        // configuration (owner decision 2026-11-21): it is shown like any other
-        // VT, labelled "Auto-derived", and needs no confirmation. Manual mode
-        // keeps its own inputs.
+        // D5A-2B2C-1B-BLOCK-START
+        // ---- D5A-2B2C-1B: what the RECORDED Impedance Locus and Distance Protection analyses consume from Recording
+        // Details (DEC-216). ----
+        // Recording Details is the ONLY recorded-mode source of the measurement side of the consumed Voltage and Current
+        // channels and of the VT/CT of the Measurement Groups that own them. There is no Recording-basis input, the
+        // request carries only the requested OUTPUT side (`impedance_basis`) -- no recorded side, no ratio -- and this
+        // block shows the answer read-only. The report comes from the backend's `protection-recorded-input` endpoint,
+        // which evaluates the very authority the calculation enforces, so the page keeps no side, group or ratio model of
+        // its own and never infers a side from a magnitude, a name or a ratio. There is deliberately NO editor here: the
+        // correction path is wwNavigateToRdForGroup().
         //
-        // The recorded Overcurrent analysis no longer uses this block: it reads its measurement side and CT
-        // from the backend's `overcurrent-recorded-input` report (wwOcRecordedInput*, D5A-2B2C-1A).
-        //
-        // Measurement side: the recorded analyses take ONE `recording_basis`
-        // for voltage and current. Conversion is therefore refused when the
-        // two sides differ or are mixed, and an undeclared side is never
-        // assumed: the Recording basis is pre-selected only from consistent
-        // declared evidence, otherwise the user must choose it explicitly and
-        // the choice stays marked "unverified". No request ever carries a
-        // ratio the plan has blocked, so a blocked plan can only produce the
-        // backend's own needs_configuration result (which still carries the
-        // resolved channel references for Related Waveforms).
+        // A result is withheld (never shown stale) while the read is in flight, when it failed, and whenever the backend
+        // reports a configuration blocker; Related Waveforms stay available because the backend keeps the channel
+        // identities on a blocked result. A VT that Recording Details derives from the accepted nominal voltage (authority
+        // `auto_nominal`) is valid configuration and is shown like any other VT, labelled "Auto-derived". Manual mode keeps
+        // its own inputs. The recorded Overcurrent analysis has its own one-channel block (wwOcRecordedInput*).
         function wwCtVtPanel(kind) {
             if (kind === "distance") {
                 return {
                     kind: "distance", analysis: "distance_protection", prefix: "wwDistance", state: wwDistanceState,
-                    title: "CT / VT from Recording Details", basisSelectId: "wwDistanceRecordingBasisSelect",
                     scope: () => ({ loop: wwDistanceState.loop }), rerun: () => wwDistanceHandleSettingsChanged(),
                 };
             }
             return {
                 kind: "impedance", analysis: "impedance", prefix: "wwImpedance", state: wwImpedanceState,
-                title: "CT / VT from Recording Details", basisSelectId: "wwImpedanceRecordingBasisSelect",
                 scope: () => ({ phase: wwImpedanceState.phase }), rerun: () => wwImpedanceHandleSettingsChanged(),
             };
         }
@@ -53937,194 +53917,90 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_CTVT_AUTHORITY_LABELS = {
             manual: "Manual", recording_metadata: "Recording metadata", auto_nominal: "Auto-derived", mixed: "Mixed sources",
         };
+        const WW_CTVT_SIDE_TEXT = { primary: "Primary", secondary: "Secondary" };
+        const WW_CTVT_OVERRIDE_CODES = ["GROUP_OVERRIDE_OVERRIDES_DECLARATION", "ENGINEER_CORRECTION_OVERRIDES_DECLARATION"];
+        // A calculated channel has no Measurement Group and no side in Recording Details yet (a known, temporary
+        // limitation): the page says so and offers no link, because nothing there can resolve it.
+        const WW_CTVT_CALCULATED_REASON = "calculated_channel_side_unavailable";
+        // Where the effective side comes from, in words (null when the authority does not decide a side).
+        function wwCtVtSideProvenance(authority, groupName) {
+            if (authority === "engineer_group_override") return "set by engineer" + (groupName ? " for " + groupName : "");
+            if (authority === "engineer_recording_correction") return "set by engineer for the recording";
+            if (authority === "recording_channel_declared") return "declared by the recording";
+            if (authority === "mixed") return "declared and set by engineer";
+            if (authority === "recording_default") return "inferred from the recording";
+            return null;
+        }
+        const WW_CTVT_CONFLICT_CODES = ["voltage_group_side_conflict", "current_group_side_conflict",
+            "voltage_mixed_side_within_quantity", "current_mixed_side_within_quantity"];
+        const WW_CTVT_INFERRED_CODES = ["voltage_side_inferred", "current_side_inferred"];
 
-        // The channels this analysis resolved for one quantity (V* roles are voltage), with the
-        // Measurement Group each one belongs to.
-        function wwCtVtQuantityChannels(report, quantity) {
-            return (report.channels || []).filter((c) => c.quantity === quantity);
-        }
-        function wwCtVtGroupName(sourceId, groupId) {
-            const groups = ww.measurementGroups.get(sourceId) || [];
-            const group = groups.find((g) => g.id === groupId);
-            return group && group.display_name ? group.display_name : null;
-        }
-        // { names, target } -- the group(s) a quantity's ratio comes from and where to correct it.
-        function wwCtVtQuantityGroups(report, quantity) {
-            const channels = wwCtVtQuantityChannels(report, quantity);
-            const grouped = channels.filter((c) => c.measurement_group_id);
-            const names = [];
-            for (const c of grouped) {
-                const name = wwCtVtGroupName(c.channel.source_id, c.measurement_group_id);
-                if (name && !names.includes(name)) names.push(name);
-            }
-            const anchor = grouped[0] || channels[0] || null;
-            const target = anchor ? { sourceId: anchor.channel.source_id || null, groupId: anchor.measurement_group_id || null } : null;
-            return { names, target, ungrouped: channels.filter((c) => !c.measurement_group_id) };
+        function wwCtVtSideKnown(qa) {
+            return !!qa && Object.prototype.hasOwnProperty.call(WW_CTVT_SIDE_TEXT, qa.effective_side);
         }
 
-        // The specific, actionable reason one quantity's ratio is unusable (null when usable).
-        function wwCtVtRatioBlocker(report, quantity) {
-            const ctx = report[quantity];
-            const tag = quantity === "voltage" ? "VT" : "CT";
-            const kind = quantity === "voltage" ? "Voltage" : "Current";
-            if (!ctx || ctx.ratio_consumable) return null;
-            const groups = wwCtVtQuantityGroups(report, quantity);
-            const groupText = groups.names.length ? "'" + groups.names.join("', '") + "'" : "its Measurement Group";
-            let code = tag + "_AUTHORITY_MISSING";
-            let text;
-            if (ctx.ratio_status === "no_channels") {
-                const missing = (report.diagnostics || []).filter((d) => d.code === "CHANNEL_UNRESOLVED" && d.quantity === quantity)
-                    .map((d) => wwRoleLabelText(d.detail && d.detail.role_key ? d.detail.role_key : ""));
-                code = "CHANNEL_UNRESOLVED";
-                text = (missing.length ? "Role " + missing.join(", ") : "A " + quantity + " channel") +
-                    " did not resolve to a channel in this Engineering Context.";
-            } else if (ctx.ratio_status === "no_group") {
-                const names = groups.ungrouped.map((c) => c.channel.channel_name).filter(Boolean);
-                code = tag + "_NO_GROUP";
-                text = (names.length ? names.join(", ") : "A " + quantity + " channel") + " is not in a " + kind +
-                    " Measurement Group. Add it in Recording Details.";
-            } else if (ctx.ratio_status === "invalid" || ctx.ratio_status === "untrusted_authority") {
-                code = tag + "_UNUSABLE";
-                text = "The " + tag + " in " + groupText + " is not usable" + (ctx.reason ? " (" + ctx.reason + ")" : "") +
-                    ". Correct it in Recording Details.";
-            } else if (ctx.ratio_status === "conflict") {
-                code = tag + "_CONFLICT";
-                text = "Phases use groups with different " + tag + " ratios (" + groups.names.join(", ") + "). Align them in Recording Details.";
-            } else if (tag === "VT") {
-                // Reached only when no VT is stored AND none could be derived from the nominal voltage.
-                const nominal = ctx.nominal_ll_kv !== null && ctx.nominal_ll_kv !== undefined ? wwCtVtNumberText(ctx.nominal_ll_kv) + " kV" : null;
-                code = "VT_NOMINAL_NOT_USABLE";
-                if (nominal && ctx.nominal_refused_reason === "manual_conflict") {
-                    text = "The VT of " + groupText + " cannot be derived from its nominal voltage (" + nominal +
-                        "): it conflicts with the channel evidence. Resolve the nominal voltage in Recording Details, or enter the VT.";
-                } else if (nominal && ctx.nominal_refused_reason === "base_not_accepted") {
-                    text = "The VT of " + groupText + " cannot be derived from its nominal voltage (" + nominal +
-                        "): the voltage base has not been accepted. Accept it in Recording Details, or enter the VT.";
-                } else {
-                    code = "VT_AUTHORITY_MISSING";
-                    text = "VT is not configured for " + groupText +
-                        ". Set the nominal voltage, or the VT primary kV and secondary V, in Recording Details.";
-                }
-            } else {
-                text = "CT is not configured for " + groupText + ". Set primary and secondary A in Recording Details.";
-                // A CT held by ANOTHER Current group of the same recording is a common cause: say so.
-                const sourceId = groups.target ? groups.target.sourceId : null;
-                const own = new Set((ctx.group_ids || []));
-                const other = (sourceId ? (ww.measurementGroups.get(sourceId) || []) : []).find((g) => g.kind === "current" && !own.has(g.id) &&
-                    g.current_config && g.current_config.ct_primary_a != null && g.current_config.ct_secondary_a != null);
-                if (other) {
-                    const channels = wwCtVtQuantityChannels(report, quantity).map((c) => c.channel.channel_name).filter(Boolean);
-                    text += " A CT of " + wwCtVtNumberText(other.current_config.ct_primary_a) + " A / " +
-                        wwCtVtNumberText(other.current_config.ct_secondary_a) + " A is configured on '" + other.display_name + "', but " +
-                        (channels.length ? channels.join(", ") : "this analysis's current channel") + " belongs to " + groupText + ".";
-                }
-            }
-            return { code, quantity, text, target: groups.target };
-        }
-
-        // Pure: what the recorded request may carry and what the user must be told.
-        // `status` is the report-load state; `settings` supplies recordingBasis, outputBasis and
-        // whether the user chose the Recording basis explicitly.
-        function wwCtVtComputePlan(report, status, error, settings) {
-            const conversionNeeded = settings.recordingBasis !== (settings.outputBasis || "secondary");
-            const plan = {
-                conversionNeeded, status, ratios: null, suggestedBasis: null, basisState: "unknown",
-                blockers: [], warnings: [], notes: [], confirmBasisNeeded: false,
-            };
+        // Pure: what the user must be told and whether a result may be shown.
+        // `status` is the report-load state; `report` is the backend's `protection-recorded-input` answer.
+        function wwCtVtComputePlan(report, status, error) {
+            const plan = { status, ready: false, blockers: [], notes: [] };
             if (status === "idle") return plan;
+            if (status === "loading") {
+                plan.blockers.push({ code: "CONTEXT_LOADING", text: "Checking the measurement sides and CT/VT in Recording Details…" });
+                return plan;
+            }
             if (status !== "ready" || !report) {
-                if (conversionNeeded) {
-                    plan.blockers.push(status === "error"
-                        ? { code: "CONTEXT_UNAVAILABLE", quantity: null, target: null,
-                            text: "The CT/VT configuration could not be read from Recording Details" + (error ? " (" + error + ")" : "") +
-                                ". Conversion is not applied." }
-                        : { code: "CONTEXT_LOADING", quantity: null, target: null,
-                            text: "Checking the CT/VT configuration in Recording Details…" });
-                }
-                return plan;
-            }
-            const voltage = report.voltage;
-            const current = report.current;
-            const present = [voltage, current].filter(Boolean);
-            if (present.some((q) => q.side_status === "mixed")) plan.basisState = "mixed";
-            else if (present.length && present.every((q) => q.declared_basis)) {
-                plan.basisState = present.every((q) => q.declared_basis === present[0].declared_basis) ? "declared" : "differs";
-            }
-            if (plan.basisState === "declared") plan.suggestedBasis = present[0].declared_basis;
-
-            // Contradictions with a declared side are shown, never overridden.
-            for (const [quantity, ctx] of [["voltage", voltage], ["current", current]]) {
-                if (ctx && ctx.declared_basis && ctx.declared_basis !== settings.recordingBasis) {
-                    plan.warnings.push({
-                        code: "RECORDING_BASIS_CONTRADICTS_" + quantity.toUpperCase(), quantity, target: null,
-                        text: "The recording declares the " + quantity + " as " + ctx.declared_basis + ", but the Recording basis is " +
-                            settings.recordingBasis + ".",
-                    });
-                }
-            }
-            const sideText = plan.basisState === "mixed"
-                ? "The voltage or current channels of this analysis declare different measurement sides, so one Recording basis cannot describe them."
-                : plan.basisState === "differs"
-                    ? "Voltage and current are recorded on different sides (voltage: " + voltage.declared_basis + ", current: " +
-                      current.declared_basis + "), so one Recording basis cannot describe both."
-                    : null;
-            if (!conversionNeeded) {
-                if (sideText) plan.warnings.push({ code: plan.basisState === "mixed" ? "SIDES_MIXED" : "SIDES_DIFFER", text: sideText });
-                return plan;
-            }
-
-            const needed = [wwCtVtRatioBlocker(report, "voltage"), wwCtVtRatioBlocker(report, "current")].filter(Boolean);
-            plan.blockers.push(...needed);
-            if (sideText) {
                 plan.blockers.push({
-                    code: plan.basisState === "mixed" ? "SIDES_MIXED" : "SIDES_DIFFER", quantity: null, target: null,
-                    text: sideText + " This single-basis analysis cannot convert them; Independent-side mode is required.",
+                    code: "CONTEXT_UNAVAILABLE",
+                    text: "The measurement sides and CT/VT could not be read from Recording Details" + (error ? " (" + error + ")" : "") +
+                        ". No result is shown.",
                 });
-            } else if (plan.basisState === "unknown") {
-                if (settings.recordingBasisExplicit) {
-                    plan.notes.push({ code: "BASIS_UNVERIFIED", text: "Recording basis chosen by you (" + settings.recordingBasis +
-                        "); the recording does not declare it — unverified." });
-                } else {
-                    plan.confirmBasisNeeded = true;
-                    plan.blockers.push({
-                        code: "BASIS_UNDECLARED", quantity: null, target: null,
-                        text: "The recording does not declare whether the " + (voltage && current ? "voltage/current channels are" : "current channel is") +
-                            " primary or secondary — choose the Recording basis explicitly.",
+                return plan;
+            }
+            if (report.status !== "ready") {
+                plan.blockers.push({ code: report.reason_code || "not_ready", text: report.message || "The recorded input cannot be used yet." });
+                return plan;
+            }
+            plan.ready = true;
+            for (const quantity of ["voltage", "current"]) {
+                const qa = report[quantity];
+                const overrides = qa && (qa.channel_sides || []).some((c) => (c.diagnostics || []).some((d) => WW_CTVT_OVERRIDE_CODES.indexOf(d.code) >= 0));
+                if (overrides) {
+                    plan.notes.push({
+                        code: "SIDE_OVERRIDES_DECLARATION_" + quantity.toUpperCase(),
+                        text: "The recording declares the " + quantity + " as " + (qa.declared_sides || []).join(" / ") +
+                            "; the side set in Recording Details is used instead.",
                     });
                 }
-            }
-            if (plan.blockers.length === 0) {
-                plan.ratios = {};
-                if (voltage) Object.assign(plan.ratios, { vt_primary: String(voltage.primary), vt_secondary: String(voltage.secondary) });
-                if (current) Object.assign(plan.ratios, { ct_primary: String(current.primary), ct_secondary: String(current.secondary) });
             }
             return plan;
         }
         function wwCtVtPlanFor(kind) {
-            const panel = wwCtVtPanel(kind);
-            const st = wwCtVtStateOf(panel);
-            return wwCtVtComputePlan(st.report, st.status, st.error, panel.state.settings);
+            const st = wwCtVtStateOf(wwCtVtPanel(kind));
+            return wwCtVtComputePlan(st.report, st.status, st.error);
         }
-        // Folds everything a request depends on into the locus-cache signature.
+        function wwCtVtBlocksResult(kind) {
+            return wwCtVtPlanFor(kind).blockers.length > 0;
+        }
+        // Folds what the authority decided into one string: when it changes, the analysis is requested again, and the
+        // locus cache is keyed by it.
         function wwCtVtSignature(kind) {
-            const plan = wwCtVtPlanFor(kind);
-            return plan.ratios ? "ratios:" + Object.values(plan.ratios).join("/")
-                : "blocked:" + plan.blockers.map((b) => b.code).join(",");
+            const st = wwCtVtStateOf(wwCtVtPanel(kind));
+            const r = st.report;
+            if (st.status !== "ready" || !r) return "state:" + st.status;
+            const quantitySignature = (qa) => !qa ? "-" : [
+                qa.effective_side || "", qa.authority || "", qa.problem_code || "",
+                qa.ratio_required && qa.transformer && qa.transformer.consumable ? qa.transformer.primary + ":" + qa.transformer.secondary : "",
+            ].join("/");
+            return [r.status, r.reason_code || "", r.output_side, quantitySignature(r.voltage), quantitySignature(r.current)].join("|");
         }
-        // The legacy request parameters, from the authoritative plan only.
+        // The recorded request parameters: the requested OUTPUT side and nothing else (no recorded side, no ratio).
         function wwCtVtBasisParams(kind) {
-            const s = wwCtVtPanel(kind).state.settings;
-            const params = { recording_basis: s.recordingBasis };
-            if (s.outputBasis !== undefined) params.impedance_basis = s.outputBasis;
-            const plan = wwCtVtPlanFor(kind);
-            wwCtVtStateOf(wwCtVtPanel(kind)).requestedSignature = wwCtVtSignature(kind);
-            if (plan.ratios) Object.assign(params, plan.ratios);
-            return params;
+            const panel = wwCtVtPanel(kind);
+            wwCtVtStateOf(panel).requestedSignature = wwCtVtSignature(kind);
+            return { impedance_basis: panel.state.settings.outputBasis };
         }
-        // A blocked recorded result is explained by the specific configuration warning, not the generic one.
+        // The specific, actionable reason a result is withheld (null when it is not).
         function wwCtVtResultMessage(kind, result) {
-            if (!result) return null;
-            if (result.reason_code !== "invalid_ratio") return null;
             const plan = wwCtVtPlanFor(kind);
             return plan.blockers.length ? plan.blockers.map((b) => b.text).join(" ") : null;
         }
@@ -54141,62 +54017,66 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             const scope = panel.scope();
-            const key = [workspaceId, contextId, panel.analysis, scope.phase || "", scope.loop || ""].join("|");
+            const outputBasis = panel.state.settings.outputBasis;
+            const key = [workspaceId, contextId, panel.analysis, scope.phase || "", scope.loop || "", outputBasis].join("|");
             if (!force && st.key === key && (st.status === "ready" || st.status === "loading")) return;
             const generation = ++st.generation;
             st.key = key; st.status = "loading"; st.report = null; st.error = "";
             wwCtVtRender(kind);
-            const params = new URLSearchParams(Object.assign({ analysis: panel.analysis }, scope));
+            const params = new URLSearchParams(Object.assign({ analysis: panel.analysis, impedance_basis: outputBasis }, scope));
             let report = null;
             let error = "";
             try {
                 report = await wwPhasorFetchJson(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                    "/engineering-contexts/" + encodeURIComponent(contextId) + "/protection-instrument-context?" + params.toString()
+                    "/engineering-contexts/" + encodeURIComponent(contextId) + "/protection-recorded-input?" + params.toString()
                 );
             } catch (e) {
                 if (e && e.name === "AbortError") return;
                 error = (e && e.message) || "Request failed.";
             }
-            if (generation !== st.generation) return;
-            // Group names make the messages specific; Recording Details shares this cache, so a source
-            // it has not loaded yet is read once here (read-only).
-            if (report) {
-                const sourceIds = new Set((report.channels || []).filter((c) => c.measurement_group_id && c.channel.source_id)
-                    .map((c) => c.channel.source_id));
-                for (const sourceId of sourceIds) {
-                    if (!ww.measurementGroups.has(sourceId)) await wwFetchMeasurementGroupsForSource(sourceId);
-                }
-                if (generation !== st.generation) return;
-            }
+            // A newer read, a reset, or another workspace supersedes this answer.
+            if (generation !== st.generation || currentWorkspaceId() !== workspaceId) return;
             st.status = error ? "error" : "ready";
             st.report = report;
             st.error = error;
-            wwCtVtApplyPreselection(panel);
             wwCtVtRender(kind);
-            // Re-request only when the answer changes what the request would carry.
+            // Request the analysis again only when the answer changes what the backend would compute from.
             if (panel.state.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING && st.requestedSignature !== wwCtVtSignature(kind)) {
                 panel.rerun();
             }
-        }
-        // Pre-select the Recording basis ONLY from consistent declared evidence and only while the
-        // user has not chosen it; an undeclared or contradictory recording never changes it.
-        function wwCtVtApplyPreselection(panel) {
-            const s = panel.state.settings;
-            if (s.recordingBasisExplicit) return;
-            const plan = wwCtVtComputePlan(wwCtVtStateOf(panel).report, wwCtVtStateOf(panel).status, "", s);
-            if (!plan.suggestedBasis || s.recordingBasis === plan.suggestedBasis) return;
-            s.recordingBasis = plan.suggestedBasis;
-            const el = document.getElementById(panel.basisSelectId);
-            if (el) el.value = s.recordingBasis;
         }
         function wwCtVtReset(kind) {
             const st = wwCtVtStateOf(wwCtVtPanel(kind));
             st.generation += 1;
             st.key = null; st.status = "idle"; st.report = null; st.error = ""; st.requestedSignature = null;
         }
-        function wwCtVtNoteRecordingBasisChosen(kind) {
-            wwCtVtPanel(kind).state.settings.recordingBasisExplicit = true;
+
+        // The effective side of one quantity with where it comes from, or why there is none.
+        function wwCtVtSideValueHtml(qa) {
+            if (qa.problem_code === WW_CTVT_CALCULATED_REASON) return '<span class="ww-ctvt-source">not available for a calculated channel</span>';
+            if (!wwCtVtSideKnown(qa)) {
+                if (WW_CTVT_CONFLICT_CODES.indexOf(qa.problem_code) >= 0) return '<span class="ww-ctvt-missing">conflicting declarations</span>';
+                if (WW_CTVT_INFERRED_CODES.indexOf(qa.problem_code) >= 0) return '<span class="ww-ctvt-missing">only inferred, not usable</span>';
+                return '<span class="ww-ctvt-missing">not defined</span>';
+            }
+            const provenance = wwCtVtSideProvenance(qa.authority, (qa.group_names || [])[0] || null);
+            return escapeHtml(WW_CTVT_SIDE_TEXT[qa.effective_side]) +
+                (provenance ? ' <span class="ww-ctvt-source">(' + escapeHtml(provenance) + ")</span>" : "");
+        }
+        // The VT/CT of the group(s) that own the consumed channels; null when the side is not known (a ratio may or may not be needed).
+        function wwCtVtTransformerHtml(quantity, qa) {
+            if (!wwCtVtSideKnown(qa) || qa.problem_code === WW_CTVT_CALCULATED_REASON) return null;
+            if (!qa.ratio_required) {
+                return 'not needed <span class="ww-ctvt-source">(' + escapeHtml(quantity + " is already " + WW_CTVT_SIDE_TEXT[qa.effective_side]) + ")</span>";
+            }
+            const tr = qa.transformer;
+            if (tr && tr.consumable) {
+                const names = (qa.group_names || []).join(", ");
+                return escapeHtml(wwCtVtRatioText(quantity, tr)) + ' <span class="ww-ctvt-source">(' +
+                    escapeHtml((WW_CTVT_AUTHORITY_LABELS[tr.authority] || tr.authority) + (names ? ", " + names : "")) + ")</span>";
+            }
+            return '<span class="ww-ctvt-missing">not configured</span>';
         }
 
         function wwCtVtRender(kind) {
@@ -54211,56 +54091,48 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const plan = wwCtVtPlanFor(kind);
             const html = [];
-            html.push('<div class="ww-ctvt-title">' + escapeHtml(panel.title) + '</div>');
+            html.push('<div class="ww-ctvt-title">Recorded input — from Recording Details</div>');
             if (st.status === "ready" && st.report) {
-                for (const [quantity, tag] of [["voltage", "VT"], ["current", "CT"]]) {
-                    const ctx = st.report[quantity];
-                    if (!ctx) continue;
-                    const groups = wwCtVtQuantityGroups(st.report, quantity);
-                    const value = ctx.ratio_consumable
-                        ? wwCtVtRatioText(quantity, ctx) + " <span class=\"ww-ctvt-source\">(" +
-                          escapeHtml(WW_CTVT_AUTHORITY_LABELS[ctx.authority] || ctx.authority) +
-                          (groups.names.length ? ", " + escapeHtml(groups.names.join(", ")) : "") + ")</span>"
-                        : '<span class="ww-ctvt-missing">not configured</span>';
-                    const canNavigate = groups.target && groups.target.sourceId;
-                    html.push('<div class="ww-ctvt-row" data-ctvt-quantity="' + quantity + '">' +
-                        '<span class="ww-ctvt-label">' + tag + '</span>' +
-                        '<span class="ww-ctvt-value" data-ctvt-value="' + quantity + '">' + value + '</span>' +
+                for (const [quantity, sideLabel, tag] of [["voltage", "Voltage side", "VT"], ["current", "Current side", "CT"]]) {
+                    const qa = st.report[quantity];
+                    if (!qa) continue;
+                    const canNavigate = qa.configure_target && qa.configure_target.source_id && qa.problem_code !== WW_CTVT_CALCULATED_REASON;
+                    html.push('<div class="ww-ctvt-row" data-ctvt-row="' + quantity + '-side"><span class="ww-ctvt-label">' + sideLabel + '</span>' +
+                        '<span class="ww-ctvt-value" data-ctvt-value="' + quantity + '-side">' + wwCtVtSideValueHtml(qa) + '</span>' +
                         (canNavigate
                             ? '<button type="button" class="ww-ctvt-configure" data-ctvt-configure="' + quantity + '">Configure in Recording Details</button>'
                             : '') +
                         '</div>');
+                    const transformerHtml = wwCtVtTransformerHtml(quantity, qa);
+                    if (transformerHtml !== null) {
+                        html.push('<div class="ww-ctvt-row" data-ctvt-row="' + quantity + '-ratio"><span class="ww-ctvt-label">' + tag + '</span>' +
+                            '<span class="ww-ctvt-value" data-ctvt-value="' + quantity + '-ratio">' + transformerHtml + '</span></div>');
+                    }
                 }
             } else if (st.status === "loading") {
-                html.push('<div class="ww-ctvt-row ww-ctvt-loading">Checking the CT/VT configuration…</div>');
+                html.push('<div class="ww-ctvt-row ww-ctvt-loading">Checking the measurement sides and CT/VT…</div>');
             }
-            const messages = plan.blockers.concat(plan.warnings, plan.notes);
+            const messages = plan.blockers.concat(plan.notes);
             if (messages.length) {
                 html.push('<ul class="ww-ctvt-messages">' + messages.map((m) =>
                     '<li data-ctvt-code="' + escapeHtml(m.code) + '">' + escapeHtml(m.text) + '</li>').join("") + '</ul>');
             }
-            if (plan.confirmBasisNeeded) {
-                const s = panel.state.settings;
-                html.push('<button type="button" class="ww-ctvt-confirm-basis" data-ctvt-confirm-basis="1">Use ' +
-                    escapeHtml(s.recordingBasis) + ' as the Recording basis</button>');
-            }
             host.innerHTML = html.join("");
             host.hidden = false;
         }
-        function wwCtVtHandleClick(kind, event) {
+        async function wwCtVtHandleClick(kind, event) {
             const configure = event.target.closest("[data-ctvt-configure]");
-            if (configure) {
-                const st = wwCtVtStateOf(wwCtVtPanel(kind));
-                if (!st.report) return;
-                const target = wwCtVtQuantityGroups(st.report, configure.getAttribute("data-ctvt-configure")).target;
-                if (target && target.sourceId) wwNavigateToRdForGroup(target.sourceId, target.groupId);
-                return;
-            }
-            if (event.target.closest("[data-ctvt-confirm-basis]")) {
-                wwCtVtNoteRecordingBasisChosen(kind);
-                wwCtVtPanel(kind).rerun();
-            }
+            if (!configure) return;
+            const st = wwCtVtStateOf(wwCtVtPanel(kind));
+            const qa = st.report ? st.report[configure.getAttribute("data-ctvt-configure")] : null;
+            const target = qa ? qa.configure_target : null;
+            if (!target || !target.source_id) return;
+            // Recording Details keeps a pre-selected group only when that recording's groups are already cached, so
+            // read them once (read-only) before opening it.
+            if (target.group_id && !ww.measurementGroups.has(target.source_id)) await wwFetchMeasurementGroupsForSource(target.source_id);
+            wwNavigateToRdForGroup(target.source_id, target.group_id);
         }
+        // D5A-2B2C-1B-BLOCK-END
 
         function wwImpedanceFetchAnalysis(workspaceId, contextId, params) {
             return wwPhasorFetchJson(
@@ -54524,9 +54396,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (el) el.hidden = !isUpdating;
         }
 
-        // The recording basis / output basis plus, when a conversion is needed AND the Recording
-        // Details Measurement Group supplies usable VT and CT with consistent sides, those
-        // authoritative ratios (see wwCtVtBasisParams()). There is no panel-local ratio.
+        // The requested OUTPUT side only. The recorded sides and the VT/CT come from Recording Details on the backend
+        // (D5A-2B2C-1B); the request carries no recording basis, no side and no ratio.
         function wwImpedanceBasisParams(s) {
             return wwCtVtBasisParams("impedance");
         }
@@ -54590,7 +54461,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return [
                 wwImpedanceState.selectedContextId, wwImpedanceState.activeTimeGroupId, wwImpedanceState.phase,
                 wwAnalyserTimingFingerprint(wwImpedanceState),
-                s.recordingBasis, s.outputBasis, wwCtVtSignature("impedance"),
+                s.outputBasis, wwCtVtSignature("impedance"),
             ].join("|");
         }
         function wwImpedanceInvalidateLocus() {
@@ -54653,13 +54524,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const valuesList = document.getElementById("wwImpedanceValuesList");
             if (!statusRow || !valuesList) return;
 
-            if (!result || result.status !== "computed") {
+            // D5A-2B2C-1B: a configuration blocker (side not defined / only inferred / contradictory, a needed VT or CT
+            // missing) -- or a read of Recording Details still in flight -- withholds the result, so a number computed
+            // under a previous setting is never shown as current. Related Waveforms stay (identity is not a result).
+            const configurationBlocked = wwCtVtBlocksResult("impedance");
+            if (!result || result.status !== "computed" || configurationBlocked) {
                 statusRow.hidden = false;
                 statusRow.textContent = wwCtVtResultMessage("impedance", result) || (result && result.message) ||
                     (result && WW_IMPEDANCE_STATUS_LABELS[result.status]) ||
                     "Impedance could not be computed for this selection.";
                 statusRow.className = "ww-phasor-status-row" +
-                    (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
+                    (configurationBlocked || (result && result.status !== "computed") ? " ww-phasor-status--needs-configuration" : "");
                 valuesList.innerHTML = "";
                 wwImpedancePushRelatedWaveformRoles();
                 wwImpedanceRenderPlot();
@@ -54742,6 +54617,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return 10 * magnitude;
         }
+        // D5A-2B2C-1B: the recorded result/locus a blocker withholds is never plotted or used to size the viewport.
+        function wwImpedanceRecordedResult() {
+            return wwCtVtBlocksResult("impedance") ? null : wwImpedanceState.latestResult;
+        }
+        function wwImpedanceRecordedLocusPoints() {
+            return wwCtVtBlocksResult("impedance") ? [] : wwImpedanceState.locusPoints;
+        }
         function wwImpedanceCollectRelevantPoints() {
             const points = [];
             if (wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
@@ -54749,9 +54631,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (r && r.status === "computed") points.push({ r: r.resistance_ohm, x: r.reactance_ohm });
                 return points;
             }
-            const current = wwImpedanceState.latestResult;
+            const current = wwImpedanceRecordedResult();
             if (current && current.status === "computed") points.push({ r: current.resistance_ohm, x: current.reactance_ohm });
-            for (const p of wwImpedanceState.locusPoints) {
+            for (const p of wwImpedanceRecordedLocusPoints()) {
                 if (p.status === "computed") points.push({ r: p.resistance_ohm, x: p.reactance_ohm });
             }
             return points;
@@ -54782,7 +54664,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // matching the task's own "no meaningful future trail" initial-
         // state requirement.
         function wwImpedanceVisibleLocusCutoffTime() {
-            const result = wwImpedanceState.latestResult;
+            const result = wwImpedanceRecordedResult();
             return result ? result.analysis_time : null;
         }
         function wwImpedanceRenderPlot() {
@@ -54827,7 +54709,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 let path = "";
                 let drawing = false;
                 if (cutoffTime !== null) {
-                    for (const p of wwImpedanceState.locusPoints) {
+                    for (const p of wwImpedanceRecordedLocusPoints()) {
                         if (p.status !== "computed" || p.analysis_time > cutoffTime + WW_IMPEDANCE_LOCUS_CUTOFF_EPS) { drawing = false; continue; }
                         const [x, y] = toSvg(p.resistance_ohm, p.reactance_ohm);
                         path += (drawing ? " L " : " M ") + x.toFixed(2) + "," + y.toFixed(2);
@@ -54850,7 +54732,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     );
                 }
             } else {
-                const current = wwImpedanceState.latestResult;
+                const current = wwImpedanceRecordedResult();
                 if (current && current.status === "computed") {
                     const [x, y] = toSvg(current.resistance_ohm, current.reactance_ohm);
                     parts.push(
@@ -54877,10 +54759,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // ---- Input Source (Recording/Manual) -- identical pattern to
         // wwOvercurrentSetInputSource()/wwPhasorSetInputSource(). ----
-        function wwImpedanceCtVtFieldsNeeded() {
-            const s = wwImpedanceState.settings;
-            return s.recordingBasis !== s.outputBasis;
-        }
         function wwImpedanceUpdateCtVtFieldsVisibility() {
             wwCtVtRender("impedance");
         }
@@ -55052,7 +54930,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const m = wwImpedanceState.manual;
             const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = String(value); };
             setVal("wwImpedancePhaseSelect", wwImpedanceState.phase);
-            setVal("wwImpedanceRecordingBasisSelect", s.recordingBasis);
             setVal("wwImpedanceOutputBasisSelect", s.outputBasis);
             setVal("wwImpedanceManualVoltageBasisSelect", m.voltageBasis);
             setVal("wwImpedanceManualVtPrimaryInput", m.voltageRatioPrimary);
@@ -55076,7 +54953,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwImpedanceState.activeTimeGroupId = null;
             wwImpedanceState.analysisTime = null;
             wwImpedanceState.phase = "A";
-            wwImpedanceState.settings = { recordingBasis: "secondary", outputBasis: "secondary", recordingBasisExplicit: false };
+            wwImpedanceState.settings = { outputBasis: "secondary" };
             wwCtVtReset("impedance");
             wwImpedanceState.latestResult = null;
             wwImpedanceState.requestGeneration += 1;
@@ -59220,12 +59097,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             analysisTime: null,
             loop: "AB",
             characteristic: "mho",
+            // Only the requested OUTPUT side is a setting; the recorded sides come from Recording Details (DEC-216).
             settings: {
-                recordingBasis: "secondary",
                 outputBasis: "secondary",
-                // True once the user chose the Recording basis; until then it may be
-                // pre-selected from consistent declared evidence (wwCtVtApplyPreselection).
-                recordingBasisExplicit: false,
             },
             // The live zone collection, keyed by a stable zone key, in display order: the standard
             // slots first, then any extra zones an Apply added (entries with `dynamic: true`, which
@@ -59560,9 +59434,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (el) el.hidden = !isUpdating;
         }
 
-        // The recording basis / output basis plus, when a conversion is needed AND the Recording
-        // Details Measurement Group supplies usable VT and CT with consistent sides, those
-        // authoritative ratios (see wwCtVtBasisParams()). There is no panel-local ratio.
+        // The requested OUTPUT side only. The recorded sides and the VT/CT come from Recording Details on the backend
+        // (D5A-2B2C-1B); the request carries no recording basis, no side and no ratio.
         function wwDistanceBasisParams(s) {
             return wwCtVtBasisParams("distance");
         }
@@ -59660,7 +59533,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return [
                 wwDistanceState.selectedContextId, wwDistanceState.activeTimeGroupId, wwDistanceState.loop,
                 wwAnalyserTimingFingerprint(wwDistanceState),
-                s.recordingBasis, s.outputBasis, wwCtVtSignature("distance"),
+                s.outputBasis, wwCtVtSignature("distance"),
             ].join("|");
         }
         function wwDistanceInvalidateLocus() {
@@ -59723,21 +59596,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // hypothetical future trip-output state in one list). `zones` may
         // be null (e.g. no result yet) -- rendered as three Not-Operated
         // rows so the Zone State section is never structurally empty.
-        function wwDistanceRenderZoneStateList(zones) {
+        // `notEvaluated` (D5A-2B2C-1B): the recorded result has no valid loop impedance (blocked by Recording Details, a
+        // missing phasor, a loop current below the floor, ...), so no zone was evaluated and the backend reports none. The
+        // rows then show the page's OWN configuration (enabled, delay) with a "Not evaluated" state -- never "Not Operated",
+        // which is the geometric result of a valid impedance. The Manual source passes nothing and is unchanged.
+        function wwDistanceRenderZoneStateList(zones, notEvaluated) {
             const list = document.getElementById("wwDistanceZoneStateList");
             if (!list) return;
             const rows = [];
             for (const key of wwDistanceZoneKeys()) {
-                const z = zones && zones[key];
+                const z = notEvaluated ? null : zones && zones[key];
                 const operated = !!(z && z.state === "operated");
-                const enabled = !!(z && z.enabled);
+                const enabled = notEvaluated ? !!wwDistanceState.zones[key].enabled : !!(z && z.enabled);
                 const delaySeconds = z ? z.delay_s : wwDistanceState.zones[key].delaySeconds;
                 const delayNotSet = !Number.isFinite(delaySeconds);
+                const badgeClass = notEvaluated ? "ww-dist-zone-state-badge--not-evaluated"
+                    : (operated ? "ww-dist-zone-state-badge--operated" : "ww-dist-zone-state-badge--not-operated");
+                const badgeText = notEvaluated ? "Not evaluated" : (operated ? "Operated" : "Not Operated");
                 rows.push(
                     '<div class="ww-oc-value-row"><span class="ww-oc-value-row-label">' + escapeHtml(wwDistanceZoneLabel(key)) +
                     (enabled ? "" : " (disabled)") + '</span><span class="ww-oc-value-row-value">' +
-                    '<span class="ww-dist-zone-state-badge ' + (operated ? "ww-dist-zone-state-badge--operated" : "ww-dist-zone-state-badge--not-operated") +
-                    '" style="--zone-color: ' + wwDistanceZoneColorVar(key) + '">' + (operated ? "Operated" : "Not Operated") + '</span>' +
+                    '<span class="ww-dist-zone-state-badge ' + badgeClass +
+                    '" style="--zone-color: ' + wwDistanceZoneColorVar(key) + '">' + badgeText + '</span>' +
                     ' <span class="ww-oc-field-unit">' + (delayNotSet ? (!wwDistanceZoneDefaultsOnBlank(key) && enabled ? "delay not configured" : "delay not set") : 'delay ' + delaySeconds.toFixed(2) + 's') + '</span>' +
                     '</span></div>'
                 );
@@ -59751,15 +59631,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const valuesList = document.getElementById("wwDistanceValuesList");
             if (!statusRow || !valuesList) return;
 
-            if (!result || result.status !== "computed") {
+            // D5A-2B2C-1B: see wwImpedanceRenderResult -- and a result without a valid impedance evaluates no zone.
+            const configurationBlocked = wwCtVtBlocksResult("distance");
+            if (!result || result.status !== "computed" || configurationBlocked) {
                 statusRow.hidden = false;
                 statusRow.textContent = wwCtVtResultMessage("distance", result) || (result && result.message) ||
                     (result && WW_DISTANCE_STATUS_LABELS[result.status]) ||
                     "Loop impedance could not be computed for this selection.";
                 statusRow.className = "ww-phasor-status-row" +
-                    (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
+                    (configurationBlocked || (result && result.status !== "computed") ? " ww-phasor-status--needs-configuration" : "");
                 valuesList.innerHTML = "";
-                wwDistanceRenderZoneStateList(result ? wwDistanceZoneResultMap(result) : null);
+                // A recorded result without a valid loop impedance evaluated no zone: "Not evaluated", never "Not Operated".
+                wwDistanceRenderZoneStateList(null, true);
                 wwDistancePushRelatedWaveformRoles();
                 wwDistanceRenderPlot();
                 return;
@@ -59818,6 +59701,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // renderer. The viewport additionally considers the active zone
         // geometry (owner requirement: auto viewport must contain the
         // active zone characteristics, not just the plotted points). ----
+        // D5A-2B2C-1B: the recorded result/locus a blocker withholds is never plotted or used to size the viewport.
+        function wwDistanceRecordedResult() {
+            return wwCtVtBlocksResult("distance") ? null : wwDistanceState.latestResult;
+        }
+        function wwDistanceRecordedLocusPoints() {
+            return wwCtVtBlocksResult("distance") ? [] : wwDistanceState.locusPoints;
+        }
         function wwDistanceCollectRelevantPoints() {
             const points = [];
             if (wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
@@ -59825,9 +59715,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (r && r.status === "computed") points.push({ r: r.resistance_ohm, x: r.reactance_ohm });
                 return points;
             }
-            const current = wwDistanceState.latestResult;
+            const current = wwDistanceRecordedResult();
             if (current && current.status === "computed") points.push({ r: current.resistance_ohm, x: current.reactance_ohm });
-            for (const p of wwDistanceState.locusPoints) {
+            for (const p of wwDistanceRecordedLocusPoints()) {
                 if (p.status === "computed") points.push({ r: p.resistance_ohm, x: p.reactance_ohm });
             }
             return points;
@@ -59847,7 +59737,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return Math.max(reactive, forward, reverse);
         }
         function wwDistanceVisibleLocusCutoffTime() {
-            const result = wwDistanceState.latestResult;
+            const result = wwDistanceRecordedResult();
             return result ? result.analysis_time : null;
         }
         // Mho circle geometry -- mirrors app.domain.distance_protection.
@@ -60096,7 +59986,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 let path = "";
                 let drawing = false;
                 if (cutoffTime !== null) {
-                    for (const p of wwDistanceState.locusPoints) {
+                    for (const p of wwDistanceRecordedLocusPoints()) {
                         if (p.status !== "computed" || p.analysis_time > cutoffTime + WW_DISTANCE_LOCUS_CUTOFF_EPS) { drawing = false; continue; }
                         const [x, y] = toSvg(p.resistance_ohm, p.reactance_ohm);
                         path += (drawing ? " L " : " M ") + x.toFixed(2) + "," + y.toFixed(2);
@@ -60118,7 +60008,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     );
                 }
             } else {
-                const current = wwDistanceState.latestResult;
+                const current = wwDistanceRecordedResult();
                 if (current && current.status === "computed") {
                     const anyOperated = Object.values(wwDistanceZoneResultMap(current)).some((zr) => zr.state === "operated");
                     const [x, y] = toSvg(current.resistance_ohm, current.reactance_ohm);
@@ -60192,10 +60082,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // ---- Input Source (Recording/Manual) -- identical pattern to
         // wwImpedanceSetInputSource(). ----
-        function wwDistanceCtVtFieldsNeeded() {
-            const s = wwDistanceState.settings;
-            return s.recordingBasis !== s.outputBasis;
-        }
         function wwDistanceUpdateCtVtFieldsVisibility() {
             wwCtVtRender("distance");
         }
@@ -61957,9 +61843,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceSyncSettingsFields();
             // The Zone state rows follow the new collection at once: a removed zone's row goes, a new one
             // appears (Not Operated until the re-request below answers); retained zones keep their state.
-            wwDistanceRenderZoneStateList(wwDistanceZoneResultMap(
-                wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL ? wwDistanceState.manual.latestResult : wwDistanceState.latestResult
-            ));
+            const recordedMode = wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            const shownResult = recordedMode ? wwDistanceState.latestResult : wwDistanceState.manual.latestResult;
+            const recordedNotEvaluated = recordedMode && (!shownResult || shownResult.status !== "computed" || wwCtVtBlocksResult("distance"));
+            wwDistanceRenderZoneStateList(wwDistanceZoneResultMap(shownResult), recordedNotEvaluated);
             wwDistanceHandleCharacteristicChanged(); // field visibility + the normal re-request
             wwDistanceRenderPlot();
         }
@@ -61969,7 +61856,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = String(value); };
             setVal("wwDistanceLoopSelect", wwDistanceState.loop);
             setVal("wwDistanceCharacteristicSelect", wwDistanceState.characteristic);
-            setVal("wwDistanceRecordingBasisSelect", s.recordingBasis);
             setVal("wwDistanceOutputBasisSelect", s.outputBasis);
             setVal("wwDistanceManualVoltageBasisSelect", m.voltageBasis);
             setVal("wwDistanceManualVtPrimaryInput", m.voltageRatioPrimary);
@@ -62002,7 +61888,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.activeTimeGroupId = null;
             wwDistanceState.analysisTime = null;
             wwDistanceState.loop = "AB";
-            wwDistanceState.settings = { recordingBasis: "secondary", outputBasis: "secondary", recordingBasisExplicit: false };
+            wwDistanceState.settings = { outputBasis: "secondary" };
             wwCtVtReset("distance");
             wwDistanceRestoreDefaultConfiguration(); // characteristic, zones (every extra zone dropped), view, ownership
             wwDistanceState.latestResult = null;
@@ -67373,11 +67259,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwImpedanceState.settings.outputBasis = event.target.value;
             wwImpedanceHandleSettingsChanged();
         });
-        document.getElementById("wwImpedanceRecordingBasisSelect").addEventListener("change", (event) => {
-            wwImpedanceState.settings.recordingBasis = event.target.value;
-            wwCtVtNoteRecordingBasisChosen("impedance");
-            wwImpedanceHandleSettingsChanged();
-        });
         document.getElementById("wwImpedanceCtVtAuthority").addEventListener("click", (event) => wwCtVtHandleClick("impedance", event));
         // Analysis Input Source segmented control -- Recording/Manual.
         document.getElementById("wwImpedanceInputSourceRecordingBtn").addEventListener("click", () => wwImpedanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
@@ -67648,11 +67529,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwDistanceOutputBasisSelect").addEventListener("change", (event) => {
             wwDistanceState.settings.outputBasis = event.target.value;
             wwDistanceNoteConfigurationEdited();
-            wwDistanceHandleSettingsChanged();
-        });
-        document.getElementById("wwDistanceRecordingBasisSelect").addEventListener("change", (event) => {
-            wwDistanceState.settings.recordingBasis = event.target.value;
-            wwCtVtNoteRecordingBasisChosen("distance");
             wwDistanceHandleSettingsChanged();
         });
         document.getElementById("wwDistanceCtVtAuthority").addEventListener("click", (event) => wwCtVtHandleClick("distance", event));

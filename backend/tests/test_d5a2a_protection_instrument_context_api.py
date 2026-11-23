@@ -371,20 +371,24 @@ def _impedance(client, ws, ctx, **extra):
     return client.get(f"{_contexts(ws)}/{ctx}/impedance", params=params)
 
 
-def test_legacy_request_parameters_are_never_overwritten_by_the_authority(client):
-    """Authoritative VT 1200 / CT 240 differ from the request's 1000 / 200; the compute endpoint must
-    still use the REQUEST values, before and after the context endpoint is called."""
+def test_request_ratios_never_replace_the_authority_and_the_read_only_report_changes_nothing(client):
+    """D5A-2B2C-1B reverses the old rule. Authoritative VT 1200 / CT 240 differ from the request's 1000 / 200: the compute endpoint
+    must NOT use the request values (it blocks, because the request ratios contradict Recording Details), and the read-only
+    context report neither changes the calculation nor is changed by it."""
     ws = "d5a2a-legacy"
     _, ctx = _full_setup(client, ws)
     before = _impedance(client, ws, ctx).json()
+    assert (before["status"], before["reason_code"]) == ("needs_configuration", "request_vt_conflicts_with_authority")
+    assert before["magnitude_ohm"] is None
     report = _ctx(client, ws, ctx, analysis="impedance", phase="A", recording_basis="primary", impedance_basis="secondary",
                   vt_primary=110000.0, vt_secondary=110.0, ct_primary=1000.0, ct_secondary=5.0).json()
     after = _impedance(client, ws, ctx).json()
     assert before == after
-    assert (after["vt_primary"], after["vt_secondary"], after["ct_primary"], after["ct_secondary"]) == (110000.0, 110.0, 1000.0, 5.0)
-    # Z_sec = (100 V / 1 A) * ct_ratio / vt_ratio = 100 * 200 / 1000 with the REQUEST ratios.
-    assert after["magnitude_ohm"] == pytest.approx(100.0 * 200.0 / 1000.0, rel=1e-2)
     assert {"REQUEST_CT_DIFFERS_FROM_AUTHORITY", "REQUEST_VT_DIFFERS_FROM_AUTHORITY"} <= set(_codes(report))
+    # Without the contradicting ratios the AUTHORITATIVE ones decide: Z_sec = (100 V / 1 A) * ct_ratio 240 / vt_ratio 1200.
+    plain = client.get(f"{_contexts(ws)}/{ctx}/impedance", params={"phase": "A", "analysis_time": 1.5, "impedance_basis": "secondary"}).json()
+    assert plain["status"] == "computed" and plain["magnitude_ohm"] == pytest.approx(100.0 * 240.0 / 1200.0, rel=1e-2)
+    assert (plain["vt_primary"], plain["vt_secondary"], plain["ct_primary"], plain["ct_secondary"]) == (132000.0, 110.0, 1200.0, 5.0)
 
 
 def test_context_resolves_the_same_channels_as_the_compute_path(client):

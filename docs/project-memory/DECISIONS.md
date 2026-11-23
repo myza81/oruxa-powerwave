@@ -29700,3 +29700,40 @@ current from Recording Details only; PU, Impedance Locus, Distance Protection an
   (c) A Current group with mixed declarations blocks every phase it owns until the engineer chooses a side for the group.
 
 Details, data flow, tests and DEV UAT checklist: [D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md).
+
+### Amendment 6 (2026-11-23) — recorded Impedance Locus and Distance Protection consume the unified effective side (D5A-2B2C-1B)
+
+Second consumer-integration slice under the owner's standing requirement and Amendments 4–5. Recorded Impedance Locus and Distance Protection (selected-time and locus) obtain the
+Primary/Secondary side of **each consumed Voltage and Current channel**, and the VT/CT of the Measurement Groups that own them, from Recording Details only. The impedance and
+distance mathematics, the low-current guardrails, the zone geometry, the Manual input source and calculated-channel behaviour are NOT changed; PU and D5A-2B2D are not touched.
+
+- **One authority, shared with Overcurrent.** `recorded_side_authority.evaluate_channel_side()` applies the single consumer policy to every consumed channel (calculated → blocked; unresolved →
+  blocked; inferred → blocked; a Measurement Group whose own channels declare different sides → blocked until the engineer chooses a side), on top of
+  `resolve_effective_measurement_side()` (group override > recording correction > channel declaration > inferred default, not strict-usable > unresolved). Overcurrent, Impedance and Distance
+  therefore block in exactly the same situations, with their own reason codes.
+- **Voltage and Current resolve independently.** Voltage Primary with Current Secondary (and every other combination) calculates; the two Voltage legs of a distance loop must agree with each other,
+  and so the two Current legs. Each quantity is converted DIRECTLY to the requested output side (`impedance_basis`: Secondary → Primary multiplies by the ratio, Primary → Secondary divides),
+  and the impedance — or the loop impedance `(V1 − V2) / (I1 − I2)` with full complex subtraction — is formed once.
+- **A ratio only where a conversion needs it.** A quantity already on the output side needs no VT/CT, even when none exists. Where a conversion is needed the ratio is the VT/CT of the group that owns
+  the consumed channel(s): a manual or recording-metadata value, or a VT derived from the accepted nominal voltage (`auto_nominal`, DEC-215); never another group's, another recording's, a request's
+  or one derived from equipment/nominal data for a CT. Missing / invalid / untrusted / conflicting → blocked with `vt_authority_unavailable` / `ct_authority_unavailable` and a specific message.
+- **The page has no Recording-basis input.** The recorded requests carry only `impedance_basis` (the requested OUTPUT side, which stays editable). The page shows, read-only, each quantity's side
+  with provenance, the VT/CT that converts (with its group) or "not needed", any blocker and a link to the owning group in Recording Details. Manual mode keeps all of its inputs.
+- **Backend enforcement for every client.** `recording_basis`, `voltage_side`, `current_side` and `vt_*`/`ct_*` are optional legacy ASSERTIONS, validated against Recording Details: a contradiction
+  blocks (`voltage_side_contradicts_recording`, `current_side_contradicts_recording`, `request_vt_conflicts_with_authority`, `request_ct_conflicts_with_authority`, `request_vt_invalid`,
+  `request_ct_invalid`), a match changes nothing, and none can select a side, supply a missing ratio or be required (`recording_basis` becomes optional; `impedance_basis` stays required).
+  The former bypass — omitting `voltage_side`/`current_side` made the request basis and ratios decide — is closed: there is no legacy path. A blocked result carries no impedance and no zone
+  classification but keeps the channel identities, so Related Waveforms stay available.
+- **Read-only report.** `GET .../engineering-contexts/{id}/protection-recorded-input?analysis=impedance|distance_protection&phase|loop=&impedance_basis=` reports what the calculation will consume and
+  whether it is blocked, from the same evaluation the calculation uses. A locus evaluates the authority ONCE per request, so every point shares one configuration snapshot; nothing is requested per
+  Playback tick or per locus point.
+- **Known limits, for owner decision.** (a) Calculated channels are blocked (`calculated_channel_side_unavailable`) — the same owner-accepted safe blocking and temporary regression as Overcurrent; a
+  lineage-aware enhancement is a future slice. (b) A recording with no P/S evidence needs an engineer's Level 1 or group setting before a recorded impedance/distance number is shown; the old
+  "choose an unverified basis in the analyzer" path is gone. (c) A Measurement Group with mixed declarations blocks every channel it owns until the engineer chooses a side. (d) The legacy request
+  parameters can be removed in D5A-2B2D.
+
+- **Owner-review hardening (2026-11-23): no valid impedance, no zone evaluation.** `not_operated` is the geometric result of a VALID impedance. A recorded Distance result whose `status` is not `computed` (blocked by Recording Details,
+  a missing/ambiguous phasor, a loop current below the floor, ...) now reports `zone1`..`zone4` = null and `zones` = [] instead of a `not_operated` placeholder, and the page shows "Not evaluated". No public schema change (the fields were already
+  nullable / empty by default); an intentional change to the blocked-result contract, which previously listed every requested zone. Valid results, the zone geometry, the Manual calculator and the locus are unchanged.
+
+Details, data flow, oracles, tests and DEV UAT checklist: [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).

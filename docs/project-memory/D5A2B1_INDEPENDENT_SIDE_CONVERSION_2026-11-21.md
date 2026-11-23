@@ -1,5 +1,10 @@
 # D5A-2B1 — Recorded Impedance and Distance: Independent Measurement-Side Conversion
 
+> **Superseded in part (D5A-2B2C-1B, 2026-11-23, DEC-216 Amendment 6):** the "strict" independent-side path described here is now the ONLY path for recorded Impedance and Distance: the legacy single-`recording_basis` path
+> and the bypass by omitting `voltage_side`/`current_side` are removed, the sides and VT/CT come from Recording Details (not from request parameters, which are validated assertions only), and the `*_side_required`
+> reason codes no longer exist. The conversion mathematics (each quantity converted directly to the output side, ratio only where needed, impedance formed once) is unchanged and is what this document specifies. See
+> [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
+
 > **Superseded in part (DEC-215, 2026-11-21):** a nominal-derived (`auto_nominal`) VT is now valid, consumable engineering configuration. Statements below that call it display-only / not consumable describe the earlier D5A rule. See [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
 
 **Branch:** `feature/d5a-1-ctvt-authority` · Backend only · Opt-in · Overcurrent, PU, CT/VT calibration, frontend and Source Default untouched.

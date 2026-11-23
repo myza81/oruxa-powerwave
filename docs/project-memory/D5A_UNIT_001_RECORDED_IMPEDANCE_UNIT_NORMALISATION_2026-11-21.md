@@ -1,5 +1,8 @@
 # D5A-UNIT-001 — Recorded Impedance and Distance did not normalise channel units
 
+> **Note (D5A-2B2C-1B, 2026-11-23):** unit normalisation to volts / amperes (`normalise_to_volts` / `normalise_to_amperes`) is preserved exactly in the unified-side integration; it still runs on every consumed leg before any side conversion.
+> The "legacy path" referred to below no longer exists (see the D5A-2B2C-1B report).
+
 **Status:** **CORRECTED** (owner-authorised) in commit `303d307`. Found during D5A-2B1 verification; classified as a numerical-correctness defect, not an approved contract.
 
 **Compatibility statement:** physically incorrect historical legacy recorded-impedance results **change**. No numerical compatibility is claimed for the defective outputs. V/A and kV/kA recordings are numerically unchanged.
