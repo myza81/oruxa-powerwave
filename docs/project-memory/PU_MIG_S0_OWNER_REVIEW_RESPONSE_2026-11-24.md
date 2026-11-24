@@ -1,5 +1,7 @@
 # PU-MIG S0 — Response to the Final Owner Decision Review
 
+> **Governance correction (2026-11-24, owner review).** The replacement wording proposed in section 4 for DEC-216 Amendment 7 has been **applied** as "Amendment 7 - Correction" in `DECISIONS.md`, and the dispositions of section 0.1 are recorded in the complete register in [PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md](PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md). D-1 and D-4 remain pending production decisions. This document is otherwise preserved as delivered.
+
 **Date:** 2026-11-24
 **Branch:** `audit/pu-mig-s0-final-contract` (worktree `.local-data/pu-mig-s0-contract`), based on `e9c621c`. Local only: **not pushed, merged or deployed.**
 **Scope:** documentation, executed read-only probes and a triage plan. **No production code, test, API, UI or configuration was changed. S1 is not authorised and not started.**

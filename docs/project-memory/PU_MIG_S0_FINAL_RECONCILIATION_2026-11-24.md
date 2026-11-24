@@ -1,5 +1,7 @@
 # PU-MIG S0 — Final Engineering Contract Reconciliation
 
+> **Governance correction (2026-11-24, owner review).** (GC-1) The formula for a Secondary base on Primary samples (section 4.3, `base_multiplied_by_ratio`) and the "approved" label on row A7 of section 2.1 do **not** make that conversion approved: it is pending integration decision D-6. (GC-2) Historical Unverified behaviour is unchanged by Amendment 7 and its policy is pending decision D-1. (GC-4, GC-5) The provenance of the assessment and the earlier mechanism statements are corrected in [PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md](PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md) and in the owner-review response. The rest of this document is preserved as delivered; where they differ, the correction governs.
+
 **Date:** 2026-11-24
 **Type:** documentation, one read-only probe and one independent oracle. **No production code, test, API, UI or configuration was changed. Nothing is pushed, merged or deployed.**
 **Stop point:** owner engineering review. S1 is **not** started and is **not** authorised by this document.
@@ -17,7 +19,7 @@
 
 | Commit on the audit branch | Content | Integrity |
 |---|---|---|
-| `e5c6fce` | `PU_MIG_001_ASSESSMENT_2026-11-24.md` and `evidence/pu-mig-001-2026-11-24/pu_mig_oracle_v1_original.py` | The assessment is the original delivered text recovered from the session transcript (no banner, no later edit). The v1 oracle is the original script, sha256 `480d12a0…f6fa`. |
+| `e5c6fce` | `PU_MIG_001_ASSESSMENT_2026-11-24.md` and `evidence/pu-mig-001-2026-11-24/pu_mig_oracle_v1_original.py` | ~~The assessment is the original delivered text recovered from the session transcript (no banner, no later edit).~~ *[GC-4: the assessment is a reconstruction from the session transcript, not verified against a surviving original disk file; it also carries the one pre-delivery `Edit`. See the governance correction, section 3.]* The v1 oracle is the original script, sha256 `480d12a0…f6fa`. |
 | `55f3218` | S0 decision matrix, v2 oracle (`pu_mig_oracle.py`) + `pu_mig_oracle_expected.json`, DEC-216 Amendment 7 | Byte-identical to `88c9244` (sha256 prefixes compared). |
 | this commit | this report, the final oracle, the existing-behaviour probe and its recorded output | New. |
 
