@@ -98,9 +98,6 @@ from app.domain.channel_classification import (
     ROCOF as ROCOF_ENGINEERING_TYPE,
     UNDEFINED,
     VOLTAGE,
-    WAVEFORM_FORM_INSTANTANEOUS,
-    WAVEFORM_FORM_MAGNITUDE,
-    WAVEFORM_FORM_RMS,
     WAVEFORM_FORM_UNKNOWN,
     derive_waveform_form,
 )
@@ -138,10 +135,12 @@ from app.domain.physical_calibration import (
     PURPOSE_ENGINEERING_CALCULATION,
     PURPOSE_EXPLORATORY_ANALYSIS,
 )
-from app.domain.rms_detector import (
-    LIKELY_INSTANTANEOUS,
-    LIKELY_MAGNITUDE_OR_RMS,
-    classify_waveform_form,
+from app.domain.rms_prerequisites import (
+    FormBasis,
+    InputForm,
+    RmsPrerequisiteFailure,
+    check_rms_window_prerequisites,
+    classify_input_form,
 )
 from app.domain.source import ActiveSource
 from app.domain.time_reference import source_start_epoch
@@ -776,27 +775,32 @@ def check_rms_eligibility(
         input_ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry
     )
 
-    if resolved.waveform_form in (WAVEFORM_FORM_RMS, WAVEFORM_FORM_MAGNITUDE):
+    # The classification itself (declared form first, detector second) is shared with every RMS consumer
+    # (app.domain.rms_prerequisites). The policy below -- statuses, wording, `override_required` -- is this
+    # service's own and is deliberately NOT shared.
+    classification = classify_input_form(resolved.waveform_form, resolved.time, resolved.values, nominal_frequency_hz)
+    declared = classification.basis is FormBasis.DECLARED_WAVEFORM_FORM
+
+    if classification.outcome is InputForm.RMS_OR_MAGNITUDE and declared:
         return RmsEligibility(
             status=RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
             reason="This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
             override_required=True,
         )
-    if resolved.waveform_form == WAVEFORM_FORM_INSTANTANEOUS:
+    if classification.outcome is InputForm.INSTANTANEOUS and declared:
         return RmsEligibility(
             status=RMS_STATUS_SUITABLE,
             reason="Input is explicitly marked instantaneous. Input appears suitable for RMS.",
             override_required=False,
         )
 
-    detector_result = classify_waveform_form(resolved.time, resolved.values, nominal_frequency_hz)
-    if detector_result == LIKELY_INSTANTANEOUS:
+    if classification.outcome is InputForm.INSTANTANEOUS:
         return RmsEligibility(
             status=RMS_STATUS_SUITABLE,
             reason="Input appears suitable for RMS.",
             override_required=False,
         )
-    if detector_result == LIKELY_MAGNITUDE_OR_RMS:
+    if classification.outcome is InputForm.RMS_OR_MAGNITUDE:
         return RmsEligibility(
             status=RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
             reason=(
@@ -1388,11 +1392,12 @@ def create_calculated_channel(
         # eligibility judgment above (owner section 40/41: these are not
         # a "may this signal be misinterpreted" judgment call, they are
         # "can a one-cycle RMS even be computed meaningfully at all").
-        if not rms_recording_long_enough(first.time, nominal_frequency_hz):
+        prerequisite_failure = check_rms_window_prerequisites(first.time, nominal_frequency_hz)
+        if prerequisite_failure is RmsPrerequisiteFailure.RECORDING_TOO_SHORT:
             raise RmsRecordingTooShortError(
                 "Recording is shorter than one complete RMS window."
             )
-        if not rms_sampling_dense_enough(first.time, nominal_frequency_hz):
+        if prerequisite_failure is RmsPrerequisiteFailure.SAMPLING_TOO_SPARSE:
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the RMS window to produce a meaningful result."
             )
