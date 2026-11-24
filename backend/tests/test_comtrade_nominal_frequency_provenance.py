@@ -189,6 +189,7 @@ class TestExistingConventionIsReused:
         )
         assert readers == [
             "domain/metadata.py",
+            "domain/nominal_frequency.py",  # NF-1: the one recording-level resolver (DEC-217), the reviewed new reader
             "domain/oscillation_classification.py",
             "providers/ben/provider.py",
             "providers/comtrade.py",
