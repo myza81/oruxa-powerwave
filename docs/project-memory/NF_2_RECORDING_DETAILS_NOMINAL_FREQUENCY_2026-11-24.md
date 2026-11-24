@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-24 · **Decision:** [DEC-217](DECISIONS.md) · **Branch:** `feature/nf-2-recording-details-nominal-frequency`, worktree `.local-data/nf-2`
 **Baseline:** the verified NF-1 candidate (`0c4abba`; its verification record `c5cec0b` is merged in). The complete ancestry is local and unpublished: published DEV `e9c621c` → accepted R0/R1A commits (`2a7ddc1`, `fb5bb75`, `9bb5f38`, `5f932ec`, `9267ca4`, `9f45913`, merged as `0aa3562`) → NF-1 (`d917622`, `c2e79bb`, `628ffd5`, `0c4abba`) → NF-2.
-**Status:** implemented and verified locally. **Not pushed, merged or deployed.** NF-3 is not started. The control is **off for every user** until the release gate is switched on.
+**Status:** implemented and verified locally; **owner visual acceptance approved 2026-11-25** (design only). **Not pushed, merged or deployed.** NF-3 implementation is not started (NF-3A assessment only). The control is **off for every user** until the release gate is switched on.
 
 ## What it does
 
@@ -62,4 +62,16 @@ No file under `backend/app` is changed. Protected code (RMS, detectors, phasor, 
 * Existing calculated channels keep their stored frequency; the staleness advisory from the mock is not built (NF-3/NF-5).
 * A wrong manual value is silent (60 Hz on a 50 Hz signal gives no error).
 * The WUI-001–004 pane controls were not touched. The Waveform-page browser regression (see Verification) shows 14 failures that are identical on the NF-1 frontend without NF-2; they pre-date this slice.
-* Owner visual UAT of the control (gate on) is still to be done before NF-3. Screenshot gallery: `evidence/nf-2-2026-11-24/index.html` (opens offline from disk; it also carries the isolated local-preview instructions: serve a **copy** of `frontend/` whose own `config.js` carries the flag, never the checked-in file).
+* Owner visual review is **done** (see Owner acceptance below); interactive DEV UAT of the control is not. Screenshot gallery: `evidence/nf-2-2026-11-24/index.html` (opens offline from disk; it also carries the isolated local-preview instructions: serve a **copy** of `frontend/` whose own `config.js` carries the flag, never the checked-in file).
+
+## Owner acceptance (recorded 2026-11-25)
+
+**NF-2 VISUAL ACCEPTANCE: APPROVED — 25 November 2026**, after the owner reviewed all nine screenshots in `evidence/nf-2-2026-11-24/` (as regenerated in commit `4a68241`; the nine files are preserved unchanged by this record).
+
+Approved: the Recording Info Auto/Manual frequency presentation; the compact editor and the Apply / Cancel / Edit workflow; the validation-error presentation; the assumed-default indication; the unusable-frequency notice; the Manual-versus-imported presentation; light and dark modes; the narrow-width layout; and the preview warning that calculations do not yet consume the setting.
+
+**Scope of the approval.** It covers visual design only. It does **not** cover interactive DEV UAT, and it is **not** a readiness decision to enable the feature in normal use. No further NF-2 visual change is required unless NF-3 introduces a functional necessity.
+
+**Release gate (re-confirmed 2026-11-25 on `e3296a3`).** `nominalFrequencyOverride` is still off by default: the checked-in `frontend/config.js` and the container entrypoint do not contain it, no compose file, Dockerfile, workflow or script sets it, and the static tests in `backend/tests/test_frontend_nf2_release_gate.py` fail if any of that changes. `WW_NF_CONSUMERS_MIGRATED` is still `false`, so the preview line stays visible whenever the gate is open. Neither may change before the evidence listed in the NF-3A assessment is in hand.
+
+**Unresolved: 14 browser failures, baseline-equivalent.** The Waveform-page regression run for the WUI-001–004 check showed 14 failing tests (`voltage-only-pu-display` VD-09, VD-10, VD-15, VD-16; `waveform-empty-state` ×3; `waveform-measurement-values` ×5; `waveform-top-toolbar-migration` Per-Unit icon ×2). The same 14 fail identically on the NF-1 frontend, which has no NF-2 code, so they are not caused by NF-2. That is **all** that is established: they are recorded as **unresolved**, not as obsolete, expected or proven harmless, and no investigation or fix is part of NF-2. They need an owner-directed triage before anyone relies on those specs as a clean baseline.
