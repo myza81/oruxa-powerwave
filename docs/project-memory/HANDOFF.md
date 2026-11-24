@@ -8,6 +8,12 @@ Last updated: **2026-11-24** — D5A-2B2C-1B integrated onto the deployed WUI-00
 
 ---
 
+## NF-1 — recording nominal-frequency authority (backend foundation)
+
+[LOCAL] Branch `feature/nf-1-nominal-frequency-authority` (worktree `.local-data/nf-1`), based on the published DEV `e9c621c` plus the accepted R0/R1A commits. One shared resolver, an in-memory per-recording override registry and `GET|PUT .../sources/{id}/nominal-frequency` (DEC-217). **No engineering consumer reads it yet** and there is no UI; NF-2 (Recording Details row) and NF-3 (consumer migration) follow, and the override is not released for normal use before NF-3. Not pushed, merged or deployed. Details: [NF_1_NOMINAL_FREQUENCY_AUTHORITY_2026-11-24.md](NF_1_NOMINAL_FREQUENCY_AUTHORITY_2026-11-24.md).
+
+---
+
 ## Controlled WUI-001–004 consolidation
 
 [UAT] Owner accepted final UI `d513fba`. Current DEV advanced to **`f24f1d7`**;
