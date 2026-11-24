@@ -119,6 +119,46 @@ test.describe("release gate", () => {
   });
 });
 
+// The control is a preview until NF-3: in every state, nothing may say or suggest that calculations use the setting.
+test.describe("no implied effect on calculations", () => {
+  test.beforeEach(async ({ context }) => { await on(context); });
+  const PREVIEW = "Preview: calculations do not use this setting yet.";
+  const SUGGESTIVE = /used (for|in|by) (the )?calculation|affects? (the )?calculation|frequency-based calculations|will (be )?(use|appl)|applied to (the )?calculation|recalculat/i;
+
+  async function expectHonest(page) {
+    const text = await row(page).innerText();
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="preview"]')).toHaveText(PREVIEW);
+    expect(text.replace(PREVIEW, "")).not.toMatch(SUGGESTIVE);
+    const hidden = await row(page).evaluate((el) => Array.from(el.querySelectorAll("[title],[aria-label]"))
+      .map((n) => (n.getAttribute("title") || "") + " " + (n.getAttribute("aria-label") || "")).join(" "));
+    expect(hidden).not.toMatch(SUGGESTIVE);
+  }
+
+  test("declared, assumed, unusable, editing and Manual all carry the preview line and no suggestive wording", async ({ page }) => {
+    await seed(page, { lf: "0" });                                      // unusable
+    await expectHonest(page);
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="unusable"]')).toContainText("a Manual value can be saved here for later use");
+    await pill(page, "manual").click();                                 // editing
+    await expectHonest(page);
+    await input(page).fill("60");
+    await page.locator('#wwRdNf [data-ww-nf-action="apply"]').click();  // Manual saved
+    await expect(value(page)).toHaveText("60 Hz");
+    await expectHonest(page);
+    await expect(page.locator("#wwRdNfLive")).toHaveText("Manual nominal frequency saved: 60 Hz");
+    await pill(page, "auto").click();                                   // back to Auto (unusable again)
+    await expect(pill(page, "auto")).toHaveAttribute("aria-checked", "true");
+    await expectHonest(page);
+  });
+
+  test("a declared and an assumed recording carry the preview line", async ({ page }) => {
+    await seed(page, { lf: "60" });
+    await expectHonest(page);
+    await seed(page, { lf: "abc" }, "nf2b");
+    await expect(page.locator('#wwRdNf [data-ww-nf-flag="assumed"]')).toBeVisible();
+    await expectHonest(page);
+  });
+});
+
 // --------------------------------------------------------------------------------------------- states and transitions
 test.describe("states", () => {
   test.beforeEach(async ({ context }) => { await on(context); });
@@ -511,7 +551,7 @@ test.describe("Recording Details regression and accessibility", () => {
     await page.keyboard.type("60");
     await page.keyboard.press("Enter");
     await expect(value(page)).toHaveText("60 Hz");
-    await expect(page.locator("#wwRdNfLive")).toHaveText("Manual nominal frequency applied: 60 Hz");
+    await expect(page.locator("#wwRdNfLive")).toHaveText("Manual nominal frequency saved: 60 Hz");
   });
 
   test("no console errors across the transitions", async ({ page }) => {

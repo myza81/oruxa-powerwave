@@ -37384,7 +37384,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (ok) {
                     wwRdNf.editing = false; wwRdNf.error = ""; wwRdNf.lastManual = result.value;
                     wwRdNf.optimistic = { mode: "manual" }; wwRdNf.focus = "manual";
-                    wwRdNfAnnounce("Manual nominal frequency applied: " + wwRdNfFormat(result.value));
+                    wwRdNfAnnounce("Manual nominal frequency saved: " + wwRdNfFormat(result.value));
                 } else {
                     // Rejected: the editor stays open on the engineer's text; nothing was changed.
                     wwRdNf.error = message || "The value was not accepted."; wwRdNf.focusEditor = true;
@@ -37435,6 +37435,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '</span>';
                 block = '<div id="wwRdNfError">' + (wwRdNf.error
                     ? '<div class="ww-rd-edit-error" role="alert" data-ww-nf-notice="error">' + escapeHtml(wwRdNf.error) + '</div>' : '') + '</div>';
+                if (!WW_NF_CONSUMERS_MIGRATED) {   // the editor is where a value is typed: it must say so here too
+                    block += '<span class="ww-rd-nf-preview" data-ww-nf-notice="preview">Preview: calculations do not use this setting yet.</span>';
+                }
             } else {
                 const importedText = data.imported_text == null ? "none" : data.imported_text;
                 const shown = data.effective_hz == null
@@ -37450,7 +37453,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (data.auto_origin === "unusable" && mode !== "manual") {
                     block += '<div class="ww-rd-nf-notice" role="status" data-ww-nf-notice="unusable">The recording declares an unusable nominal frequency (' +
                         escapeHtml(importedText) + (data.imported_text == null ? "" : " Hz") +
-                        '). Waveform viewing is unaffected; choose Manual to enter a value for frequency-based calculations.</div>';
+                        '). Waveform viewing is unaffected; ' + (WW_NF_CONSUMERS_MIGRATED
+                            ? 'choose Manual to enter a value for frequency-based calculations.'
+                            : 'a Manual value can be saved here for later use.') + '</div>';
                 } else if (mode === "manual") {
                     const auto = data.auto_hz == null ? "unusable (" + importedText + " Hz declared)"
                         : wwRdNfFormat(data.auto_hz) + " · " + wwRdNfOriginText(data.auto_origin);
