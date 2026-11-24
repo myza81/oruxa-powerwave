@@ -29,12 +29,13 @@ Auto is recomputed on every read and never stored, so returning to Auto restores
 
 New: `domain/nominal_frequency.py`, `services/nominal_frequency_registry.py`, `services/nominal_frequency_service.py`, `schemas/nominal_frequency.py`, `api/v1/nominal_frequency.py`, `tests/test_nf1_nominal_frequency_authority.py`. Edited (wiring only): `main.py`, `api/v1/sources.py`, `api/v1/workspaces.py`, and one inventory line in `tests/test_comtrade_nominal_frequency_provenance.py`.
 
-## Verification
+## Verification (final, commit `0c4abba`)
 
-* `test_nf1_nominal_frequency_authority.py`: 163 tests (resolver table, registry, API, validation and no-500, lifecycle, isolation, originals hashed before/after, consumer-inventory tripwire).
-* 13 of 14 mutations killed (manual precedence, unusable→50, assumed flag, BEN origin, predicate, revision, cleanup ×2, validation, reset, metadata write, workspace key); the survivor is behaviourally equivalent (pydantic already serialises NaN as null).
-* Full backend suite: **14 446 passed, 405 skipped, 1 failed** in 40 min. The one failure was the R1A reader-inventory tripwire, which requires a new reader of `nominal_frequency_assumed` to be reviewed; the resolver is that intended reader and was added to the list (no assertion relaxed). The 497 tests of the four related modules pass after the change; the full suite was not re-run after that one-line list entry.
-* Protected files (RMS, detectors, PU, CT/VT, side conversion, providers, import, every current consumer service): 38 of 38 byte-identical to `0aa3562`. Samples, `SourceMetadata` and provenance are hashed unchanged across set/change/clear.
+* `test_nf1_nominal_frequency_authority.py`: **200 tests** (resolver table, registry, API, validation and no-500, lifecycle, isolation, originals hashed before/after, consumer-inventory tripwire, no non-finite state anywhere).
+* **16 of 16 mutations killed** (manual precedence, unusable→50, assumed flag, BEN origin, predicate, revision ×2, cleanup ×2, validation ×2, reset, metadata write, workspace key, NaN serialisation, registry NaN). The one mutation that first survived (M14, raw NaN handed to the response model) was equivalent only because pydantic serialises NaN as null; it is now killed by tests that do not depend on that: the model attribute itself is null, and the wire body never carries a `NaN` or `Infinity` token.
+* **No internal NaN state can bypass validation:** the registry applies the recording-level predicate itself (it raises `ValueError` for NaN, inf, a bool or a value outside 1–1000 Hz), behind the service's own check; the resolver additionally ignores an invalid stored manual value; API bodies carrying `NaN`/`Infinity` are refused with 400.
+* **Full backend suite on the exact final commit `0c4abba`: 14 484 passed, 405 skipped, 0 failed** (26 min). The earlier run (14 446 / 405 / 1) failed only on the R1A reader-inventory tripwire, which now lists the resolver as a reviewed reader (`c2e79bb`, an ancestor of the final commit); no assertion was relaxed.
+* Protected files (RMS, detectors, PU, CT/VT, side conversion, providers, import, every current consumer service): 38 of 38 byte-identical to `0aa3562`. Samples, `SourceMetadata` and provenance are hashed unchanged across set/change/clear. The accepted R0/R1A commits are unchanged ancestors.
 
 ## Limits and next steps
 
