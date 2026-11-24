@@ -28,6 +28,15 @@ Changes since the port (DEC-121, 2026-10-01):
     its own column. The original names are reported by
     ``load_with_provenance()``.
 
+Changes since DEC-121 (RMS display R1A, 2026-11-24):
+  - When the ``lf`` (nominal frequency) line cannot be parsed and the parser
+    substitutes 50 Hz, ``load_with_provenance()`` also reports
+    ``nominal_frequency_assumed: True`` -- the key BEN and CSV/Excel imports
+    already use. Nothing else changed: the value, the warning, and which
+    files are accepted are exactly as before. An ``lf`` that parses (including
+    0, a negative number, NaN, inf or an out-of-range value) is declared, not
+    assumed, and is reported unchanged.
+
 load() requires *path* to be a real filesystem path with a companion .dat/
 .DAT file in the same directory and the same stem (_find_dat_file). This
 provider was not modified to accept in-memory buffers -- see
@@ -121,6 +130,8 @@ class _CfgData:
     time_code: str | None = None
     # Keep declared authority separate from the parser's fallback revision.
     declared_rev_yr: str = ""
+    # True only when the `lf` line could not be parsed and `_DEFAULT_NOMINAL_FREQ` was substituted.
+    nominal_freq_assumed: bool = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -411,6 +422,7 @@ def _parse_cfg(cfg_path: Path) -> _CfgData:
 
     lf_line = _get_cfg_line(lines, idx, "nominal frequency (lf)", cfg_path)
     idx += 1
+    nominal_freq_assumed = False
     try:
         nominal_freq = float(lf_line)
     except ValueError:
@@ -418,6 +430,7 @@ def _parse_cfg(cfg_path: Path) -> _CfgData:
             f"Cannot parse nominal frequency '{lf_line}' in '{cfg_path}', defaulting to 50.0"
         )
         nominal_freq = _DEFAULT_NOMINAL_FREQ
+        nominal_freq_assumed = True
 
     nrates_line = _get_cfg_line(lines, idx, "nrates", cfg_path)
     idx += 1
@@ -513,6 +526,7 @@ def _parse_cfg(cfg_path: Path) -> _CfgData:
         dat_file=dat_file,
         time_code=time_code,
         declared_rev_yr=rev_yr_raw,
+        nominal_freq_assumed=nominal_freq_assumed,
     )
 
 
@@ -877,8 +891,9 @@ class ComtradeProvider(BaseProvider):
         return self._load(path)[0]
 
     def load_with_provenance(self, path: Path) -> tuple[DisturbanceRecord, dict[str, Any] | None]:
-        """``load()`` plus the original names of channels renamed to keep
-        names unique (``None`` when nothing was renamed)."""
+        """``load()`` plus provenance: the original names of channels renamed to keep names unique, and
+        ``nominal_frequency_assumed: True`` when the parser substituted the default for an unparseable ``lf``
+        (``None`` when neither applies)."""
         record, cfg = self._load(path)
         analog_names, digital_names = _unique_channel_names(cfg.analog_defs, cfg.digital_defs)
         renames = [
@@ -890,9 +905,12 @@ class ComtradeProvider(BaseProvider):
             for d, name in zip(defs, names)
             if name != d.ch_id
         ]
-        if not renames:
-            return record, None
-        return record, {"source_format": "COMTRADE", "channel_renames": renames}
+        provenance: dict[str, Any] = {"source_format": "COMTRADE"}
+        if renames:
+            provenance["channel_renames"] = renames
+        if cfg.nominal_freq_assumed:
+            provenance["nominal_frequency_assumed"] = True
+        return record, provenance if len(provenance) > 1 else None
 
     def _load(self, path: Path) -> tuple[DisturbanceRecord, _CfgData]:
         try:
