@@ -1,0 +1,8218 @@
+{
+ "model": "PU-MIG S0 final reconciliation - independent oracle for the proposed S1 side-denominator contract.",
+ "table": [
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/primary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/primary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/primary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/primary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/primary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "110.000000000000",
+   "id": "TV/nominal_ll_primary/line_to_line/secondary/configured",
+   "ratio_applied": "2500.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/secondary/invalid",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/secondary/conflict",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/secondary/no_group",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_line/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "TV/nominal_ll_primary/line_to_ground/primary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "TV/nominal_ll_primary/line_to_ground/primary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "TV/nominal_ll_primary/line_to_ground/primary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "TV/nominal_ll_primary/line_to_ground/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "TV/nominal_ll_primary/line_to_ground/primary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "TV/nominal_ll_primary/line_to_ground/primary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "63.508529610859",
+   "id": "TV/nominal_ll_primary/line_to_ground/secondary/configured",
+   "ratio_applied": "2500.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/secondary/invalid",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/secondary/conflict",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/secondary/no_group",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/nominal_ll_primary/line_to_ground/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "nominal_ll_primary",
+     "value": "275000"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "base_multiplied_by_ratio",
+   "denominator": "275000.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/primary/configured",
+   "ratio_applied": "2500.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/primary/not_configured",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/primary/invalid",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/primary/conflict",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/primary/no_group",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/secondary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/secondary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/secondary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/secondary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_line/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_line",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "base_multiplied_by_ratio",
+   "denominator": "158771.324027147085",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/primary/configured",
+   "ratio_applied": "2500.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/primary/not_configured",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/primary/invalid",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/primary/conflict",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/primary/no_group",
+   "ratio_applied": null,
+   "reason": "vt_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "63.508529610859",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/secondary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "63.508529610859",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "63.508529610859",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/secondary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "63.508529610859",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "63.508529610859",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/secondary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "63.508529610859",
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/secondary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "configured",
+     "value": "2500.000000000000000000000000000000"
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TV/legacy_secondary_voltage_ll/line_to_ground/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "legacy_secondary_voltage_ll",
+     "value": "110"
+    },
+    "quantity": "voltage",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "representation": "line_to_ground",
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "TC/equipment_derived_primary/primary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "TC/equipment_derived_primary/primary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "TC/equipment_derived_primary/primary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "TC/equipment_derived_primary/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "TC/equipment_derived_primary/primary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "TC/equipment_derived_primary/primary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "1.049727762163",
+   "id": "TC/equipment_derived_primary/secondary/configured",
+   "ratio_applied": "2000.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/secondary/invalid",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/secondary/conflict",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/secondary/no_group",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/equipment_derived_primary/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "equipment_derived_primary",
+     "value": "2099.455524325911870942359201825300"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2100.000000000000",
+   "id": "TC/manual_direct_primary/primary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2100.000000000000",
+   "id": "TC/manual_direct_primary/primary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2100.000000000000",
+   "id": "TC/manual_direct_primary/primary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2100.000000000000",
+   "id": "TC/manual_direct_primary/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2100.000000000000",
+   "id": "TC/manual_direct_primary/primary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2100.000000000000",
+   "id": "TC/manual_direct_primary/primary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "1.050000000000",
+   "id": "TC/manual_direct_primary/secondary/configured",
+   "ratio_applied": "2000.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/secondary/invalid",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/secondary/conflict",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/secondary/no_group",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_primary/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "primary",
+     "kind": "manual_direct",
+     "value": "2100"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "base_multiplied_by_ratio",
+   "denominator": "2000.000000000000",
+   "id": "TC/manual_direct_secondary/primary/configured",
+   "ratio_applied": "2000.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/primary/not_configured",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/primary/invalid",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/primary/conflict",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/primary/no_group",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/manual_direct_secondary/secondary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/manual_direct_secondary/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/manual_direct_secondary/secondary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/manual_direct_secondary/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/manual_direct_secondary/secondary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/manual_direct_secondary/secondary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_secondary/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/primary/configured",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/primary/not_configured",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/primary/invalid",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/primary/conflict",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/primary/no_group",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/secondary/configured",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/secondary/invalid",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/secondary/conflict",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/secondary/no_group",
+   "ratio_applied": null,
+   "reason": "base_side_unknown",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/manual_direct_unknown/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "unknown",
+     "kind": "manual_direct",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "base_multiplied_by_ratio",
+   "denominator": "2000.000000000000",
+   "id": "TC/result_manual_secondary/primary/configured",
+   "ratio_applied": "2000.000000000000",
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/primary/not_configured",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/primary/invalid",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/primary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/primary/conflict",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/primary/no_group",
+   "ratio_applied": null,
+   "reason": "ct_authority_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "primary"
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/result_manual_secondary/secondary/configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/result_manual_secondary/secondary/not_configured",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/result_manual_secondary/secondary/invalid",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/result_manual_secondary/secondary/untrusted_authority",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/result_manual_secondary/secondary/conflict",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "TC/result_manual_secondary/secondary/no_group",
+   "ratio_applied": null,
+   "reason": null,
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": null,
+     "side": "secondary"
+    }
+   },
+   "status": "resolved"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/calculated/configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/calculated/not_configured",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/calculated/invalid",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/calculated/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/calculated/conflict",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/calculated/no_group",
+   "ratio_applied": null,
+   "reason": "calculated_channel_side_unavailable",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "calculated",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/unresolved/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/unresolved/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/unresolved/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/unresolved/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/unresolved/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/unresolved/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_unresolved",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "unresolved",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/inferred/configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/inferred/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/inferred/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/inferred/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/inferred/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/inferred/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_side_inferred",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "inferred",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/group_conflict/configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "configured",
+     "value": "2000.000000000000000000000000000000"
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/group_conflict/not_configured",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "not_configured",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/group_conflict/invalid",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "invalid",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/group_conflict/untrusted_authority",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "untrusted_authority",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/group_conflict/conflict",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "conflict",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "TC/result_manual_secondary/group_conflict/no_group",
+   "ratio_applied": null,
+   "reason": "measurement_group_side_conflict",
+   "request": {
+    "base": {
+     "declared_side": "secondary",
+     "kind": "result_manual",
+     "value": "1"
+    },
+    "quantity": "current",
+    "ratio": {
+     "status": "no_group",
+     "value": null
+    },
+    "sample": {
+     "problem": "group_conflict",
+     "side": null
+    }
+   },
+   "status": "unavailable"
+  }
+ ],
+ "table_rows": 324,
+ "vt_discrepancy": [
+  {
+   "derived_denominator_v": "105.217391304",
+   "error_pct": "-4.347826",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "132",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.956521739",
+   "ratio": "1254.545454545",
+   "sample_secondary_v": "105.217391304",
+   "vt_primary_kv": "138",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "110.000000000",
+   "error_pct": "0.000000",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "132",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "1.000000000",
+   "ratio": "1200.000000000",
+   "sample_secondary_v": "110.000000000",
+   "vt_primary_kv": "132",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "110.000000000",
+   "error_pct": "0.000000",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "275",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "1.000000000",
+   "ratio": "2500.000000000",
+   "sample_secondary_v": "110.000000000",
+   "vt_primary_kv": "275",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "105.217391304",
+   "error_pct": "-4.347826",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "220",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.956521739",
+   "ratio": "2090.909090909",
+   "sample_secondary_v": "105.217391304",
+   "vt_primary_kv": "230",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "105.217391304",
+   "error_pct": "-4.347826",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "110",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.956521739",
+   "ratio": "1045.454545455",
+   "sample_secondary_v": "105.217391304",
+   "vt_primary_kv": "115",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "105.217391304",
+   "error_pct": "-4.347826",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "66",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.956521739",
+   "ratio": "627.272727273",
+   "sample_secondary_v": "105.217391304",
+   "vt_primary_kv": "69",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "104.761904762",
+   "error_pct": "-4.761905",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "400",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.952380952",
+   "ratio": "3818.181818182",
+   "sample_secondary_v": "104.761904762",
+   "vt_primary_kv": "420",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "105.217391304",
+   "error_pct": "-4.347826",
+   "legacy_denominator_v": "110.000000000",
+   "nominal_ll_kv": "33",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.956521739",
+   "ratio": "313.636363636",
+   "sample_secondary_v": "105.217391304",
+   "vt_primary_kv": "34.5",
+   "vt_secondary_v": "110"
+  },
+  {
+   "derived_denominator_v": "60.739130435",
+   "error_pct": "-4.347826",
+   "legacy_denominator_v": "63.500000000",
+   "nominal_ll_kv": "132",
+   "pu_derived": "1.000000000",
+   "pu_legacy": "0.956521739",
+   "ratio": "2173.228346457",
+   "sample_secondary_v": "60.739130435",
+   "vt_primary_kv": "138",
+   "vt_secondary_v": "63.5"
+  }
+ ],
+ "worked_examples": [
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "W-V-LL-P-1",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Primary L-L at 1 pu"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "110.000000000000",
+   "id": "W-V-LL-S-1",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Secondary L-L at 1 pu (base 275 kV / VT 2500)"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "W-V-LN-P-1",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Primary L-N at 1 pu"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "63.508529610859",
+   "id": "W-V-LN-S-1",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Secondary L-N at 1 pu"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "275000.000000000000",
+   "id": "W-V-LL-P-0.87",
+   "note": "",
+   "pu": "0.870000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Primary L-L at 0.87 pu"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "110.000000000000",
+   "id": "W-V-LL-S-0.87",
+   "note": "",
+   "pu": "0.870000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Secondary L-L at 0.87 pu (base 275 kV / VT 2500)"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "158771.324027147085",
+   "id": "W-V-LN-P-0.87",
+   "note": "",
+   "pu": "0.870000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Primary L-N at 0.87 pu"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "63.508529610859",
+   "id": "W-V-LN-S-0.87",
+   "note": "",
+   "pu": "0.870000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Secondary L-N at 0.87 pu"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "110.000000000000",
+   "id": "W-V-LEG-S",
+   "note": "ratio is not read",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Legacy secondary base (110 V), secondary L-L at nominal, no ratio needed"
+  },
+  {
+   "conversion": "base_multiplied_by_ratio",
+   "denominator": "275000.000000000000",
+   "id": "W-V-LEG-P",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Legacy secondary base on PRIMARY samples (VM1) with VT 2500"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "W-V-LEG-P-NR",
+   "note": "",
+   "pu": null,
+   "reason": "vt_authority_unavailable",
+   "status": "unavailable",
+   "title": "Legacy secondary base on primary samples, ratio missing -> block"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "2099.455524325912",
+   "id": "W-I-EQ-P",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Equipment Ibase, primary samples at Ibase"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "1.049727762163",
+   "id": "W-I-EQ-S",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Equipment Ibase, secondary samples at Ibase/2000"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "1.049727762163",
+   "id": "W-I-EQ-S1",
+   "note": "",
+   "pu": "0.952627944163",
+   "reason": null,
+   "status": "resolved",
+   "title": "Equipment Ibase, secondary 1.0 A (rated secondary current) -> below base"
+  },
+  {
+   "conversion": "base_divided_by_ratio",
+   "denominator": "0.525000000000",
+   "id": "W-I-MP-S",
+   "note": "",
+   "pu": "1.000000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Manual 2100 A PRIMARY base, secondary samples 0.525 A, CT 4000:1"
+  },
+  {
+   "conversion": "direct",
+   "denominator": "1.000000000000",
+   "id": "W-I-MS-S",
+   "note": "",
+   "pu": "0.500000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Manual 1 A SECONDARY base, secondary samples 0.5 A (no ratio)"
+  },
+  {
+   "conversion": "base_multiplied_by_ratio",
+   "denominator": "2000.000000000000",
+   "id": "W-I-MS-P",
+   "note": "",
+   "pu": "0.500000000000",
+   "reason": null,
+   "status": "resolved",
+   "title": "Manual 1 A SECONDARY base, primary samples 1000 A, CT 2000"
+  },
+  {
+   "conversion": null,
+   "denominator": null,
+   "id": "W-I-MU",
+   "note": "",
+   "pu": null,
+   "reason": "base_side_unknown",
+   "status": "unavailable",
+   "title": "Manual UNKNOWN base side -> never assumed Primary"
+  }
+ ]
+}

@@ -1,0 +1,381 @@
+{
+  "voltage": [
+    {
+      "sample": "primary",
+      "declared": "primary",
+      "base_side": "primary",
+      "denominator_V": 132000.0,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null,
+      "pu": 1.0
+    },
+    {
+      "sample": "primary",
+      "declared": "primary",
+      "base_side": "secondary",
+      "denominator_V": 110.0,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "voltage_reference_side_incompatible",
+      "pu": null
+    },
+    {
+      "sample": "primary",
+      "declared": "primary",
+      "base_side": "unknown",
+      "denominator_V": 132000.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 1.0
+    },
+    {
+      "sample": "primary",
+      "declared": "unknown",
+      "base_side": "primary",
+      "denominator_V": 132000.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 1.0
+    },
+    {
+      "sample": "primary",
+      "declared": "unknown",
+      "base_side": "secondary",
+      "denominator_V": 110.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 1200.0
+    },
+    {
+      "sample": "primary",
+      "declared": "unknown",
+      "base_side": "unknown",
+      "denominator_V": 132000.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 1.0
+    },
+    {
+      "sample": "secondary",
+      "declared": "secondary",
+      "base_side": "primary",
+      "denominator_V": 132000.0,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "voltage_reference_side_incompatible",
+      "pu": null
+    },
+    {
+      "sample": "secondary",
+      "declared": "secondary",
+      "base_side": "secondary",
+      "denominator_V": 110.0,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null,
+      "pu": 0.9565217391304348
+    },
+    {
+      "sample": "secondary",
+      "declared": "secondary",
+      "base_side": "unknown",
+      "denominator_V": 132000.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 0.0007971014492753623
+    },
+    {
+      "sample": "secondary",
+      "declared": "unknown",
+      "base_side": "primary",
+      "denominator_V": 132000.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 0.0007971014492753623
+    },
+    {
+      "sample": "secondary",
+      "declared": "unknown",
+      "base_side": "secondary",
+      "denominator_V": 110.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 0.9565217391304348
+    },
+    {
+      "sample": "secondary",
+      "declared": "unknown",
+      "base_side": "unknown",
+      "denominator_V": 132000.0,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null,
+      "pu": 0.0007971014492753623
+    }
+  ],
+  "current": [
+    {
+      "declared": "primary",
+      "base_side": "primary",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "primary",
+      "base_side": "primary",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "primary",
+      "base_side": "primary",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "primary",
+      "base_side": "secondary",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "current_reference_side_incompatible"
+    },
+    {
+      "declared": "primary",
+      "base_side": "secondary",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "current_reference_side_incompatible"
+    },
+    {
+      "declared": "primary",
+      "base_side": "secondary",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "current_reference_side_incompatible"
+    },
+    {
+      "declared": "primary",
+      "base_side": "unknown",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "primary",
+      "base_side": "unknown",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "primary",
+      "base_side": "unknown",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "secondary",
+      "base_side": "primary",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "current_reference_side_incompatible"
+    },
+    {
+      "declared": "secondary",
+      "base_side": "primary",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "current_reference_side_incompatible"
+    },
+    {
+      "declared": "secondary",
+      "base_side": "primary",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "incompatible",
+      "status": "base_required",
+      "reason": "current_reference_side_incompatible"
+    },
+    {
+      "declared": "secondary",
+      "base_side": "secondary",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "secondary",
+      "base_side": "secondary",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "compatible",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "secondary",
+      "base_side": "secondary",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_secondary_reference_unestablished"
+    },
+    {
+      "declared": "secondary",
+      "base_side": "unknown",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "secondary",
+      "base_side": "unknown",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "secondary",
+      "base_side": "unknown",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "unknown",
+      "base_side": "primary",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "unknown",
+      "base_side": "primary",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "unknown",
+      "base_side": "primary",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "unknown",
+      "base_side": "secondary",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "unknown",
+      "base_side": "secondary",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "unknown",
+      "base_side": "secondary",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "unknown",
+      "base_side": "unknown",
+      "strict": false,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "configured",
+      "reason": null
+    },
+    {
+      "declared": "unknown",
+      "base_side": "unknown",
+      "strict": true,
+      "cross_authority": false,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    },
+    {
+      "declared": "unknown",
+      "base_side": "unknown",
+      "strict": true,
+      "cross_authority": true,
+      "compat": "unverified",
+      "status": "base_required",
+      "reason": "current_reference_side_unknown"
+    }
+  ],
+  "gate_agreement": {
+    "display": {
+      "status": "base_required",
+      "compat": "incompatible",
+      "reason": "voltage_reference_side_incompatible"
+    },
+    "coverage_or_calculated_provenance": {
+      "status": "configured",
+      "compat": "unverified",
+      "reason": null
+    }
+  }
+}
