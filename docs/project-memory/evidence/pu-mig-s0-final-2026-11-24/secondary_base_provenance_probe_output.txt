@@ -1,0 +1,57 @@
+=== 1. The automatic writer (production service) on a secondary-flagged L-L recording, channel rating 138 kV : 110 V
+  service result: (VoltageGroupAutoResult(group_id='g1', action='configured_secondary', reason='secondary_v=110V'),)
+  stored: nominal_ll_kv=None base_reference_side=secondary base_authority=auto_resolved secondary_voltage_ll_v=110.0 vt=None/None vt_authority=not_configured
+
+=== 2. Same recording, the channels carry only the secondary rating (no primary winding)
+  service result: (VoltageGroupAutoResult(group_id='g1', action='configured_secondary', reason='secondary_v=110V'),)
+  stored: nominal_ll_kv=None base_reference_side=secondary base_authority=auto_resolved secondary_voltage_ll_v=110.0 vt=None/None vt_authority=not_configured
+
+=== 3. What the engineer's own edit does to authority (production `update_voltage_configuration`)
+  3a engineer typed ONLY secondary_voltage_ll_v: nominal_ll_kv=None base_reference_side=secondary base_authority=auto_resolved secondary_voltage_ll_v=105.217391304 vt=None/None vt_authority=not_configured
+  3b after the automatic writer runs again: nominal_ll_kv=None base_reference_side=secondary base_authority=auto_resolved secondary_voltage_ll_v=110.0 vt=None/None vt_authority=not_configured
+  3c engineer typed nominal 132 kV only: nominal_ll_kv=132.0 base_reference_side=secondary base_authority=manual secondary_voltage_ll_v=None vt=None/None vt_authority=not_configured
+      resolver: {'denominator_V': None, 'status': 'base_required', 'reason': 'secondary_equivalent_not_configured', 'pu': None}
+  3d engineer typed nominal 132 kV + secondary 110 V: nominal_ll_kv=132.0 base_reference_side=secondary base_authority=manual secondary_voltage_ll_v=110.0 vt=None/None vt_authority=not_configured
+
+=== 4. What the read models expose about the secondary value
+  group view voltage_config fields: ['nominal_voltage_ll_kv', 'reference_mode', 'reference_override', 'effective_reference', 'evidence_names', 'detection_reason', 'base_reference_side', 'secondary_voltage_ll_v', 'manual_conflict_detected', 'manual_conflict_detail', 'base_authority', 'vt_primary_v', 'vt_secondary_v', 'vt_ratio', 'vt_authority', 'vt_provenance_note', 'vt_effective_primary_v', 'vt_effective_secondary_v', 'vt_effective_authority']
+  -> base_authority='auto_resolved' secondary_voltage_ll_v=110.0; no field records WHO or WHAT produced secondary_voltage_ll_v
+  PerUnitChannelProvenance fields: ['status', 'engineering_type', 'source_kind', 'reason', 'measurement_group_id', 'measurement_group_name', 'nominal_base_kv', 'nominal_reference', 'effective_base_amount', 'effective_base_unit', 'equipment_rating_mva', 'applicable_voltage_ll_kv', 'resolution_origin', 'configuration_mode', 'configured_current_base_amps', 'measurement_side', 'base_reference_side', 'reference_compatibility']
+
+=== 5. 132 kV system, VT 138 kV : 110 V, system exactly at nominal, SECONDARY samples (105.217391304 V)
+  auto-written rating (110 V), nominal 132 kV                authority=auto_resolved  sec_base=110.0         -> {'denominator_V': 110.0, 'status': 'configured', 'reason': None, 'compat': 'compatible', 'pu': 0.9565217391304348}
+  same value, engineer-entered via API (authority unchanged) authority=auto_resolved  sec_base=110.0         -> {'denominator_V': 110.0, 'status': 'configured', 'reason': None, 'compat': 'compatible', 'pu': 0.9565217391304348}
+  same value, authority manual (engineer typed nominal+secondary) authority=manual         sec_base=110.0         -> {'denominator_V': 110.0, 'status': 'configured', 'reason': None, 'compat': 'compatible', 'pu': 0.9565217391304348}
+  engineer-entered 105.217391304 V, manual                   authority=manual         sec_base=105.217391304 -> {'denominator_V': 105.217391304, 'status': 'configured', 'reason': None, 'compat': 'compatible', 'pu': 1.0000000000033058}
+  legacy_manual 110 V (pre-existing configuration)           authority=legacy_manual  sec_base=110.0         -> {'denominator_V': 110.0, 'status': 'configured', 'reason': None, 'compat': 'compatible', 'pu': 0.9565217391304348}
+  no nominal at all (secondary-only base 110 V)              authority=auto_resolved  sec_base=110.0         -> {'denominator_V': 110.0, 'status': 'configured', 'reason': None, 'compat': 'compatible', 'pu': 0.9565217391304348}
+
+=== 6. Owner matrix: 132 kV system, VT 138 kV : 110 V (when configured), SECONDARY samples at nominal = 105.217391304 V
+  M1 what the AUTO writer actually stores (no nominal, no VT)
+      stored: nominal=None kV, secondary_base=110.0 V, authority=auto_resolved, VT=None
+      existing: denominator=110.0 V  status=configured  reason=None  pu=0.9565217391304348
+      ratio-derived (none): denominator=None V  pu=None
+  M2 nominal 132 + secondary 110, no VT stored (auto_nominal VT = 132 kV : 110 V)
+      stored: nominal=132.0 kV, secondary_base=110.0 V, authority=manual, VT=None
+      existing: denominator=110.0 V  status=configured  reason=None  pu=0.9565217391304348
+      ratio-derived (auto_nominal VT): denominator=110.0 V  pu=0.956521739
+  M3 nominal 132 + secondary 110 + manual VT 138:110
+      stored: nominal=132.0 kV, secondary_base=110.0 V, authority=manual, VT=(138000.0, 110.0)
+      existing: denominator=110.0 V  status=configured  reason=None  pu=0.9565217391304348
+      ratio-derived (manual VT): denominator=105.217391304 V  pu=1.0
+  M4 nominal 132 + engineer secondary base 105.217391304 + manual VT 138:110
+      stored: nominal=132.0 kV, secondary_base=105.217391304 V, authority=manual, VT=(138000.0, 110.0)
+      existing: denominator=105.217391304 V  status=configured  reason=None  pu=1.0000000000033058
+      ratio-derived (manual VT): denominator=105.217391304 V  pu=1.0
+  M5 nominal 132 + manual VT 138:110, secondary base cleared (engineer typed nominal)
+      stored: nominal=132.0 kV, secondary_base=None V, authority=manual, VT=(138000.0, 110.0)
+      existing: denominator=None V  status=base_required  reason=secondary_equivalent_not_configured  pu=None
+      ratio-derived (manual VT): denominator=105.217391304 V  pu=1.0
+  M6 as M3 but authority legacy_manual (origin of the 110 unknown)
+      stored: nominal=132.0 kV, secondary_base=110.0 V, authority=legacy_manual, VT=(138000.0, 110.0)
+      existing: denominator=110.0 V  status=configured  reason=None  pu=0.9565217391304348
+      ratio-derived (manual VT): denominator=105.217391304 V  pu=1.0
+  M7 as M3 but authority auto_resolved (engineer edited only the secondary value via API)
+      stored: nominal=132.0 kV, secondary_base=110.0 V, authority=auto_resolved, VT=(138000.0, 110.0)
+      existing: denominator=110.0 V  status=configured  reason=None  pu=0.9565217391304348
+      ratio-derived (manual VT): denominator=105.217391304 V  pu=1.0
