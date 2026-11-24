@@ -1,0 +1,5571 @@
+{
+ "baseline_git_sha": "3ed200c02a845fe1cc09707feb268128d46b112c",
+ "inputs": "tests/fixtures/rms_golden/rms_golden_vectors.npz (svc_* cases)",
+ "numpy": "2.4.6",
+ "outcomes": {
+  "api": {
+   "calculated-channels/cursor-values": {
+    "body": {
+     "channels": [
+      {
+       "a_value": null,
+       "b_value": 0.7071068164304146,
+       "calculated_channel_id": "<id:1>",
+       "name": "RMS(VA) ok",
+       "per_unit_reference_compatibility": null,
+       "per_unit_status": null,
+       "unit": "V"
+      }
+     ]
+    },
+    "status": 200
+   },
+   "calculated-channels/list": {
+    "body": [
+     {
+      "calibration_provenance_reason": null,
+      "calibration_provenance_status": "not_assessed",
+      "created_at": "<created_at:2>",
+      "creation_batch_id": null,
+      "dependency_ids": [],
+      "display_axis_key": "Voltage|V",
+      "display_axis_quantity": "Voltage",
+      "display_axis_unit": "V",
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "id": "<id:1>",
+      "inputs": [
+       {
+        "calculated_channel_id": null,
+        "channel_name": "VA",
+        "kind": "source",
+        "source_id": "<source_id:0>"
+       }
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA) ok",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "per_unit_display_axis_key": "Voltage|raw:pu",
+      "per_unit_display_axis_quantity": "Voltage",
+      "per_unit_display_axis_unit": "pu",
+      "phase_member": null,
+      "reference_source_id": "<source_id:0>",
+      "sample_count": 2500,
+      "timing_error": null,
+      "timing_fingerprint": "<fingerprint>",
+      "timing_source_ids": [
+       "<source_id:0>"
+      ],
+      "timing_status": "valid",
+      "unit": "V",
+      "voltage_representation": null,
+      "waveform_form": "rms",
+      "workspace_id": "ws-rms-baseline"
+     },
+     {
+      "calibration_provenance_reason": null,
+      "calibration_provenance_status": "not_assessed",
+      "created_at": "<created_at:4>",
+      "creation_batch_id": null,
+      "dependency_ids": [],
+      "display_axis_key": "Voltage|V",
+      "display_axis_quantity": "Voltage",
+      "display_axis_unit": "V",
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "id": "<id:3>",
+      "inputs": [
+       {
+        "calculated_channel_id": null,
+        "channel_name": "VA",
+        "kind": "source",
+        "source_id": "<source_id:0>"
+       }
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS 60",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 60.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "per_unit_display_axis_key": "Voltage|raw:pu",
+      "per_unit_display_axis_quantity": "Voltage",
+      "per_unit_display_axis_unit": "pu",
+      "phase_member": null,
+      "reference_source_id": "<source_id:0>",
+      "sample_count": 2500,
+      "timing_error": null,
+      "timing_fingerprint": "<fingerprint>",
+      "timing_source_ids": [
+       "<source_id:0>"
+      ],
+      "timing_status": "valid",
+      "unit": "V",
+      "voltage_representation": null,
+      "waveform_form": "rms",
+      "workspace_id": "ws-rms-baseline"
+     },
+     {
+      "calibration_provenance_reason": null,
+      "calibration_provenance_status": "not_assessed",
+      "created_at": "<created_at:7>",
+      "creation_batch_id": null,
+      "dependency_ids": [],
+      "display_axis_key": "Voltage|V",
+      "display_axis_quantity": "Voltage",
+      "display_axis_unit": "V",
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "id": "<id:5>",
+      "inputs": [
+       {
+        "calculated_channel_id": null,
+        "channel_name": "VA",
+        "kind": "source",
+        "source_id": "<source_id:6>"
+       }
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS uncertain t",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "per_unit_display_axis_key": "Voltage|raw:pu",
+      "per_unit_display_axis_quantity": "Voltage",
+      "per_unit_display_axis_unit": "pu",
+      "phase_member": null,
+      "reference_source_id": "<source_id:6>",
+      "sample_count": 3000,
+      "timing_error": null,
+      "timing_fingerprint": "<fingerprint>",
+      "timing_source_ids": [
+       "<source_id:6>"
+      ],
+      "timing_status": "valid",
+      "unit": "V",
+      "voltage_representation": null,
+      "waveform_form": "rms",
+      "workspace_id": "ws-rms-baseline"
+     },
+     {
+      "calibration_provenance_reason": null,
+      "calibration_provenance_status": "not_assessed",
+      "created_at": "<created_at:10>",
+      "creation_batch_id": null,
+      "dependency_ids": [],
+      "display_axis_key": "Voltage|V",
+      "display_axis_quantity": "Voltage",
+      "display_axis_unit": "V",
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "id": "<id:8>",
+      "inputs": [
+       {
+        "calculated_channel_id": null,
+        "channel_name": "VA",
+        "kind": "source",
+        "source_id": "<source_id:9>"
+       }
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS magnitude t",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "per_unit_display_axis_key": "Voltage|raw:pu",
+      "per_unit_display_axis_quantity": "Voltage",
+      "per_unit_display_axis_unit": "pu",
+      "phase_member": null,
+      "reference_source_id": "<source_id:9>",
+      "sample_count": 2500,
+      "timing_error": null,
+      "timing_fingerprint": "<fingerprint>",
+      "timing_source_ids": [
+       "<source_id:9>"
+      ],
+      "timing_status": "valid",
+      "unit": "V",
+      "voltage_representation": null,
+      "waveform_form": "rms",
+      "workspace_id": "ws-rms-baseline"
+     },
+     {
+      "calibration_provenance_reason": null,
+      "calibration_provenance_status": "not_assessed",
+      "created_at": "<created_at:13>",
+      "creation_batch_id": null,
+      "dependency_ids": [],
+      "display_axis_key": "Voltage|V",
+      "display_axis_quantity": "Voltage",
+      "display_axis_unit": "V",
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "id": "<id:11>",
+      "inputs": [
+       {
+        "calculated_channel_id": null,
+        "channel_name": "VA",
+        "kind": "source",
+        "source_id": "<source_id:12>"
+       }
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS rms_shaped t",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "per_unit_display_axis_key": "Voltage|raw:pu",
+      "per_unit_display_axis_quantity": "Voltage",
+      "per_unit_display_axis_unit": "pu",
+      "phase_member": null,
+      "reference_source_id": "<source_id:12>",
+      "sample_count": 3000,
+      "timing_error": null,
+      "timing_fingerprint": "<fingerprint>",
+      "timing_source_ids": [
+       "<source_id:12>"
+      ],
+      "timing_status": "valid",
+      "unit": "V",
+      "voltage_representation": null,
+      "waveform_form": "rms",
+      "workspace_id": "ws-rms-baseline"
+     }
+    ],
+    "status": 200
+   },
+   "calculated-channels/peak-values": {
+    "body": {
+     "end_time": 0.5,
+     "results": [
+      {
+       "available": true,
+       "calculated_channel_id": "<id:1>",
+       "elapsed_seconds": 0.0534,
+       "mode": "max",
+       "per_unit_reference_compatibility": null,
+       "per_unit_status": null,
+       "sample_index": 267,
+       "unit": "V",
+       "value": 0.7071068164304181
+      }
+     ],
+     "start_time": 0.0
+    },
+    "status": 200
+   },
+   "calculated-channels/waveform": {
+    "body": {
+     "calculated_channel_id": "<id:1>",
+     "end_time": 0.4998,
+     "name": "RMS(VA) ok",
+     "null_count": 100,
+     "original_sample_count": 2500,
+     "per_unit_reference_compatibility": null,
+     "per_unit_status": null,
+     "representation": "full_resolution",
+     "returned_point_count": 2500,
+     "start_time": 0.0,
+     "time_sha256": "07c38ac021502d41953bdb23e9481c44293ada9544b9bb470ef6ee788fd9998e",
+     "unit": "V",
+     "values_sha256": "4d96e120999ab7c3b981294e229095165cf5e415cfc1d0b5d040ac6b4a6e27c0"
+    },
+    "status": 200
+   },
+   "create/instantaneous/duplicate name": {
+    "body": {
+     "detail": {
+      "code": "duplicate_calculated_channel_name",
+      "message": "A calculated channel named 'RMS(VA) ok' already exists."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/frequency='x'": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/frequency=0": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/frequency=0.5": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/frequency=1001": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/frequency=60": {
+    "body": {
+     "calibration_provenance_reason": null,
+     "calibration_provenance_status": "not_assessed",
+     "created_at": "<created_at:4>",
+     "creation_batch_id": null,
+     "dependency_ids": [],
+     "display_axis_key": "Voltage|V",
+     "display_axis_quantity": "Voltage",
+     "display_axis_unit": "V",
+     "engineering_type": "Voltage",
+     "estimation_method": null,
+     "id": "<id:3>",
+     "inputs": [
+      {
+       "calculated_channel_id": null,
+       "channel_name": "VA",
+       "kind": "source",
+       "source_id": "<source_id:0>"
+      }
+     ],
+     "local_mean_radius": null,
+     "max_gap_unit": null,
+     "max_gap_value": null,
+     "name": "RMS 60",
+     "null_policy": "propagate_null",
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 60.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "per_unit_display_axis_key": "Voltage|raw:pu",
+     "per_unit_display_axis_quantity": "Voltage",
+     "per_unit_display_axis_unit": "pu",
+     "phase_member": null,
+     "reference_source_id": "<source_id:0>",
+     "sample_count": 2500,
+     "timing_error": null,
+     "timing_fingerprint": "<fingerprint>",
+     "timing_source_ids": [
+      "<source_id:0>"
+     ],
+     "timing_status": "valid",
+     "unit": "V",
+     "voltage_representation": null,
+     "waveform_form": "rms",
+     "workspace_id": "ws-rms-baseline"
+    },
+    "status": 201
+   },
+   "create/instantaneous/frequency=None": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/invalid frequency + override": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/no parameters": {
+    "body": {
+     "detail": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+     }
+    },
+    "status": 400
+   },
+   "create/instantaneous/ok": {
+    "body": {
+     "calibration_provenance_reason": null,
+     "calibration_provenance_status": "not_assessed",
+     "created_at": "<created_at:2>",
+     "creation_batch_id": null,
+     "dependency_ids": [],
+     "display_axis_key": "Voltage|V",
+     "display_axis_quantity": "Voltage",
+     "display_axis_unit": "V",
+     "engineering_type": "Voltage",
+     "estimation_method": null,
+     "id": "<id:1>",
+     "inputs": [
+      {
+       "calculated_channel_id": null,
+       "channel_name": "VA",
+       "kind": "source",
+       "source_id": "<source_id:0>"
+      }
+     ],
+     "local_mean_radius": null,
+     "max_gap_unit": null,
+     "max_gap_value": null,
+     "name": "RMS(VA) ok",
+     "null_policy": "propagate_null",
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "per_unit_display_axis_key": "Voltage|raw:pu",
+     "per_unit_display_axis_quantity": "Voltage",
+     "per_unit_display_axis_unit": "pu",
+     "phase_member": null,
+     "reference_source_id": "<source_id:0>",
+     "sample_count": 2500,
+     "timing_error": null,
+     "timing_fingerprint": "<fingerprint>",
+     "timing_source_ids": [
+      "<source_id:0>"
+     ],
+     "timing_status": "valid",
+     "unit": "V",
+     "voltage_representation": null,
+     "waveform_form": "rms",
+     "workspace_id": "ws-rms-baseline"
+    },
+    "status": 201
+   },
+   "create/magnitude/no override": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful."
+     }
+    },
+    "status": 400
+   },
+   "create/magnitude/override false": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful."
+     }
+    },
+    "status": 400
+   },
+   "create/magnitude/override true": {
+    "body": {
+     "calibration_provenance_reason": null,
+     "calibration_provenance_status": "not_assessed",
+     "created_at": "<created_at:10>",
+     "creation_batch_id": null,
+     "dependency_ids": [],
+     "display_axis_key": "Voltage|V",
+     "display_axis_quantity": "Voltage",
+     "display_axis_unit": "V",
+     "engineering_type": "Voltage",
+     "estimation_method": null,
+     "id": "<id:8>",
+     "inputs": [
+      {
+       "calculated_channel_id": null,
+       "channel_name": "VA",
+       "kind": "source",
+       "source_id": "<source_id:9>"
+      }
+     ],
+     "local_mean_radius": null,
+     "max_gap_unit": null,
+     "max_gap_value": null,
+     "name": "RMS magnitude t",
+     "null_policy": "propagate_null",
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "per_unit_display_axis_key": "Voltage|raw:pu",
+     "per_unit_display_axis_quantity": "Voltage",
+     "per_unit_display_axis_unit": "pu",
+     "phase_member": null,
+     "reference_source_id": "<source_id:9>",
+     "sample_count": 2500,
+     "timing_error": null,
+     "timing_fingerprint": "<fingerprint>",
+     "timing_source_ids": [
+      "<source_id:9>"
+     ],
+     "timing_status": "valid",
+     "unit": "V",
+     "voltage_representation": null,
+     "waveform_form": "rms",
+     "workspace_id": "ws-rms-baseline"
+    },
+    "status": 201
+   },
+   "create/rms_shaped/no override": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS."
+     }
+    },
+    "status": 400
+   },
+   "create/rms_shaped/override false": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS."
+     }
+    },
+    "status": 400
+   },
+   "create/rms_shaped/override true": {
+    "body": {
+     "calibration_provenance_reason": null,
+     "calibration_provenance_status": "not_assessed",
+     "created_at": "<created_at:13>",
+     "creation_batch_id": null,
+     "dependency_ids": [],
+     "display_axis_key": "Voltage|V",
+     "display_axis_quantity": "Voltage",
+     "display_axis_unit": "V",
+     "engineering_type": "Voltage",
+     "estimation_method": null,
+     "id": "<id:11>",
+     "inputs": [
+      {
+       "calculated_channel_id": null,
+       "channel_name": "VA",
+       "kind": "source",
+       "source_id": "<source_id:12>"
+      }
+     ],
+     "local_mean_radius": null,
+     "max_gap_unit": null,
+     "max_gap_value": null,
+     "name": "RMS rms_shaped t",
+     "null_policy": "propagate_null",
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "per_unit_display_axis_key": "Voltage|raw:pu",
+     "per_unit_display_axis_quantity": "Voltage",
+     "per_unit_display_axis_unit": "pu",
+     "phase_member": null,
+     "reference_source_id": "<source_id:12>",
+     "sample_count": 3000,
+     "timing_error": null,
+     "timing_fingerprint": "<fingerprint>",
+     "timing_source_ids": [
+      "<source_id:12>"
+     ],
+     "timing_status": "valid",
+     "unit": "V",
+     "voltage_representation": null,
+     "waveform_form": "rms",
+     "workspace_id": "ws-rms-baseline"
+    },
+    "status": 201
+   },
+   "create/short/no override": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS."
+     }
+    },
+    "status": 400
+   },
+   "create/short/override false": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS."
+     }
+    },
+    "status": 400
+   },
+   "create/short/override true": {
+    "body": {
+     "detail": {
+      "code": "rms_recording_too_short",
+      "message": "Recording is shorter than one complete RMS window."
+     }
+    },
+    "status": 400
+   },
+   "create/sparse/no override": {
+    "body": {
+     "detail": {
+      "code": "rms_sampling_too_sparse",
+      "message": "Sample rate is too low relative to the RMS window to produce a meaningful result."
+     }
+    },
+    "status": 400
+   },
+   "create/sparse/override false": {
+    "body": {
+     "detail": {
+      "code": "rms_sampling_too_sparse",
+      "message": "Sample rate is too low relative to the RMS window to produce a meaningful result."
+     }
+    },
+    "status": 400
+   },
+   "create/sparse/override true": {
+    "body": {
+     "detail": {
+      "code": "rms_sampling_too_sparse",
+      "message": "Sample rate is too low relative to the RMS window to produce a meaningful result."
+     }
+    },
+    "status": 400
+   },
+   "create/uncertain/no override": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS."
+     }
+    },
+    "status": 400
+   },
+   "create/uncertain/override false": {
+    "body": {
+     "detail": {
+      "code": "rms_override_required",
+      "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS."
+     }
+    },
+    "status": 400
+   },
+   "create/uncertain/override true": {
+    "body": {
+     "calibration_provenance_reason": null,
+     "calibration_provenance_status": "not_assessed",
+     "created_at": "<created_at:7>",
+     "creation_batch_id": null,
+     "dependency_ids": [],
+     "display_axis_key": "Voltage|V",
+     "display_axis_quantity": "Voltage",
+     "display_axis_unit": "V",
+     "engineering_type": "Voltage",
+     "estimation_method": null,
+     "id": "<id:5>",
+     "inputs": [
+      {
+       "calculated_channel_id": null,
+       "channel_name": "VA",
+       "kind": "source",
+       "source_id": "<source_id:6>"
+      }
+     ],
+     "local_mean_radius": null,
+     "max_gap_unit": null,
+     "max_gap_value": null,
+     "name": "RMS uncertain t",
+     "null_policy": "propagate_null",
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "per_unit_display_axis_key": "Voltage|raw:pu",
+     "per_unit_display_axis_quantity": "Voltage",
+     "per_unit_display_axis_unit": "pu",
+     "phase_member": null,
+     "reference_source_id": "<source_id:6>",
+     "sample_count": 3000,
+     "timing_error": null,
+     "timing_fingerprint": "<fingerprint>",
+     "timing_source_ids": [
+      "<source_id:6>"
+     ],
+     "timing_status": "valid",
+     "unit": "V",
+     "voltage_representation": null,
+     "waveform_form": "rms",
+     "workspace_id": "ws-rms-baseline"
+    },
+    "status": 201
+   },
+   "rms-eligibility/instantaneous/-50": {
+    "body": {
+     "override_required": true,
+     "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "status": "uncertain"
+    },
+    "status": 200
+   },
+   "rms-eligibility/instantaneous/0": {
+    "body": "Internal Server Error",
+    "status": 500
+   },
+   "rms-eligibility/instantaneous/0.5": {
+    "body": {
+     "override_required": true,
+     "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "status": "uncertain"
+    },
+    "status": 200
+   },
+   "rms-eligibility/instantaneous/1001": {
+    "body": {
+     "override_required": true,
+     "reason": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.",
+     "status": "likely_already_rms_or_magnitude"
+    },
+    "status": 200
+   },
+   "rms-eligibility/instantaneous/50": {
+    "body": {
+     "override_required": false,
+     "reason": "Input appears suitable for RMS.",
+     "status": "suitable"
+    },
+    "status": 200
+   },
+   "rms-eligibility/instantaneous/60": {
+    "body": {
+     "override_required": false,
+     "reason": "Input appears suitable for RMS.",
+     "status": "suitable"
+    },
+    "status": 200
+   },
+   "rms-eligibility/instantaneous/missing": {
+    "body": {
+     "detail": [
+      {
+       "input": {
+        "input": {
+         "channel_name": "VA",
+         "kind": "source",
+         "source_id": "<source_id:0>"
+        }
+       },
+       "loc": [
+        "body",
+        "nominal_frequency_hz"
+       ],
+       "msg": "Field required",
+       "type": "missing"
+      }
+     ]
+    },
+    "status": 422
+   },
+   "rms-eligibility/instantaneous/string": {
+    "body": {
+     "detail": [
+      {
+       "input": "x",
+       "loc": [
+        "body",
+        "nominal_frequency_hz"
+       ],
+       "msg": "Input should be a valid number, unable to parse string as a number",
+       "type": "float_parsing"
+      }
+     ]
+    },
+    "status": 422
+   },
+   "rms-eligibility/magnitude/50": {
+    "body": {
+     "override_required": true,
+     "reason": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.",
+     "status": "likely_already_rms_or_magnitude"
+    },
+    "status": 200
+   },
+   "rms-eligibility/rms_shaped/50": {
+    "body": {
+     "override_required": true,
+     "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "status": "uncertain"
+    },
+    "status": 200
+   },
+   "rms-eligibility/short/50": {
+    "body": {
+     "override_required": true,
+     "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "status": "uncertain"
+    },
+    "status": 200
+   },
+   "rms-eligibility/sparse/50": {
+    "body": {
+     "override_required": false,
+     "reason": "Input appears suitable for RMS.",
+     "status": "suitable"
+    },
+    "status": 200
+   },
+   "rms-eligibility/uncertain/50": {
+    "body": {
+     "override_required": true,
+     "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "status": "uncertain"
+    },
+    "status": 200
+   },
+   "rms-eligibility/unknown source": {
+    "body": {
+     "detail": {
+      "code": "source_not_found",
+      "message": "No source 'no-such' in workspace 'ws-rms-baseline'."
+     }
+    },
+    "status": 404
+   }
+  },
+  "service": {
+   "calibration": {
+    "ben5k=False/authority=None": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=False/authority=invalid": {
+     "create_override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=False/authority=unverified": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=False/authority=verified": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=None": {
+     "create_override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "BEN5K channel 'VA' has no calibration authority record; it cannot be used as a calculated-channel input.",
+       "reason": "ben5k_authority_absent",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "BEN5K channel 'VA' has no calibration authority record; it cannot be used as a calculated-channel input.",
+       "reason": "ben5k_authority_absent",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=invalid": {
+     "create_override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=invalid/declared rms": {
+     "create_override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=invalid/invalid frequency": {
+     "override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "ben5k=True/authority=invalid/uncertain data": {
+     "create_override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "Channel 'VA' has an explicitly Invalid physical calibration authority and cannot be used as a calculated-channel input.",
+       "reason": "transform_id_mismatch_invalidated",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=unverified": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=unverified/uncertain data": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "cced7681b27c6666fb12a727f75d8bed46f42fcdf0440c7228ba211c40d6e644",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/authority=verified": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "ben5k=True/record channel missing": {
+     "create_override_False": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "BEN5K channel 'VA' was not found in the source's analog channels; physical calibration authority cannot be determined.",
+       "reason": "channel_not_found_ben5k",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "invalid_calibration_authority",
+       "input_ref": "VA",
+       "message": "BEN5K channel 'VA' was not found in the source's analog channels; physical calibration authority cannot be determined.",
+       "reason": "channel_not_found_ben5k",
+       "type": "InvalidCalibrationAuthorityError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    }
+   },
+   "chains": {
+    "rms_of_rms/second with override": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 1,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "calculated:RMS1"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS2",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 199,
+       "nan_count": 199,
+       "sha256": "3cffea7252c50fcf58849fcb9fad93b36f96194296f2239ec7040551e65f7e49",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 2
+    },
+    "source form=instantaneous/input=absolute_value": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:|VA|"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "source form=instantaneous/input=addition": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA+VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA+VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=instantaneous/input=multiply_constant": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA*2"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA*2"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=instantaneous/input=reverse_polarity": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:-VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:-VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=instantaneous/input=rms": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:RMS(VA)"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 199,
+        "nan_count": 199,
+        "sha256": "3cffea7252c50fcf58849fcb9fad93b36f96194296f2239ec7040551e65f7e49",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "source form=instantaneous/input=subtraction": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA-VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e9a228ab10a497f48049a3e8aee81cb60a99289c52239b10f80f71e017d40ca5",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA-VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e9a228ab10a497f48049a3e8aee81cb60a99289c52239b10f80f71e017d40ca5",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=unknown/input=absolute_value": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:|VA|"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "source form=unknown/input=addition": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA+VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA+VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=unknown/input=multiply_constant": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA*2"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA*2"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e4c44a4f0dd0452355973c91969f4de004a0928fef91764f69f5e607ae96e7a8",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=unknown/input=reverse_polarity": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:-VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:-VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "source form=unknown/input=rms": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:RMS(VA)"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 199,
+        "nan_count": 199,
+        "sha256": "3cffea7252c50fcf58849fcb9fad93b36f96194296f2239ec7040551e65f7e49",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "source form=unknown/input=subtraction": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 1,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "calculated:VA-VB"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(derived)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "e9a228ab10a497f48049a3e8aee81cb60a99289c52239b10f80f71e017d40ca5",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 2
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    }
+   },
+   "display_range": {
+    "full_range": {
+     "original_sample_count": 2500,
+     "per_unit_status": null,
+     "representation": "full_resolution",
+     "time_sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+     "unit": "kV",
+     "values_sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d"
+    }
+   },
+   "eligibility_matrix": {
+    "form=instantaneous/data=svc_instantaneous": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "form=instantaneous/data=svc_magnitude_like": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "060a92821b0f5572b3cce90744b8e00ae61b5674e979454cddac4cc3d72582b4",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "060a92821b0f5572b3cce90744b8e00ae61b5674e979454cddac4cc3d72582b4",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "form=instantaneous/data=svc_rms_shaped": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "bd31444ca6b94cd7e3bdbe8df42473cd8aa87c633a9960c3eb4538445d804bdd",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "bd31444ca6b94cd7e3bdbe8df42473cd8aa87c633a9960c3eb4538445d804bdd",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "form=instantaneous/data=svc_uncertain": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "cced7681b27c6666fb12a727f75d8bed46f42fcdf0440c7228ba211c40d6e644",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "cced7681b27c6666fb12a727f75d8bed46f42fcdf0440c7228ba211c40d6e644",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "form=magnitude/data=svc_instantaneous": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=magnitude/data=svc_magnitude_like": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "060a92821b0f5572b3cce90744b8e00ae61b5674e979454cddac4cc3d72582b4",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=magnitude/data=svc_rms_shaped": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "bd31444ca6b94cd7e3bdbe8df42473cd8aa87c633a9960c3eb4538445d804bdd",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=magnitude/data=svc_uncertain": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "cced7681b27c6666fb12a727f75d8bed46f42fcdf0440c7228ba211c40d6e644",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=rms/data=svc_instantaneous": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=rms/data=svc_magnitude_like": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "060a92821b0f5572b3cce90744b8e00ae61b5674e979454cddac4cc3d72582b4",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=rms/data=svc_rms_shaped": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "bd31444ca6b94cd7e3bdbe8df42473cd8aa87c633a9960c3eb4538445d804bdd",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=rms/data=svc_uncertain": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "cced7681b27c6666fb12a727f75d8bed46f42fcdf0440c7228ba211c40d6e644",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=unknown/data=svc_instantaneous": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "form=unknown/data=svc_magnitude_like": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "060a92821b0f5572b3cce90744b8e00ae61b5674e979454cddac4cc3d72582b4",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "form=unknown/data=svc_rms_shaped": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "bd31444ca6b94cd7e3bdbe8df42473cd8aa87c633a9960c3eb4538445d804bdd",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "form=unknown/data=svc_uncertain": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "98fa90f4ee8dacf693801a4661a4a0c877cc5cfd374b53f786df2c8bc3739f9b",
+        "shape": [
+         3000
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 40,
+        "nan_count": 40,
+        "sha256": "cced7681b27c6666fb12a727f75d8bed46f42fcdf0440c7228ba211c40d6e644",
+        "shape": [
+         3000
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    }
+   },
+   "frequency": {
+    "eligibility/frequency=0.5": {
+     "eligibility": {
+      "override_required": false,
+      "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+      "status": "suitable"
+     },
+     "ok": true
+    },
+    "eligibility/frequency=1": {
+     "eligibility": {
+      "override_required": false,
+      "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+      "status": "suitable"
+     },
+     "ok": true
+    },
+    "eligibility/frequency=1000": {
+     "eligibility": {
+      "override_required": false,
+      "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+      "status": "suitable"
+     },
+     "ok": true
+    },
+    "eligibility/frequency=60": {
+     "eligibility": {
+      "override_required": false,
+      "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+      "status": "suitable"
+     },
+     "ok": true
+    },
+    "frequency='50'": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=-50": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=0": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=0.5": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=1": {
+     "error": {
+      "code": "rms_recording_too_short",
+      "message": "Recording is shorter than one complete RMS window.",
+      "type": "RmsRecordingTooShortError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=1000": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 1000.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 5,
+       "nan_count": 5,
+       "sha256": "a1c85923125791f7b0be149dca0f48759d61eaf6c9f87fded825883cca2af564",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "frequency=1000.0001": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=50": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "frequency=50.0": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "frequency=60": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 60.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 84,
+       "nan_count": 84,
+       "sha256": "6a5e72a9f2fa616d2c359e2e48ad0b3473143b64cdc966c05470d1576f3956dc",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "frequency=<parameter missing>": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=<parameters is None>": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=None": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=True": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=inf": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "frequency=nan": {
+     "error": {
+      "code": "invalid_nominal_frequency",
+      "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+      "type": "InvalidNominalFrequencyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    }
+   },
+   "null_policy": {
+    "data=svc_instantaneous/policy=estimate_hold_last": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "hold_last",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": "samples",
+      "max_gap_value": 1,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous/policy=estimate_linear": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "linear",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": "samples",
+      "max_gap_value": 2,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous/policy=estimate_local_mean": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "local_mean",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": 3,
+      "max_gap_unit": "samples",
+      "max_gap_value": 1,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous/policy=estimate_missing_method": {
+     "error": {
+      "code": "invalid_estimation_method",
+      "message": "estimation_method must be one of the recognized estimation methods, got None.",
+      "type": "InvalidEstimationMethodError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous/policy=estimate_nearest": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "nearest",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": "samples",
+      "max_gap_value": 1,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous/policy=estimate_pchip": {
+     "error": {
+      "code": "estimation_method_not_implemented",
+      "message": "Estimation method 'pchip' is not implemented yet. Choose hold_last, nearest, linear, or local_mean.",
+      "type": "EstimationMethodNotImplementedError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous/policy=propagate": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous/policy=propagate_with_estimation_fields": {
+     "error": {
+      "code": "estimation_fields_not_applicable",
+      "message": "estimation_method/max_gap_value/max_gap_unit/local_mean_radius only apply when null_policy is estimate_missing_data.",
+      "type": "EstimationFieldsNotApplicableError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous/policy=require_manual": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "require_manual_value",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous/policy=unknown_policy": {
+     "error": {
+      "code": "invalid_null_policy",
+      "message": "Unsupported null-handling policy: 'no_such_policy'.",
+      "type": "InvalidNullPolicyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous/policy=zero": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "treat_null_as_zero",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/policy=estimate_hold_last": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "hold_last",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": "samples",
+      "max_gap_value": 1,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "d10d2319a77fb5301840edf76f215dc4b6d850a6bf1784a4cf8e9b43f537fc1d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/policy=estimate_linear": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "linear",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": "samples",
+      "max_gap_value": 2,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/policy=estimate_local_mean": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "local_mean",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": 3,
+      "max_gap_unit": "samples",
+      "max_gap_value": 1,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/policy=estimate_missing_method": {
+     "error": {
+      "code": "invalid_estimation_method",
+      "message": "estimation_method must be one of the recognized estimation methods, got None.",
+      "type": "InvalidEstimationMethodError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous_nan/policy=estimate_nearest": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": "nearest",
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": "samples",
+      "max_gap_value": 1,
+      "name": "RMS(VA)",
+      "null_policy": "estimate_missing_data",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "d10d2319a77fb5301840edf76f215dc4b6d850a6bf1784a4cf8e9b43f537fc1d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/policy=estimate_pchip": {
+     "error": {
+      "code": "estimation_method_not_implemented",
+      "message": "Estimation method 'pchip' is not implemented yet. Choose hold_last, nearest, linear, or local_mean.",
+      "type": "EstimationMethodNotImplementedError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous_nan/policy=propagate": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "propagate_null",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 300,
+       "sha256": "dd36f9a65e86e8348e7cf8bb9b97253c971de00bf958863c29f2db1f25373848",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/policy=propagate_with_estimation_fields": {
+     "error": {
+      "code": "estimation_fields_not_applicable",
+      "message": "estimation_method/max_gap_value/max_gap_unit/local_mean_radius only apply when null_policy is estimate_missing_data.",
+      "type": "EstimationFieldsNotApplicableError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous_nan/policy=require_manual": {
+     "error": {
+      "code": "require_manual_value_null",
+      "message": "Cannot create this calculated channel with Require Manual Value: source 'src1' channel 'VA' contains missing/invalid (null) values that must be resolved first.",
+      "type": "RequireManualValueNullError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous_nan/policy=unknown_policy": {
+     "error": {
+      "code": "invalid_null_policy",
+      "message": "Unsupported null-handling policy: 'no_such_policy'.",
+      "type": "InvalidNullPolicyError"
+     },
+     "ok": false,
+     "registered_after": 0
+    },
+    "data=svc_instantaneous_nan/policy=zero": {
+     "channel": {
+      "creation_batch_id": null,
+      "dependency_ids_count": 0,
+      "engineering_type": "Voltage",
+      "estimation_method": null,
+      "inputs": [
+       "source:src1:VA"
+      ],
+      "local_mean_radius": null,
+      "max_gap_unit": null,
+      "max_gap_value": null,
+      "name": "RMS(VA)",
+      "null_policy": "treat_null_as_zero",
+      "operation": "rms",
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "rms_kind": "true_rms",
+       "window_mode": "trailing"
+      },
+      "phase_member": null,
+      "reference_source_id": "src1",
+      "time": {
+       "dtype": "float64",
+       "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+       "shape": [
+        2500
+       ]
+      },
+      "unit": "kV",
+      "values": {
+       "dtype": "float64",
+       "first_finite_index": 100,
+       "nan_count": 100,
+       "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+       "shape": [
+        2500
+       ]
+      },
+      "voltage_representation": null,
+      "waveform_form": "rms"
+     },
+     "ok": true,
+     "registered_after": 1
+    },
+    "data=svc_instantaneous_nan/unknown form/policy=propagate": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 300,
+        "sha256": "dd36f9a65e86e8348e7cf8bb9b97253c971de00bf958863c29f2db1f25373848",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 300,
+        "sha256": "dd36f9a65e86e8348e7cf8bb9b97253c971de00bf958863c29f2db1f25373848",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "data=svc_instantaneous_nan/unknown form/policy=zero": {
+     "create_override_False": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "treat_null_as_zero",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "create_override_True": {
+      "channel": {
+       "creation_batch_id": null,
+       "dependency_ids_count": 0,
+       "engineering_type": "Voltage",
+       "estimation_method": null,
+       "inputs": [
+        "source:src1:VA"
+       ],
+       "local_mean_radius": null,
+       "max_gap_unit": null,
+       "max_gap_value": null,
+       "name": "RMS(VA)",
+       "null_policy": "treat_null_as_zero",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "reference_source_id": "src1",
+       "time": {
+        "dtype": "float64",
+        "sha256": "68d53569e0ca21b8c270c7ddf253ab9f912d94196af96b14d517430fbf13f0e5",
+        "shape": [
+         2500
+        ]
+       },
+       "unit": "kV",
+       "values": {
+        "dtype": "float64",
+        "first_finite_index": 100,
+        "nan_count": 100,
+        "sha256": "626dc7129864fed95488eed528d7578ee705c429804767dde9570fc8ef1c130d",
+        "shape": [
+         2500
+        ]
+       },
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "ok": true,
+      "registered_after": 1
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    }
+   },
+   "validation_precedence": {
+    "instantaneous+short": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "instantaneous+short+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "instantaneous+short+sparse": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "instantaneous+short+sparse+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "instantaneous+sparse": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_sampling_too_sparse",
+       "message": "Sample rate is too low relative to the RMS window to produce a meaningful result.",
+       "type": "RmsSamplingTooSparseError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_sampling_too_sparse",
+       "message": "Sample rate is too low relative to the RMS window to produce a meaningful result.",
+       "type": "RmsSamplingTooSparseError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input is explicitly marked instantaneous. Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "instantaneous+sparse+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "magnitude+sparse": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_sampling_too_sparse",
+       "message": "Sample rate is too low relative to the RMS window to produce a meaningful result.",
+       "type": "RmsSamplingTooSparseError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "magnitude+sparse+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "rms+short": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "rms+short+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "rms+short+sparse": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
+       "status": "likely_already_rms_or_magnitude"
+      },
+      "ok": true
+     }
+    },
+    "rms+short+sparse+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "unknown+short": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "unknown+short+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "unknown+short+sparse": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_override_required",
+       "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "type": "RmsOverrideRequiredError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_recording_too_short",
+       "message": "Recording is shorter than one complete RMS window.",
+       "type": "RmsRecordingTooShortError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": true,
+       "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+       "status": "uncertain"
+      },
+      "ok": true
+     }
+    },
+    "unknown+short+sparse+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    },
+    "unknown+sparse": {
+     "create_override_False": {
+      "error": {
+       "code": "rms_sampling_too_sparse",
+       "message": "Sample rate is too low relative to the RMS window to produce a meaningful result.",
+       "type": "RmsSamplingTooSparseError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "create_override_True": {
+      "error": {
+       "code": "rms_sampling_too_sparse",
+       "message": "Sample rate is too low relative to the RMS window to produce a meaningful result.",
+       "type": "RmsSamplingTooSparseError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "eligibility": {
+      "eligibility": {
+       "override_required": false,
+       "reason": "Input appears suitable for RMS.",
+       "status": "suitable"
+      },
+      "ok": true
+     }
+    },
+    "unknown+sparse+invalid_frequency_0": {
+     "override_False": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     },
+     "override_True": {
+      "error": {
+       "code": "invalid_nominal_frequency",
+       "message": "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60).",
+       "type": "InvalidNominalFrequencyError"
+      },
+      "ok": false,
+      "registered_after": 0
+     }
+    }
+   }
+  }
+ },
+ "platform": "Windows-11-10.0.26200-SP0",
+ "purpose": "Frozen pre-R0 Calculated Channels RMS behaviour (service + API) for the RMS display R0 extraction",
+ "python": "3.12.10",
+ "scenario_count": 148,
+ "scenario_runner": "backend/tests/rms_baseline_scenarios.py",
+ "schema": 1
+}
