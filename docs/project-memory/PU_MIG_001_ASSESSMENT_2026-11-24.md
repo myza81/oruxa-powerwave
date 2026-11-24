@@ -226,7 +226,7 @@ Manual base is an *override of the base value only* (F1–F3 apply to its leaves
 * **Frontend [FACT]:** a **gap**. Voltage/Current config and VT/CT writes call
   `wwRefreshDisplayedChannelsForPerUnitChange(sourceId)` (e.g. `index.html:37294…37617`), which retires presentation arrays,
   bumps generation fences and refetches waveform, cursor and annotation/peak values. The **measurement-side writes do not**:
-  `wwRdSideEnqueue` → `wwRdSideLoad` re-reads only the side overview (`:36533-36524`). Harmless today (PU ignores the side),
+  `wwRdSideEnqueue` → `wwRdSideLoad` re-reads only the side overview (`:36533-36568`, `:36494-36518`). Harmless today (PU ignores the side),
   **stale-PU after the migration** unless wired.
 * **Proposal:** after a settled side write call the same refresh for the affected source (Level 1 ⇒ the whole source; Level 2 ⇒
   that source, only displayed channels of that group matter but the existing per-source refresh is correct and cheap). No new
