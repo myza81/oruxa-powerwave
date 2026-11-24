@@ -17,6 +17,8 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.domain.nominal_frequency import valid_nominal_frequency
+
 
 @dataclass(frozen=True, slots=True)
 class ManualNominalFrequency:
@@ -45,7 +47,11 @@ class NominalFrequencyRegistry:
             return self._manual.get(key), self._revision.get(key, 0)
 
     def set(self, workspace_id: str, source_id: str, value_hz: float, set_at: datetime) -> bool:
-        """Store the value. Returns True when the stored state changed (and the revision moved)."""
+        """Store the value. Returns True when the stored state changed (and the revision moved). The registry never
+        holds a value the recording-level predicate rejects (NaN, inf, a bool, out of 1-1000 Hz): that is refused
+        here as well as in the service, so no internal state can bypass validation."""
+        if not valid_nominal_frequency(value_hz):
+            raise ValueError(f"not a valid recording nominal frequency: {value_hz!r}")
         key = (workspace_id, source_id)
         with self._lock:
             current = self._manual.get(key)

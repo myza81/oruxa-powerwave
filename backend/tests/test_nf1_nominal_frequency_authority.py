@@ -165,6 +165,28 @@ class TestRegistry:
         assert reg.count() == 1 and reg.get("w2", "s1").value_hz == 16.7
         assert reg.remove_workspace("nope") == 0
 
+    @pytest.mark.parametrize("bad", UNUSABLE + [True, False, None, "60", [60]])
+    def test_the_registry_itself_refuses_an_invalid_value(self, bad):
+        reg = NominalFrequencyRegistry()
+        with pytest.raises(ValueError):
+            reg.set("w", "s", bad, NOW)
+        assert reg.snapshot("w", "s") == (None, 0)                 # nothing stored, no revision moved
+        reg.set("w", "s", 60.0, NOW)
+        with pytest.raises(ValueError):
+            reg.set("w", "s", float("nan"), NOW)
+        assert reg.snapshot("w", "s")[0].value_hz == 60.0 and reg.revision("w", "s") == 1
+
+    @pytest.mark.parametrize("bad", UNUSABLE + [True])
+    def test_the_service_refuses_an_invalid_value_before_the_registry(self, client, bad):
+        from app.services.errors import InvalidNominalFrequencyError
+        from app.services.nominal_frequency_service import set_manual_nominal_frequency
+        ws = _ws()
+        sid = _upload_comtrade(client, ws, "declared_50")
+        registry = client.app.state.nominal_frequency_registry
+        with pytest.raises(InvalidNominalFrequencyError):
+            set_manual_nominal_frequency(ws, sid, bad, source_registry=client.app.state.workspace_registry, registry=registry)
+        assert registry.snapshot(ws, sid) == (None, 0)
+
     def test_records_are_frozen(self):
         reg = NominalFrequencyRegistry()
         reg.set("w", "s", 60.0, NOW)
@@ -344,6 +366,29 @@ class TestApiManual:
         assert client.get(_url(ws2, c)).json()["effective_hz"] == 50.0
         # the same source id asked through another workspace is unknown, not shared
         assert client.get(_url(ws2, a)).status_code == 404
+
+
+class TestNoNonFiniteStateAnywhere:
+    """The surviving mutation of the first review (M14: raw NaN passed to the response model) was equivalent only
+    because pydantic serialises NaN as null. These assertions do not depend on that: the model attribute itself is
+    null, the registry cannot hold NaN, and the wire body never carries a NaN or Infinity token."""
+
+    @pytest.mark.parametrize("imported", [float("nan"), float("inf"), float("-inf")])
+    def test_the_response_model_never_carries_a_non_finite_number(self, imported):
+        from app.schemas.nominal_frequency import NominalFrequencyOut
+        out = NominalFrequencyOut.from_domain("s", nf.resolve_nominal_frequency(imported, COMTRADE))
+        assert out.imported_hz is None and out.imported_text == repr(imported)
+        assert out.effective_hz is None and out.auto_hz is None and out.manual_hz is None
+        assert "NaN" not in out.model_dump_json() and "Infinity" not in out.model_dump_json()
+
+    @pytest.mark.parametrize("variant", ["declared_nan", "declared_inf", "declared_negative_inf", "declared_overflow_1e999"])
+    def test_the_wire_body_has_no_non_finite_token(self, client, variant):
+        ws = _ws()
+        sid = _upload_comtrade(client, ws, variant)
+        for response in (client.get(_url(ws, sid)), _put(client, ws, sid, {"mode": "manual", "value_hz": 50}),
+                         _put(client, ws, sid, {"mode": "auto"})):
+            assert response.status_code == 200
+            assert "NaN" not in response.text and "Infinity" not in response.text
 
 
 class TestOriginalsAreNeverChanged:
