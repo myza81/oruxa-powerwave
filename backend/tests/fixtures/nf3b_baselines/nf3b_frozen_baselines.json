@@ -1,5 +1,6 @@
 {
  "baseline_git_sha": "c70182cbb1a88158d4d81512321b71b9f323851e",
+ "note": "power_gate group added after review (mutation check M22) and captured from the pristine NF-3A tree; all other groups unchanged",
  "numpy": "2.4.6",
  "outcomes": {
   "http": {
@@ -4008,6 +4009,122 @@
        "onset_observed",
        "temporal_overlap"
       ]
+     }
+    }
+   }
+  },
+  "power_gate": {
+   "dense_5khz": {
+    "recording_50hz": {
+     "returns": {
+      "created": true,
+      "finite_samples": 2401,
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      }
+     }
+    },
+    "recording_60hz": {
+     "returns": {
+      "created": true,
+      "finite_samples": 2401,
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      }
+     }
+    }
+   },
+   "long_0_0215s_longer_than_both": {
+    "recording_50hz": {
+     "returns": {
+      "created": true,
+      "finite_samples": 8,
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      }
+     }
+    },
+    "recording_60hz": {
+     "returns": {
+      "created": true,
+      "finite_samples": 8,
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      }
+     }
+    }
+   },
+   "short_0_0150s_shorter_than_both_windows": {
+    "recording_50hz": {
+     "returns": {
+      "code": "rms_recording_too_short",
+      "raises": "RmsRecordingTooShortError"
+     }
+    },
+    "recording_60hz": {
+     "returns": {
+      "code": "rms_recording_too_short",
+      "raises": "RmsRecordingTooShortError"
+     }
+    }
+   },
+   "short_0_018s_between_the_60hz_and_50hz_window": {
+    "recording_50hz": {
+     "returns": {
+      "code": "rms_recording_too_short",
+      "raises": "RmsRecordingTooShortError"
+     }
+    },
+    "recording_60hz": {
+     "returns": {
+      "code": "rms_recording_too_short",
+      "raises": "RmsRecordingTooShortError"
+     }
+    }
+   },
+   "sparse_190hz_below_both": {
+    "recording_50hz": {
+     "returns": {
+      "code": "rms_sampling_too_sparse",
+      "raises": "RmsSamplingTooSparseError"
+     }
+    },
+    "recording_60hz": {
+     "returns": {
+      "code": "rms_sampling_too_sparse",
+      "raises": "RmsSamplingTooSparseError"
+     }
+    }
+   },
+   "sparse_220hz_between_the_50hz_and_60hz_density": {
+    "recording_50hz": {
+     "returns": {
+      "created": true,
+      "finite_samples": 0,
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      }
+     }
+    },
+    "recording_60hz": {
+     "returns": {
+      "created": true,
+      "finite_samples": 0,
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      }
      }
     }
    }

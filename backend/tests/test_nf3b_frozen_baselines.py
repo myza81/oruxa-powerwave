@@ -67,18 +67,19 @@ class TestBaselineIntegrity:
         assert BASELINE["schema"] == 1
 
     def test_every_group_and_scenario_is_present(self):
-        assert set(FROZEN) == {"kernels", "in_process", "http", "oscillation_selection"}
+        assert set(FROZEN) == {"kernels", "in_process", "http", "oscillation_selection", "power_gate"}
         assert set(FROZEN["in_process"]) == set(scenarios.RECORDING_SPECS)
         assert set(FROZEN["http"]) == set(scenarios.HTTP_RECORDINGS)
         assert len(FROZEN["kernels"]["grid"]) == len(scenarios.KERNEL_GRID)
         assert len(FROZEN["kernels"]["invalid"]) == len(scenarios.INVALID_NOMINAL)
+        assert set(FROZEN["power_gate"]) == set(scenarios.POWER_GATE_CASES)
 
     def test_the_invalid_inputs_cover_zero_negative_nan_infinite_and_out_of_range(self):
         assert {"0.0", "-50.0", "nan", "inf", "-inf", "0.5", "1001.0"} == set(FROZEN["kernels"]["invalid"])
 
 
 class TestFrozenConsumerBehaviourIsUnchanged:
-    @pytest.mark.parametrize("group", ["kernels", "in_process", "oscillation_selection"])
+    @pytest.mark.parametrize("group", ["kernels", "in_process", "oscillation_selection", "power_gate"])
     def test_pure_and_in_process_consumers(self, current, group):
         assert _same(FROZEN[group], current[group], group) == []
 
@@ -138,6 +139,13 @@ class TestLegacyDefectsAreFrozenAsDefectsNotAsApprovedBehaviour:
         cases = FROZEN["oscillation_selection"]["component_55hz"]
         assert cases["first_50_second_60"] != cases["first_60_second_50"]               # same two recordings, swapped order
         assert cases["first_60_second_50"]["returns"]["nominal_values_in_evidence"] == ["60.0"]
+
+    def test_D_A_the_power_prerequisite_gates_apply_50_hz_to_a_60_hz_recording_nfF(self):
+        gate = FROZEN["power_gate"]
+        short = gate["short_0_018s_between_the_60hz_and_50hz_window"]["recording_60hz"]["returns"]
+        sparse = gate["sparse_220hz_between_the_50hz_and_60hz_density"]["recording_60hz"]["returns"]
+        assert short["code"] == "rms_recording_too_short"          # 0.018 s is longer than a 60 Hz cycle (0.0167 s) but is refused
+        assert sparse["created"] is True                           # 220 Hz is below the 240 Hz a 60 Hz window needs, yet accepted
 
     def test_a_60hz_signal_with_an_assumed_50_hz_is_judged_not_eligible_by_the_phasor_gate(self):
         # Context for the Manual value: today there is no way to correct this; the recording is simply refused.

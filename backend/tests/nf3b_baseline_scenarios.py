@@ -494,10 +494,51 @@ def run_oscillation_selection_scenarios() -> dict:
     return out
 
 
+# ------------------------------------------------------------------------------------------------ (P) power prerequisite gates
+#: (sampling rate, duration): chosen around the two thresholds the power channels' prerequisite gates apply with a hard-coded
+#: 50 Hz (NF-3A C-11): a recording must span MORE than one window (1/f) and give at least 4 samples per window. At 50 Hz that is
+#: duration > 0.02 s and a rate of at least 200 Hz; at 60 Hz it would be 0.01667 s and 240 Hz. A gate quietly moved to 60 Hz (or
+#: to the recording's own frequency) flips exactly the cases between the two thresholds.
+POWER_GATE_CASES = {
+    "short_0_018s_between_the_60hz_and_50hz_window": (5000.0, 0.018),
+    "short_0_0150s_shorter_than_both_windows": (5000.0, 0.015),
+    "long_0_0215s_longer_than_both": (5000.0, 0.0215),
+    "sparse_220hz_between_the_50hz_and_60hz_density": (220.0, 0.5),
+    "sparse_190hz_below_both": (190.0, 0.5),
+    "dense_5khz": (5000.0, 0.5),
+}
+
+
+def run_power_gate_scenarios() -> dict:
+    from app.services.calculated_channel_registry import CalculatedChannelRegistry
+    from app.services.calculated_channel_service import create_calculated_channel
+    from app.services.workspace_registry import WorkspaceRegistry
+
+    out: dict = {}
+    for name, (fs, seconds) in POWER_GATE_CASES.items():
+        out[name] = {}
+        for nominal, f_sig in ((50.0, 50.0), (60.0, 60.0)):
+            sources, calcs = WorkspaceRegistry(), CalculatedChannelRegistry()
+            sources.add(build_source("src", nominal, {"source_format": "COMTRADE"}, f_sig, fs=fs, seconds=seconds))
+
+            def create():
+                try:
+                    channel = create_calculated_channel(
+                        workspace_id=WS, name="P", operation=OP_ACTIVE_POWER, parameters={}, source_registry=sources, calc_registry=calcs,
+                        inputs=[ChannelRef(kind="source", source_id="src", channel_name="VA"), ChannelRef(kind="source", source_id="src", channel_name="IA")])
+                except Exception as exc:                                  # noqa: BLE001
+                    return _service_failure(exc)
+                values = np.asarray(channel.values, dtype=np.float64)
+                return {"created": True, "parameters": _plain(channel.parameters), "finite_samples": int(np.isfinite(values).sum())}
+            out[name][f"recording_{int(nominal)}hz"] = outcome(create)
+    return out
+
+
 def run_all(client) -> dict:
     return {
         "kernels": run_kernel_scenarios(),
         "in_process": run_inprocess_scenarios(),
         "http": run_http_scenarios(client),
         "oscillation_selection": run_oscillation_selection_scenarios(),
+        "power_gate": run_power_gate_scenarios(),
     }

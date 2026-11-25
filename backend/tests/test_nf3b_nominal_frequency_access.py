@@ -296,6 +296,14 @@ class TestMultiSourceContract:
                        for m in (access.for_sources(WS, list(p)) for p in itertools.permutations(ids))}
             assert len(answers) == 1, ids
 
+    def test_the_common_value_of_slightly_different_agreeing_recordings_does_not_depend_on_order(self):
+        # 50.0 and 50.0 + 1e-10 agree within the tolerance; the reported common value must still be one fixed number (the
+        # smallest), not "whichever was listed first".
+        access, *_ = make(enabled=True, sources={"a": (50.0 + 1e-10, COMTRADE), "b": (50.0, COMTRADE)})
+        forward, backward = access.for_sources(WS, ["a", "b"]), access.for_sources(WS, ["b", "a"])
+        assert forward.status == backward.status == acc.AGREEMENT_AGREED
+        assert forward.common_hz == backward.common_hz == 50.0
+
     def test_flags_and_revisions_travel_with_the_members(self):
         access, *_ = make(enabled=True, sources={"a": (50.0, ASSUMED), "b": (60.0, COMTRADE)})
         access.set_manual(WS, "b", 50.0)
