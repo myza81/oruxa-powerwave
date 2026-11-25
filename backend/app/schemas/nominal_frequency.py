@@ -31,15 +31,21 @@ class NominalFrequencyOut(BaseModel):
     manual_hz: float | None
     #: Moves forward whenever the stored manual state of this recording changes.
     revision: int
+    #: NF-3B: whether the server-side release gate allows a Manual value (False by default; always False in a deployed build).
+    #: When False a `PUT mode=manual` is refused with 409 and every field above is the Auto resolution.
+    manual_override_enabled: bool = False
 
     @classmethod
-    def from_domain(cls, source_id: str, r: EffectiveNominalFrequency) -> "NominalFrequencyOut":
+    def from_domain(
+        cls, source_id: str, r: EffectiveNominalFrequency, manual_override_enabled: bool = False,
+    ) -> "NominalFrequencyOut":
         finite = r.imported_hz is not None and math.isfinite(r.imported_hz)
         return cls(
             source_id=source_id, mode=r.mode, effective_hz=r.effective_hz, usable=r.usable, origin=r.origin,
             imported_hz=r.imported_hz if finite else None,
             imported_text=None if r.imported_hz is None else repr(r.imported_hz),
             auto_hz=r.auto_hz, auto_origin=r.auto_origin, manual_hz=r.manual_hz, revision=r.revision,
+            manual_override_enabled=manual_override_enabled,
         )
 
 

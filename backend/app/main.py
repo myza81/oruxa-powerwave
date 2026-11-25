@@ -37,6 +37,7 @@ from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.event_reconstruction_registry import EventReconstructionRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_side_registry import MeasurementSideRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.nominal_frequency_registry import NominalFrequencyRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
@@ -127,6 +128,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # NF-1: in-memory, ephemeral engineer value for a recording's nominal frequency (Auto is never stored). See
         # app.services.nominal_frequency_registry's own module docstring.
         app.state.nominal_frequency_registry = NominalFrequencyRegistry()
+        # NF-3B (O-1): the one release-gated accessor of a recording's effective nominal frequency. The gate comes from
+        # `Settings` (never from the frontend) and is closed unless a local/isolated process opened it explicitly.
+        app.state.nominal_frequency_access = NominalFrequencyAccess(
+            app.state.workspace_registry, app.state.nominal_frequency_registry,
+            manual_override_enabled=settings.nominal_frequency_manual_override_enabled)
         # Compliance Slice 3: a tenth/eleventh sibling in-memory registry
         # pair -- custom Reference Profiles and active Reference Layers.
         # Deliberately independent of every recording/Measurement

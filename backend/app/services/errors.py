@@ -222,6 +222,13 @@ class InvalidNominalFrequencyError(ImportServiceError):
     code = "invalid_nominal_frequency"
 
 
+class ManualNominalFrequencyDisabledError(ImportServiceError):
+    """NF-3B (O-1): a Manual nominal-frequency value was offered while the server-side release gate is closed. Nothing was
+    stored. Returning to Auto is never refused."""
+
+    code = "manual_nominal_frequency_disabled"
+
+
 class RmsRecordingTooShortError(ImportServiceError):
     """The input recording does not span even one full RMS window, so no
     output sample could ever be non-NaN (owner section 40) -- rejected

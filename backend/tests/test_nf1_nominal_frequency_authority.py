@@ -184,7 +184,9 @@ class TestRegistry:
         sid = _upload_comtrade(client, ws, "declared_50")
         registry = client.app.state.nominal_frequency_registry
         with pytest.raises(InvalidNominalFrequencyError):
-            set_manual_nominal_frequency(ws, sid, bad, source_registry=client.app.state.workspace_registry, registry=registry)
+            set_manual_nominal_frequency(
+                ws, sid, bad, source_registry=client.app.state.workspace_registry, registry=registry,
+                manual_override_enabled=True)
         assert registry.snapshot(ws, sid) == (None, 0)
 
     def test_records_are_frozen(self):
@@ -212,6 +214,7 @@ def client(tmp_path_factory):
         environment="development", storage_type="local", storage_path=str(tmp_path_factory.mktemp("nf1")),
         cors_origins=("http://localhost:8101",), database_url=None, max_event_upload_size_mb=100,
         git_sha="local", version="local",
+        nominal_frequency_manual_override_enabled=True,    # NF-3B (O-1): NF-1 exercises Manual mode, so the gate is opened explicitly
     )
     with TestClient(create_app(settings), raise_server_exceptions=True) as c:
         yield c
@@ -485,8 +488,10 @@ class TestNoConsumerChange:
             assert count <= ALLOWED_DIRECT_READERS[path], f"more direct reads in {path}"
 
     def test_nothing_but_the_authority_uses_the_resolver_yet(self):
+        # NF-3B (reviewed change): the router no longer imports the service; the release-gated accessor is its only importer,
+        # so the gate cannot be bypassed. Consumer isolation is enforced by test_nf3b_frequency_call_path_guard.py.
         users = sorted(
             p.relative_to(APP_DIR).as_posix() for p in APP_DIR.rglob("*.py")
             if p.name != "nominal_frequency_service.py" and "nominal_frequency_service" in p.read_text(encoding="utf-8")
         )
-        assert users == ["api/v1/nominal_frequency.py"]
+        assert users == ["services/nominal_frequency_access.py"]
