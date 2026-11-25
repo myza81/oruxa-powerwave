@@ -38,6 +38,54 @@ classify an open issue as ready for analysis-based approval, needing
 side-by-side comparison, needing hands-on UAT, or simply deferred until a
 later phase.
 
+## Decision preservation and engineering governance — mandatory
+
+AGENTS.md is the **single governance authority for every agent** (Claude Code, Codex). Agent-specific files point here and do not
+restate these rules. Owner decision: [DEC-217](docs/project-memory/DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance).
+
+### Before a substantive task — consult, in proportion to the task
+
+Read only what the task touches; do not read every historical document. Then state in a line or two (no assessment exercise):
+
+1. the applicable **DEC records**, their amendments/corrections and any later owner decision (search
+   [DECISIONS.md](docs/project-memory/DECISIONS.md) and the documents it links for the feature area; the area's authoritative model, for
+   example `PER_UNIT_MEASUREMENT_MODEL.md`, comes first);
+2. [CURRENT_STATE.md](docs/project-memory/CURRENT_STATE.md) and [HANDOFF.md](docs/project-memory/HANDOFF.md) for where the work is;
+3. the applicable engineering specification and the latest implementation report for the slice;
+4. the **actual implementation and its regression coverage** (code and tests win over prose, per the README's source-of-truth hierarchy);
+5. concurrent development: `git worktree list`, the branches/worktrees that touch the same files — read-only; never edit another agent's
+   worktree;
+6. the approved scope, and any genuinely unresolved decision.
+
+Never state that a document was read unless it was actually opened in this session.
+
+### Established decisions are binding
+
+- An approved owner decision is a **requirement until the owner explicitly supersedes it**. Do not treat it as an open question, and do not
+  re-derive, reinterpret or "improve" it. A new application of an established policy does not by itself justify reconsidering it.
+- When a decision is hard to apply, classify the difficulty first: **implementation defect**, **legacy-compatibility problem**, **missing
+  input authority**, or **genuine policy conflict**. Fix the first three inside the policy (or report the missing input); only a genuine
+  conflict reaches the owner.
+- Do not create a separate engineering authority for one consumer where an approved shared authority exists (one resolver, one ratio authority,
+  one side authority).
+- Do not silently amend, reinterpret or supersede a decision. If a genuine conflict is found, report the exact decision and amendment, the
+  evidence and a proposed resolution (Change governance below). Reopen a decision only on credible **new** evidence of a material engineering
+  error, a safety concern or an architectural limitation. Any policy amendment needs explicit owner approval.
+- Avoid repeated investigations, reassessments and needlessly fragmented implementation: one coherent slice, one reference statement.
+
+### Engineering formulas
+
+A new or modified engineering calculation needs: credible engineering references; the derivation where one applies; explicit assumptions and
+limitations; **independent** numerical verification (an oracle that does not import the code under test); boundary and invalid-input tests;
+**one** mathematical authority (no per-consumer copy of the arithmetic); and traceability from reference to implementation, with regression
+protection. Passing software tests is not proof that a formula is theoretically correct. Preserve approved mathematics unless a change is
+separately authorised.
+
+### Handover — governance compliance statement
+
+A substantive implementation handover ends with a short statement: documents consulted; established decisions preserved; approved decision
+amendments (or "no existing policy has changed"); unresolved conflicts; any deviation from the authorised scope.
+
 ## Authoritative architecture reference
 
 **Read [docs/architecture/oruxa-architecture.md](docs/architecture/oruxa-architecture.md)

@@ -3,6 +3,14 @@
 Read [AGENTS.md](AGENTS.md). It holds the working rules for this repository and
 applies in full here.
 
+**Decision preservation and engineering governance.** Before a substantive task,
+consult the applicable approved decisions and specifications as set out in
+[AGENTS.md — Decision preservation and engineering governance](AGENTS.md#decision-preservation-and-engineering-governance--mandatory)
+([DEC-217](docs/project-memory/DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)).
+Approved decisions are binding until the owner supersedes them; do not reopen a
+settled policy. That section is the one authority for Claude Code and Codex and is
+not restated here.
+
 ## Project memory — mandatory before any task
 
 **GitHub is the canonical source of truth for this project — not a local

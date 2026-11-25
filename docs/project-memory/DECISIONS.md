@@ -29567,6 +29567,9 @@ Supersedes: the D5A-1 "F5 / D4" position and the D5A-2A rule that `auto_nominal`
 
 Implementation and rationale: [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
 
+Governance note (2026-11-26): see [DEC-217](#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
+for how this decision applies alongside a selected Per-Unit base. It is a pointer, not an amendment.
+
 
 ## DEC-216 — Recording Details is the single authority for recorded measurement side (D5A-2B2 unified model)
 
@@ -29757,3 +29760,36 @@ Authority: the owner's direction "PU-MIG S0 Closure and S1" (2026-11-24). Ledger
 2. **Historical Unverified behaviour is not prohibited by this amendment (GC-2).** DEC-210 and DEC-211 retain results whose sample or base side is Unknown (or only inferred) as computable and labelled **Unverified**. This amendment does not change, narrow or remove that behaviour. Only a **known** Primary/Secondary mismatch for which no authoritative ratio exists blocks, exactly as DEC-210/211 already state; the narrow supersession in the second bullet applies only where the effective side is strict-usable and the ratio is authoritative. An Unknown or inferred side still never establishes a conversion. Retaining, labelling or blocking historical Unverified results is decision **D-1, a pending production decision**, under the owner's constraint that such results are neither silently changed nor presented as verified engineering PU.
 3. **Open items, complete (GC-3).** **Pending production decisions:** D-1 (historical Unverified, per class) and D-4 (precedence between `secondary_voltage_ll_v` and nominal / ratio; no general rule that the legacy secondary denominator wins; distinguish an independently configured Secondary base from a value populated from a VT winding rating). **Pending:** D-5 (what activates the legacy secondary path), D-6 (Secondary base on Primary samples), D-7 (`auto_nominal` ratio for secondary PU), D-8 (API deprecation of `*_base_reference_side`), D-9 (refresh scope; placement of the independent oracle), N-2 (reason-code vocabulary). **Agreed in principle:** D-3 (shared, operation-aware calculated-channel lineage; operation rules still under review), N-1 (one authority and denominator policy for every PU consumer). **Decided:** D-2 (manual-base side semantics preserved through S4), N-3 (P0 browser-guardrail triage before S2).
 4. **Preserved, unchanged:** every other statement of this amendment, including the narrow supersession of DEC-210/DEC-211 where the effective side is strict-usable and the ratio is authoritative, and the safeguards it lists (samples never scaled; base meanings; DEC-213; L-L/L-N; DEC-052/115/116; DEC-209/212; numerical-representability safeguards; DEC-215; a transformer rating is never a base).
+
+---
+
+## DEC-217 — Approved decisions are binding; agents consult them before acting and preserve them (agent governance)
+
+Date: 2026-11-26. Owner decision (governance only; no engineering policy is created, changed or superseded by this entry).
+Trigger: an S2 discussion reopened the already-approved `auto_nominal` VT authority (DEC-215) because a legacy secondary base
+differed from the 110 V default; similar occurrences are to be prevented.
+
+Decision:
+
+- Approved owner decisions (DEC records, their amendments and corrections, and later owner instructions) are **binding
+  requirements until the owner explicitly supersedes them**. A new *application* of an established policy is not, by itself, a
+  reason to reconsider it; agents do not treat settled decisions as open questions.
+- Before substantive work, agents consult the decisions that apply, in proportion to the task (procedure in
+  [AGENTS.md — Decision preservation and engineering governance](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory)).
+- A difficulty met while applying a decision is first classified as an **implementation defect**, a **legacy-compatibility problem**,
+  **missing input authority**, or a **genuine policy conflict**. Only the last reopens a decision, and only with credible new evidence of a
+  material engineering error, safety concern or architectural limitation; the report names the decision, its amendment, the evidence and a
+  proposed resolution, and waits for owner approval. No separate engineering authority is created for one consumer where an approved shared
+  authority exists.
+- New or modified engineering calculations carry engineering references, derivation, stated assumptions, independent numerical verification,
+  boundary and invalid-input tests, one mathematical authority and traceability from reference to code. Passing software tests is not proof
+  that a formula is right. Approved mathematics is preserved unless a change is separately authorised.
+- AGENTS.md is the common governance authority for Claude Code and Codex; agent-specific files point to it and do not restate rules.
+- Substantive handovers include a short governance compliance statement.
+
+Application record — `auto_nominal` and the Per-Unit base (a standing note, **not an amendment of DEC-215 or any PU-MIG decision**):
+the VT equipment ratio (DEC-215: primary = accepted nominal, secondary = 110 V default, provenance `auto_nominal`) and the selected Per-Unit
+base (a stored secondary base, a nominal-derived base, a manual base) are **independent engineering quantities**. The approved `auto_nominal`
+authority is not to be reopened merely because a legacy secondary PU base differs from the default VT secondary equipment rating. The open S2
+question about that combination is to be assessed against the existing approved VT-authority and base-selection policies (DEC-215, DEC-216
+Amendments 6–7, and the owner decisions D-4, D-5, D-6 and D-7 of 2026-11-25), not as a request to amend them.

@@ -4,6 +4,10 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
+Agent governance (2026-11-26, [DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)):
+approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
+[AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
+
 Last updated: **2026-11-24** — D5A-2B2C-1B integrated onto the deployed WUI-001–004 baseline `3ed200c` (candidate branch, DEV release prepared); WUI-001–004 consolidation and its DEV deployment recorded below. Earlier engineering handoffs retain their original implementation context.
 
 ---

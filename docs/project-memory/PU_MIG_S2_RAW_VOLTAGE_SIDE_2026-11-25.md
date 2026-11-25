@@ -59,6 +59,12 @@ blocked, a Primary sample is unchanged. A Source Default that stores `voltage_ba
 
 ## 4. The one point raised under D-7
 
+> **Governance note (2026-11-26, [DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)).**
+> The approved `auto_nominal` VT authority is not reopened by this point: the VT equipment ratio and the selected PU base are
+> independent engineering quantities, and a legacy secondary base differing from the 110 V default does not by itself reopen DEC-215 or
+> D-7. The question below is to be assessed against the existing approved VT-authority and base-selection policies, not treated as a
+> request to amend any of them; the guard described is an implementation provision pending that assessment. No policy was changed.
+
 The `auto_nominal` contract (DEC-215, `auto_nominal_vt.py`) derives *primary = nominal kV × 1000, secondary = 110 V* — a documented
 default. For Impedance and Distance this is exactly what the owner approved. For per unit the same ratio makes a Primary nominal base on
 Secondary samples read `1 pu = 110 V · ρ` **whatever the nominal**. That is supported by the contract when nothing contradicts it; it is
