@@ -23,8 +23,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.domain.calculated_channel import ChannelRef, nominal_frequency_valid
+from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import CURRENT, VOLTAGE
+from app.domain.nominal_frequency import (
+    ORIGIN_ASSUMED_DEFAULT,
+    ORIGIN_IMPORT_SUPPLIED,
+    ORIGIN_MANUAL,
+    ORIGIN_RECORDING_METADATA,
+    ORIGIN_UNUSABLE,
+)
 from app.domain.oscillation_representation import (
     IMPLEMENTED_REPRESENTATIONS,
     REPORTING_EVERY_SOURCE_SAMPLE,
@@ -36,6 +43,7 @@ from app.domain.oscillation_representation import (
     rms_bandwidth_limit_hz,
     rms_half_power_frequency_hz,
 )
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
     RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
@@ -49,8 +57,14 @@ from app.services.workspace_registry import WorkspaceRegistry
 STATUS_READY = "ready"
 STATUS_UNAVAILABLE = "unavailable"
 
-NOMINAL_FREQUENCY_RECORDING_METADATA = "recording_metadata"
-NOMINAL_FREQUENCY_ASSUMED_DEFAULT = "assumed_default"
+# NF-3C (owner decision O-6, option A): `nominal_frequency_origin` carries the NF-1 provenance of the EFFECTIVE value, five machine-readable
+# values, not two. `manual` is the engineer's value (only while the server-side release gate is open); `import_supplied` a BEN upload's
+# value; `unusable` a declaration that cannot be used (the representation is then unavailable).
+NOMINAL_FREQUENCY_RECORDING_METADATA = ORIGIN_RECORDING_METADATA
+NOMINAL_FREQUENCY_IMPORT_SUPPLIED = ORIGIN_IMPORT_SUPPLIED
+NOMINAL_FREQUENCY_ASSUMED_DEFAULT = ORIGIN_ASSUMED_DEFAULT
+NOMINAL_FREQUENCY_MANUAL = ORIGIN_MANUAL
+NOMINAL_FREQUENCY_UNUSABLE = ORIGIN_UNUSABLE
 
 
 class UnsupportedRepresentationError(ImportServiceError):
@@ -67,6 +81,8 @@ class AnalysisRepresentation:
     message: str | None = None
     nominal_frequency_hz: float | None = None
     nominal_frequency_origin: str | None = None
+    #: NF-3C (O-6): the revision of the engineer's setting this result was computed with (NF-1 registry); moves when it changes.
+    nominal_frequency_revision: int | None = None
     derived: DerivedMagnitude | None = None
     source_sample_count: int = 0
     source_start_s: float | None = None
@@ -83,18 +99,6 @@ def _timing_source_id(ref: ChannelRef, workspace_id: str, calc_registry: Calcula
     return calc.reference_source_id  # _resolve_input already proved it exists
 
 
-def _nominal_frequency(active) -> tuple[float, str]:
-    """From the recording's own metadata (COMTRADE `lf`, BEN upload value,
-    CSV/Excel preparation). Never a fixed 50 Hz inside this feature; where
-    an upstream stage had to ASSUME the default, that is surfaced."""
-    provenance = active.metadata.preparation_provenance or {}
-    origin = (
-        NOMINAL_FREQUENCY_ASSUMED_DEFAULT if provenance.get("nominal_frequency_assumed")
-        else NOMINAL_FREQUENCY_RECORDING_METADATA
-    )
-    return float(active.metadata.nominal_frequency), origin
-
-
 def derive_analysis_representation(
     *,
     workspace_id: str,
@@ -102,6 +106,7 @@ def derive_analysis_representation(
     representation: str,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> AnalysisRepresentation:
     """Expected non-derivable outcomes (not V/I, already magnitude, form
     unconfirmed, too short/sparse) are returned as `status="unavailable"`
@@ -113,14 +118,20 @@ def derive_analysis_representation(
     resolved = _resolve_input(
         input_ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry
     )
-    active = source_registry.get(workspace_id, _timing_source_id(input_ref, workspace_id, calc_registry))
-    if active is None:
+    timing_source_id = _timing_source_id(input_ref, workspace_id, calc_registry)
+    if source_registry.get(workspace_id, timing_source_id) is None:
         raise SourceNotFoundError(f"No source '{resolved.reference_source_id}' in workspace '{workspace_id}'.")
 
-    nominal_hz, origin = _nominal_frequency(active)
+    # NF-3C: the frequency, its origin and the revision of the engineer's setting come from the central authority (the recording that
+    # grounds the signal). The value reported is the EFFECTIVE one; for an unusable declaration there is none, so the declared value is
+    # reported as imported (unchanged wire behaviour) with origin `unusable` and the representation is unavailable. A Manual value counts
+    # only while the server-side release gate is open.
+    frequency = frequency_access.for_source(workspace_id, timing_source_id)
+    nominal_hz = frequency.hz if frequency.usable else frequency.imported_hz
     time = np.asarray(resolved.time, dtype=np.float64)
     base = dict(
-        representation=representation, nominal_frequency_hz=nominal_hz, nominal_frequency_origin=origin,
+        representation=representation, nominal_frequency_hz=nominal_hz, nominal_frequency_origin=frequency.origin,
+        nominal_frequency_revision=frequency.revision,
         source_sample_count=int(time.shape[0]),
         source_start_s=float(time[0]) if time.shape[0] else None,
         source_end_s=float(time[-1]) if time.shape[0] else None,
@@ -134,11 +145,11 @@ def derive_analysis_representation(
 
     if resolved.engineering_type not in (VOLTAGE, CURRENT):
         return unavailable("not_voltage_or_current", "Only Voltage and Current signals use an RMS magnitude representation.")
-    if not nominal_frequency_valid(nominal_hz):
+    if not frequency.usable:
         return unavailable("invalid_nominal_frequency", "The recording's nominal frequency is missing or outside a sensible range.")
 
     eligibility = check_rms_eligibility(
-        workspace_id=workspace_id, input_ref=input_ref, nominal_frequency_hz=nominal_hz,
+        workspace_id=workspace_id, input_ref=input_ref, nominal_frequency_hz=frequency.hz,
         source_registry=source_registry, calc_registry=calc_registry,
     )
     if eligibility.status == RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE:
@@ -146,11 +157,11 @@ def derive_analysis_representation(
     if eligibility.status != RMS_STATUS_SUITABLE:
         return unavailable("form_unconfirmed", eligibility.reason)
 
-    blocked = representation_unavailable_reason(time, nominal_hz)
+    blocked = representation_unavailable_reason(time, frequency.hz)
     if blocked is not None:
         return unavailable(*blocked)
 
-    derived = derive_rms_magnitude(time, np.asarray(resolved.values, dtype=np.float64), nominal_hz)
+    derived = derive_rms_magnitude(time, np.asarray(resolved.values, dtype=np.float64), frequency.hz)
     if derived.valid_count == 0:
         return unavailable("no_valid_samples", "No complete, finite RMS window exists in this recording.")
     return AnalysisRepresentation(status=STATUS_READY, derived=derived, **base)
@@ -166,6 +177,7 @@ def describe(result: AnalysisRepresentation) -> dict:
         "message": result.message,
         "nominal_frequency_hz": result.nominal_frequency_hz,
         "nominal_frequency_origin": result.nominal_frequency_origin,
+        "nominal_frequency_revision": result.nominal_frequency_revision,
         "source_sample_count": result.source_sample_count,
         "source_sample_rate_hz": result.source_sample_rate_hz,
         "source_start_s": result.source_start_s,

@@ -458,7 +458,7 @@ ALLOWED_DIRECT_READERS = {
     # NF-3C migrated compliance measurement (C-05) and readiness (C-04): removed.
     "services/import_service.py": 1,                   # import: provider metadata -> SourceMetadata
     "services/nominal_frequency_service.py": 1,        # the authority reads the immutable imported value
-    "services/oscillation_representation_service.py": 1,
+    # NF-3C migrated oscillation representation (C-06): removed.
     "services/overcurrent_analysis_service.py": 2,
     "services/phasor_analysis_service.py": 2,
     "services/synchronization_service.py": 1,           # NF-3C: C-03 migrated; one read left, echoing the DECLARED value when unusable (O-7)

@@ -22893,7 +22893,52 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Recorder/Channels moved IN from the main table (no longer
         // shown there) to the same non-duplication rule, just the
         // opposite direction.
-        function renderRecordingDetails(source) {
+        // NF-3C (owner decisions O-6 and O-11, 2026-11-26): ONE place that words a nominal frequency's provenance, used by the three oscillation
+        // sites and the Technical facts card. The values are the backend's machine-readable NF-1 origins; the wording is the owner's. An
+        // engineer-entered value is a Manual override: it is never described as measured or verified. An origin this page does not know is
+        // not given a provenance it has not earned.
+        function wwNominalFrequencyOriginLabel(origin) {
+            switch (origin) {
+                case "recording_metadata": return "From recording";
+                case "import_supplied": return "Supplied at import";
+                case "assumed_default": return "Assumed default";
+                case "manual": return "Manual override \u2014 Set in Recording Details";
+                case "unusable": return "Unusable declaration";
+                default: return "Origin not recognised";
+            }
+        }
+
+        // The Technical facts card's Nominal frequency text (O-11, option A). `info` is the backend's NF-1 answer for the recording
+        // (`GET .../nominal-frequency`: effective_hz, origin, usable, mode, imported_hz, imported_text) and is optional; without it only the
+        // imported number is known. Returns { text, note }: `text` for the Nominal frequency row, `note` (or null) for a separate
+        // Imported / Declared row. An ordinary valid declared value is the plain "50 Hz" it has always been. Provenance is added only where it
+        // informs (assumed, supplied at import, Manual override, unusable), and an invalid value is never printed as "null Hz" or "NaN Hz".
+        function wwNominalFrequencyFactDisplay(importedHz, info) {
+            const finite = (v) => typeof v === "number" && Number.isFinite(v);
+            const hz = (v) => (Math.round(v * 1e6) / 1e6) + " Hz";
+            const imported = info && info.imported_text !== undefined && info.imported_text !== null ? info.imported_text : null;
+            const declared = () => {
+                // The declared value as imported: a finite number keeps its unit; a non-numeric declaration is worded, never given a unit.
+                const v = info && finite(info.imported_hz) ? info.imported_hz : (finite(importedHz) ? importedHz : null);
+                if (v !== null) return hz(v);
+                if (imported === "nan") return "not a number";
+                if (imported === "inf" || imported === "-inf") return imported === "inf" ? "infinity" : "negative infinity";
+                return "not a number";
+            };
+            if (!info) {
+                const plain = finite(importedHz) && importedHz >= 1 && importedHz <= 1000;
+                return plain ? { text: hz(importedHz), note: null } : { text: wwNominalFrequencyOriginLabel("unusable"), note: "Declared: " + declared() };
+            }
+            if (!info.usable || !finite(info.effective_hz)) {
+                return { text: wwNominalFrequencyOriginLabel("unusable"), note: "Declared: " + declared() };
+            }
+            const base = hz(info.effective_hz);
+            if (info.origin === "recording_metadata") return { text: base, note: null };
+            const label = wwNominalFrequencyOriginLabel(info.origin);
+            return { text: base + " (" + label + ")", note: info.origin === "manual" ? "Imported: " + declared() : null };
+        }
+
+        function renderRecordingDetails(source, nominalFrequencyInfo) {
             const cfgName = source.original_filenames.find((name) => /\.cfg$/i.test(name));
             const datName = source.original_filenames.find((name) => /\.dat$/i.test(name));
             // Trigger Time: a source-level, timezone-naive COMTRADE
@@ -22922,7 +22967,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<div class="recording-details-facts">';
             html += fact("Recorder", source.recorder_name || "—");
             html += fact("Channels", source.analog_channel_count + " Analog / " + source.digital_channel_count + " Digital");
-            html += fact("Nominal frequency", source.nominal_frequency + " Hz");
+            // NF-3C (O-11): effective frequency and provenance where informative; never "null Hz" or "NaN Hz". NOTE: this card is currently
+            // DORMANT -- its only caller (renderRecordingsTable) was removed with the Recording Events page (RD-1 UX-3) -- so no live screen
+            // renders it. The Recording Details > Recording Info row (NF-2) is the live display and is deliberately not changed here.
+            const nominalDisplay = wwNominalFrequencyFactDisplay(source.nominal_frequency, nominalFrequencyInfo);
+            html += fact("Nominal frequency", nominalDisplay.text);
+            if (nominalDisplay.note) html += fact(nominalDisplay.note.indexOf("Imported") === 0 ? "Imported nominal frequency" : "Declared nominal frequency", nominalDisplay.note.replace(/^(Imported|Declared): /, ""));
             // Section 14 investigation: `timing_reference` is the SOURCE's
             // own timing capability (TimingInformation.timing_reference --
             // "absolute" when start_time/trigger_time are real recording
@@ -63384,7 +63434,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 bandwidth = d.info;
                 add("representation", "ok", "Analysis uses the RMS magnitude of the instantaneous waveform (one-cycle trailing window at "
                     + wwOscFormat(d.info.nominal_frequency_hz) + " Hz, "
-                    + (d.info.nominal_frequency_origin === "assumed_default" ? "assumed default" : "from the recording") + "): "
+                    + wwNominalFrequencyOriginLabel(d.info.nominal_frequency_origin) + "): "
                     + d.info.derived_sample_count + " of " + d.info.source_sample_count + " samples are usable.");
                 if (d.info.nominal_frequency_origin === "assumed_default") {
                     add("representation", "warning", "The nominal frequency was not declared by the source and a default was assumed.");
@@ -63935,7 +63985,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 set("wwOscInfoTimeAlignment", "Source time; trailing " + wwOscFormat(derived.window_s * 1000, 4) + " ms window, magnitude lags by "
                     + wwOscFormat(derived.group_delay_s * 1000, 4) + " ms");
                 set("wwOscInfoNominal", wwOscFormat(derived.nominal_frequency_hz) + " Hz ("
-                    + (derived.nominal_frequency_origin === "assumed_default" ? "assumed default" : "from the recording") + ")");
+                    + wwNominalFrequencyOriginLabel(derived.nominal_frequency_origin) + ")");
             }
             set("wwOscInfoDuration", info && info.durationS !== null ? wwOscFormat(info.durationS) + " s" : "—");
             set("wwOscInfoSampleCount", info && info.sampleCount !== null ? "≈ " + info.sampleCount : "—");
@@ -64145,7 +64195,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (result.signal.source_recording) rows.splice(1, 0, ["Recording", result.signal.source_recording]);
             if (rep.type === "rms_magnitude") {
                 rows.splice(3, 0, ["Nominal frequency", fmt(rep.nominal_frequency_hz) + " Hz ("
-                    + (rep.nominal_frequency_origin === "assumed_default" ? "assumed default" : "from the recording") + ")"]);
+                    + wwNominalFrequencyOriginLabel(rep.nominal_frequency_origin) + ")"]);
             }
             return rows;
         }

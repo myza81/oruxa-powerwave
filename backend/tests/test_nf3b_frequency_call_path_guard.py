@@ -39,7 +39,7 @@ ATTRIBUTE_READS = {
     # NF-3C migrated C-05 (compliance_measurement_service) and C-04 (compliance_readiness_service): both rows removed.
     "services/import_service.py": 1,                         # D  C-18 importer: provider metadata -> SourceMetadata
     "services/nominal_frequency_service.py": 1,              # D  the authority reads the immutable imported value
-    "services/oscillation_representation_service.py": 1,     # M  C-06 NF-3C
+    # NF-3C migrated C-06 (oscillation_representation_service): row removed.
     "services/overcurrent_analysis_service.py": 4,           # M  C-02 NF-3D (2 on the source metadata, 2 on the carried candidate)
     "services/phasor_analysis_service.py": 5,                # M  C-01 NF-3D (2 on the source metadata, 3 on the carried candidates)
     "services/preparation_conversion_service.py": 1,         # D  C-18 CSV/Excel importer
@@ -98,6 +98,10 @@ SERVICE_IMPORTERS = {"services/nominal_frequency_access.py"}
 ACCESS_IMPORTERS = {
     "main.py", "api/v1/nominal_frequency.py", "api/v1/synchronization.py",
     "services/compliance_measurement_service.py", "services/compliance_readiness_service.py", "services/synchronization_service.py",
+    # C-06 / C-07: the oscillation chain passes the accessor down to the one representation that reads the frequency
+    "api/v1/oscillation.py", "services/oscillation_representation_service.py", "services/oscillation_spectrum_service.py",
+    "services/oscillation_spectrogram_service.py", "services/oscillation_damping_service.py", "services/oscillation_cross_signal_service.py",
+    "services/oscillation_interpretation_service.py", "services/oscillation_mode_shape_service.py", "services/oscillation_coherence_service.py",
 }
 #: Files that may mention the registry at all; of these only the service layer may READ it (lifecycle removal is the rest).
 REGISTRY_USERS = {
@@ -110,7 +114,7 @@ REGISTRY_READ_METHODS = {"get", "snapshot", "revision", "set", "clear", "count"}
 FRONTEND_TOKENS = {
     "nominal_frequency_hz": 9,
     "nominal_frequency(bare)": 10,
-    "nominalFrequency": 31,
+    "nominalFrequency": 33,          # NF-3C: +2 (the dormant facts card takes an optional `nominalFrequencyInfo`)
     "reference_frequency": 2,
     "nominalFrequencyOverride": 2,
 }
@@ -247,8 +251,11 @@ class TestTheAuthorityCannotBeBypassed:
 
     def test_the_resolver_is_imported_only_by_the_service_layer_the_schema_and_the_accessor(self):
         users = scan_importers(APP_DIR, "app.domain.nominal_frequency")
+        # NF-3C: oscillation_representation_service imports only the five ORIGIN_* NAMES (the public vocabulary it reports); it never
+        # calls the resolver. The accessor is still its only source of a frequency (see the importer test above).
         assert users == {"services/nominal_frequency_service.py", "services/nominal_frequency_registry.py",
-                         "services/nominal_frequency_access.py", "schemas/nominal_frequency.py"}
+                         "services/nominal_frequency_access.py", "schemas/nominal_frequency.py",
+                         "services/oscillation_representation_service.py"}
 
     def test_the_server_side_gate_is_read_from_settings_by_one_place(self):
         users = sorted(rel for rel, _ in _files(APP_DIR) if "nominal_frequency_manual_override_enabled" in (APP_DIR / rel).read_text(encoding="utf-8"))

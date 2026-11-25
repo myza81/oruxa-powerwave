@@ -26,6 +26,7 @@ from app.schemas.oscillation import (
     OscillationSpectrumRequest,
 )
 from app.schemas.source import ErrorOut
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_coherence_service import compute_coherence
@@ -60,6 +61,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
 }
 
 
+def get_nominal_frequency_access(request: Request) -> NominalFrequencyAccess:
+    return request.app.state.nominal_frequency_access
+
+
 def get_workspace_registry(request: Request) -> WorkspaceRegistry:
     return request.app.state.workspace_registry
 
@@ -78,6 +83,7 @@ def get_analysis_representation(
     body: OscillationRepresentationRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OscillationRepresentationOut:
     """Describes (and proves derivable) the analysis representation of one
     signal. Computed on demand from the full-resolution record; nothing is
@@ -90,7 +96,7 @@ def get_analysis_representation(
     try:
         result = derive_analysis_representation(
             workspace_id=workspace_id, input_ref=body.input.to_domain(), representation=body.representation,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -106,6 +112,7 @@ def get_frequency_spectrum(
     body: OscillationSpectrumRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OscillationSpectrumOut:
     """Welch PSD of one signal over the selected window and frequency range
     (DEC-174 [PROPOSAL]). The signal is resolved from workspace state and the
@@ -121,7 +128,7 @@ def get_frequency_spectrum(
             workspace_id=workspace_id, input_ref=body.input.to_domain(), representation=body.representation,
             window_start_s=body.window_start_s, window_end_s=body.window_end_s,
             f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -137,6 +144,7 @@ def get_spectrogram(
     body: OscillationSpectrogramRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OscillationSpectrogramOut:
     """STFT spectrogram of one signal over the selected window and frequency
     range (DEC-176 [APPROVED]). Same request identity and validation as the
@@ -152,7 +160,7 @@ def get_spectrogram(
             workspace_id=workspace_id, input_ref=body.input.to_domain(), representation=body.representation,
             signal_revision=body.signal_revision, window_start_s=body.window_start_s, window_end_s=body.window_end_s,
             f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -168,6 +176,7 @@ def get_damping(
     body: OscillationDampingRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OscillationDampingOut:
     """Ringdown damping behaviour of the accepted spectral candidates of one setup
     (DEC-177 [PROPOSAL]). The setup is re-validated and the candidates re-derived
@@ -184,7 +193,7 @@ def get_damping(
             signal_revision=body.signal_revision, window_start_s=body.window_start_s, window_end_s=body.window_end_s,
             f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
             candidate_frequencies_hz=body.candidate_frequencies_hz,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -200,6 +209,7 @@ def get_cross_signal(
     body: OscillationCrossSignalRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OscillationCrossSignalOut:
     """Cross-signal evidence for an explicit set of signals (DEC-178 [APPROVED]): every signal is
     re-resolved and re-validated from workspace state, analysed with the accepted spectrum / candidate /
@@ -218,7 +228,7 @@ def get_cross_signal(
     try:
         result = compute_cross_signal(
             workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -234,6 +244,7 @@ def get_interpretation(
     body: InterpretationRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
     sync_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
 ) -> OscillationInterpretationOut:
     """Oscillation interpretation (DEC-179 [APPROVED]): the cross-signal evidence of one signal or an explicit set, plus a deterministic
@@ -253,7 +264,7 @@ def get_interpretation(
     try:
         result = compute_interpretation(
             workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry, sync_registry=sync_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access, sync_registry=sync_registry,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -269,6 +280,7 @@ def get_mode_shape(
     body: ModeShapeRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
     sync_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
 ) -> OscillationModeShapeOut:
     """Mode shape / relative phase of the cross-signal components (DEC-180 [PROPOSAL]): the components are re-derived by the backend from
@@ -288,7 +300,7 @@ def get_mode_shape(
         result = compute_mode_shape(
             workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
             component_frequency_hz=body.component_frequency_hz,
-            source_registry=source_registry, calc_registry=calc_registry, sync_registry=sync_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access, sync_registry=sync_registry,
         )
     except ImportServiceError as exc:
         raise HTTPException(
@@ -304,6 +316,7 @@ def get_coherence(
     body: CoherenceRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
     sync_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
 ) -> OscillationCoherenceOut:
     """Magnitude-squared coherence between a reference and the other members of each cross-signal component (DEC-181 [PROPOSAL]): the
@@ -323,7 +336,7 @@ def get_coherence(
         result = compute_coherence(
             workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
             component_frequency_hz=body.component_frequency_hz,
-            source_registry=source_registry, calc_registry=calc_registry, sync_registry=sync_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access, sync_registry=sync_registry,
         )
     except ImportServiceError as exc:
         raise HTTPException(

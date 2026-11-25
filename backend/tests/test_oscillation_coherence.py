@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 from scipy import signal as sp_signal
 
+from tests.nf3c_access_support import access_for
 from app.domain import coherence as co
 from app.domain import spectral_estimation as se
 from app.domain.calculated_channel import OP_REVERSE_POLARITY, ChannelRef
@@ -345,7 +346,7 @@ def env():
 
 def _run(env, entries, component=None):
     return compute_coherence(workspace_id=WS, entries=entries, f_min_hz=0.1, f_max_hz=5.0, component_frequency_hz=component,
-                             source_registry=env.sources, calc_registry=env.calc, sync_registry=env.sync)
+                             source_registry=env.sources, frequency_access=access_for(env.sources), calc_registry=env.calc, sync_registry=env.sync)
 
 
 class TestService:

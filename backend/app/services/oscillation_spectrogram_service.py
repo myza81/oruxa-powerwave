@@ -37,6 +37,7 @@ from app.domain.spectrogram_estimation import (
     peak_hold_rows,
     stft_psd,
 )
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_representation_service import UnsupportedRepresentationError
@@ -113,6 +114,7 @@ def compute_spectrogram(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> dict:
     """The wire-ready spectrogram (or an explained `unavailable` result) plus the
     exact parameters used. Raises a structured `ImportServiceError` for every
@@ -123,7 +125,7 @@ def compute_spectrogram(
     prepared = prepare_analysis_window(
         workspace_id=workspace_id, input_ref=input_ref, representation=representation,
         window_start_s=window_start_s, window_end_s=window_end_s, f_max_hz=f_max_hz,
-        source_registry=source_registry, calc_registry=calc_registry,
+        source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
     )
     series, active, t, x = prepared.series, prepared.active, prepared.t, prepared.x
     fs, nyquist, duration, nominal = prepared.fs, prepared.nyquist, prepared.window_duration, prepared.nominal

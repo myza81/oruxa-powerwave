@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import (
     OP_ACTIVE_POWER, OP_APPARENT_POWER, OP_REACTIVE_POWER, ChannelRef, evaluate_power_channel,
     evaluate_rms, evaluate_three_phase_power_channel,
@@ -291,7 +292,7 @@ def run_inprocess_scenarios() -> dict:
         # C-06 oscillation representation: value, origin label and verdict
         def representation():
             r = derive_analysis_representation(
-                workspace_id=WS, input_ref=i_ref, representation="rms_magnitude", source_registry=sources, calc_registry=calcs)
+                workspace_id=WS, input_ref=i_ref, representation="rms_magnitude", source_registry=sources, frequency_access=access_for(sources), calc_registry=calcs)
             return {"status": r.status, "reason_code": r.reason_code, "nominal_frequency_hz": num(r.nominal_frequency_hz),
                     "nominal_frequency_origin": r.nominal_frequency_origin}
         entry["oscillation_representation"] = outcome(representation)

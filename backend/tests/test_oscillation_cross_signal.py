@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.nf3c_access_support import access_for
 from app.domain import cross_signal_evidence as cs
 from app.domain.calculated_channel import OP_REVERSE_POLARITY, ChannelRef
 from app.main import create_app
@@ -237,7 +238,7 @@ def _entry(source_id, name, *, offset=0.0, label=None, start=0.0, end=159.98, re
 
 def _run(registries, entries, f_min=0.1, f_max=10.0):
     return compute_cross_signal(workspace_id=WS, entries=entries, f_min_hz=f_min, f_max_hz=f_max,
-                                source_registry=registries[0], calc_registry=registries[1])
+                                source_registry=registries[0], frequency_access=access_for(registries[0]), calc_registry=registries[1])
 
 
 class TestService:

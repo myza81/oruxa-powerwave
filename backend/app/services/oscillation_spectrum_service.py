@@ -53,6 +53,7 @@ from app.domain.spectral_estimation import (
     choose_segmentation,
     welch_psd,
 )
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import _resolve_input
 from app.services.errors import ImportServiceError, SourceNotFoundError
@@ -122,6 +123,7 @@ class _Series:
     valid_end_s: float
     nominal_frequency_hz: float | None
     nominal_frequency_origin: str | None
+    nominal_frequency_revision: int | None
     window_s: float | None
     group_delay_s: float | None
 
@@ -144,6 +146,7 @@ def _median_rate(time: np.ndarray) -> float | None:
 def _analysis_series(
     *, workspace_id: str, input_ref: ChannelRef, representation: str,
     source_registry: WorkspaceRegistry, calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ):
     """`(series, active_source)` for the requested representation."""
     resolved = _resolve_input(
@@ -169,12 +172,12 @@ def _analysis_series(
             time=time, values=np.asarray(resolved.values, dtype=np.float64), unit=resolved.unit or "",
             representation=REPRESENTATION_NATIVE, source_sample_rate_hz=source_rate,
             source_sample_count=int(time.shape[0]), valid_start_s=float(time[0]), valid_end_s=float(time[-1]),
-            nominal_frequency_hz=None, nominal_frequency_origin=None, window_s=None, group_delay_s=None,
+            nominal_frequency_hz=None, nominal_frequency_origin=None, nominal_frequency_revision=None, window_s=None, group_delay_s=None,
         ), active
 
     derived_info = derive_analysis_representation(
         workspace_id=workspace_id, input_ref=input_ref, representation=representation,
-        source_registry=source_registry, calc_registry=calc_registry,
+        source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
     )
     if derived_info.status != STATUS_READY or derived_info.derived is None:
         raise RepresentationUnavailableError(
@@ -186,6 +189,7 @@ def _analysis_series(
         source_sample_rate_hz=source_rate, source_sample_count=int(d.time.shape[0]),
         valid_start_s=float(d.time[d.first_valid_index]), valid_end_s=float(d.time[d.last_valid_index]),
         nominal_frequency_hz=d.nominal_frequency_hz, nominal_frequency_origin=derived_info.nominal_frequency_origin,
+        nominal_frequency_revision=derived_info.nominal_frequency_revision,
         window_s=d.window_s, group_delay_s=d.group_delay_s,
     ), active
 
@@ -228,13 +232,14 @@ def prepare_analysis_window(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> PreparedWindow:
     """Resolve the signal, derive the representation and select/validate the
     window and the upper band limit. Raises a structured `ImportServiceError`
     for every unusable request."""
     series, active = _analysis_series(
         workspace_id=workspace_id, input_ref=input_ref, representation=representation,
-        source_registry=source_registry, calc_registry=calc_registry,
+        source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
     )
     time, values = series.time, series.values
     fs_source = series.source_sample_rate_hz
@@ -328,6 +333,7 @@ def representation_block(series: _Series, fs: float, nominal: float | None) -> d
         "analysis_sample_rate_hz": fs,
         "nominal_frequency_hz": nominal,
         "nominal_frequency_origin": series.nominal_frequency_origin,
+        "nominal_frequency_revision": series.nominal_frequency_revision,
         "rms_window_s": series.window_s,
         "rms_group_delay_s": series.group_delay_s,
         "bandwidth_half_power_hz": rms_half_power_frequency_hz(nominal) if nominal else None,
@@ -358,6 +364,7 @@ def compute_spectrum(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> dict:
     """The wire-ready spectrum + the exact parameters used. Raises a
     structured `ImportServiceError` for every unusable request; never returns
@@ -369,7 +376,7 @@ def compute_spectrum(
     prepared = prepare_analysis_window(
         workspace_id=workspace_id, input_ref=input_ref, representation=representation,
         window_start_s=window_start_s, window_end_s=window_end_s, f_max_hz=f_max_hz,
-        source_registry=source_registry, calc_registry=calc_registry,
+        source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
     )
     series, active, t, x = prepared.series, prepared.active, prepared.t, prepared.x
     fs, nyquist, window_duration, nominal = prepared.fs, prepared.nyquist, prepared.window_duration, prepared.nominal

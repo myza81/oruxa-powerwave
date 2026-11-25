@@ -13,6 +13,7 @@ from __future__ import annotations
 import time as _time
 
 from app.domain import coherence as co
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.oscillation_mode_shape_service import (
     _component as mode_shape_component,
@@ -78,12 +79,13 @@ def compute_coherence(
     component_frequency_hz: float | None = None,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     sync_registry: SynchronizationRegistry,
 ) -> dict:
     """`entries` as for `compute_mode_shape` (2-8 signals; any `offset_s` is ignored)."""
     ctx = derive_components(
         workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz, source_registry=source_registry,
-        calc_registry=calc_registry, sync_registry=sync_registry)
+        calc_registry=calc_registry, frequency_access=frequency_access, sync_registry=sync_registry)
     components, analysed_by_index, window_of, alignments = ctx["components"], ctx["analysed_by_index"], ctx["window_of"], ctx["alignments"]
     out_components = []
     for comp in select_components(components, component_frequency_hz):

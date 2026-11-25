@@ -37,6 +37,9 @@ def _at(baseline: str, path: str) -> Any:
     return copy.deepcopy(node)
 
 
+#: `before` value of an entry that ADDS a field the historical record does not have.
+ABSENT = object()
+
 APPROVED_CHANGES: list[Change] = []
 
 # --- OC-1 / OC-2: an unusable declaration is never handed to the form detector -----------------------------------------------------------
@@ -63,6 +66,34 @@ for _group in ("compliance_measurement_http", "compliance_readiness_http"):
             "OC-1/OC-2: an unusable declaration now behaves exactly as the already-unresolved declared -50 Hz (HTTP 200, 'unresolved'/'incompatible')"))
 
 
+# --- OC-7 / OC-8 / O-6: the oscillation origin carries the NF-1 provenance, and results carry the revision ------------------------------------
+# `nominal_frequency_origin` (owner decision O-6, option A): an unusable declaration is `unusable` (it used to be labelled recording_metadata);
+# a BEN upload-supplied value is `import_supplied` (the owner's "Supplied at import"). The reported frequency, status and reason code of every
+# recording are unchanged. `nominal_frequency_revision` is a new additive field (0: no engineer value has ever been stored).
+_UNUSABLE_OSC = ("declared_zero", "declared_nan", "declared_inf", "declared_negative_50", "declared_0_5", "declared_1001")
+for _recording in ("declared_zero", "declared_nan", "declared_inf", "declared_negative_50", "declared_0_5", "declared_1001"):
+    if _recording in _HISTORY[_NF3B]["in_process"]:
+        APPROVED_CHANGES.append((
+            _NF3B, f"in_process/{_recording}/oscillation_representation/returns/nominal_frequency_origin", "recording_metadata", "unusable",
+            "OC-8/O-6: an unusable declaration is labelled `unusable`, not `recording_metadata`"))
+for _recording, _entry in _HISTORY[_NF3C]["oscillation_representation_http"].items():
+    if _recording in _UNUSABLE_OSC:
+        APPROVED_CHANGES.append((
+            _NF3C, f"oscillation_representation_http/{_recording}/body/nominal_frequency_origin", "recording_metadata", "unusable",
+            "OC-8/O-6: an unusable declaration is labelled `unusable`"))
+    APPROVED_CHANGES.append((
+        _NF3C, f"oscillation_representation_http/{_recording}/body/nominal_frequency_revision", ABSENT, 0,
+        "O-6: additive nominal_frequency_revision (0 = no engineer value stored)"))
+for _label, _entry in _HISTORY[_NF3C]["ben_import_supplied_http"].items():
+    if _label.startswith("supplied"):
+        APPROVED_CHANGES.append((
+            _NF3C, f"ben_import_supplied_http/{_label}/oscillation_representation/body/nominal_frequency_origin", "recording_metadata", "import_supplied",
+            "OC-7/O-6: a BEN upload-supplied frequency is `import_supplied` (the owner's label: Supplied at import)"))
+    APPROVED_CHANGES.append((
+        _NF3C, f"ben_import_supplied_http/{_label}/oscillation_representation/body/nominal_frequency_revision", ABSENT, 0,
+        "O-6: additive nominal_frequency_revision"))
+
+
 def apply_approved(document: dict, baseline: str) -> dict:
     """A copy of `document["outcomes"]` with this baseline's approved changes applied."""
     outcomes = copy.deepcopy(document["outcomes"])
@@ -73,7 +104,10 @@ def apply_approved(document: dict, baseline: str) -> dict:
         node = outcomes
         for part in parents:
             node = node[part]
-        if node[leaf] != before:
+        if before is ABSENT:
+            if leaf in node:
+                raise AssertionError(f"approved change {path!r} adds a field the historical record already has")
+        elif node[leaf] != before:
             raise AssertionError(f"approved change {path!r}: the historical value is {node[leaf]!r}, not {before!r}")
         node[leaf] = copy.deepcopy(after)
     return outcomes
