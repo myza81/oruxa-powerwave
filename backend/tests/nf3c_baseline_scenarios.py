@@ -63,6 +63,46 @@ def run_compliance_measurement_http(client) -> dict:
     return out
 
 
+def _add_reference(client, ws: str) -> None:
+    """One active phase-to-ground RMS Reference in kV (no per-unit base needed), exactly as the readiness API tests create one."""
+    body = {
+        "name": "Ref", "category": "grid_requirement",
+        "assessment_definition": {"representation": "phase_ground_rms", "phase_treatment": "each_phase", "member": None},
+        "unit": "kV", "display_start_time": 0, "display_end_time": 1, "evaluation_start_time": 0, "evaluation_end_time": 1, "tolerance": 0,
+        "lower_boundary": {"segments": [{"start_time": 0, "end_time": 1, "start_value": 0.9, "end_value": 0.9, "segment_type": "constant"}]},
+        "upper_boundary": None, "metadata": {},
+    }
+    profile = client.post(f"/api/v1/workspaces/{ws}/reference-profiles", json=body)
+    client.post(f"/api/v1/workspaces/{ws}/reference-layers", json={"profile_id": profile.json()["id"], "visible": True})
+
+
+def run_compliance_readiness_http(client) -> dict:
+    """Readiness (read-only) and prepare (creates the shared RMS channels) per recording class: statuses, payloads, and the frequency stored
+    in every channel that prepare created."""
+    out: dict = {}
+    for key, (fs, f_sig, lf) in RECORDINGS.items():
+        ws = f"{WS}-cr-{key}"
+        sid = _upload(client, ws, key, fs, f_sig, lf)
+        if sid is None:
+            out[key] = {"upload": "refused"}
+            continue
+        groups = client.get(f"/api/v1/workspaces/{ws}/compliance/voltage/measurement-groups").json()
+        _add_reference(client, ws)
+        entry: dict = {}
+        if groups:
+            gid = groups[-1]["id"]
+            entry["readiness"] = _snapshot(client.get(f"/api/v1/workspaces/{ws}/compliance/voltage/readiness", params={"measurement_group_id": gid}))
+            entry["prepare"] = _snapshot(client.post(f"/api/v1/workspaces/{ws}/compliance/voltage/prepare", json={"measurement_group_id": gid}))
+            channels = client.get(f"/api/v1/workspaces/{ws}/calculated-channels")
+            entry["created_channel_parameters"] = (
+                sorted(({"operation": c["operation"], "nominal_frequency_hz": c["parameters"].get("nominal_frequency_hz")} for c in channels.json()),
+                       key=lambda c: (c["operation"], str(c["nominal_frequency_hz"]))) if channels.status_code == 200 else channels.status_code)
+            entry["readiness_after_prepare"] = _snapshot(client.get(
+                f"/api/v1/workspaces/{ws}/compliance/voltage/readiness", params={"measurement_group_id": gid}))
+        out[key] = entry
+    return out
+
+
 def run_oscillation_representation_http(client) -> dict:
     out: dict = {}
     for key, (fs, f_sig, lf) in RECORDINGS.items():
@@ -108,6 +148,7 @@ def run_ben_import_supplied_http(client) -> dict:
 def run_all(client) -> dict:
     return {
         "compliance_measurement_http": run_compliance_measurement_http(client),
+        "compliance_readiness_http": run_compliance_readiness_http(client),
         "oscillation_representation_http": run_oscillation_representation_http(client),
         "ben_import_supplied_http": run_ben_import_supplied_http(client),
     }

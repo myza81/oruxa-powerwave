@@ -59,6 +59,30 @@ class TestHistoricalFacts:
         for quantity in scenarios.QUANTITIES:
             assert H["compliance_measurement_http"][recording][quantity]["body"]["status"] == "available"
 
+    @pytest.mark.parametrize("recording", ["declared_zero", "declared_nan", "declared_inf"])
+    def test_readiness_and_prepare_are_http_500_for_an_unusable_declaration_because_the_classifier_raises_first_oc1(self, recording):
+        # NF-3B handover correction: the "blocked, frequency unknown" wording is NOT what these recordings reach; the shared input
+        # classifier raises before the frequency is ever asked for.
+        entry = H["compliance_readiness_http"][recording]
+        assert entry["readiness"] == {"status": 500, "body": "Internal Server Error"}
+        assert entry["prepare"] == {"status": 500, "body": "Internal Server Error"}
+        assert entry["created_channel_parameters"] == []
+
+    @pytest.mark.parametrize("recording", ["declared_negative_50", "declared_0_5"])
+    def test_readiness_reports_incompatible_for_negative_and_half_hertz(self, recording):
+        body = H["compliance_readiness_http"][recording]["readiness"]["body"]
+        assert {m["state"] for ref in body["references"] for m in ref["members"]} == {"incompatible"}
+        assert H["compliance_readiness_http"][recording]["created_channel_parameters"] == []
+
+    def test_readiness_treats_a_declared_1001_hz_recording_as_already_rms_oc2(self):
+        body = H["compliance_readiness_http"]["declared_1001"]["readiness"]["body"]
+        assert {m["state"] for ref in body["references"] for m in ref["members"]} == {"source_rms"}
+
+    @pytest.mark.parametrize("recording,hz", [("r50", 50.0), ("r60", 60.0), ("assumed_50", 50.0)])
+    def test_prepare_creates_rms_channels_that_store_the_effective_frequency(self, recording, hz):
+        created = H["compliance_readiness_http"][recording]["created_channel_parameters"]
+        assert created == [{"operation": "rms", "nominal_frequency_hz": hz}] * 3
+
     def test_G1_a_ben_upload_supplied_frequency_reports_recording_metadata_in_the_oscillation_response_oc7(self):
         ben = H["ben_import_supplied_http"]
         for label, hz in (("supplied_60", 60.0), ("supplied_50_explicit", 50.0)):

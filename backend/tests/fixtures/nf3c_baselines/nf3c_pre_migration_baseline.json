@@ -1,5 +1,5 @@
 {
- "baseline_git_sha": "6794150f430f60003879153606feed723b1c12ea",
+ "baseline_git_sha": "19d9755384325827130d803b3364fe4289a75e86",
  "numpy": "2.4.6",
  "outcomes": {
   "ben_import_supplied_http": {
@@ -1932,6 +1932,2573 @@
       "used_direct_pair": false,
       "value_representation": "fundamental_rms",
       "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   }
+  },
+  "compliance_readiness_http": {
+   "assumed_50": {
+    "created_channel_parameters": [
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     }
+    ],
+    "prepare": {
+     "body": {
+      "created": [
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VA)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VB)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VC)",
+        "operation": "rms"
+       }
+      ],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VA)",
+           "member": "A",
+           "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VB)",
+           "member": "B",
+           "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VC)",
+           "member": "C",
+           "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          }
+         ],
+         "message": null,
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "ready",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "ready",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: fundamental RMS of ALPHA1_VB needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: fundamental RMS of ALPHA1_VC needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         }
+        ],
+        "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "action_required",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "action_required",
+      "steps": [
+       {
+        "description": "RMS of ALPHA1_VA",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VB",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VC",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       }
+      ]
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VA)",
+          "member": "A",
+          "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VB)",
+          "member": "B",
+          "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VC)",
+          "member": "C",
+          "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "assumed_on_60hz_signal": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": {
+      "created": [],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "A",
+           "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "B",
+           "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "C",
+           "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          }
+         ],
+         "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "incompatible",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "incompatible",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "declared_0_5": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": {
+      "created": [],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "A",
+           "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "B",
+           "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "C",
+           "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          }
+         ],
+         "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "incompatible",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "incompatible",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "declared_1001": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": {
+      "created": [],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": null,
+           "channel_name": "ALPHA1_VA",
+           "member": "A",
+           "message": "VA: the source channel 'ALPHA1_VA' is already RMS and is used directly.",
+           "reason_code": null,
+           "state": "source_rms"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": "ALPHA1_VB",
+           "member": "B",
+           "message": "VB: the source channel 'ALPHA1_VB' is already RMS and is used directly.",
+           "reason_code": null,
+           "state": "source_rms"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": "ALPHA1_VC",
+           "member": "C",
+           "message": "VC: the source channel 'ALPHA1_VC' is already RMS and is used directly.",
+           "reason_code": null,
+           "state": "source_rms"
+          }
+         ],
+         "message": null,
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "ready",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "ready",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: the source channel 'ALPHA1_VA' is already RMS and is used directly.",
+          "reason_code": null,
+          "state": "source_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: the source channel 'ALPHA1_VB' is already RMS and is used directly.",
+          "reason_code": null,
+          "state": "source_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: the source channel 'ALPHA1_VC' is already RMS and is used directly.",
+          "reason_code": null,
+          "state": "source_rms"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: the source channel 'ALPHA1_VA' is already RMS and is used directly.",
+          "reason_code": null,
+          "state": "source_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: the source channel 'ALPHA1_VB' is already RMS and is used directly.",
+          "reason_code": null,
+          "state": "source_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: the source channel 'ALPHA1_VC' is already RMS and is used directly.",
+          "reason_code": null,
+          "state": "source_rms"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "declared_50_on_60hz_signal": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": {
+      "created": [],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "A",
+           "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "B",
+           "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "C",
+           "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          }
+         ],
+         "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "incompatible",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "incompatible",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "declared_inf": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "readiness": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "readiness_after_prepare": {
+     "body": "Internal Server Error",
+     "status": 500
+    }
+   },
+   "declared_nan": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "readiness": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "readiness_after_prepare": {
+     "body": "Internal Server Error",
+     "status": 500
+    }
+   },
+   "declared_negative_50": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": {
+      "created": [],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "A",
+           "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "B",
+           "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          },
+          {
+           "calculated_channel_id": null,
+           "channel_name": null,
+           "member": "C",
+           "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+           "reason_code": null,
+           "state": "incompatible"
+          }
+         ],
+         "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "incompatible",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "incompatible",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "A",
+          "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "B",
+          "message": "Could not confidently determine whether VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": null,
+          "member": "C",
+          "message": "Could not confidently determine whether VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+          "reason_code": null,
+          "state": "incompatible"
+         }
+        ],
+        "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "incompatible",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "incompatible",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "declared_zero": {
+    "created_channel_parameters": [],
+    "prepare": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "readiness": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "readiness_after_prepare": {
+     "body": "Internal Server Error",
+     "status": 500
+    }
+   },
+   "r50": {
+    "created_channel_parameters": [
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     }
+    ],
+    "prepare": {
+     "body": {
+      "created": [
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VA)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VB)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VC)",
+        "operation": "rms"
+       }
+      ],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VA)",
+           "member": "A",
+           "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VB)",
+           "member": "B",
+           "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VC)",
+           "member": "C",
+           "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          }
+         ],
+         "message": null,
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "ready",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "ready",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: fundamental RMS of ALPHA1_VB needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: fundamental RMS of ALPHA1_VC needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         }
+        ],
+        "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "action_required",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "action_required",
+      "steps": [
+       {
+        "description": "RMS of ALPHA1_VA",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VB",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VC",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       }
+      ]
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VA)",
+          "member": "A",
+          "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VB)",
+          "member": "B",
+          "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VC)",
+          "member": "C",
+          "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "r50_fs4096": {
+    "created_channel_parameters": [
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 50.0,
+      "operation": "rms"
+     }
+    ],
+    "prepare": {
+     "body": {
+      "created": [
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VA)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VB)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VC)",
+        "operation": "rms"
+       }
+      ],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VA)",
+           "member": "A",
+           "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VB)",
+           "member": "B",
+           "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VC)",
+           "member": "C",
+           "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          }
+         ],
+         "message": null,
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "ready",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "ready",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: fundamental RMS of ALPHA1_VB needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: fundamental RMS of ALPHA1_VC needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         }
+        ],
+        "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "action_required",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "action_required",
+      "steps": [
+       {
+        "description": "RMS of ALPHA1_VA",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VB",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VC",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       }
+      ]
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VA)",
+          "member": "A",
+          "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VB)",
+          "member": "B",
+          "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VC)",
+          "member": "C",
+          "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "r60": {
+    "created_channel_parameters": [
+     {
+      "nominal_frequency_hz": 60.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 60.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 60.0,
+      "operation": "rms"
+     }
+    ],
+    "prepare": {
+     "body": {
+      "created": [
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VA)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VB)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VC)",
+        "operation": "rms"
+       }
+      ],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VA)",
+           "member": "A",
+           "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VB)",
+           "member": "B",
+           "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VC)",
+           "member": "C",
+           "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          }
+         ],
+         "message": null,
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "ready",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "ready",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: fundamental RMS of ALPHA1_VB needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: fundamental RMS of ALPHA1_VC needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         }
+        ],
+        "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "action_required",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "action_required",
+      "steps": [
+       {
+        "description": "RMS of ALPHA1_VA",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VB",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VC",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       }
+      ]
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VA)",
+          "member": "A",
+          "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VB)",
+          "member": "B",
+          "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VC)",
+          "member": "C",
+          "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
+     },
+     "status": 200
+    }
+   },
+   "r60_fs4096": {
+    "created_channel_parameters": [
+     {
+      "nominal_frequency_hz": 60.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 60.0,
+      "operation": "rms"
+     },
+     {
+      "nominal_frequency_hz": 60.0,
+      "operation": "rms"
+     }
+    ],
+    "prepare": {
+     "body": {
+      "created": [
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VA)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VB)",
+        "operation": "rms"
+       },
+       {
+        "id": "calc-<id>",
+        "name": "RMS (ALPHA1_VC)",
+        "operation": "rms"
+       }
+      ],
+      "readiness": {
+       "base": null,
+       "measurement_group_id": "mg-<id>",
+       "needs_base": false,
+       "phase_display": {
+        "convention": "ABC",
+        "reason": null,
+        "status": "established",
+        "symbols": {
+         "A": "A",
+         "AB": "AB",
+         "B": "B",
+         "BC": "BC",
+         "C": "C",
+         "CA": "CA"
+        }
+       },
+       "references": [
+        {
+         "layer_id": "<id>",
+         "members": [
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VA)",
+           "member": "A",
+           "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VB)",
+           "member": "B",
+           "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          },
+          {
+           "calculated_channel_id": "calc-<id>",
+           "channel_name": "RMS (ALPHA1_VC)",
+           "member": "C",
+           "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+           "reason_code": null,
+           "state": "reused"
+          }
+         ],
+         "message": null,
+         "profile_id": "<id>",
+         "profile_name": "Ref",
+         "requirement": {
+          "member": null,
+          "phase_treatment": "each_phase",
+          "representation": "phase_ground_rms",
+          "required_members": [
+           "A",
+           "B",
+           "C"
+          ],
+          "requires_per_unit": false,
+          "requires_rms": true,
+          "unit": "kV",
+          "unresolved_reason": null
+         },
+         "status": "ready",
+         "unit_message": null,
+         "unit_state": "not_required"
+        }
+       ],
+       "status": "ready",
+       "steps": []
+      }
+     },
+     "status": 200
+    },
+    "readiness": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VA",
+          "member": "A",
+          "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VB",
+          "member": "B",
+          "message": "VB: fundamental RMS of ALPHA1_VB needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         },
+         {
+          "calculated_channel_id": null,
+          "channel_name": "ALPHA1_VC",
+          "member": "C",
+          "message": "VC: fundamental RMS of ALPHA1_VC needs to be prepared.",
+          "reason_code": null,
+          "state": "needs_rms"
+         }
+        ],
+        "message": "VA: fundamental RMS of ALPHA1_VA needs to be prepared.",
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "action_required",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "action_required",
+      "steps": [
+       {
+        "description": "RMS of ALPHA1_VA",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VB",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       },
+       {
+        "description": "RMS of ALPHA1_VC",
+        "executable": true,
+        "kind": "rms",
+        "reason": null
+       }
+      ]
+     },
+     "status": 200
+    },
+    "readiness_after_prepare": {
+     "body": {
+      "base": null,
+      "measurement_group_id": "mg-<id>",
+      "needs_base": false,
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "references": [
+       {
+        "layer_id": "<id>",
+        "members": [
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VA)",
+          "member": "A",
+          "message": "VA: existing RMS calculated channel 'RMS (ALPHA1_VA)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VB)",
+          "member": "B",
+          "message": "VB: existing RMS calculated channel 'RMS (ALPHA1_VB)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         },
+         {
+          "calculated_channel_id": "calc-<id>",
+          "channel_name": "RMS (ALPHA1_VC)",
+          "member": "C",
+          "message": "VC: existing RMS calculated channel 'RMS (ALPHA1_VC)' is reused.",
+          "reason_code": null,
+          "state": "reused"
+         }
+        ],
+        "message": null,
+        "profile_id": "<id>",
+        "profile_name": "Ref",
+        "requirement": {
+         "member": null,
+         "phase_treatment": "each_phase",
+         "representation": "phase_ground_rms",
+         "required_members": [
+          "A",
+          "B",
+          "C"
+         ],
+         "requires_per_unit": false,
+         "requires_rms": true,
+         "unit": "kV",
+         "unresolved_reason": null
+        },
+        "status": "ready",
+        "unit_message": null,
+        "unit_state": "not_required"
+       }
+      ],
+      "status": "ready",
+      "steps": []
      },
      "status": 200
     }
