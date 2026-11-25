@@ -21,9 +21,11 @@ from typing import Any
 _FIXTURES = Path(__file__).parent / "fixtures"
 _NF3B = "nf3b_frozen_baselines"
 _NF3C = "nf3c_pre_migration_baseline"
+_R1A = "comtrade_frequency_baseline"
 _HISTORY = {
     _NF3B: json.loads((_FIXTURES / "nf3b_baselines" / "nf3b_frozen_baselines.json").read_text(encoding="utf-8"))["outcomes"],
     _NF3C: json.loads((_FIXTURES / "nf3c_baselines" / "nf3c_pre_migration_baseline.json").read_text(encoding="utf-8"))["outcomes"],
+    _R1A: json.loads((_FIXTURES / "comtrade_frequency" / "comtrade_frequency_baseline.json").read_text(encoding="utf-8"))["outcomes"],
 }
 
 #: (baseline key, path inside "outcomes", frozen value, new value, matrix row / reason)
@@ -92,6 +94,24 @@ for _label, _entry in _HISTORY[_NF3C]["ben_import_supplied_http"].items():
     APPROVED_CHANGES.append((
         _NF3C, f"ben_import_supplied_http/{_label}/oscillation_representation/body/nominal_frequency_revision", ABSENT, 0,
         "O-6: additive nominal_frequency_revision"))
+
+
+# --- the R1A COMTRADE baseline: the oscillation analysis's recorded (frequency, origin) pair --------------------------------------------
+# Only the ORIGIN of an unusable declaration changes (`recording_metadata` -> `unusable`); the recorded frequency never does.
+def _usable(text: str) -> bool:
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return False
+    return 1.0 <= value <= 1000.0 and value == value
+
+
+for _key, _entry in _HISTORY[_R1A]["api"].items():
+    _pair = _entry.get("oscillation_frequency_and_origin")
+    if _pair and _pair[1] == "recording_metadata" and not _usable(_pair[0]):
+        APPROVED_CHANGES.append((
+            _R1A, f"api/{_key}/oscillation_frequency_and_origin", list(_pair), [_pair[0], "unusable"],
+            "OC-8/O-6: an unusable declaration is labelled `unusable`; the recorded frequency is unchanged"))
 
 
 def apply_approved(document: dict, baseline: str) -> dict:

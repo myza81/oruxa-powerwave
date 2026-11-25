@@ -269,13 +269,15 @@ class TestOpenGate:
 
 
 # --------------------------------------------------------------------- engineering behaviour is unchanged in NF-3B
-class TestAManualValueDoesNotYetInfluenceAnyConsumer:
-    """NF-3B migrates no consumer. With the gate OPEN and a Manual value stored, every consumer must still produce exactly the
-    frozen baseline for its recording (the frozen file was generated from the NF-3A tree). With the gate closed nothing can be
-    stored at all. Together: the release gate cannot change a calculation, because no calculation reads it yet."""
+class TestAManualValueInfluencesOnlyTheMigratedConsumers:
+    """NF-3B migrated no consumer, and this class said so: with the gate open and a Manual value stored, every consumer reproduced the
+    frozen baseline. NF-3C migrated event detection (and compliance and oscillation, tested in test_nf3c_*): their Manual behaviour is
+    asserted there and for event detection below. What this class keeps proving is the OTHER half: the consumers NOT yet migrated (the
+    phasor family, and the power channels' fixed 50 Hz window) are still untouched by a stored Manual value. NF-3D/NF-3F will change
+    that, deliberately, and edit this class in the same commit. With the gate closed nothing can be stored at all."""
 
     @pytest.mark.parametrize("recording,manual", [("r50", 60.0), ("r60", 50.0), ("assumed_on_60hz_signal", 60.0), ("declared_zero", 60.0)])
-    def test_stored_manual_value_leaves_every_http_consumer_unchanged(self, opened_lenient, recording, manual):
+    def test_a_stored_manual_value_reaches_event_detection_and_leaves_the_unmigrated_consumers_unchanged(self, opened_lenient, recording, manual):
         opened = opened_lenient
         fs, f_sig, lf = base.HTTP_RECORDINGS[recording]
         ws = base.WS
@@ -290,7 +292,8 @@ class TestAManualValueDoesNotYetInfluenceAnyConsumer:
         # the same consumers the baseline captured, with a Manual value now stored for the recording
         det = opened.post(f"/api/v1/workspaces/{ws}/synchronization/detect-event", json={"source_id": sid, "channel_name": "ALPHA1_VA"})
         assert det.status_code == frozen["detect_event"]["status"]
-        assert base._round_tree(det.json())["nominal_frequency_hz"] == frozen["detect_event"]["body"]["nominal_frequency_hz"]
+        # NF-3C: event detection is migrated, so the Manual value IS the frequency it reports (it used to echo the declared one)
+        assert det.json()["nominal_frequency_hz"] == manual
         for context in opened.get(f"/api/v1/workspaces/{ws}/engineering-contexts").json():
             opened.delete(f"/api/v1/workspaces/{ws}/engineering-contexts/{context['id']}")
         ref = lambda n: {"kind": "source", "source_id": sid, "channel_name": n}      # noqa: E731
@@ -305,3 +308,9 @@ class TestAManualValueDoesNotYetInfluenceAnyConsumer:
             now, then = base._round_tree(ph.json()), frozen["phasor_voltage_three_phase"]["body"]
             assert (now["status"], now.get("reason_code"), now.get("reference_frequency_hz")) == (
                 then["status"], then.get("reason_code"), then.get("reference_frequency_hz"))
+        # the power channels are not migrated (NF-3F): their stored frequency is still the fixed 50 Hz window, whatever Manual says
+        power = opened.post(f"/api/v1/workspaces/{ws}/calculated-channels", json={
+            "operation": "active_power", "name": "P-manual", "parameters": {},
+            "inputs": [ref("ALPHA1_VA"), ref("ALPHA1_IA")]})
+        assert power.status_code == 201
+        assert opened.app.state.calculated_channel_registry.get(ws, power.json()["id"]).parameters["nominal_frequency_hz"] == 50.0

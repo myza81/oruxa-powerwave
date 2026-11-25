@@ -87,7 +87,11 @@ class TestDeclaredFrequencyIsNotMarkedAssumed:
     def test_import_reports_a_recording_metadata_origin(self, actual, key):
         entry = actual["api"][key]
         assert entry["stored_preparation_provenance"] is None
-        assert entry["oscillation_frequency_and_origin"][1] == "recording_metadata"
+        # NF-3C (owner decision O-6): a DECLARED value that can be used is `recording_metadata`; a declared value that cannot (0, negative,
+        # NaN, infinite, outside 1-1000 Hz) is `unusable`. It used to be labelled `recording_metadata` too. Never `assumed_default`.
+        from app.domain.calculated_channel import nominal_frequency_valid
+        usable = nominal_frequency_valid(float(entry["stored_nominal_frequency"]))
+        assert entry["oscillation_frequency_and_origin"][1] == ("recording_metadata" if usable else "unusable")
 
     def test_declared_50_is_distinguishable_from_assumed_50(self, actual):
         declared, assumed = actual["api"]["declared_50"], actual["api"]["unparseable_text"]
@@ -195,7 +199,7 @@ class TestExistingConventionIsReused:
             "providers/comtrade.py",
             "services/oscillation_cross_signal_service.py",
             "services/oscillation_damping_service.py",
-            "services/oscillation_representation_service.py",
+            # NF-3C: oscillation_representation_service is gone from this list -- it asks the central accessor and no longer reads the flag.
             "services/oscillation_spectrum_service.py",
             "services/preparation_conversion_service.py",
         ]

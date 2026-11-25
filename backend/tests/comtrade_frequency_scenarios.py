@@ -278,8 +278,6 @@ def run_api_scenarios(client) -> dict[str, dict]:
     """Upload each parseable variant through the real source-import endpoint and read back what the application
     stores: the effective nominal frequency, `preparation_provenance`, the response body keys, and the
     `(frequency, origin)` pair the oscillation analysis derives (the existing consumer of the provenance flag)."""
-    from app.services.oscillation_representation_service import _nominal_frequency
-
     out: dict[str, dict] = {}
     for key, text in build_variants().items():
         files = {"cfg_file": ("e.cfg", text.encode("latin-1"), "application/octet-stream"),
@@ -295,7 +293,11 @@ def run_api_scenarios(client) -> dict[str, dict]:
             active = client.app.state.workspace_registry.get(WS, body["source_id"])
             entry["stored_nominal_frequency"] = _number(active.metadata.nominal_frequency)
             entry["stored_preparation_provenance"] = _json_safe(active.metadata.preparation_provenance)
-            freq, origin = _nominal_frequency(active)
+            # NF-3C: the oscillation analysis asks the central accessor (the private `_nominal_frequency` it used to call is gone). The pair
+            # recorded is the one it reports: the effective value (the declared value as imported when there is none) and the NF-1 origin.
+            frequency = client.app.state.nominal_frequency_access.for_source(WS, body["source_id"])
+            freq = frequency.hz if frequency.usable else frequency.imported_hz
+            origin = frequency.origin
             entry["oscillation_frequency_and_origin"] = [_number(freq), origin]
         else:
             body = response.json()

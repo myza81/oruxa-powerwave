@@ -27,9 +27,13 @@ from app.config import Settings
 from app.main import create_app
 
 from tests import comtrade_frequency_scenarios as scn
+from tests import nf3c_approved_changes as approved
 
 BASELINE = json.loads(scn.BASELINE_PATH.read_text(encoding="utf-8"))
-OUTCOMES = BASELINE["outcomes"]
+OUTCOMES = BASELINE["outcomes"]          # HISTORICAL (pre-R1A tree). Never edited.
+#: NF-3C: what the code must now produce = the historical record plus the explicit approved changes (an unusable declaration's oscillation
+#: origin is `unusable`; every frequency, status, key and fingerprint is unchanged).
+EXPECTED = approved.apply_approved(BASELINE, "comtrade_frequency_baseline")
 
 #: Scenarios in which the pre-R1A parser substituted the default. Derived from the FROZEN baseline's own warnings,
 #: never from the code under test.
@@ -98,7 +102,7 @@ def test_checked_in_fixture_outcome_is_unchanged(actual, key):
 @pytest.mark.parametrize("key", sorted(OUTCOMES["api"]))
 def test_upload_outcome_is_unchanged(actual, key):
     excluded = API_PROVENANCE_FIELDS if key in FALLBACK else set()
-    assert _canonical(_without(actual["api"][key], excluded)) == _canonical(_without(OUTCOMES["api"][key], excluded))
+    assert _canonical(_without(actual["api"][key], excluded)) == _canonical(_without(EXPECTED["api"][key], excluded))
 
 
 class TestBaselineCoversTheRequiredCases:
