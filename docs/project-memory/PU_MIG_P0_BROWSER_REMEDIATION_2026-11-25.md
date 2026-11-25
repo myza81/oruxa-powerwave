@@ -216,3 +216,56 @@ nothing. S1 commits `e41aecd`, `b055ba4`, `993cf89` are preserved (this work sit
 evidence images (`docs/project-memory/evidence/rd1-d2-refine/*`, `…/recording-details-toolbar/*`) were rewritten by
 the full run and restored with `git checkout --`.
 
+## 12. P0 closeout (owner decisions of 2026-11-25)
+
+Owner decisions applied: (1) VD-09 and the Legacy Current Reference test retired; (2) the two Per-Unit Settings icon tests
+retired; (3) minimal production fix for Compliance → Configure Base; (4) API-level coverage retained for Current-group
+manual Ibase / base reference side / Source Default, UI not restored (not an independent S2 blocker); (5) the dropped
+UI-only assertions of §4 accepted; (6) the four Overcurrent tests corrected with a valid manual CT; (7) CSV/Excel row failures
+stay deferred; (8) BEN5K timezone remediation and the relay-import instability classification accepted.
+
+| Item | Change | Commit |
+|---|---|---|
+| Production fix | `wwRdOnPageEntered()` keeps the group pre-selected by `wwNavigateToRdForGroup` once the source's groups have loaded (and only if it belongs to that source). `wwRdSelectSource()` and every click path are unchanged. 13 lines in `frontend/index.html`. Other worktrees (wui-001..004, d5a-1b-on-wui, rms-r0, nf-2, nf-3d) were inspected read-only: none touches these lines, so a merge conflict is unlikely and would be local. | `a328ff2` (alone) |
+| Retirements | VD-09, "Legacy Current Reference", and the two "Per-Unit Settings icon" tests removed; each site keeps a `RETIRED (owner decision …)` note with the reason. Engineering behaviour stays covered: VD-03…08/13/17, `per-unit-reference-safety`, `current-common-base` (API-level). | `abe2a7e` |
+| Overcurrent | The four `post_upload_readiness` Overcurrent tests call `configureCurrentGroupCts()`: `PUT …/measurement-groups/{id}/current-config {update_ct_only, ct_primary_a: 1200, ct_secondary_a: 1}` — the endpoint Recording Details' CT editor saves to — for the uploaded recording's Current groups. Production Overcurrent is untouched; the missing-CT refusal remains covered by `d5a_2b2c_1a_overcurrent_side.spec.js` (not modified, passing). Impedance/Distance tests are unchanged (no CT configured), so "no ratio needed on the same side" stays proven. | `abe2a7e` |
+
+Targeted run (one worker, flag on; **not** the full suite): `compliance_readiness`, `compliance_measurement`,
+`post_upload_readiness`, `d5a_2b2c_1a_overcurrent_side`, `d5a_2b2c_1b_protection_side`, `d5a_ui_002_group_details`,
+`per-unit-reference-safety`, `voltage-only-pu-display`, `waveform-top-toolbar-migration`, `pulu-auto-reference`,
+`per-unit-atomic-updates`, `per-unit-numeric-integrity`: **187 passed, 0 failed** (14.6 min), including the pinned
+"Configure Base … pre-selected" test, which failed before the fix and now passes unchanged, all four Overcurrent tests,
+and the missing-CT refusal tests. Static frontend tests touching Recording Details (58) pass.
+
+Derived state of the suite (not a measured full run): of the 20 failures measured at `07cbaaa`, 5 were fixed in `d122037`,
+1 by `a328ff2`, 4 by the CT correction and 4 were retired, leaving the **6 CSV/Excel preparation-row failures** (deferred
+backlog). Expected totals 1,807 tests = 1,793 passed + 6 failed + 8 skipped (owner-data skips, which pass when the
+reference-data variables are set).
+
+### 12.1 Decision register for the remaining PU-MIG decisions
+
+Source: `PU_MIG_S0_OWNER_REVIEW_RESPONSE_2026-11-24.md` §1.2, `PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md` (status
+column), `PU_MIG_S0_FINAL_RECONCILIATION_2026-11-24.md` (slice table: "S2 … needs S1, R-4/R-5/R-6/R-7, P0"). All are
+PENDING/OPEN; none is decided by this work. "Needed before S2" is read from those documents.
+
+| ID | Question | Status | Options (recommendation in the documents) | Needed before S2? |
+|---|---|---|---|---|
+| **D-1** (OD-2) | Historical Unknown/Unverified PU, per class | OPEN — must not be silently changed nor shown as verified | R / **R+** (recommended: keep numbers, add an explicit verification state) / N / B | **Yes for raw Voltage** (S2's class): choose R or R+ (and whether N at S2). Other classes can follow at S3/S4. |
+| **D-4** (R-4) | Precedence between `secondary_voltage_ll_v` and nominal ÷ ratio | OPEN — "legacy always wins" not approvable | P1–P5; **P5 now, P4 later** (needs a `secondary_base_origin` field) | **Yes** (named S2 dependency). P5 keeps S2 numerics unchanged. |
+| **D-5** (R-5) | What activates the legacy secondary path | PENDING | (i) stored `base_reference_side == "secondary"` + valid value (recommended through S4) / (ii) effective Recording Details side | **Yes** (named S2 dependency). |
+| **D-6** (R-6) | Primary samples against a Secondary-only base | PENDING (was wrongly shown approved in Amendment 7; corrected GC-1) | convert only with a valid trusted ratio, else block (recommended) / keep blocked | **Yes** (named S2 dependency). |
+| **D-7** (R-7) | `auto_nominal` ratio for secondary PU | PENDING | accept + show provenance (recommended; DEC-215) / require manual or recording metadata | **Yes** (named S2 dependency). |
+| **D-8** (R-8) | API deprecation of `*_base_reference_side` | PENDING | none through S4 (recommended) / deprecate; revisit at S6 | **No** — follows D-2; revisit at S6. |
+| **N-2** | Reason-code vocabulary | PENDING — every S1 reason code is a proposal | A: reuse existing names + add `base_side_unknown`, `invalid_base_*`, `denominator_not_representable` (recommended) / B: separate PU namespace | **Yes, before any production consumer calls the resolver** (S2 is the first); production refusal codes must not be finalised without it. |
+
+Not in the list but relevant to S2: D-9 (refresh scope per source; oracle placement) was approved on 2026-11-24. §7.2 of
+this document (no UI for Current-group manual Ibase / base reference side / Source Default) was accepted as not an
+independent S2 blocker; API-level coverage is retained.
+
+### 12.2 P0 readiness verdict
+
+All P0 acceptance gates of §10.3 are met and every item the owner dispositioned is closed. **P0 is complete.** The only
+remaining browser failures are the 6 deferred CSV/Excel preparation-row tests, which have no per-unit dependency.
+**S2 is not started.** What stands between P0 and S2 is the decision register above: D-1 (raw Voltage), D-4, D-5, D-6, D-7
+and N-2 need an owner decision first; D-8 does not.
+
