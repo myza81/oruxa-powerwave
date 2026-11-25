@@ -1,0 +1,4021 @@
+{
+ "baseline_git_sha": "c70182cbb1a88158d4d81512321b71b9f323851e",
+ "numpy": "2.4.6",
+ "outcomes": {
+  "http": {
+   "assumed_50": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "assumed_default",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "assumed_default",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": 0.48,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": {
+       "calculated_channel_id": null,
+       "channel_name": "ALPHA1_IA",
+       "kind": "source",
+       "source_id": "<id>"
+      },
+      "characteristic_id": "iec_standard_inverse",
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": 0.297059861519,
+      "measured_rms_current": 10.0000000681,
+      "measured_rms_current_unit": "A",
+      "measurement_group_id": "mg-<id>",
+      "measurement_side": "secondary",
+      "measurement_side_authority": "recording_channel_declared",
+      "message": "Overcurrent evaluated at the requested analysis_time.",
+      "multiple_of_pickup": 10.0000000681,
+      "phase": "A",
+      "pickup_current_secondary": 1.0,
+      "reason_code": null,
+      "recording_basis": "secondary",
+      "reference_frequency_hz": 50.0,
+      "relay_secondary_current": 10.0000000681,
+      "status": "computed",
+      "threshold_exceeded": true,
+      "tms": 0.1,
+      "warnings": [],
+      "window_seconds": 0.02
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "All required roles resolved and estimated.",
+      "mode": "voltage_three_phase",
+      "reason_code": null,
+      "reference_frequency_hz": 50.0,
+      "role_reasons": {},
+      "roles": {
+       "Va": {
+        "angle_deg_absolute": -5.68434188608e-14,
+        "angle_deg_relative": 0.0,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 99.9999999815,
+        "unit": "V"
+       },
+       "Vb": {
+        "angle_deg_absolute": -119.999999983,
+        "angle_deg_relative": -119.999999983,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 100.000000035,
+        "unit": "V"
+       },
+       "Vc": {
+        "angle_deg_absolute": 119.999999983,
+        "angle_deg_relative": 119.999999983,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 100.000000035,
+        "unit": "V"
+       }
+      },
+      "status": "computed",
+      "warnings": [],
+      "window_seconds": 0.02
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000866025409867,
+       "mean": 0.000866025409867,
+       "min": 0.000866025409867
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000500000002722,
+       "mean": 0.000500000002722,
+       "min": 0.000500000002722
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "assumed_on_60hz_signal": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "assumed_default",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "assumed_default",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": null,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": null,
+      "characteristic_id": null,
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": null,
+      "measured_rms_current": null,
+      "measured_rms_current_unit": null,
+      "measurement_group_id": null,
+      "measurement_side": null,
+      "measurement_side_authority": null,
+      "message": "The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
+      "multiple_of_pickup": null,
+      "phase": "A",
+      "pickup_current_secondary": null,
+      "reason_code": "waveform_form_not_eligible",
+      "recording_basis": null,
+      "reference_frequency_hz": null,
+      "relay_secondary_current": null,
+      "status": "needs_configuration",
+      "threshold_exceeded": false,
+      "tms": null,
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "One or more resolved roles are not eligible sinusoidal waveform inputs for phasor estimation.",
+      "mode": "voltage_three_phase",
+      "reason_code": "waveform_form_not_eligible",
+      "reference_frequency_hz": null,
+      "role_reasons": {
+       "Va": "waveform_form_not_eligible",
+       "Vb": "waveform_form_not_eligible",
+       "Vc": "waveform_form_not_eligible"
+      },
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000923419986914,
+       "mean": 0.000764177184507,
+       "min": 0.000604967911988
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000433953811252,
+       "mean": 0.000433953809415,
+       "min": 0.000433953807016
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "declared_1001": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 1001.0,
+      "quality": null,
+      "reason": "No usable nominal frequency is available for this source."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "unusable",
+     "effective_hz": null,
+     "imported_text": "1001.0",
+     "mode": "auto",
+     "origin": "unusable",
+     "usable": false
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": null,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": null,
+      "characteristic_id": null,
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": null,
+      "measured_rms_current": null,
+      "measured_rms_current_unit": null,
+      "measurement_group_id": null,
+      "measurement_side": null,
+      "measurement_side_authority": null,
+      "message": "The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
+      "multiple_of_pickup": null,
+      "phase": "A",
+      "pickup_current_secondary": null,
+      "reason_code": "waveform_form_not_eligible",
+      "recording_basis": null,
+      "reference_frequency_hz": null,
+      "relay_secondary_current": null,
+      "status": "needs_configuration",
+      "threshold_exceeded": false,
+      "tms": null,
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "One or more resolved roles are not eligible sinusoidal waveform inputs for phasor estimation.",
+      "mode": "voltage_three_phase",
+      "reason_code": "waveform_form_not_eligible",
+      "reference_frequency_hz": null,
+      "role_reasons": {
+       "Va": "waveform_form_not_eligible",
+       "Vb": "waveform_form_not_eligible",
+       "Vc": "waveform_form_not_eligible"
+      },
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000866025409867,
+       "mean": 0.000866025409867,
+       "min": 0.000866025409867
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000500000002722,
+       "mean": 0.000500000002722,
+       "min": 0.000500000002722
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 1001.0,
+    "upload_status": 201
+   },
+   "declared_50_on_60hz_signal": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "recording_metadata",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": null,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": null,
+      "characteristic_id": null,
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": null,
+      "measured_rms_current": null,
+      "measured_rms_current_unit": null,
+      "measurement_group_id": null,
+      "measurement_side": null,
+      "measurement_side_authority": null,
+      "message": "The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
+      "multiple_of_pickup": null,
+      "phase": "A",
+      "pickup_current_secondary": null,
+      "reason_code": "waveform_form_not_eligible",
+      "recording_basis": null,
+      "reference_frequency_hz": null,
+      "relay_secondary_current": null,
+      "status": "needs_configuration",
+      "threshold_exceeded": false,
+      "tms": null,
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "One or more resolved roles are not eligible sinusoidal waveform inputs for phasor estimation.",
+      "mode": "voltage_three_phase",
+      "reason_code": "waveform_form_not_eligible",
+      "reference_frequency_hz": null,
+      "role_reasons": {
+       "Va": "waveform_form_not_eligible",
+       "Vb": "waveform_form_not_eligible",
+       "Vc": "waveform_form_not_eligible"
+      },
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000923419986914,
+       "mean": 0.000764177184507,
+       "min": 0.000604967911988
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000433953811252,
+       "mean": 0.000433953809415,
+       "min": 0.000433953807016
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "declared_nan": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": null,
+      "quality": null,
+      "reason": "No usable nominal frequency is available for this source."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "unusable",
+     "effective_hz": null,
+     "imported_text": "nan",
+     "mode": "auto",
+     "origin": "unusable",
+     "usable": false
+    },
+    "overcurrent_phase_a": {
+     "body": "500",
+     "status": 500
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "Resolved roles come from sources declaring different nominal frequencies; supply an explicit reference_frequency_hz to proceed.",
+      "mode": "voltage_three_phase",
+      "reason_code": "reference_frequency_conflict",
+      "reference_frequency_hz": null,
+      "role_reasons": {},
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000866025409867,
+       "mean": 0.000866025409867,
+       "min": 0.000866025409867
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000500000002722,
+       "mean": 0.000500000002722,
+       "min": 0.000500000002722
+      }
+     }
+    },
+    "source_summary_nominal_frequency": null,
+    "upload_status": 201
+   },
+   "declared_negative_50": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": -50.0,
+      "quality": null,
+      "reason": "No usable nominal frequency is available for this source."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "unusable",
+     "effective_hz": null,
+     "imported_text": "-50.0",
+     "mode": "auto",
+     "origin": "unusable",
+     "usable": false
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": null,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": null,
+      "characteristic_id": null,
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": null,
+      "measured_rms_current": null,
+      "measured_rms_current_unit": null,
+      "measurement_group_id": null,
+      "measurement_side": null,
+      "measurement_side_authority": null,
+      "message": "The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
+      "multiple_of_pickup": null,
+      "phase": "A",
+      "pickup_current_secondary": null,
+      "reason_code": "waveform_form_not_eligible",
+      "recording_basis": null,
+      "reference_frequency_hz": null,
+      "relay_secondary_current": null,
+      "status": "needs_configuration",
+      "threshold_exceeded": false,
+      "tms": null,
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "One or more resolved roles are not eligible sinusoidal waveform inputs for phasor estimation.",
+      "mode": "voltage_three_phase",
+      "reason_code": "waveform_form_not_eligible",
+      "reference_frequency_hz": null,
+      "role_reasons": {
+       "Va": "waveform_form_not_eligible",
+       "Vb": "waveform_form_not_eligible",
+       "Vc": "waveform_form_not_eligible"
+      },
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000866025409867,
+       "mean": 0.000866025409867,
+       "min": 0.000866025409867
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000500000002722,
+       "mean": 0.000500000002722,
+       "min": 0.000500000002722
+      }
+     }
+    },
+    "source_summary_nominal_frequency": -50.0,
+    "upload_status": 201
+   },
+   "declared_zero": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 0.0,
+      "quality": null,
+      "reason": "No usable nominal frequency is available for this source."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "unusable",
+     "effective_hz": null,
+     "imported_text": "0.0",
+     "mode": "auto",
+     "origin": "unusable",
+     "usable": false
+    },
+    "overcurrent_phase_a": {
+     "body": "500",
+     "status": 500
+    },
+    "phasor_voltage_three_phase": {
+     "body": "500",
+     "status": 500
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000866025409867,
+       "mean": 0.000866025409867,
+       "min": 0.000866025409867
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000500000002722,
+       "mean": 0.000500000002722,
+       "min": 0.000500000002722
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 0.0,
+    "upload_status": 201
+   },
+   "r50": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "recording_metadata",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": 0.48,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": {
+       "calculated_channel_id": null,
+       "channel_name": "ALPHA1_IA",
+       "kind": "source",
+       "source_id": "<id>"
+      },
+      "characteristic_id": "iec_standard_inverse",
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": 0.297059861519,
+      "measured_rms_current": 10.0000000681,
+      "measured_rms_current_unit": "A",
+      "measurement_group_id": "mg-<id>",
+      "measurement_side": "secondary",
+      "measurement_side_authority": "recording_channel_declared",
+      "message": "Overcurrent evaluated at the requested analysis_time.",
+      "multiple_of_pickup": 10.0000000681,
+      "phase": "A",
+      "pickup_current_secondary": 1.0,
+      "reason_code": null,
+      "recording_basis": "secondary",
+      "reference_frequency_hz": 50.0,
+      "relay_secondary_current": 10.0000000681,
+      "status": "computed",
+      "threshold_exceeded": true,
+      "tms": 0.1,
+      "warnings": [],
+      "window_seconds": 0.02
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "All required roles resolved and estimated.",
+      "mode": "voltage_three_phase",
+      "reason_code": null,
+      "reference_frequency_hz": 50.0,
+      "role_reasons": {},
+      "roles": {
+       "Va": {
+        "angle_deg_absolute": -5.68434188608e-14,
+        "angle_deg_relative": 0.0,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 99.9999999815,
+        "unit": "V"
+       },
+       "Vb": {
+        "angle_deg_absolute": -119.999999983,
+        "angle_deg_relative": -119.999999983,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 100.000000035,
+        "unit": "V"
+       },
+       "Vc": {
+        "angle_deg_absolute": 119.999999983,
+        "angle_deg_relative": 119.999999983,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 100.000000035,
+        "unit": "V"
+       }
+      },
+      "status": "computed",
+      "warnings": [],
+      "window_seconds": 0.02
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000866025409867,
+       "mean": 0.000866025409867,
+       "min": 0.000866025409867
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000500000002722,
+       "mean": 0.000500000002722,
+       "min": 0.000500000002722
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "r50_fs4096": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "recording_metadata",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": null,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": null,
+      "characteristic_id": null,
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": null,
+      "measured_rms_current": null,
+      "measured_rms_current_unit": null,
+      "measurement_group_id": null,
+      "measurement_side": null,
+      "measurement_side_authority": null,
+      "message": "The current RMS could not be estimated at the requested analysis_time.",
+      "multiple_of_pickup": null,
+      "phase": "A",
+      "pickup_current_secondary": null,
+      "reason_code": "irregular_sampling_not_supported",
+      "recording_basis": null,
+      "reference_frequency_hz": null,
+      "relay_secondary_current": null,
+      "status": "needs_configuration",
+      "threshold_exceeded": false,
+      "tms": null,
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "One or more required roles could not be estimated at the requested analysis_time.",
+      "mode": "voltage_three_phase",
+      "reason_code": "irregular_sampling_not_supported",
+      "reference_frequency_hz": null,
+      "role_reasons": {
+       "Va": "irregular_sampling_not_supported",
+       "Vb": "irregular_sampling_not_supported",
+       "Vc": "irregular_sampling_not_supported"
+      },
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 3686,
+       "finite": 3686,
+       "max": 0.000867980328923,
+       "mean": 0.000866026039419,
+       "min": 0.00086407213659
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 3686,
+       "finite": 3686,
+       "max": 0.000499999530525,
+       "mean": 0.000499999521955,
+       "min": 0.000499999515512
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "r60": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 60.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "recording_metadata",
+     "effective_hz": 60.0,
+     "imported_text": "60.0",
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": 0.4832,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": {
+       "calculated_channel_id": null,
+       "channel_name": "ALPHA1_IA",
+       "kind": "source",
+       "source_id": "<id>"
+      },
+      "characteristic_id": "iec_standard_inverse",
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": 0.296787296189,
+      "measured_rms_current": 10.0206881034,
+      "measured_rms_current_unit": "A",
+      "measurement_group_id": "mg-<id>",
+      "measurement_side": "secondary",
+      "measurement_side_authority": "recording_channel_declared",
+      "message": "Overcurrent evaluated at the requested analysis_time.",
+      "multiple_of_pickup": 10.0206881034,
+      "phase": "A",
+      "pickup_current_secondary": 1.0,
+      "reason_code": null,
+      "recording_basis": "secondary",
+      "reference_frequency_hz": 60.0,
+      "relay_secondary_current": 10.0206881034,
+      "status": "computed",
+      "threshold_exceeded": true,
+      "tms": 0.1,
+      "warnings": [],
+      "window_seconds": 0.0166666666667
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "All required roles resolved and estimated.",
+      "mode": "voltage_three_phase",
+      "reason_code": null,
+      "reference_frequency_hz": 60.0,
+      "role_reasons": {},
+      "roles": {
+       "Va": {
+        "angle_deg_absolute": -0.0113433301469,
+        "angle_deg_relative": 0.0,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 100.793819953,
+        "unit": "V"
+       },
+       "Vb": {
+        "angle_deg_absolute": -120.389781054,
+        "angle_deg_relative": -120.378437724,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 99.5881139742,
+        "unit": "V"
+       },
+       "Vc": {
+        "angle_deg_absolute": 120.401122259,
+        "angle_deg_relative": 120.412465589,
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "magnitude_rms": 99.6228139518,
+        "unit": "V"
+       }
+      },
+      "status": "computed",
+      "warnings": [],
+      "window_seconds": 0.0166666666667
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000923419986914,
+       "mean": 0.000764177184507,
+       "min": 0.000604967911988
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 4500,
+       "finite": 4500,
+       "max": 0.000433953811252,
+       "mean": 0.000433953809415,
+       "min": 0.000433953807016
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 60.0,
+    "upload_status": 201
+   },
+   "r60_fs4096": {
+    "context_status": 201,
+    "detect_event": {
+     "body": {
+      "baseline_rms": null,
+      "candidate_source_time": null,
+      "candidate_workspace_time": null,
+      "change_ratio": null,
+      "changed_rms": null,
+      "channel_unit": "V",
+      "detector_method": "rms_sustained_change",
+      "direction": null,
+      "found": false,
+      "nominal_frequency_hz": 60.0,
+      "quality": null,
+      "reason": "No clear disturbance onset detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "recording_metadata",
+     "effective_hz": 60.0,
+     "imported_text": "60.0",
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "usable": true
+    },
+    "overcurrent_phase_a": {
+     "body": {
+      "above_pickup_duration_seconds": null,
+      "algorithm_version": "overcurrent_idmt_v1",
+      "analysis_time": 0.5,
+      "channel_ref": null,
+      "characteristic_id": null,
+      "ct_authority": null,
+      "ct_primary": null,
+      "ct_secondary": null,
+      "engineering_context_id": "ec-<id>",
+      "expected_operating_time_seconds": null,
+      "measured_rms_current": null,
+      "measured_rms_current_unit": null,
+      "measurement_group_id": null,
+      "measurement_side": null,
+      "measurement_side_authority": null,
+      "message": "The current RMS could not be estimated at the requested analysis_time.",
+      "multiple_of_pickup": null,
+      "phase": "A",
+      "pickup_current_secondary": null,
+      "reason_code": "irregular_sampling_not_supported",
+      "recording_basis": null,
+      "reference_frequency_hz": null,
+      "relay_secondary_current": null,
+      "status": "needs_configuration",
+      "threshold_exceeded": false,
+      "tms": null,
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "phasor_voltage_three_phase": {
+     "body": {
+      "algorithm_version": "phasor_estimator_v1",
+      "analysis_kind": "phasor",
+      "analysis_time": 0.5,
+      "engineering_context_id": "ec-<id>",
+      "message": "One or more required roles could not be estimated at the requested analysis_time.",
+      "mode": "voltage_three_phase",
+      "reason_code": "irregular_sampling_not_supported",
+      "reference_frequency_hz": null,
+      "role_reasons": {
+       "Va": "irregular_sampling_not_supported",
+       "Vb": "irregular_sampling_not_supported",
+       "Vc": "irregular_sampling_not_supported"
+      },
+      "roles": {},
+      "status": "needs_configuration",
+      "warnings": [],
+      "window_seconds": null
+     },
+     "status": 200
+    },
+    "power_channels": {
+     "active_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "MW",
+      "values": {
+       "count": 3686,
+       "finite": 3686,
+       "max": 0.000924694836579,
+       "mean": 0.000764094354982,
+       "min": 0.000603487793158
+      }
+     },
+     "reactive_power": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "status": 201,
+      "unit": "Mvar",
+      "values": {
+       "count": 3686,
+       "finite": 3686,
+       "max": 0.000433778125599,
+       "mean": 0.000433777924539,
+       "min": 0.000433777656992
+      }
+     }
+    },
+    "source_summary_nominal_frequency": 60.0,
+    "upload_status": 201
+   }
+  },
+  "in_process": {
+   "assumed_50": {
+    "compliance_measurement_input_type": {
+     "returns": "instantaneous"
+    },
+    "compliance_readiness_nominal_for": 50.0,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "reason": "No clear disturbance onset detected."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 50.0,
+      "nominal_frequency_origin": "assumed_default",
+      "reason_code": null,
+      "status": "ready"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "assumed_default_on_60hz_signal": {
+    "compliance_measurement_input_type": {
+     "returns": null
+    },
+    "compliance_readiness_nominal_for": 50.0,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "reason": "No clear disturbance onset detected."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 50.0,
+      "nominal_frequency_origin": "assumed_default",
+      "reason_code": "form_unconfirmed",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 46.1689694211,
+       "mean": 38.2087036733,
+       "min": 30.2489189937
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 21.6976905897,
+       "mean": 21.6976905897,
+       "min": 21.6976905897
+      }
+     }
+    }
+   },
+   "declared_0_5": {
+    "compliance_measurement_input_type": {
+     "returns": null
+    },
+    "compliance_readiness_nominal_for": null,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 0.5,
+      "reason": "No usable nominal frequency is available for this source."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 0.5,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "invalid_nominal_frequency",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "declared_1001": {
+    "compliance_measurement_input_type": {
+     "returns": "rms"
+    },
+    "compliance_readiness_nominal_for": null,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 1001.0,
+      "reason": "No usable nominal frequency is available for this source."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 1001.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "invalid_nominal_frequency",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "declared_50": {
+    "compliance_measurement_input_type": {
+     "returns": "instantaneous"
+    },
+    "compliance_readiness_nominal_for": 50.0,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "reason": "No clear disturbance onset detected."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 50.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": null,
+      "status": "ready"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "declared_50_on_60hz_signal": {
+    "compliance_measurement_input_type": {
+     "returns": null
+    },
+    "compliance_readiness_nominal_for": 50.0,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 50.0,
+      "reason": "No clear disturbance onset detected."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 50.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "form_unconfirmed",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 46.1689694211,
+       "mean": 38.2087036733,
+       "min": 30.2489189937
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 21.6976905897,
+       "mean": 21.6976905897,
+       "min": 21.6976905897
+      }
+     }
+    }
+   },
+   "declared_60": {
+    "compliance_measurement_input_type": {
+     "returns": "instantaneous"
+    },
+    "compliance_readiness_nominal_for": 60.0,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 60.0,
+      "reason": "No clear disturbance onset detected."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 60.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": null,
+      "status": "ready"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 46.1689694211,
+       "mean": 38.2087036733,
+       "min": 30.2489189937
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 21.6976905897,
+       "mean": 21.6976905897,
+       "min": 21.6976905897
+      }
+     }
+    }
+   },
+   "declared_inf": {
+    "compliance_measurement_input_type": {
+     "raises": "ZeroDivisionError"
+    },
+    "compliance_readiness_nominal_for": null,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": "inf",
+      "reason": "No usable nominal frequency is available for this source."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": "inf",
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "invalid_nominal_frequency",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "declared_nan": {
+    "compliance_measurement_input_type": {
+     "raises": "ValueError"
+    },
+    "compliance_readiness_nominal_for": null,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": "nan",
+      "reason": "No usable nominal frequency is available for this source."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": "nan",
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "invalid_nominal_frequency",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "declared_negative_50": {
+    "compliance_measurement_input_type": {
+     "returns": null
+    },
+    "compliance_readiness_nominal_for": null,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": -50.0,
+      "reason": "No usable nominal frequency is available for this source."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": -50.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "invalid_nominal_frequency",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   },
+   "declared_zero": {
+    "compliance_measurement_input_type": {
+     "raises": "ZeroDivisionError"
+    },
+    "compliance_readiness_nominal_for": null,
+    "event_detection_view": {
+     "returns": {
+      "candidate_source_time": null,
+      "found": false,
+      "nominal_frequency_hz": 0.0,
+      "reason": "No usable nominal frequency is available for this source."
+     }
+    },
+    "oscillation_representation": {
+     "returns": {
+      "nominal_frequency_hz": 0.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": "invalid_nominal_frequency",
+      "status": "unavailable"
+     }
+    },
+    "power_channel_active_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "MW",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 43.3012701892,
+       "mean": 43.3012701892,
+       "min": 43.3012701892
+      }
+     }
+    },
+    "power_channel_reactive_power": {
+     "returns": {
+      "parameters": {
+       "nominal_frequency_hz": 50.0,
+       "sign_convention": "passive",
+       "window_mode": "trailing"
+      },
+      "unit": "Mvar",
+      "values": {
+       "count": 4321,
+       "finite": 4321,
+       "max": 25.0,
+       "mean": 25.0,
+       "min": 25.0
+      }
+     }
+    }
+   }
+  },
+  "kernels": {
+   "grid": {
+    "fs4096_signal50_nominal50": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.7107840448,
+       "candidate_source_time": 0.50048828125,
+       "changed_rms": 141.49039234,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 82,
+       "value": 70.7294742531
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": 29.9530927412,
+       "available": true,
+       "magnitude_rms": 70.7482990932,
+       "reason_code": null,
+       "sample_count": 82
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 1885,
+       "finite": 1885,
+       "max": 70.7451963146,
+       "mean": 70.7106804712,
+       "min": 70.676143064,
+       "nan_count": 82
+      }
+     },
+     "samples_per_cycle_at_nominal": 81.92,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 1967,
+        "finite": 1967,
+        "max": 30.055952711,
+        "mean": 29.9999764064,
+        "min": 29.9440471772
+       },
+       "available": 1967,
+       "magnitude": {
+        "count": 1967,
+        "finite": 1967,
+        "max": 70.779731361,
+        "mean": 70.7107089424,
+        "min": 70.6416248764
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_instantaneous"
+     }
+    },
+    "fs4096_signal50_nominal60": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.5646384275,
+       "candidate_source_time": 0.50048828125,
+       "changed_rms": 152.848763218,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 68,
+       "value": 73.4955500795
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": 64.7054265146,
+       "available": true,
+       "magnitude_rms": 70.8344619006,
+       "reason_code": null,
+       "sample_count": 68
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 1912,
+       "finite": 1912,
+       "max": 76.4244046177,
+       "mean": 70.5512066374,
+       "min": 64.4927157036,
+       "nan_count": 69
+      }
+     },
+     "samples_per_cycle_at_nominal": 68.2666666667,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 1980,
+        "finite": 1980,
+        "max": 179.998587829,
+        "mean": -1.03097263967,
+        "min": -179.997337308
+       },
+       "available": 1980,
+       "magnitude": {
+        "count": 1980,
+        "finite": 1980,
+        "max": 73.9576536685,
+        "mean": 67.6879298183,
+        "min": 61.1401414517
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_instantaneous"
+     }
+    },
+    "fs4096_signal60_nominal50": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.5733626894,
+       "candidate_source_time": 0.500244140625,
+       "changed_rms": 150.099228457,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 82,
+       "value": 74.8945936172
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": -5.00088464393,
+       "available": true,
+       "magnitude_rms": 72.0068036891,
+       "reason_code": null,
+       "sample_count": 82
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 1885,
+       "finite": 1885,
+       "max": 75.0496847346,
+       "mean": 70.6520783553,
+       "min": 66.0874028937,
+       "nan_count": 82
+      }
+     },
+     "samples_per_cycle_at_nominal": 81.92,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 1967,
+        "finite": 1967,
+        "max": 179.908945367,
+        "mean": 3.8340526965,
+        "min": -179.834739613
+       },
+       "available": 1967,
+       "magnitude": {
+        "count": 1967,
+        "finite": 1967,
+        "max": 72.2115400775,
+        "mean": 66.2672451445,
+        "min": 60.0704479671
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "uncertain"
+     }
+    },
+    "fs4096_signal60_nominal60": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.7106781135,
+       "candidate_source_time": 0.50048828125,
+       "changed_rms": 141.69873977,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 68,
+       "value": 70.6375697418
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": 30.1916952146,
+       "available": true,
+       "magnitude_rms": 70.5649318965,
+       "reason_code": null,
+       "sample_count": 68
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 1912,
+       "finite": 1912,
+       "max": 70.8493722034,
+       "mean": 70.7105961861,
+       "min": 70.5717114599,
+       "nan_count": 69
+      }
+     },
+     "samples_per_cycle_at_nominal": 68.2666666667,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 1980,
+        "finite": 1980,
+        "max": 30.224984465,
+        "mean": 30.0000286461,
+        "min": 29.7750191488
+       },
+       "available": 1980,
+       "magnitude": {
+        "count": 1980,
+        "finite": 1980,
+        "max": 70.9883383293,
+        "mean": 70.7109382512,
+        "min": 70.4330179125
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_instantaneous"
+     }
+    },
+    "fs4800_signal50_nominal50": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.7106781187,
+       "candidate_source_time": 0.500625,
+       "changed_rms": 141.421356237,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 96,
+       "value": 70.7106781187
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": 30.0,
+       "available": true,
+       "magnitude_rms": 70.7106781187,
+       "reason_code": null,
+       "sample_count": 96
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2208,
+       "finite": 2208,
+       "max": 70.7106781187,
+       "mean": 70.7106781187,
+       "min": 70.7106781187,
+       "nan_count": 96
+      }
+     },
+     "samples_per_cycle_at_nominal": 96.0,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 2305,
+        "finite": 2305,
+        "max": 30.0,
+        "mean": 30.0,
+        "min": 30.0
+       },
+       "available": 2305,
+       "magnitude": {
+        "count": 2305,
+        "finite": 2305,
+        "max": 70.7106781187,
+        "mean": 70.7106781187,
+        "min": 70.7106781187
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_instantaneous"
+     }
+    },
+    "fs4800_signal50_nominal60": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.3269039007,
+       "candidate_source_time": 0.500625,
+       "changed_rms": 152.654015955,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 80,
+       "value": 73.8903313932
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": 63.7439150007,
+       "available": true,
+       "magnitude_rms": 71.1212301326,
+       "reason_code": null,
+       "sample_count": 80
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2240,
+       "finite": 2240,
+       "max": 76.3270079776,
+       "mean": 70.5547813143,
+       "min": 64.6079550303,
+       "nan_count": 80
+      }
+     },
+     "samples_per_cycle_at_nominal": 80.0,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 2321,
+        "finite": 2321,
+        "max": 179.991550267,
+        "mean": -1.75575575147,
+        "min": -180.0
+       },
+       "available": 2321,
+       "magnitude": {
+        "count": 2321,
+        "finite": 2321,
+        "max": 73.6559739347,
+        "mean": 67.6482118338,
+        "min": 61.3948487113
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_instantaneous"
+     }
+    },
+    "fs4800_signal60_nominal50": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.3595466617,
+       "candidate_source_time": 0.500416666667,
+       "changed_rms": 150.058543306,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 96,
+       "value": 75.0062439139
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": -5.00087300325,
+       "available": true,
+       "magnitude_rms": 72.1210925005,
+       "reason_code": null,
+       "sample_count": 96
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2208,
+       "finite": 2208,
+       "max": 75.0407986687,
+       "mean": 70.6516986851,
+       "min": 66.0974926541,
+       "nan_count": 96
+      }
+     },
+     "samples_per_cycle_at_nominal": 96.0,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 2305,
+        "finite": 2305,
+        "max": 179.07007541,
+        "mean": 3.45724556729,
+        "min": -179.9032479
+       },
+       "available": 2305,
+       "magnitude": {
+        "count": 2305,
+        "finite": 2305,
+        "max": 72.1664143912,
+        "mean": 66.2731357953,
+        "min": 60.1330717938
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "uncertain"
+     }
+    },
+    "fs4800_signal60_nominal60": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": 70.7106781187,
+       "candidate_source_time": 0.500416666667,
+       "changed_rms": 141.421356237,
+       "found": true,
+       "quality": "strong",
+       "reason": "Sustained RMS increase detected."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 80,
+       "value": 70.7106781187
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": 30.0,
+       "available": true,
+       "magnitude_rms": 70.7106781187,
+       "reason_code": null,
+       "sample_count": 80
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2240,
+       "finite": 2240,
+       "max": 70.7106781187,
+       "mean": 70.7106781187,
+       "min": 70.7106781187,
+       "nan_count": 80
+      }
+     },
+     "samples_per_cycle_at_nominal": 80.0,
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 2321,
+        "finite": 2321,
+        "max": 30.0,
+        "mean": 30.0,
+        "min": 30.0
+       },
+       "available": 2321,
+       "magnitude": {
+        "count": 2321,
+        "finite": 2321,
+        "max": 70.7106781187,
+        "mean": 70.7106781187,
+        "min": 70.7106781187
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_instantaneous"
+     }
+    }
+   },
+   "invalid": {
+    "-50.0": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": false,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0,
+       "value": null
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": null,
+       "available": false,
+       "magnitude_rms": null,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0
+      }
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2401,
+       "finite": 2401,
+       "max": 100.0,
+       "mean": 63.6488140254,
+       "min": 0.0,
+       "nan_count": 0
+      }
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "uncertain"
+     }
+    },
+    "-inf": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": false,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0,
+       "value": null
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": null,
+       "available": false,
+       "magnitude_rms": null,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0
+      }
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2400,
+       "finite": 2400,
+       "max": 100.0,
+       "mean": 63.6392499728,
+       "min": 0.0,
+       "nan_count": 0
+      }
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "raises": "ZeroDivisionError"
+     }
+    },
+    "0.0": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "raises": "ZeroDivisionError"
+     },
+     "phasor_point": {
+      "raises": "ZeroDivisionError"
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "raises": "ZeroDivisionError"
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "raises": "ZeroDivisionError"
+     }
+    },
+    "0.5": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": false,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0,
+       "value": null
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": null,
+       "available": false,
+       "magnitude_rms": null,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0
+      }
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null,
+       "nan_count": 2401
+      }
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "uncertain"
+     }
+    },
+    "1001.0": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": true,
+       "reason_code": null,
+       "sample_count": 5,
+       "value": 92.0611044593
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": null,
+       "available": false,
+       "magnitude_rms": null,
+       "reason_code": "insufficient_sampling_density",
+       "sample_count": 5
+      }
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2391,
+       "finite": 2391,
+       "max": 99.5727943533,
+       "mean": 64.2452199054,
+       "min": 9.23355969678,
+       "nan_count": 5
+      }
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "returns": "likely_magnitude_or_rms"
+     }
+    },
+    "inf": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": false,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0,
+       "value": null
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": null,
+       "available": false,
+       "magnitude_rms": null,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0
+      }
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "returns": {
+       "count": 2400,
+       "finite": 2400,
+       "max": 100.0,
+       "mean": 63.6392499728,
+       "min": 0.0,
+       "nan_count": 0
+      }
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "raises": "ZeroDivisionError"
+     }
+    },
+    "nan": {
+     "event_onset_detector": {
+      "returns": {
+       "baseline_rms": null,
+       "candidate_source_time": null,
+       "changed_rms": null,
+       "found": false,
+       "quality": null,
+       "reason": "No usable nominal frequency is available for this source."
+      }
+     },
+     "overcurrent_rms_point": {
+      "returns": {
+       "available": false,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0,
+       "value": null
+      }
+     },
+     "phasor_point": {
+      "returns": {
+       "angle_deg": null,
+       "available": false,
+       "magnitude_rms": null,
+       "reason_code": "insufficient_window_history",
+       "sample_count": 0
+      }
+     },
+     "power_active": {
+      "returns": {
+       "count": 0,
+       "finite": 0,
+       "max": null,
+       "mean": null,
+       "min": null
+      }
+     },
+     "rms_trailing": {
+      "raises": "ValueError"
+     },
+     "sliding_phasor": {
+      "returns": {
+       "angle_deg": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       },
+       "available": 0,
+       "magnitude": {
+        "count": 0,
+        "finite": 0,
+        "max": null,
+        "mean": null,
+        "min": null
+       }
+      }
+     },
+     "waveform_form_detector": {
+      "raises": "ValueError"
+     }
+    }
+   },
+   "power": {
+    "fs4096_signal50_window50": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 43.3989675162,
+        "mean": 43.301344113,
+        "min": 43.2036554526
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 50.0846202879,
+        "mean": 50.0000640228,
+        "min": 49.9154750792
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 24.9999761582,
+        "mean": 24.9999761582,
+        "min": 24.9999761582
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1639,
+       "finite": 1639,
+       "max": 129.78954647,
+       "mean": 129.789418548,
+       "min": 129.789290537
+      }
+     }
+    },
+    "fs4096_signal50_window60": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 48.5292544729,
+        "mean": 39.8686442303,
+        "min": 31.2130780786
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 53.5373813083,
+        "mean": 45.9344567547,
+        "min": 38.5411325833
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 22.6089066002,
+        "mean": 22.6089066002,
+        "min": 22.6089066002
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1639,
+       "finite": 1639,
+       "max": 119.519399732,
+       "mean": 119.508051288,
+       "min": 119.496708953
+      }
+     }
+    },
+    "fs4096_signal50_windowdefault": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 43.3989675162,
+        "mean": 43.301344113,
+        "min": 43.2036554526
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 50.0846202879,
+        "mean": 50.0000640228,
+        "min": 49.9154750792
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 24.9999761582,
+        "mean": 24.9999761582,
+        "min": 24.9999761582
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1639,
+       "finite": 1639,
+       "max": 129.78954647,
+       "mean": 129.789418548,
+       "min": 129.789290537
+      }
+     }
+    },
+    "fs4096_signal60_window50": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 46.2347991768,
+        "mean": 38.2043017289,
+        "min": 30.1743211628
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 51.0692165149,
+        "mean": 44.0224881196,
+        "min": 37.1604343107
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 21.6888962495,
+        "mean": 21.6888962495,
+        "min": 21.6888962495
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1639,
+       "finite": 1639,
+       "max": 127.442107169,
+       "mean": 114.47259111,
+       "min": 101.494330263
+      }
+     }
+    },
+    "fs4096_signal60_window60": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 43.6946086884,
+        "mean": 43.301803725,
+        "min": 42.9092670235
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 50.3408338698,
+        "mean": 50.0004621079,
+        "min": 49.6607080373
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 24.9996145224,
+        "mean": 24.9996145224,
+        "min": 24.9996145224
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1639,
+       "finite": 1639,
+       "max": 130.37535424,
+       "mean": 129.740796623,
+       "min": 129.106533331
+      }
+     }
+    },
+    "fs4096_signal60_windowdefault": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 46.2347991768,
+        "mean": 38.2043017289,
+        "min": 30.1743211628
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 51.0692165149,
+        "mean": 44.0224881196,
+        "min": 37.1604343107
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1639,
+        "finite": 1639,
+        "max": 21.6888962495,
+        "mean": 21.6888962495,
+        "min": 21.6888962495
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1639,
+       "finite": 1639,
+       "max": 127.442107169,
+       "mean": 114.47259111,
+       "min": 101.494330263
+      }
+     }
+    },
+    "fs4800_signal50_window50": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 43.3012701892,
+        "mean": 43.3012701892,
+        "min": 43.3012701892
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 50.0,
+        "mean": 50.0,
+        "min": 50.0
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 25.0,
+        "mean": 25.0,
+        "min": 25.0
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1921,
+       "finite": 1921,
+       "max": 129.903810568,
+       "mean": 129.903810568,
+       "min": 129.903810568
+      }
+     }
+    },
+    "fs4800_signal50_window60": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 48.0928577791,
+        "mean": 39.8098912743,
+        "min": 31.5341072993
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 53.1421063445,
+        "mean": 45.8752367194,
+        "min": 38.8015517799
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 22.6088588249,
+        "mean": 22.6088588249,
+        "min": 22.6088588249
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1921,
+       "finite": 1921,
+       "max": 119.440447618,
+       "mean": 119.440447618,
+       "min": 119.440447618
+      }
+     }
+    },
+    "fs4800_signal50_windowdefault": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 43.3012701892,
+        "mean": 43.3012701892,
+        "min": 43.3012701892
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 50.0,
+        "mean": 50.0,
+        "min": 50.0
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 25.0,
+        "mean": 25.0,
+        "min": 25.0
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1921,
+       "finite": 1921,
+       "max": 129.903810568,
+       "mean": 129.903810568,
+       "min": 129.903810568
+      }
+     }
+    },
+    "fs4800_signal60_window50": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 46.1689694211,
+        "mean": 38.2084031621,
+        "min": 30.2489189937
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 51.0133660361,
+        "mean": 44.0288567192,
+        "min": 37.2261585074
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 21.6976905897,
+        "mean": 21.6976905897,
+        "min": 21.6976905897
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1921,
+       "finite": 1921,
+       "max": 127.506423969,
+       "mean": 114.632886196,
+       "min": 101.747241275
+      }
+     }
+    },
+    "fs4800_signal60_window60": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 43.3012701892,
+        "mean": 43.3012701892,
+        "min": 43.3012701892
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 50.0,
+        "mean": 50.0,
+        "min": 50.0
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 25.0,
+        "mean": 25.0,
+        "min": 25.0
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1921,
+       "finite": 1921,
+       "max": 129.903810568,
+       "mean": 129.903810568,
+       "min": 129.903810568
+      }
+     }
+    },
+    "fs4800_signal60_windowdefault": {
+     "single_phase": {
+      "active_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 46.1689694211,
+        "mean": 38.2084031621,
+        "min": 30.2489189937
+       }
+      },
+      "apparent_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 51.0133660361,
+        "mean": 44.0288567192,
+        "min": 37.2261585074
+       }
+      },
+      "reactive_power": {
+       "returns": {
+        "count": 1921,
+        "finite": 1921,
+        "max": 21.6976905897,
+        "mean": 21.6976905897,
+        "min": 21.6976905897
+       }
+      }
+     },
+     "three_phase_active": {
+      "returns": {
+       "count": 1921,
+       "finite": 1921,
+       "max": 127.506423969,
+       "mean": 114.632886196,
+       "min": 101.747241275
+      }
+     }
+    }
+   }
+  },
+  "oscillation_selection": {
+   "component_45hz": {
+    "all_50": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "all_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_50_second_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_60_second_50": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_assumed_second_manual_like_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_missing_second_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "none_declared": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "one_assumed_flag": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    }
+   },
+   "component_4hz": {
+    "all_50": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "all_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_50_second_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_60_second_50": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_assumed_second_manual_like_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_missing_second_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "none_declared": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "one_assumed_flag": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    }
+   },
+   "component_55hz": {
+    "all_50": {
+     "returns": {
+      "descriptors": [],
+      "limiting": [
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "all_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_50_second_60": {
+     "returns": {
+      "descriptors": [],
+      "limiting": [
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_60_second_50": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_assumed_second_manual_like_60": {
+     "returns": {
+      "descriptors": [],
+      "limiting": [
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "first_missing_second_60": {
+     "returns": {
+      "descriptors": [
+       "higher_frequency_oscillatory_component"
+      ],
+      "limiting": [
+       "frequency_alone_not_sso",
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met"
+      ],
+      "nominal_values_in_evidence": [
+       "60.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "none_declared": {
+     "returns": {
+      "descriptors": [],
+      "limiting": [
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    },
+    "one_assumed_flag": {
+     "returns": {
+      "descriptors": [],
+      "limiting": [
+       "frequency_outside_electromechanical_range",
+       "no_family_requirements_met",
+       "nominal_frequency_assumed"
+      ],
+      "nominal_values_in_evidence": [
+       "50.0"
+      ],
+      "probable_type": "unresolved",
+      "supporting": [
+       "damping_consistent",
+       "decaying_damping",
+       "frequency_match",
+       "multiple_recordings",
+       "observed_in",
+       "onset_observed",
+       "temporal_overlap"
+      ]
+     }
+    }
+   }
+  }
+ },
+ "platform": "Windows-11-10.0.26200-SP0",
+ "purpose": "Frozen pre-NF-3B nominal-frequency consumer behaviour (characterisation of current behaviour, defects included)",
+ "python": "3.12.10",
+ "scenario_runner": "backend/tests/nf3b_baseline_scenarios.py",
+ "schema": 1
+}
