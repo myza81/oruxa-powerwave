@@ -69,6 +69,7 @@ from app.domain.measurement_group import (
 )
 from app.domain.per_unit_numerics import convert_scalar, scaled_base
 from app.domain.reference_side import ReferenceSide
+from app.domain.side_denominator import BASE_LEGACY_SECONDARY_VOLTAGE_LL, BASE_NOMINAL_LL_PRIMARY
 from app.domain.voltage_primary_secondary import secondary_voltage_ll_v_valid
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
@@ -241,6 +242,11 @@ class VoltageBaseResolution:
     # Internal SI denominator: scale before phase division to preserve
     # precision when the configured kV value is subnormal. No wire change.
     denominator_volts: float | None = None
+    # PU-MIG S2: the established base BEFORE the electrical representation is applied (L-L volts) and what it IS
+    # (`side_denominator.BASE_*`), so the strict resolver can place it on the consumed sample's side. Set only when
+    # configured; the denominator fields above are unchanged.
+    base_volts_ll: float | None = None
+    base_kind: str | None = None
 
 
 def resolve_voltage_base_for_group(
@@ -347,6 +353,7 @@ def resolve_voltage_base_for_group(
         return VoltageBaseResolution(
             status=STATUS_CONFIGURED, denominator_kv=sec_denom_v / 1000.0,
             effective_reference=sec_ref, reason=None, denominator_volts=sec_denom_v,
+            base_volts_ll=sec_ll_v, base_kind=BASE_LEGACY_SECONDARY_VOLTAGE_LL,
         )
 
     if config is None or not voltage_base_valid(config.nominal_voltage_ll_kv):
@@ -371,6 +378,7 @@ def resolve_voltage_base_for_group(
     return VoltageBaseResolution(
         status=STATUS_CONFIGURED, denominator_kv=denominator_kv, effective_reference=reference, reason=None,
         denominator_volts=(config.nominal_voltage_ll_kv * 1000.0) / (SQRT_3 if reference == LINE_TO_GROUND else 1.0),
+        base_volts_ll=config.nominal_voltage_ll_kv * 1000.0, base_kind=BASE_NOMINAL_LL_PRIMARY,
     )
 
 

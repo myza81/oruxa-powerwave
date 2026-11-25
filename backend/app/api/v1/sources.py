@@ -59,6 +59,7 @@ from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_service import remove_measurement_groups_for_source
 from app.services.per_unit_provenance_service import build_source_channel_provenance
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.per_unit_service import delete_source_per_unit_config
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import remove_source_alignment, rebase_time_reference_state
@@ -134,6 +135,11 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
     return request.app.state.current_group_config_registry
+
+
+def get_recorded_authority(request: Request) -> RecordedAuthority:
+    """PU-MIG S2: Recording Details' side authority (the registries the shared side/ratio resolvers read)."""
+    return RecordedAuthority.from_app_state(request.app.state)
 
 
 def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
@@ -315,6 +321,7 @@ def get_source_channel_per_unit_resolution(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> PerUnitResolutionOut:
     """Per-Unit Settings hierarchy, Slice 3: this channel's own Per-Unit
     provenance -- which configuration (Measurement Group or Source
@@ -353,6 +360,7 @@ def get_source_channel_per_unit_resolution(
         group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry,
         current_config_registry=current_group_config_registry,
+        side_authority=recorded_authority,
     )
     return PerUnitResolutionOut.from_provenance(provenance)
 
@@ -467,6 +475,7 @@ def get_source_waveform(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> WaveformRangeOut:
     """Phase 2A waveform range endpoint -- see docs/project-memory/MIGRATION_PLAN.md's
     Phase 2A implementation record for the full API contract and its rationale.
@@ -498,6 +507,7 @@ def get_source_waveform(
             group_registry=measurement_group_registry,
             voltage_config_registry=voltage_group_config_registry,
             current_config_registry=current_group_config_registry,
+            side_authority=recorded_authority,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -568,6 +578,7 @@ def get_source_cursor_values(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> CursorValuesOut:
     """Batched A/B cursor-measurement endpoint (Phase 4C1 analog, Phase
     4C2 digital).
@@ -600,6 +611,7 @@ def get_source_cursor_values(
         group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry,
         current_config_registry=current_group_config_registry,
+        side_authority=recorded_authority,
     )
     return CursorValuesOut.from_result(result)
 
@@ -614,6 +626,7 @@ def resolve_source_annotation_anchor(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> AnnotationAnchorOut:
     """Phase 4F Callout annotation anchor resolution (DEC-045).
 
@@ -643,6 +656,7 @@ def resolve_source_annotation_anchor(
             group_registry=measurement_group_registry,
             voltage_config_registry=voltage_group_config_registry,
             current_config_registry=current_group_config_registry,
+            side_authority=recorded_authority,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -666,6 +680,7 @@ def resolve_source_peak_values(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> PeakValueBatchOut:
     """Phase 4G Maximum/Minimum Peak annotation resolution (DEC-046).
 
@@ -724,6 +739,7 @@ def resolve_source_peak_values(
                 group_registry=measurement_group_registry,
                 voltage_config_registry=voltage_group_config_registry,
                 current_config_registry=current_group_config_registry,
+                side_authority=recorded_authority,
             )
         except ImportServiceError as exc:
             logger.info(

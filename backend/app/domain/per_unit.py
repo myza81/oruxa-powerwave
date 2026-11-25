@@ -53,6 +53,7 @@ from app.domain.per_unit_numerics import (
     channel_values_representable, convert_array, convert_scalar,
     derived_current_ka, positive_finite, scaled_base,
 )
+from app.domain.side_denominator import BASE_NOMINAL_LL_PRIMARY, SIDE_PRIMARY, SideBase
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -266,6 +267,15 @@ class PerUnitResolution:
     measurement_side: str = "unknown"
     base_reference_side: str = "unknown"
 
+    # PU-MIG S2 (raw Voltage only; None everywhere else). The established base the strict side-denominator resolver
+    # is handed -- `app.domain.side_denominator.SideBase` -- and the electrical representation it applies to. The
+    # base is CHOSEN by the existing resolvers (this record merely carries it); `base_amount` is replaced by the
+    # resolver's denominator only by `per_unit_reference.apply_source_reference`.
+    base_descriptor: object | None = None
+    representation: str | None = None
+    # The verification and conversion provenance of the final result: `per_unit_reference.SideProvenance`.
+    side_provenance: object | None = None
+
 
 def resolve_per_unit(
     engineering_type: str,
@@ -338,7 +348,16 @@ def resolve_per_unit(
                 reason="voltage_reference_undetermined",
             )
         amount = nominal_volts / SQRT_3 if reference == LINE_TO_GROUND else nominal_volts
-        return PerUnitResolution(status=STATUS_CONFIGURED, profile_id=profile.source_id, base_amount=amount, base_unit="V", reason=None)
+        # PU-MIG S2: the Source Default nominal base is Primary by meaning. A stored `secondary` declaration has no
+        # secondary value on this path (D-5), so nothing is handed to the strict resolver and the historical gate
+        # decides exactly as before.
+        descriptor = None
+        if profile.voltage_base_reference_side != "secondary":
+            descriptor = SideBase(kind=BASE_NOMINAL_LL_PRIMARY, value=nominal_volts, declared_side=SIDE_PRIMARY)
+        return PerUnitResolution(
+            status=STATUS_CONFIGURED, profile_id=profile.source_id, base_amount=amount, base_unit="V", reason=None,
+            base_descriptor=descriptor, representation=reference if descriptor is not None else None,
+        )
     # CURRENT
     detection = resolve_effective_voltage_reference(profile, voltage_channel_names or [])
     amount, reason = resolve_current_base_amps(profile, detection.reference)

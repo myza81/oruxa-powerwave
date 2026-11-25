@@ -19,6 +19,7 @@ from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import ImportServiceError
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_coverage_service import build_per_unit_coverage_summary
 from app.services.per_unit_registry import PerUnitRegistry
@@ -169,6 +170,7 @@ def delete_source(
 def get_source_coverage(
     workspace_id: str,
     source_id: str,
+    request: Request,
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
@@ -193,6 +195,7 @@ def get_source_coverage(
             group_registry=group_registry,
             voltage_config_registry=voltage_config_registry,
             current_config_registry=current_config_registry,
+            side_authority=RecordedAuthority.from_app_state(request.app.state),
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc

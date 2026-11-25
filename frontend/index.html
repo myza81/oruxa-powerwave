@@ -36801,6 +36801,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             message: null,           // last save error, shown discreetly in the section
             loadSeq: 0,              // bumped per load and per invalidation: only the newest load may apply
             pending: 0,              // selections queued or in flight
+            wroteSinceRefresh: false, // a side write was saved since the displayed PU channels were last re-read (PU-MIG S2)
             chain: Promise.resolve(),
             optimistic: { recording: null, groups: {} }, // what the engineer just chose, until the server view is re-read
             focus: null,             // control to re-focus after a re-render (keyboard use)
@@ -36910,6 +36911,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         if (!response.ok) {
                             const detail = await response.json().catch(function() { return null; });
                             message = (detail && detail.detail && detail.detail.message) || "The change could not be saved.";
+                        } else {
+                            wwRdSide.wroteSinceRefresh = true; // PU-MIG S2: a saved side changes the PU denominator
                         }
                     } catch (error) {
                         message = "The change could not be saved. Check the connection and try again.";
@@ -36920,7 +36923,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (message) wwRdSide.message = message;
                 if (wwRdSide.pending > 0) return; // a newer selection is queued; its completion re-reads the view
                 if (message) wwRdSide.optimistic = { recording: null, groups: {} };
+                const refreshPu = wwRdSide.wroteSinceRefresh;
+                wwRdSide.wroteSinceRefresh = false;
                 await wwRdSideLoad(sourceId);
+                // PU-MIG S2: the measurement side now decides the per-unit denominator (Recording Details is the one authority),
+                // so the displayed channels are re-read once the last queued write has settled -- the same refresh a base
+                // edit uses (a no-op unless the Waveform is in per-unit mode).
+                if (refreshPu) wwRefreshDisplayedChannelsForPerUnitChange(sourceId);
             });
         }
 

@@ -92,6 +92,7 @@ from app.domain.reference_profile import ReferenceProfile
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import create_calculated_channel
 from app.services.compliance_series import Registries, timebase_key, unit_problem
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.compliance_measurement_service import (
     INPUT_TYPE_INSTANTANEOUS,
     INPUT_TYPE_RMS,
@@ -627,6 +628,7 @@ def evaluate_readiness(
     layer_registry: ReferenceLayerRegistry,
     profile_registry: ReferenceProfileRegistry,
     per_unit_registry: PerUnitRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> ReadinessResult:
     group = group_registry.get(workspace_id, measurement_group_id)
     if group is None:
@@ -645,6 +647,7 @@ def evaluate_readiness(
             Registries(
                 source=source_registry, calc=calc_registry, per_unit=per_unit_registry, group=group_registry,
                 voltage_config=voltage_config_registry, current_config=current_config_registry,
+                side_authority=side_authority,
             )
             if per_unit_registry is not None else None
         ),
@@ -713,6 +716,7 @@ def prepare_measurement(
     layer_registry: ReferenceLayerRegistry,
     profile_registry: ReferenceProfileRegistry,
     per_unit_registry: PerUnitRegistry,
+    side_authority: RecordedAuthority | None = None,
 ) -> PreparationOutcome:
     """Creates ONLY the missing shared resources, through the shared
     services, reusing anything equivalent that already exists. Never writes
@@ -726,7 +730,7 @@ def prepare_measurement(
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
             current_config_registry=current_config_registry, calc_registry=calc_registry,
             context_registry=context_registry, layer_registry=layer_registry, profile_registry=profile_registry,
-            per_unit_registry=per_unit_registry,
+            per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
 
     for _ in range(3):  # line-line first, then the RMS that depends on it

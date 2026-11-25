@@ -49,6 +49,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from sys import float_info
 from app.domain.reference_side import ReferenceSide, configured_base_side
+from app.domain.per_unit_reference import VERIFIED_CONVERTED, VERIFIED_DIRECT
+from app.domain.secondary_base_diagnostic import secondary_base_discrepancy
+from app.services.per_unit_side_authority import apply_raw_source_reference
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.calculated_current_per_unit import resolve_calculated_current_per_unit, CURRENT_REASON_COPY
 
 import numpy as np
@@ -183,6 +187,10 @@ class PerUnitChannelProvenance:
     measurement_side: ReferenceSide = "unknown"
     base_reference_side: ReferenceSide = "unknown"
     reference_compatibility: str | None = None
+    # PU-MIG S2 (raw Voltage): verification state and conversion provenance (`per_unit_reference.SideProvenance`) and the
+    # D-4 (P5) stored-versus-derived secondary base diagnostic. None everywhere else.
+    side_provenance: object | None = None
+    base_diagnostics: tuple = ()
 
 
 def _not_applicable_provenance(engineering_type: str) -> PerUnitChannelProvenance:
@@ -256,6 +264,13 @@ def _provenance_from_group(
     else:
         _base_ref_side = "unknown"
 
+    diagnostics = ()
+    if engineering_type == VOLTAGE and view is not None and view.voltage_config is not None:
+        # D-4 (P5): report, never replace. The view's configuration echoes the stored record.
+        stored = voltage_config_registry.get(workspace_id, measurement_group_id)
+        found = secondary_base_discrepancy(stored)
+        diagnostics = (found,) if found is not None else ()
+
     return PerUnitChannelProvenance(
         status=resolution.status,
         engineering_type=engineering_type,
@@ -263,6 +278,8 @@ def _provenance_from_group(
         reference_compatibility=resolution.reference_compatibility,
         reason=_reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason),
         base_reference_side=_base_ref_side,
+        side_provenance=resolution.side_provenance,
+        base_diagnostics=diagnostics,
         measurement_group_id=measurement_group_id,
         measurement_group_name=group.display_name if group is not None else None,
         nominal_base_kv=nominal_base_kv,
@@ -314,6 +331,7 @@ def _provenance_from_legacy(
         engineering_type=engineering_type,
         source_kind=SOURCE_KIND_SOURCE_DEFAULT,
         reference_compatibility=resolution.reference_compatibility,
+        side_provenance=resolution.side_provenance,
         reason=_reason_text(SOURCE_KIND_SOURCE_DEFAULT, resolution.reason),
         base_reference_side=configured_base_side(per_unit_profile.current_base_mode, per_unit_profile.current_base_reference_side) if per_unit_profile and engineering_type == CURRENT else "unknown",
         measurement_group_id=None,
@@ -342,6 +360,7 @@ def _build_source_channel_provenance(
     current_config_registry: CurrentGroupConfigRegistry,
     values: np.ndarray | None = None,
     measurement_side: ReferenceSide = "unknown",
+    side_authority: RecordedAuthority | None = None,
 ) -> PerUnitChannelProvenance:
     """Mirrors `waveform_service._resolve_effective_per_unit()`'s own
     exact dispatch order for a SOURCE channel: the DEC-078 Angle
@@ -361,9 +380,10 @@ def _build_source_channel_provenance(
             voltage_config_registry.get(workspace_id, group_resolution.profile_id)
             if engineering_type == "Voltage" else None
         )
-        group_resolution = apply_source_reference(group_resolution, engineering_type, measurement_side,
+        group_resolution = apply_raw_source_reference(group_resolution, engineering_type, channel_name, measurement_side,
+            workspace_id=workspace_id, source_id=source_id,
             group_config=current_config_registry.get(workspace_id, group_resolution.profile_id),
-            voltage_group_config=voltage_group_config)
+            voltage_group_config=voltage_group_config, side_authority=side_authority)
         group_resolution = resolve_conversion_eligibility(group_resolution, measured_unit, engineering_type, values)
         return _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id, engineering_type=engineering_type,
@@ -372,7 +392,8 @@ def _build_source_channel_provenance(
         )
 
     legacy_resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
-    legacy_resolution = apply_source_reference(legacy_resolution, engineering_type, measurement_side, profile=per_unit_profile)
+    legacy_resolution = apply_raw_source_reference(legacy_resolution, engineering_type, channel_name, measurement_side,
+        workspace_id=workspace_id, source_id=source_id, profile=per_unit_profile, side_authority=side_authority)
     legacy_resolution = resolve_conversion_eligibility(legacy_resolution, measured_unit, engineering_type, values)
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=engineering_type,
@@ -381,7 +402,14 @@ def _build_source_channel_provenance(
 
 
 def build_source_channel_provenance(*, measurement_side: ReferenceSide = "unknown", **kwargs) -> PerUnitChannelProvenance:
-    return replace(_build_source_channel_provenance(measurement_side=measurement_side, **kwargs), measurement_side=measurement_side)
+    provenance = _build_source_channel_provenance(measurement_side=measurement_side, **kwargs)
+    # S2: `measurement_side` reports the EFFECTIVE side when Recording Details established one (strict-usable); otherwise
+    # it is the recording's own declaration exactly as before.
+    side = provenance.side_provenance
+    if side is not None and side.verification_state in (VERIFIED_DIRECT, VERIFIED_CONVERTED) and side.effective_side:
+        measurement_side = side.effective_side
+        provenance = replace(provenance, base_reference_side=side.base_side or provenance.base_reference_side)
+    return replace(provenance, measurement_side=measurement_side)
 
 
 def build_calculated_channel_provenance(

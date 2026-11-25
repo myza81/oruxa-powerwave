@@ -63,7 +63,8 @@ from app.domain.physical_calibration import (
     evaluate_calibration_eligibility,
 )
 from app.domain.source import ActiveSource, DigitalChannelSummary
-from app.domain.per_unit_reference import apply_source_reference
+from app.services.per_unit_side_authority import apply_raw_source_reference
+from app.services.recorded_side_authority import RecordedAuthority
 from app.domain.waveform_reduction import build_min_max_envelope
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
@@ -151,6 +152,7 @@ def _resolve_effective_per_unit(
     group_registry: MeasurementGroupRegistry | None,
     voltage_config_registry: VoltageGroupConfigRegistry | None,
     current_config_registry: CurrentGroupConfigRegistry | None,
+    side_authority: RecordedAuthority | None = None,
 ) -> PerUnitResolution:
     """DEC-050 Slice 5: the ONE dispatch point every per-unit-aware
     function below calls, instead of `resolve_per_unit()` directly.
@@ -223,11 +225,13 @@ def _resolve_effective_per_unit(
         and resolution.profile_id != active.metadata.source_id
     ):
         voltage_group_config = voltage_config_registry.get(workspace_id, resolution.profile_id)
-    resolution = apply_source_reference(
-        resolution, engineering_type, channel.measurement_side,
+    resolution = apply_raw_source_reference(
+        resolution, engineering_type, channel_name, channel.measurement_side,
+        workspace_id=workspace_id, source_id=active.metadata.source_id,
         group_config=group_config,
         profile=per_unit_profile if group_config is None and resolution.profile_id == active.metadata.source_id else None,
         voltage_group_config=voltage_group_config,
+        side_authority=side_authority,
     )
     return resolve_conversion_eligibility(
         resolution, channel.unit, engineering_type, active.record.waveform_data[channel_name].to_numpy(),
@@ -360,6 +364,7 @@ def extract_waveform_range(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> WaveformRangeResult:
     """Extract an exact time range for one analog channel, then prepare it for display.
 
@@ -413,7 +418,7 @@ def extract_waveform_range(
         resolution = _resolve_effective_per_unit(
             active, channel_name, engineering_type, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, group_registry=group_registry,
-            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
         out_values, unit, per_unit_status = apply_per_unit_to_array(out_values, unit, engineering_type, resolution)
@@ -573,6 +578,7 @@ def extract_cursor_values(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> CursorValuesResult:
     """Recorded channel values/states at cursor A/B, from full-resolution
     source data (Phase 4C1 analog, Phase 4C2 digital).
@@ -646,7 +652,7 @@ def extract_cursor_values(
             resolution = _resolve_effective_per_unit(
                 active, name, engineering_type, per_unit_profile, voltage_channel_names,
                 workspace_id=workspace_id, group_registry=group_registry,
-                voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+                voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry, side_authority=side_authority,
             )
             per_unit_reference_compatibility = resolution.reference_compatibility
             a_value, display_unit, per_unit_status = apply_per_unit_to_value(a_value, unit, engineering_type, resolution)
@@ -738,6 +744,7 @@ def resolve_annotation_anchor(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> AnnotationAnchorResult:
     """Resolve a Callout annotation's anchor to the nearest ACTUAL
     full-resolution recorded sample on one analog channel (Phase 4F,
@@ -784,7 +791,7 @@ def resolve_annotation_anchor(
         resolution = _resolve_effective_per_unit(
             active, channel_name, engineering_type, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, group_registry=group_registry,
-            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
         value, unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
@@ -886,6 +893,7 @@ def resolve_peak_value(
     group_registry: MeasurementGroupRegistry | None = None,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
     current_config_registry: CurrentGroupConfigRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> PeakValueResult:
     """Resolve one analog channel's maximum or minimum RECORDED sample
     value within `[start_time, end_time]` (Phase 4G, DEC-046).
@@ -945,7 +953,7 @@ def resolve_peak_value(
         resolution = _resolve_effective_per_unit(
             active, channel_name, engineering_type, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, group_registry=group_registry,
-            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
         value, display_unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)

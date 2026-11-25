@@ -63,6 +63,7 @@ from app.domain.current_group_config import (
 )
 from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE, MeasurementGroup
 from app.domain.per_unit import STATUS_BASE_REQUIRED, STATUS_CONFIGURED, PerUnitResolution
+from app.domain.side_denominator import BASE_LEGACY_SECONDARY_VOLTAGE_LL, SIDE_PRIMARY, SIDE_SECONDARY, SideBase
 from app.domain.voltage_group_config import STATUS_CONFIGURED as _VOLTAGE_STATUS_CONFIGURED, resolve_voltage_base_for_group
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -93,12 +94,22 @@ def resolve_per_unit_for_group(
         # resolve_voltage_base_for_group()'s own docstring).
         resolution = resolve_voltage_base_for_group(group, config, explicit_reference=explicit_voltage_reference)
         if resolution.status == _VOLTAGE_STATUS_CONFIGURED:
+            # PU-MIG S2: hand the established base (and what it is) on, so the strict side-denominator resolver can
+            # place it on the consumed sample's side. The base was CHOSEN above, by the unchanged resolver.
+            descriptor = None
+            if resolution.base_kind is not None and resolution.base_volts_ll is not None:
+                descriptor = SideBase(
+                    kind=resolution.base_kind, value=resolution.base_volts_ll,
+                    declared_side=SIDE_SECONDARY if resolution.base_kind == BASE_LEGACY_SECONDARY_VOLTAGE_LL else SIDE_PRIMARY,
+                )
             return PerUnitResolution(
                 status=STATUS_CONFIGURED,
                 profile_id=measurement_group_id,
                 base_amount=resolution.denominator_volts,
                 base_unit="V",
                 reason=None,
+                base_descriptor=descriptor,
+                representation=resolution.effective_reference if descriptor is not None else None,
             )
         return PerUnitResolution(
             status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
