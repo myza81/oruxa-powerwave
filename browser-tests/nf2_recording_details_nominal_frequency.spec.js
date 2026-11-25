@@ -354,6 +354,27 @@ test.describe("validation and rejection", () => {
     await expect(row(page)).toHaveAttribute("data-ww-nf-mode", "manual");
   });
 
+  test("a server-side release gate that is closed is reported in the editor and nothing is saved", async ({ page, context }) => {
+    // NF-3B: the UI flag shows the control; the BACKEND decides whether a Manual value may be stored. With the server gate
+    // closed (the default and the only state of a deployed build) PUT mode=manual is 409. The body below is the backend's own
+    // (test_nf3b_server_side_release_gate.py asserts the same code and message); the editor shows the server's sentence.
+    const id = await seed(page, { lf: "50" });
+    const target = await api(page, id);
+    await context.route(target, (route) => route.request().method() !== "PUT" ? route.fallback() : route.fulfill({
+      status: 409, contentType: "application/json",
+      body: JSON.stringify({ detail: { code: "manual_nominal_frequency_disabled",
+        message: "A manual nominal frequency cannot be saved: the feature has not been released in this environment." } }) }));
+    await pill(page, "manual").click();
+    await input(page).fill("60");
+    await page.locator('#wwRdNf [data-ww-nf-action="apply"]').click();
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="error"]')).toHaveText(
+      "A manual nominal frequency cannot be saved: the feature has not been released in this environment.");
+    await expect(input(page)).toBeVisible();
+    await expect(row(page)).toHaveAttribute("data-ww-nf-mode", "auto");
+    await context.unroute(target);
+    expect((await server(page, id)).mode).toBe("auto");
+  });
+
   test("a network failure on save is reported and nothing is applied", async ({ page, context }) => {
     const id = await seed(page, { lf: "50" });
     const target = await api(page, id);

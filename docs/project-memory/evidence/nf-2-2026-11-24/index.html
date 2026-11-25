@@ -51,8 +51,9 @@
 
   <h2>Try it yourself &mdash; isolated local preview only</h2>
   <p>This serves a <em>copy</em> of the frontend whose copy of <code>config.js</code> carries the flag. The checked-in <code>frontend/config.js</code> is never edited. Run each block in its own PowerShell window.</p>
+  <p><strong>Two separate switches (NF-3B).</strong> The UI flag below only <em>shows</em> the control. Whether the backend will <em>store</em> a Manual value is a second, server-side switch (<code>NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED=1</code>), closed by default and refused in any deployed build. Without it the control is visible but Apply is answered with <em>&ldquo;A manual nominal frequency cannot be saved: the feature has not been released in this environment.&rdquo;</em> The backend below must come from a tree that has the switch (this one, NF-3B or later).</p>
   <p><strong>Once, prepare the copy</strong> (re-run it to refresh the copy):</p>
-<pre>$wt = "D:\Programming\oruxa-powerwave\.local-data\nf-2"
+<pre>$wt = "D:\Programming\oruxa-powerwave\.local-data\nf-3b"
 $pv = "$env:TEMP\nf2-preview"
 New-Item -ItemType Directory -Force "$env:TEMP\nf2-preview-storage" | Out-Null
 if (Test-Path $pv) { Remove-Item $pv -Recurse -Force }
@@ -61,6 +62,7 @@ Add-Content "$pv\config.js" 'window.POWERWAVE_CONFIG.featureFlags = { nominalFre
   <p><strong>Window 1 &mdash; backend</strong> (local only, in-memory workspace):</p>
 <pre>cd "$wt\backend"
 $env:STORAGE_PATH = "$env:TEMP\nf2-preview-storage"
+$env:NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED = "1"   # server-side gate: this local process only; never in compose, a workflow or a deploy script
 D:\Programming\oruxa-powerwave\backend\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000</pre>
   <p><strong>Window 2 &mdash; frontend copy</strong>:</p>
 <pre>python -m http.server 8101 --bind 127.0.0.1 --directory "$env:TEMP\nf2-preview"</pre>

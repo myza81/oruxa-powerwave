@@ -30,6 +30,7 @@ Recording Details → Recording Info → the existing **Nominal frequency** row.
 * **Gate off:** the row is the original read-only row (its code path is unchanged); nothing is requested.
 * **Gate on:** besides the control, a persistent note reads **"Preview: calculations do not use this setting yet."** (`WW_NF_CONSUMERS_MIGRATED = false`, flipped by NF-3).
 * Browser tests switch the gate on by serving a modified `/config.js`; to try it by hand, add `window.POWERWAVE_CONFIG.featureFlags = { nominalFrequencyOverride: true };` to a local `config.js`.
+* **Added in NF-3B (O-1):** this UI flag is *visibility only*. Whether the backend stores a Manual value is a separate server-side gate, `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED` (default closed; the application refuses to start with it open in a deployed build). A local preview therefore needs both: the flag in the copied `config.js` and `$env:NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED = "1"` for the local backend (see the gallery's updated instructions). With the server gate closed the control still renders and shows the server's refusal sentence on Apply; nothing is stored.
 
 ## Files
 

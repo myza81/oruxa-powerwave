@@ -1,0 +1,121 @@
+[
+ {
+  "mutation": "M1 service ignores a stored Manual value",
+  "result": "KILLED",
+  "evidence": "1 failed, 20 passed in 20.21s"
+ },
+ {
+  "mutation": "M2 service honours a stored Manual value while the gate is closed",
+  "result": "KILLED",
+  "evidence": "1 failed, 31 passed in 9.87s"
+ },
+ {
+  "mutation": "M3 set_manual does not enforce the gate",
+  "result": "KILLED",
+  "evidence": "1 failed, 23 passed in 8.95s"
+ },
+ {
+  "mutation": "M4 set_manual validates the value before the gate",
+  "result": "KILLED",
+  "evidence": "1 failed, 25 passed in 11.69s"
+ },
+ {
+  "mutation": "M5 an unusable value is silently replaced by the 50 Hz default",
+  "result": "KILLED",
+  "evidence": "1 failed, 8 passed in 5.48s"
+ },
+ {
+  "mutation": "M6 a mixed set returns the first member's frequency",
+  "result": "KILLED",
+  "evidence": "1 failed, 65 passed in 6.13s"
+ },
+ {
+  "mutation": "M7 the agreed value is the first listed, not the smallest",
+  "result": "KILLED",
+  "evidence": "1 failed, 68 passed in 4.08s",
+  "first_run": "SURVIVED",
+  "note": "survived the first run; the tests were strengthened and the mutation re-run"
+ },
+ {
+  "mutation": "M8 a calculated channel is resolved by its own id, not its grounding recording",
+  "result": "KILLED",
+  "evidence": "1 failed, 60 passed in 5.19s"
+ },
+ {
+  "mutation": "M9 an unusable member does not make the set unavailable",
+  "result": "KILLED",
+  "evidence": "1 failed, 33 passed in 6.07s"
+ },
+ {
+  "mutation": "M10 the accessor ignores the policy it was built with",
+  "result": "KILLED",
+  "evidence": "1 failed, 23 passed in 16.15s"
+ },
+ {
+  "mutation": "M11 the gate defaults open in the dataclass",
+  "result": "KILLED",
+  "evidence": "1 failed in 13.33s"
+ },
+ {
+  "mutation": "M12 a deployed build accepts the open gate",
+  "result": "KILLED",
+  "evidence": "1 failed, 17 passed in 14.20s"
+ },
+ {
+  "mutation": "M13 any non-empty value opens the gate",
+  "result": "KILLED",
+  "evidence": "1 failed, 7 passed in 11.97s"
+ },
+ {
+  "mutation": "M14 the router does not map the disabled error to 409",
+  "result": "KILLED",
+  "evidence": "1 failed, 25 passed in 13.10s"
+ },
+ {
+  "mutation": "M15 the router passes no policy: GET honours a stored value",
+  "result": "KILLED",
+  "evidence": "1 failed, 45 passed in 19.42s"
+ },
+ {
+  "mutation": "M16 workspace isolation lost (accessor ignores the workspace)",
+  "result": "KILLED",
+  "evidence": "1 failed, 54 passed in 5.10s"
+ },
+ {
+  "mutation": "M17 a consumer reads the imported value directly",
+  "result": "KILLED",
+  "evidence": "1 failed in 4.23s"
+ },
+ {
+  "mutation": "M18 a consumer imports the accessor",
+  "result": "KILLED",
+  "evidence": "1 failed, 8 passed in 21.15s"
+ },
+ {
+  "mutation": "M19 a consumer hard-codes a 60 Hz window",
+  "result": "KILLED",
+  "evidence": "1 failed, 2 passed in 8.28s"
+ },
+ {
+  "mutation": "M20 a consumer reads the stored registry value",
+  "result": "KILLED",
+  "evidence": "1 failed, 9 passed in 19.16s"
+ },
+ {
+  "mutation": "M21 a new frequency default argument",
+  "result": "KILLED",
+  "evidence": "1 failed, 2 passed in 9.38s"
+ },
+ {
+  "mutation": "M22 a consumer migrates silently (RMS window uses 60 Hz)",
+  "result": "KILLED",
+  "evidence": "1 failed, 6 passed in 19.13s",
+  "first_run": "SURVIVED",
+  "note": "survived the first run; the tests were strengthened and the mutation re-run"
+ },
+ {
+  "mutation": "M23 the power kernel default changes",
+  "result": "KILLED",
+  "evidence": "1 failed, 3 passed in 22.01s"
+ }
+]

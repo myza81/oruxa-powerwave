@@ -1,0 +1,5 @@
+NF-3B before/after numerical equivalence
+scenario set : backend/tests/nf3b_baseline_scenarios.py (kernels, in-process consumers, HTTP consumers, oscillation selection, power gates)
+before       : pristine NF-3A tree c70182c (git archive, run from a scratch directory)   sha256 b5609564dc9f2a697d7887234ddf9a2a2daffb6c62001d174427b07f64bce0b7
+after        : NF-3B tip (this branch)                                                    sha256 b5609564dc9f2a697d7887234ddf9a2a2daffb6c62001d174427b07f64bce0b7
+result       : BYTE-IDENTICAL ; 2971 recorded values (12 significant digits, exception classes, HTTP statuses)
