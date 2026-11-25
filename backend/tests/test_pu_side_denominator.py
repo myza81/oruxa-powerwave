@@ -492,18 +492,34 @@ def test_the_module_imports_only_the_standard_library_and_the_existing_numeric_h
         "__future__", "math", "sys", "dataclasses", "app.domain.per_unit_numerics"}
 
 
-def test_no_production_module_is_connected_to_the_resolver():
-    """S1 wires NOTHING: no live PU waveform, calculated-channel, provenance, coverage, API or UI consumer imports it.
-    Deliberately changed by S2, which is a separately authorised slice."""
-    offenders = []
+#: PU-MIG S2 (raw Voltage) connects the resolver at exactly these production points, and nowhere else. They import its
+#: vocabulary (base kinds, sides, `SideBase` / `SampleSide` / `SideRatio`); only `per_unit_reference` CALLS it.
+S2_IMPORTERS = {
+    "domain/per_unit.py",                      # the Source Default base descriptor
+    "domain/per_unit_reference.py",            # the one gate that calls resolve_side_denominator()
+    "domain/voltage_group_config.py",          # the established group base (kind) the base resolver already chose
+    "services/group_aware_per_unit.py",        # carries that base to the gate
+    "services/per_unit_side_authority.py",     # Recording Details' side / VT, translated for the gate
+}
+S2_CALLERS = {"domain/per_unit_reference.py"}
+
+
+def test_the_resolver_is_connected_only_at_the_s2_integration_points():
+    """S1 wired nothing; S2 connects raw Voltage at the points above. Any other import, and any second caller of
+    `resolve_side_denominator()` (denominator arithmetic duplicated in a consumer), fails here."""
+    importers, callers = set(), set()
     for path in APP_DIR.rglob("*.py"):
-        if path.name == "side_denominator.py":
+        relative = path.relative_to(APP_DIR).as_posix()
+        if relative == "domain/side_denominator.py":
             continue
         text = path.read_text(encoding="utf-8")
         if "side_denominator" in text and any("side_denominator" in m for m in _imported_modules(path)):
-            offenders.append(str(path.relative_to(APP_DIR)))
-        assert "resolve_side_denominator" not in text, path
-    assert offenders == []
+            importers.add(relative)
+        calls = (n for n in ast.walk(ast.parse(text)) if isinstance(n, ast.Call))
+        if any(getattr(c.func, "id", getattr(c.func, "attr", None)) == "resolve_side_denominator" for c in calls):
+            callers.add(relative)
+    assert importers == S2_IMPORTERS
+    assert callers == S2_CALLERS
 
 
 def test_the_frontend_and_public_schemas_do_not_mention_the_resolver():

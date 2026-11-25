@@ -69,6 +69,9 @@ function settle(entry, body, status) {
   status = status || 200;
   entry.resolve({ ok: status < 400, status, json: async function() { return body; } });
 }
+// PU-MIG S2: the refresh the displayed per-unit channels get after a saved side write (a stub: the real one is in the page).
+const puRefreshes = [];
+function wwRefreshDisplayedChannelsForPerUnitChange(sourceId) { puRefreshes.push(sourceId); }
 const flush = async function() { for (let i = 0; i < 12; i++) await new Promise(function(r) { setImmediate(r); }); };
 function ready(data) {
   wwRdSide.workspaceId = "ws-1"; wwRdSide.sourceId = "s1"; wwRdSide.status = "ready"; wwRdSide.data = data;
@@ -371,6 +374,39 @@ def test_selections_are_sent_in_order_and_the_view_is_re_read_once_after_the_las
     assert out["afterFirst"] == [put("secondary"), put("primary")]
     assert out["afterSecond"] == [put("secondary"), put("primary"), "GET ws-1/measurement-side"]
     assert _active(out["active"], "recording") == ["Primary"] and out["optimistic"] == {"recording": None, "groups": {}}
+
+
+def test_a_saved_side_re_reads_the_displayed_per_unit_channels_once_after_the_last_write():
+    """PU-MIG S2: the measurement side decides the PU denominator, so a saved side refreshes the source's displayed channels
+    (the refresh itself is a no-op unless the Waveform is in per-unit mode) -- once, after the last queued write settled."""
+    out = _node("""
+    (async function() {
+      ready(payload.data);
+      wwRdSideSelectRecording("secondary");
+      wwRdSideSelectRecording("primary");
+      await flush(); settle(pending[0], {});
+      await flush();
+      const afterFirst = puRefreshes.slice();
+      settle(pending[1], {}); await flush();
+      const beforeReread = puRefreshes.slice();
+      settle(pending[2], payload.after); await flush();
+      console.log(JSON.stringify({ afterFirst, beforeReread, final: puRefreshes }));
+    })();
+    """, {"data": _overview(_recording()), "after": _overview(_recording())})
+    assert out["afterFirst"] == [] and out["beforeReread"] == [] and out["final"] == ["s1"]
+
+
+def test_a_failed_side_write_does_not_refresh_the_displayed_per_unit_channels():
+    out = _node("""
+    (async function() {
+      ready(payload.data);
+      wwRdSideSelectRecording("secondary");
+      await flush(); settle(pending[0], { detail: { message: "no" } }, 400);
+      await flush(); settle(pending[1], payload.data); await flush();
+      console.log(JSON.stringify({ puRefreshes }));
+    })();
+    """, {"data": _overview(_recording())})
+    assert out["puRefreshes"] == []
 
 
 def test_voltage_and_current_choices_queue_in_order_and_each_reaches_only_its_own_group():

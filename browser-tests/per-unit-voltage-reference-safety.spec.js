@@ -9,6 +9,13 @@
 // tests here set the field via API and verify the resulting display state,
 // matching the same pattern used by per-unit-reference-safety.spec.js for
 // LIM-001 Current channels.
+//
+// PU-MIG S2 (owner-approved, S0 intentional changes IC-1..IC-3): when Recording Details establishes the SAMPLE side strictly
+// (a P/S declaration), a Primary/Secondary mismatch is converted with the group's authoritative VT instead of being a flat block.
+// It stays blocked when no authoritative ratio exists. The "incompatible" cases below therefore store the VT secondary the CFG
+// itself declares (`secondaryV`, 1.0 kV) beside the Primary nominal: that contradicts the 110 V `auto_nominal` default, so the
+// default is not consumed (decision D-7) and the original block, badge and raw ENG waveform are asserted unchanged. The converted
+// outcome has its own test (3.3.h).
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 const { BACKEND, workspaceId, sourceIdFor } = require("./support/event_reconstruction_helpers");
@@ -24,7 +31,7 @@ const row = (page, id, name) =>
 // Upload a 2-channel Voltage recording (kV) with the given PS marker, then
 // set up a Voltage Measurement Group (default) or Source Default profile
 // (sourceDefault: true) with the requested base_reference_side.
-async function setup(page, { marker = "P", baseSide = "primary", sourceDefault = false } = {}) {
+async function setup(page, { marker = "P", baseSide = "primary", sourceDefault = false, secondaryV = null } = {}) {
   await page.goto("/index.html");
   const station = "VLT_REF_SAFE";
   const data = syntheticComtrade({
@@ -74,6 +81,7 @@ async function setup(page, { marker = "P", baseSide = "primary", sourceDefault =
         reference_mode: "manual",
         reference_override: "line_to_line",
         base_reference_side: baseSide,
+        ...(secondaryV === null ? {} : { secondary_voltage_ll_v: secondaryV }),
       },
     }));
   }
@@ -137,7 +145,7 @@ test("VLT-REF-001: source-default voltage_base_reference_side round-trips via AP
 // 3.3.c An incompatible Voltage channel (PS=S, base=primary) shows "PU
 //       unavailable" badge and returns a raw ENG waveform.
 test("VLT-REF-001: incompatible PS=S/base=primary → PU unavailable badge, raw ENG waveform", async ({ page }, info) => {
-  const c = await setup(page, { marker: "S", baseSide: "primary" });
+  const c = await setup(page, { marker: "S", baseSide: "primary", secondaryV: 1000 });
   await expect.poll(() => displayed(page, c.sid, "VA")).toMatchObject({
     status: "base_required", unit: "kV", compatibility: "incompatible",
   });
@@ -176,7 +184,7 @@ test("VLT-REF-001: compatible PS=P/base=primary → no badge, PU waveform", asyn
 // 3.3.f Switching base_reference_side from "primary" to "secondary" on a PS=S
 //       channel turns an incompatible channel into a compatible one.
 test("VLT-REF-001: side switch primary→secondary makes PS=S channel compatible", async ({ page }) => {
-  const c = await setup(page, { marker: "S", baseSide: "primary" });
+  const c = await setup(page, { marker: "S", baseSide: "primary", secondaryV: 1000 });
   await expect.poll(() => displayed(page, c.sid, "VA")).toMatchObject({ status: "base_required", compatibility: "incompatible" });
 
   // secondary_voltage_ll_v is required by the strict secondary gate (VLT-REF-001): without it
@@ -190,12 +198,46 @@ test("VLT-REF-001: side switch primary→secondary makes PS=S channel compatible
   await expect(row(page, c.sid, "VA").locator(".ww-pu-reference-status")).toHaveCount(0);
 });
 
+// 3.3.h PU-MIG S2 (IC-1): a STRICT Secondary sample against a Primary nominal base is converted with the group's authoritative
+//       VT (here the auto-derived one: nominal / 110 V) -- compatible, no badge, a PU waveform, never a flat block.
+test("VLT-REF-001 (S2): strict PS=S/base=primary with an authoritative VT is converted, not blocked", async ({ page }) => {
+  const c = await setup(page, { marker: "S", baseSide: "primary" });
+  await expect.poll(() => displayed(page, c.sid, "VA")).toMatchObject({
+    status: "configured", unit: "pu", compatibility: "compatible",
+  });
+  await expect(row(page, c.sid, "VA").locator(".ww-pu-reference-status")).toHaveCount(0);
+  const provenance = await json(await page.request.get(`${c.base}/sources/${c.sid}/per-unit-resolution?channel_name=VA`));
+  expect(provenance).toMatchObject({
+    verification_state: "verified_converted", side_conversion: "base_divided_by_ratio",
+    measurement_side: "secondary", denominator_side: "secondary", ratio_authority: "auto_nominal",
+  });
+  // Physical samples are never scaled: the engineering waveform is exactly what it was.
+  const rawNow = await json(await page.request.get(`${c.base}/sources/${c.sid}/waveform?channel_name=VA`));
+  expect(rawNow.values).toEqual(c.physical.values);
+});
+
+// 3.3.i PU-MIG S2: the measurement side now decides the PU denominator, so saving it in Recording Details re-reads the displayed
+//       channel with NO ENG/PU toggle: an undeclared recording (Unverified, historical number) becomes verified once the
+//       engineer sets Secondary, through the real Recording Details control.
+test("VLT-REF-001 (S2): setting the recording side in Recording Details refreshes the displayed PU channel", async ({ page }) => {
+  const c = await setup(page, { marker: "C", baseSide: "primary" });
+  await expect.poll(() => displayed(page, c.sid, "VA")).toMatchObject({ status: "configured", unit: "pu", compatibility: "unverified" });
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${c.sid}"]`).click();
+  const secondary = page.locator('[data-ww-side-row="recording"] [data-ww-side-value="secondary"]');
+  await secondary.click();
+  await expect(secondary).toHaveAttribute("aria-checked", "true");
+  await expect.poll(() => displayed(page, c.sid, "VA")).toMatchObject({ status: "configured", unit: "pu", compatibility: "compatible" });
+  const provenance = await json(await page.request.get(`${c.base}/sources/${c.sid}/per-unit-resolution?channel_name=VA`));
+  expect(provenance).toMatchObject({ verification_state: "verified_converted", measurement_side: "secondary" });
+});
+
 // 3.3.g The raw waveform endpoint returns unchanged engineering values
 //       regardless of incompatibility — across all three compatibility states.
 test("VLT-REF-001: raw waveform unchanged for incompatible, unverified, and compatible", async ({ page }) => {
   for (const marker of ["S", "C", "P"]) {
     await page.goto("/index.html");
-    const { base, sid, physical } = await setup(page, { marker, baseSide: "primary" });
+    const { base, sid, physical } = await setup(page, { marker, baseSide: "primary", secondaryV: 1000 });
     const raw = await json(await page.request.get(`${base}/sources/${sid}/waveform?channel_name=VA`));
     expect(raw.values, `marker=${marker}`).toEqual(physical.values);
     expect(raw.unit, `marker=${marker}`).toBe("kV");
