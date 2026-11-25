@@ -23,6 +23,7 @@ for (const record of goldens.records) {
     const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     const sid = await row.getAttribute("data-source-id");
     await row.click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const names = record.id === "gpth" ? ["SDNK1 VR", "SDAI2 IB"] : ["KTBR2 VR", "KTBR2 IR"];
     for (const name of names) {
       const golden = record.channels.find(channel => channel.name === name);

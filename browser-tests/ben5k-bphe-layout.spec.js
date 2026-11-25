@@ -31,6 +31,7 @@ test("BPHE: all 14 channels and both duplicate-name occurrences plot the indepen
   const recording = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   const sid = await recording.getAttribute("data-source-id");
   await recording.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
   await expect(rows).toHaveCount(14);
   expect((await rows.evaluateAll(items => items.map(item => item.getAttribute("data-channel-name")))).sort()).toEqual([...names].sort());

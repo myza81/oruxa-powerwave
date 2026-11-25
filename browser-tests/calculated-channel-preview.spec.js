@@ -29,8 +29,10 @@ async function uploadFixture(page) {
   await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 8000 })
     .toBe("per_unit").catch(() => {});
   await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwUnitEngineeringBtn").click();
-  await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true");
+  // No pane is displayed yet, so there is no pane-level mode control: select the mode itself
+  // (the call the ENG button makes) and assert it.
+  await page.evaluate(() => wwApplyUnitMode("engineering"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("engineering");
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }
