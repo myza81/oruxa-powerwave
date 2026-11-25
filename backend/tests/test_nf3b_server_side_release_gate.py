@@ -273,11 +273,12 @@ class TestAManualValueInfluencesOnlyTheMigratedConsumers:
     """NF-3B migrated no consumer, and this class said so: with the gate open and a Manual value stored, every consumer reproduced the
     frozen baseline. NF-3C migrated event detection (and compliance and oscillation, tested in test_nf3c_*): their Manual behaviour is
     asserted there and for event detection below. What this class keeps proving is the OTHER half: the consumers NOT yet migrated (the
-    phasor family, and the power channels' fixed 50 Hz window) are still untouched by a stored Manual value. NF-3D/NF-3F will change
-    that, deliberately, and edit this class in the same commit. With the gate closed nothing can be stored at all."""
+    power channels' fixed 50 Hz window) are still untouched by a stored Manual value. NF-3D migrated the phasor family and overcurrent: a
+    stored Manual value IS their frequency, and the result says so (tests/test_nf3d_behaviour.py proves it in depth). NF-3F will change
+    the power channels, deliberately, and edit this class in the same commit. With the gate closed nothing can be stored at all."""
 
     @pytest.mark.parametrize("recording,manual", [("r50", 60.0), ("r60", 50.0), ("assumed_on_60hz_signal", 60.0), ("declared_zero", 60.0)])
-    def test_a_stored_manual_value_reaches_event_detection_and_leaves_the_unmigrated_consumers_unchanged(self, opened_lenient, recording, manual):
+    def test_a_stored_manual_value_reaches_event_detection_and_the_phasor_family_and_leaves_the_power_channels_unchanged(self, opened_lenient, recording, manual):
         opened = opened_lenient
         fs, f_sig, lf = base.HTTP_RECORDINGS[recording]
         ws = base.WS
@@ -303,11 +304,14 @@ class TestAManualValueInfluencesOnlyTheMigratedConsumers:
         cid = ctx.json()["id"]
         ph = opened.get(f"/api/v1/workspaces/{ws}/engineering-contexts/{cid}/phasor",
                         params={"analysis_kind": "phasor", "mode": "voltage_three_phase", "analysis_time": 0.5})
-        assert ph.status_code == frozen["phasor_voltage_three_phase"]["status"]
-        if ph.status_code == 200:
-            now, then = base._round_tree(ph.json()), frozen["phasor_voltage_three_phase"]["body"]
-            assert (now["status"], now.get("reason_code"), now.get("reference_frequency_hz")) == (
-                then["status"], then.get("reason_code"), then.get("reference_frequency_hz"))
+        # NF-3D: the phasor family is migrated, so the Manual value IS its reference frequency (it used to read the declared one) and the
+        # result says where it came from. A refusal for another reason (the form detector on a 50 Hz signal at 60 Hz) never blames the frequency.
+        assert ph.status_code == 200
+        body = ph.json()
+        assert body["reason_code"] != "invalid_reference_frequency"
+        if body["status"] == "computed":
+            assert body["reference_frequency_hz"] == manual
+            assert (body["nominal_frequency_origin"], body["nominal_frequency_revision"]) == ("manual", 1)
         # the power channels are not migrated (NF-3F): their stored frequency is still the fixed 50 Hz window, whatever Manual says
         power = opened.post(f"/api/v1/workspaces/{ws}/calculated-channels", json={
             "operation": "active_power", "name": "P-manual", "parameters": {},

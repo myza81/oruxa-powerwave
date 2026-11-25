@@ -8,7 +8,7 @@ The samples are the exact values written to the file (6 decimals). Integer sampl
 to round-off; non-integer samples per cycle (60 Hz at 5000 and 4000 Hz: 83.33 and 66.67) to the proposed tolerances of NF-3A section 5.2
 (1.05 % magnitude, 0.6 degrees) for the pure-sinusoid windows and to round-off against the direct summation.
 
-Part 2 is what the migration must do. Each is a strict `xfail` naming the NF-3D rule it proves; the commit that delivers it removes the marker.
+Part 2 is what the migration delivers (it was a set of strict `xfail`s until the migration commit, which removed the markers).
 """
 
 from __future__ import annotations
@@ -125,16 +125,16 @@ class TestProtectionResultsAreConsistentWithThePhasors:
         assert c["negative_sequence_magnitude"] > 2.5 and c["zero_sequence_magnitude"] > 2.5
 
 
-# ------------------------------------------------------------------------------- part 2: what the migration must deliver (strict xfail)
+# ------------------------------------------------------------------------------- part 2: what the migration delivers
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
-    with TestClient(create_app(settings(tmp_path_factory.mktemp("nf3d-xfail"))), raise_server_exceptions=False) as c:
+    with TestClient(create_app(settings(tmp_path_factory.mktemp("nf3d-oracle"))), raise_server_exceptions=False) as c:
         yield c
 
 
 @pytest.fixture(scope="module")
 def opened(tmp_path_factory):
-    with TestClient(create_app(settings(tmp_path_factory.mktemp("nf3d-xfail-open"), enabled=True)), raise_server_exceptions=False) as c:
+    with TestClient(create_app(settings(tmp_path_factory.mktemp("nf3d-oracle-open"), enabled=True)), raise_server_exceptions=False) as c:
         yield c
 
 
@@ -149,31 +149,26 @@ def get(client, ws, cid, path, **params):
 
 
 class TestTheMigrationMustDeliver:
-    @pytest.mark.xfail(strict=True, reason="NF-3D: an unusable declared frequency (-50) must be an invalid_reference_frequency refusal, not 'waveform form not eligible'")
     def test_a_negative_declaration_is_named_as_an_invalid_reference_frequency(self, client):
         sid, cid = bay(client, "declared_negative_50", "ws-x-neg")
         r = get(client, "ws-x-neg", cid, "phasor", analysis_kind="phasor", mode="voltage_three_phase", analysis_time=0.3)
         assert r.status_code == 200 and r.json()["reason_code"] == "invalid_reference_frequency"
 
-    @pytest.mark.xfail(strict=True, reason="NF-3D (O-5, Phase C): a VALID frequency the sampling cannot support is insufficient_sampling_density, not a waveform-form refusal")
     def test_a_valid_override_beyond_the_samples_per_cycle_is_named_as_a_sampling_limit(self, client):
         sid, cid = bay(client, "r50", "ws-x-1000")
         r = get(client, "ws-x-1000", cid, "phasor", analysis_kind="phasor", mode="voltage_three_phase", analysis_time=0.3, reference_frequency_hz=1000.0)
         assert r.status_code == 200 and r.json()["reason_code"] != "waveform_form_not_eligible"
 
-    @pytest.mark.xfail(strict=True, reason="NF-3D (O-6): the phasor result identifies the origin and revision of the frequency it used")
     def test_the_phasor_result_carries_the_origin_and_revision_of_the_frequency_used(self, client):
         sid, cid = bay(client, "r50", "ws-x-prov")
         b = get(client, "ws-x-prov", cid, "phasor", analysis_kind="phasor", mode="voltage_three_phase", analysis_time=0.3).json()
         assert (b["nominal_frequency_origin"], b["nominal_frequency_revision"]) == ("recording_metadata", 0)
 
-    @pytest.mark.xfail(strict=True, reason="NF-3D (O-6): the overcurrent result identifies the origin and revision of the frequency it used")
     def test_the_overcurrent_result_carries_the_origin_and_revision_of_the_frequency_used(self, client):
         sid, cid = bay(client, "assumed_50", "ws-x-prov2")
         b = get(client, "ws-x-prov2", cid, "overcurrent", analysis_time=0.3, **scn.OVERCURRENT).json()
         assert (b["nominal_frequency_origin"], b["nominal_frequency_revision"]) == ("assumed_default", 0)
 
-    @pytest.mark.xfail(strict=True, reason="NF-3D: a Manual value (server gate open) makes an unusable recording computable, with origin manual")
     def test_a_manual_value_is_the_frequency_the_phasor_uses(self, opened):
         sid, cid = bay(opened, "declared_zero", "ws-x-manual")
         assert opened.put(f"/api/v1/workspaces/ws-x-manual/sources/{sid}/nominal-frequency", json={"mode": "manual", "value_hz": 50}).status_code == 200

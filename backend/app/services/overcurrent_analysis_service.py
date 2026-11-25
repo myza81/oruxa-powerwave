@@ -43,8 +43,10 @@ from app.domain.channel_classification import (
 from app.domain.equipment_loading import equipment_loading_to_primary_current, positive_finite
 from app.domain.overcurrent import (
     KNOWN_RECORDING_BASES,
+    OVERCURRENT_MIN_SAMPLES_PER_CYCLE,
     OVERCURRENT_STATUS_COMPUTED,
     REASON_CHANNEL_UNAVAILABLE,
+    REASON_INSUFFICIENT_SAMPLING_DENSITY,
     REASON_INVALID_CT_VALUES,
     REASON_INVALID_EQUIPMENT_RATING,
     REASON_INVALID_INPUT_CURRENT,
@@ -76,9 +78,13 @@ from app.domain.overcurrent import (
 )
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
+from app.services.analysis_reference_frequency import (
+    FORM_ELIGIBLE, FORM_NOT_ELIGIBLE, SAMPLING_UNSUPPORTED, decide_reference_frequency, sampling_reason_message, sampling_supports,
+)
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess, SourceFrequency
 from app.services.overcurrent_recorded_input import (
     OvercurrentAuthority,
     RecordedCurrentAuthority,
@@ -98,21 +104,22 @@ def _source_start_epoch(active) -> float | None:
 
 
 class _CurrentCandidate:
-    __slots__ = ("channel_ref", "time", "values", "unit", "waveform_form", "start_epoch", "nominal_frequency")
+    __slots__ = ("channel_ref", "time", "values", "unit", "waveform_form", "start_epoch", "frequency")
 
-    def __init__(self, *, channel_ref, time, values, unit, waveform_form, start_epoch, nominal_frequency):
+    def __init__(self, *, channel_ref, time, values, unit, waveform_form, start_epoch, frequency: SourceFrequency):
         self.channel_ref = channel_ref
         self.time = time
         self.values = values
         self.unit = unit
         self.waveform_form = waveform_form
         self.start_epoch = start_epoch
-        self.nominal_frequency = nominal_frequency
+        #: NF-3D: the central authority's outcome for the recording that grounds this channel (never the imported value read directly).
+        self.frequency = frequency
 
 
 def _fetch_current_candidate(
     channel_ref: ChannelRef, *, workspace_id: str,
-    source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry,
+    source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
 ) -> _CurrentCandidate | None:
     """Fetches the resolved current role's own full-resolution sample
     array and engineering metadata. Locally-owned copy of the same
@@ -131,7 +138,7 @@ def _fetch_current_candidate(
             channel_ref=channel_ref, time=waveform_data["time"].to_numpy(),
             values=waveform_data[channel_ref.channel_name].to_numpy(),
             unit=matching.unit, waveform_form=matching.waveform_form,
-            start_epoch=_source_start_epoch(active), nominal_frequency=active.metadata.nominal_frequency,
+            start_epoch=_source_start_epoch(active), frequency=frequency_access.for_source(workspace_id, channel_ref.source_id),
         )
     calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id, source_registry=source_registry, calc_registry=calculated_channel_registry)
     if calculated is None:
@@ -142,11 +149,11 @@ def _fetch_current_candidate(
     return _CurrentCandidate(
         channel_ref=channel_ref, time=calculated.time, values=calculated.values,
         unit=calculated.unit, waveform_form=calculated.waveform_form,
-        start_epoch=_source_start_epoch(reference_source), nominal_frequency=reference_source.metadata.nominal_frequency,
+        start_epoch=_source_start_epoch(reference_source), frequency=frequency_access.for_source(workspace_id, calculated.reference_source_id),
     )
 
 
-def _waveform_form_eligible_for_rms(candidate: _CurrentCandidate, reference_frequency_hz: float) -> bool:
+def _waveform_form_eligible_for_rms(candidate: _CurrentCandidate, reference_frequency_hz: float) -> str:
     """Trusted-metadata-first, algorithmic-fallback-second -- mirrors
     `phasor_analysis_service._waveform_form_eligible()`'s own structure
     and STRICT policy exactly (explicit `instantaneous` passes; explicit
@@ -157,11 +164,15 @@ def _waveform_form_eligible_for_rms(candidate: _CurrentCandidate, reference_freq
     docstring already establishes for why `check_rms_eligibility()`'s own
     override-eligible policy does not apply here)."""
     if candidate.waveform_form == WAVEFORM_FORM_INSTANTANEOUS:
-        return True
+        return FORM_ELIGIBLE
     if candidate.waveform_form in (WAVEFORM_FORM_RMS, WAVEFORM_FORM_MAGNITUDE):
-        return False
+        return FORM_NOT_ELIGIBLE
+    # NF-3D (Phase C): a valid frequency the sampling cannot support (fewer than the estimator's own minimum samples per cycle) is a sampling
+    # limit, not a form problem; the detector would only answer "uncertain".
+    if not sampling_supports(candidate.time, reference_frequency_hz, OVERCURRENT_MIN_SAMPLES_PER_CYCLE):
+        return SAMPLING_UNSUPPORTED
     detector_result = classify_waveform_form(candidate.time, candidate.values, reference_frequency_hz)
-    return detector_result == LIKELY_INSTANTANEOUS
+    return FORM_ELIGIBLE if detector_result == LIKELY_INSTANTANEOUS else FORM_NOT_ELIGIBLE
     # LIKELY_MAGNITUDE_OR_RMS and UNCERTAIN both fall through to False.
 
 
@@ -210,6 +221,7 @@ def compute_overcurrent_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     authority: OvercurrentAuthority,
 ) -> OvercurrentAnalysisResult:
     """The one service-layer entry point. Raises `EngineeringContextNotFoundError`/
@@ -278,7 +290,7 @@ def compute_overcurrent_analysis(
     channel_ref = resolution.resolved_roles[role_key]
     candidate = _fetch_current_candidate(
         channel_ref, workspace_id=workspace_id, source_registry=source_registry,
-        calculated_channel_registry=calculated_channel_registry,
+        calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
     if candidate is None:
         return _short_circuit(
@@ -291,18 +303,24 @@ def compute_overcurrent_analysis(
     # source-declared value (a single-role requirement, so there is no
     # cross-source AGREEMENT to check -- unlike Phasor's own multi-role
     # requirements). ----
-    if reference_frequency_hz_override is not None:
-        if not nominal_frequency_valid(reference_frequency_hz_override):
-            return _short_circuit(
-                STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
-                analysis_time=analysis_time, reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
-                message="The supplied reference_frequency_hz is outside the plausible range.",
-            )
-        reference_frequency_hz = reference_frequency_hz_override
-    else:
-        reference_frequency_hz = candidate.nominal_frequency
+    decision = decide_reference_frequency(
+        override=reference_frequency_hz_override, frequencies=[candidate.frequency], conflict_message="",
+    )
+    if not decision.usable:
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, reason_code=decision.reason_code, message=decision.message,
+        )
+    reference_frequency_hz = decision.hz
 
-    if not _waveform_form_eligible_for_rms(candidate, reference_frequency_hz):
+    verdict = _waveform_form_eligible_for_rms(candidate, reference_frequency_hz)
+    if verdict == SAMPLING_UNSUPPORTED:
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, reason_code=REASON_INSUFFICIENT_SAMPLING_DENSITY,
+            message=sampling_reason_message(reference_frequency_hz, OVERCURRENT_MIN_SAMPLES_PER_CYCLE),
+        )
+    if verdict != FORM_ELIGIBLE:
         return _short_circuit(
             STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
             analysis_time=analysis_time, reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
@@ -393,7 +411,7 @@ def compute_overcurrent_analysis(
         analysis_time=analysis_time, characteristic_id=characteristic_id, tms=tms,
         pickup_current_secondary=pickup_current_secondary, recording_basis=recording_basis,
         ct_primary=ct_primary, ct_secondary=ct_secondary,
-        reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds,
+        reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds, frequency_provenance=decision.provenance,
         channel_ref=candidate.channel_ref,
         measured_rms_current=measured_rms_current, measured_rms_current_unit=candidate.unit,
         relay_secondary_current=relay_secondary_current, multiple_of_pickup=multiple_of_pickup,
@@ -445,6 +463,7 @@ def check_overcurrent_readiness(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> OvercurrentReadiness:
     """Raises `EngineeringContextNotFoundError`/`UnknownAnalysisRequirementError`
     exactly like `resolve_analysis_inputs()` itself does (propagated
@@ -473,7 +492,7 @@ def check_overcurrent_readiness(
     channel_ref = resolution.resolved_roles[role_key]
     candidate = _fetch_current_candidate(
         channel_ref, workspace_id=workspace_id, source_registry=source_registry,
-        calculated_channel_registry=calculated_channel_registry,
+        calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
     if candidate is None:
         return OvercurrentReadiness(
@@ -481,17 +500,22 @@ def check_overcurrent_readiness(
             message=f"Resolved current channel for role '{role_key}' could not be read.",
         )
 
-    if reference_frequency_hz_override is not None:
-        if not nominal_frequency_valid(reference_frequency_hz_override):
-            return OvercurrentReadiness(
-                status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
-                message="The supplied reference_frequency_hz is outside the plausible range.",
-            )
-        reference_frequency_hz = reference_frequency_hz_override
-    else:
-        reference_frequency_hz = candidate.nominal_frequency
+    decision = decide_reference_frequency(
+        override=reference_frequency_hz_override, frequencies=[candidate.frequency], conflict_message="",
+    )
+    if not decision.usable:
+        return OvercurrentReadiness(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code=decision.reason_code, message=decision.message,
+        )
+    reference_frequency_hz = decision.hz
 
-    if not _waveform_form_eligible_for_rms(candidate, reference_frequency_hz):
+    verdict = _waveform_form_eligible_for_rms(candidate, reference_frequency_hz)
+    if verdict == SAMPLING_UNSUPPORTED:
+        return OvercurrentReadiness(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INSUFFICIENT_SAMPLING_DENSITY,
+            message=sampling_reason_message(reference_frequency_hz, OVERCURRENT_MIN_SAMPLES_PER_CYCLE),
+        )
+    if verdict != FORM_ELIGIBLE:
         return OvercurrentReadiness(
             status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
             message="The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
@@ -531,6 +555,7 @@ def read_recorded_current_input(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     authority: OvercurrentAuthority,
 ) -> RecordedCurrentInput:
     """Raises `EngineeringContextNotFoundError`/`UnknownAnalysisRequirementError` exactly like `resolve_analysis_
@@ -554,7 +579,7 @@ def read_recorded_current_input(
         )
     candidate = _fetch_current_candidate(
         resolution.resolved_roles[_ROLE_KEY_BY_PHASE[phase]], workspace_id=workspace_id,
-        source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
     if candidate is None:
         return RecordedCurrentInput(

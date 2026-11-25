@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel
+from app.schemas.frequency_provenance import NominalFrequencyProvenanceOut
 
 from app.schemas.calculated_channel import ChannelRefOut
 from app.schemas.measurement_side import ChannelMeasurementSideOut
@@ -19,7 +20,7 @@ OvercurrentRecordingBasis = Literal["primary", "secondary"]
 OvercurrentRecordedSide = Literal["primary", "secondary"]
 
 
-class OvercurrentAnalysisResultOut(BaseModel):
+class OvercurrentAnalysisResultOut(NominalFrequencyProvenanceOut):
     status: OvercurrentAnalysisStatus
     engineering_context_id: str
     phase: OvercurrentPhase

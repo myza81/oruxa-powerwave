@@ -114,8 +114,29 @@ for _key, _entry in _HISTORY[_R1A]["api"].items():
             "OC-8/O-6: an unusable declaration is labelled `unusable`; the recorded frequency is unchanged"))
 
 
-def apply_approved(document: dict, baseline: str) -> dict:
-    """A copy of `document["outcomes"]` with this baseline's approved changes applied."""
+NF3D_MANIFEST = _FIXTURES / "nf3d_baselines" / "nf3d_approved_changes.json"
+
+
+def nf3d_entries(baseline: str) -> list[dict]:
+    """The NF-3D approved changes for one baseline (path tuples, before/after, kind, matrix row); empty before the manifest exists."""
+    if not NF3D_MANIFEST.exists():
+        return []
+    return json.loads(NF3D_MANIFEST.read_text(encoding="utf-8"))["changes"].get(baseline, [])
+
+
+def apply_approved(document: dict, baseline: str, *, include_nf3d: bool = True) -> dict:
+    """A copy of `document["outcomes"]` with this baseline's approved changes applied.
+
+    NF-3C entries apply to the historical record first; NF-3D entries (`nf3d_approved_changes.json`, recorded against the record AFTER the
+    NF-3C overlay) apply second, so each slice's changes stay separately reviewable."""
+    outcomes = _apply_nf3c(document, baseline)
+    if include_nf3d:
+        from tests.nf3d_diff_tools import apply_entries
+        outcomes = apply_entries(outcomes, nf3d_entries(baseline))
+    return outcomes
+
+
+def _apply_nf3c(document: dict, baseline: str) -> dict:
     outcomes = copy.deepcopy(document["outcomes"])
     for key, path, before, after, _reason in APPROVED_CHANGES:
         if key != baseline:

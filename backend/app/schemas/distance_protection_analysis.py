@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from app.schemas.frequency_provenance import NominalFrequencyProvenanceOut
 
 from app.schemas.calculated_channel import ChannelRefOut
 from app.schemas.side_conversion import SideConversionOut
@@ -68,7 +69,7 @@ class ZoneResultOut(BaseModel):
     direction: str = "forward"
 
 
-class DistanceAnalysisResultOut(BaseModel):
+class DistanceAnalysisResultOut(NominalFrequencyProvenanceOut):
     """`v1_channel_ref`/`v2_channel_ref`/`i1_channel_ref`/`i2_channel_ref`
     are what let the shared Related Waveforms panel know which channels
     to fetch for the selected fault loop's source Voltage/Current

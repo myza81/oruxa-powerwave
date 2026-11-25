@@ -61,6 +61,7 @@ from app.domain.physical_calibration import (
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import ImportServiceError, InvalidCalibrationAuthorityError
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.line_to_line_voltage_service import (
     create_line_to_line_voltage_channels,
     list_line_to_line_readiness,
@@ -150,6 +151,10 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
     return request.app.state.current_group_config_registry
+
+
+def get_nominal_frequency_access(request: Request) -> NominalFrequencyAccess:
+    return request.app.state.nominal_frequency_access
 
 
 def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
@@ -303,6 +308,7 @@ def get_line_to_line_readiness(
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> list[LineToLineContextReadinessOut]:
     """DEC-115: Line-to-Line Voltage readiness for EVERY Engineering
     Context in the workspace (incomplete/unsupported bays included, never
@@ -311,7 +317,7 @@ def get_line_to_line_readiness(
     try:
         results = list_line_to_line_readiness(
             workspace_id=workspace_id, context_registry=context_registry,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -326,6 +332,7 @@ def create_line_to_line_channels(
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> LineToLineCreateResponse:
     """DEC-115: create VAB/VBC/VCA (one) or all three from one Engineering
     Context -- atomic: an unavailable pair creates nothing."""
@@ -339,6 +346,7 @@ def create_line_to_line_channels(
             context_registry=context_registry,
             source_registry=source_registry,
             calc_registry=calc_registry,
+            frequency_access=frequency_access,
             per_unit_registry=per_unit_registry,
             null_policy=body.null_policy,
             estimation_method=body.estimation_method,

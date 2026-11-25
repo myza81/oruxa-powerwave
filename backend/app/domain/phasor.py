@@ -98,6 +98,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from app.domain.frequency_provenance import FrequencyProvenance
+
 import numpy as np
 
 from app.domain.calculated_channel import ChannelRef
@@ -314,6 +316,8 @@ class PhasorAnalysisResult:
     algorithm_version: str = ALGORITHM_VERSION
     roles: dict[str, PhasorRoleResult] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    #: NF-3D (O-6): which recording authority supplied `reference_frequency_hz`; None when an explicit override was used.
+    frequency_provenance: FrequencyProvenance | None = None
     #: Per-role diagnostic detail for a `needs_configuration` result --
     #: role_key -> reason code. Only populated for roles that failed
     #: (mirrors `AnalysisInputResolution.missing_role_reasons`'s own
@@ -409,6 +413,8 @@ class PhasorDiagramResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+    #: NF-3D (O-6): which recording authority supplied `reference_frequency_hz`; None when an explicit override was used.
+    frequency_provenance: FrequencyProvenance | None = None
 
 
 # ---------------------------------------------------------------------------

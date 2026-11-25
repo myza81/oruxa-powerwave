@@ -357,7 +357,7 @@ def _line_to_line_context_id(ctx: _Context, pair: str, operands: tuple[ChannelRe
     try:
         readiness = check_line_to_line_readiness(
             workspace_id=ctx.workspace_id, engineering_context_id=context_id, context_registry=ctx.context_registry,
-            source_registry=ctx.source_registry, calc_registry=ctx.calc_registry,
+            source_registry=ctx.source_registry, calc_registry=ctx.calc_registry, frequency_access=ctx.frequency_access,
         )
     except Exception as exc:  # noqa: BLE001 -- any shared-service refusal is "not preparable here", never a crash
         return None, str(exc)
@@ -762,7 +762,7 @@ def prepare_measurement(
                 created.extend(create_line_to_line_voltage_channels(
                     workspace_id=workspace_id, engineering_context_id=step.engineering_context_id, output=step.pair,
                     names={step.pair: name}, context_registry=context_registry, source_registry=source_registry,
-                    calc_registry=calc_registry, per_unit_registry=per_unit_registry,
+                    calc_registry=calc_registry, frequency_access=frequency_access, per_unit_registry=per_unit_registry,
                 ))
             else:
                 source_name = _display_name(step.input_ref, workspace_id=workspace_id, calc_registry=calc_registry)

@@ -40,8 +40,7 @@ ATTRIBUTE_READS = {
     "services/import_service.py": 1,                         # D  C-18 importer: provider metadata -> SourceMetadata
     "services/nominal_frequency_service.py": 1,              # D  the authority reads the immutable imported value
     # NF-3C migrated C-06 (oscillation_representation_service): row removed.
-    "services/overcurrent_analysis_service.py": 4,           # M  C-02 NF-3D (2 on the source metadata, 2 on the carried candidate)
-    "services/phasor_analysis_service.py": 5,                # M  C-01 NF-3D (2 on the source metadata, 3 on the carried candidates)
+    # NF-3D migrated C-01 (phasor_analysis_service) and C-02 (overcurrent_analysis_service): both rows removed.
     "services/preparation_conversion_service.py": 1,         # D  C-18 CSV/Excel importer
     "services/synchronization_service.py": 1,                # D  C-03 migrated in NF-3C; the one read left echoes the DECLARED value for an unusable recording (O-7 option A)
 }
@@ -55,9 +54,7 @@ FREQUENCY_KEYS = {
     ("services/oscillation_cross_signal_service.py", "nominal_frequency_hz"): 2,  # M  C-07 NF-3C
     ("services/oscillation_representation_service.py", "nominal_frequency_hz"): 1,  # M  C-06 NF-3C
     ("services/oscillation_spectrum_service.py", "nominal_frequency_hz"): 1,   # M  C-07 NF-3C
-    ("services/overcurrent_analysis_service.py", "nominal_frequency"): 1,      # M  C-02 NF-3D
-    ("services/phasor_analysis_service.py", "nominal_frequency"): 1,           # M  C-01 NF-3D
-    ("services/phasor_analysis_service.py", "reference_frequency_hz"): 1,      # M  C-01 NF-3D
+    ("services/phasor_analysis_service.py", "reference_frequency_hz"): 1,      # D  the caller-supplied override parameter name (NF-3D)
 }
 
 #: G3. Every numeric literal equal to 50, 60 or 0.02 (a hard-coded fundamental or window length would be one of these).
@@ -102,6 +99,11 @@ ACCESS_IMPORTERS = {
     "api/v1/oscillation.py", "services/oscillation_representation_service.py", "services/oscillation_spectrum_service.py",
     "services/oscillation_spectrogram_service.py", "services/oscillation_damping_service.py", "services/oscillation_cross_signal_service.py",
     "services/oscillation_interpretation_service.py", "services/oscillation_mode_shape_service.py", "services/oscillation_coherence_service.py",
+    # NF-3D: C-01 / C-02 (phasor, overcurrent) read through the accessor; the shared decision function and the services and routers that pass the
+    # accessor down to them (impedance, distance, sequence, line-to-line) import it for the type only.
+    "services/analysis_reference_frequency.py", "services/phasor_analysis_service.py", "services/overcurrent_analysis_service.py",
+    "services/impedance_analysis_service.py", "services/distance_protection_analysis_service.py", "services/sequence_components_analysis_service.py",
+    "services/line_to_line_voltage_service.py", "api/v1/engineering_contexts.py", "api/v1/calculated_channels.py",
 }
 #: Files that may mention the registry at all; of these only the service layer may READ it (lifecycle removal is the rest).
 REGISTRY_USERS = {

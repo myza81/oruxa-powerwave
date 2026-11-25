@@ -134,7 +134,6 @@ def _context(client, ws, sid):
 
 
 class TestConsumersMustRefuseAnUnusableDeclaredFrequencyWithoutAnException:
-    @pytest.mark.xfail(strict=True, reason="NF-3D: the declared value reaches 1/f unvalidated; HTTP 500 today (D-C)")
     def test_phasor_for_a_recording_declaring_zero_hertz(self, client):
         ws = "ws-oracle-phasor"
         sid = _upload(client, ws, 5000.0, 50.0, "0")
@@ -143,7 +142,6 @@ class TestConsumersMustRefuseAnUnusableDeclaredFrequencyWithoutAnException:
                        params={"analysis_kind": "phasor", "mode": "voltage_phase_a", "analysis_time": 0.5})
         assert r.status_code == 200 and r.json()["status"] == "needs_configuration"
 
-    @pytest.mark.xfail(strict=True, reason="NF-3D: overcurrent has the same unvalidated declared value; HTTP 500 today (D-C)")
     def test_overcurrent_for_a_recording_declaring_zero_hertz(self, client):
         ws = "ws-oracle-oc"
         sid = _upload(client, ws, 5000.0, 50.0, "0")

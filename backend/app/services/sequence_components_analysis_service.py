@@ -44,6 +44,7 @@ from app.domain.sequence_components import (
     sequence_ratio_percent,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.phasor_analysis_service import compute_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
@@ -114,6 +115,7 @@ def compute_sequence_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> SequenceAnalysisResult:
     """Selected-time-only Recording-mode Sequence Components -- reuses
     the existing, unchanged `compute_phasor_diagram()` to resolve every
@@ -127,7 +129,7 @@ def compute_sequence_analysis(
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz_override=reference_frequency_hz_override,
-        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
 
     if diagram.status != "computed":
@@ -143,7 +145,7 @@ def compute_sequence_analysis(
 
     return SequenceAnalysisResult(
         status="computed", engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
+        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds, frequency_provenance=diagram.frequency_provenance,
         voltage_sequences=voltage_sequences, current_sequences=current_sequences,
         message="Sequence components evaluated.",
     )
