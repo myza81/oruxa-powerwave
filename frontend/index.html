@@ -36361,7 +36361,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // or just re-render if they already are.
             if (wwRdState.selectedSourceId) {
                 if (!ww.measurementGroups.has(wwRdState.selectedSourceId)) {
-                    await wwRdSelectSource(wwRdState.selectedSourceId);
+                    // wwRdSelectSource() clears the group selection (a different recording has none), but this
+                    // is the same recording the navigation just pre-selected a group in (wwNavigateToRdForGroup,
+                    // e.g. Compliance "Configure Base"): keep that group once its groups are loaded.
+                    const sourceId = wwRdState.selectedSourceId;
+                    const preselectedGroupId = wwRdState.selectedGroupId;
+                    await wwRdSelectSource(sourceId);
+                    const loaded = ww.measurementGroups.get(sourceId) || [];
+                    if (preselectedGroupId && wwRdState.selectedSourceId === sourceId && !wwRdState.selectedGroupId &&
+                        loaded.some((g) => g.id === preselectedGroupId)) {
+                        wwRdState.selectedGroupId = preselectedGroupId;
+                        wwRdRenderGroups();
+                        wwRdRenderDetails();
+                    }
                 } else {
                     wwRdRenderGroups();
                     wwRdRenderDetails();
