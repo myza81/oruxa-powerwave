@@ -261,23 +261,12 @@ test("Current group editor shows no PU controls for standard Current group (DEC-
   // display in A/kA ... DEC-212" -- no Recording Details surface carries that text.
 });
 
-test("Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)", async ({ page }) => {
-  // setup() creates a group with method: "manual" (manual_ibase_ka: 2) → hasLegacyConfig = true.
-  const c = await setup(page);
-
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${c.group.id}"]`).click();
-  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
-
-  // Legacy group: shows the Legacy Current Reference section with its badge and controls.
-  await expect(page.locator("#wwMgLegacyCurrentSection")).toBeVisible();
-  await expect(page.locator("#wwMgLegacyBadge")).toHaveText("Historical");
-  await expect(page.locator("#wwMgManualIbaseInput")).toBeVisible();
-  await expect(page.locator("#wwMgBaseReferenceSide")).toBeVisible();
-  // The DEC-212 "no PU controls" note is NOT present for legacy groups.
-  await expect(page.locator("#wwMgDrawerBody")).not.toContainText("Per-unit normalisation for current is configured through Calculated Channels");
-});
+// RETIRED (owner decision, P0 closeout 2026-11-25): "Current MG drawer shows Legacy Current Reference for a group
+// with an existing Ibase config". The MG drawer and its Legacy Current Reference section were removed by PU-UI-001
+// (4161a63); Recording Details does not edit a Current group's manual Ibase or base reference side (DEC-212 §5
+// keeps the backend). The underlying behaviour -- a manual Ibase / base reference side still produces the PU
+// result, provenance and compatibility -- stays covered through the real API by the other tests in this file and
+// by current-common-base.spec.js.
 
 // ---------------------------------------------------------------------------
 // Slice 6C.1 — DEC-212 annotation engineeringType storage

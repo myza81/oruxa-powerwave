@@ -13,7 +13,7 @@
 //   VD-06: ER: Current channel always state=engineering in wwErChannelUnitDisplay
 //   VD-07: ER: Current channel plots in A panel even when Voltage Display = PU
 //   VD-08: ER: Current channel never shows "PU unavailable" badge, even with no Ibase
-//   VD-09: Measurement Group modal shows DEC-212 note in Current Groups section
+//   VD-09: (retired -- see its note below)
 //   VD-10: Voltage group editor (Recording Details) shows the "Nominal voltage (L-L) kV" label
 //   VD-11: Voltage display auto-switch fires on import when Voltage group configured
 //   VD-12: Auto-switch does NOT fire when only Current group is configured (no Voltage)
@@ -332,28 +332,11 @@ test("VD-08: ER Current channel never shows PU unavailable badge, even with no I
 });
 
 // ---------------------------------------------------------------------------
-// VD-09: MG modal shows DEC-212 note in Current Groups section
+// VD-09: RETIRED (owner decision, P0 closeout 2026-11-25). It asserted the DEC-212 explanatory note in the
+// Measurement Group modal's "Current Groups" section; the modal was removed by PU-UI-001 (4161a63) and no
+// Recording Details surface carries that text. The behaviour the note described -- raw Current always stays
+// in engineering units -- remains covered by VD-03/04/05/06/07/08/13/17 above and below.
 // ---------------------------------------------------------------------------
-
-test("VD-09: Measurement Group modal shows DEC-212 note in Current Groups section", async ({ page }) => {
-  await page.goto("/index.html");
-  await uploadWith275kVVoltageGroup(page, "VD09");
-
-  // Open Per-Unit Settings modal from the Waveform toolbar.
-  await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await expect(page.locator("#perUnitSettingsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
-
-  // Navigate to the Measurement Groups sub-dialog — DEC-212 note is rendered there
-  // by wwRenderMeasurementGroupsBody() into #measurementGroupsBody.
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await expect(page.locator("#measurementGroupsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
-
-  // DEC-212 note is rendered inside #measurementGroupsBody under "Current Groups" heading.
-  const mgBody = page.locator("#measurementGroupsBody");
-  await expect(mgBody.getByText("Current channels always display in A/kA", { exact: false })).toBeVisible({ timeout: 5000 });
-  await expect(mgBody.getByText("Calculated Channels", { exact: false })).toBeVisible({ timeout: 3000 });
-});
 
 // ---------------------------------------------------------------------------
 // VD-10: Voltage drawer field label

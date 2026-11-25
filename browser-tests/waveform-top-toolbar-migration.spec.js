@@ -566,36 +566,9 @@ test.describe("Waveform top toolbar -- spacing after Voltage Display relocation"
   });
 });
 
-test.describe("Waveform top toolbar -- Per-Unit Settings icon", () => {
-  test("renders the new pu_settings.svg asset, no broken path, same handler/tooltip/position", async ({ page }) => {
-    const consoleErrors = [];
-    page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
-    await page.goto("/index.html");
-    await page.locator("#mainNavWaveformBtn").click();
-    const btn = page.locator("#wwOpenPerUnitSettingsBtn");
-    await expect(btn).toBeVisible();
-    await expect(btn).toHaveAttribute("title", "Per-Unit Settings…");
-    const iconSpan = btn.locator(".ww-icon");
-    await expect(iconSpan).toHaveAttribute("data-ww-icon", "PU_SETTINGS");
-    const maskImage = await iconSpan.evaluate((el) => getComputedStyle(el).webkitMaskImage || getComputedStyle(el).maskImage);
-    expect(maskImage).toContain("pu_settings.svg");
-    expect(consoleErrors).toEqual([]);
-
-    // Still opens the same modal/settings flow.
-    await btn.click();
-    await expect(page.locator("#perUnitSettingsOverlay")).toBeVisible();
-  });
-
-  test("renders correctly in dark theme too", async ({ page }) => {
-    await page.goto("/index.html");
-    await page.locator("#mainNavWaveformBtn").click();
-    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
-    const iconSpan = page.locator("#wwOpenPerUnitSettingsBtn .ww-icon");
-    const maskImage = await iconSpan.evaluate((el) => getComputedStyle(el).webkitMaskImage || getComputedStyle(el).maskImage);
-    expect(maskImage).toContain("pu_settings.svg");
-    await expect(page.locator("#wwOpenPerUnitSettingsBtn")).toBeVisible();
-  });
-});
+// RETIRED (owner decision, P0 closeout 2026-11-25): "Per-Unit Settings icon" -- the two tests asserted
+// the Per-Unit Settings Hub toolbar button (#wwOpenPerUnitSettingsBtn, pu_settings.svg), which PU-UI-001
+// removed on purpose (1c60a1e). Per-unit configuration lives in Recording Details.
 
 test.describe("Waveform top toolbar -- Clear Waveforms restored to the left operational group", () => {
   test("visible and disabled with no recordings; the complete toolbar stays stable", async ({ page }) => {
