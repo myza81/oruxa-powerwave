@@ -555,6 +555,7 @@ test.describe("Event Reconstruction annotations -- manager and independence", ()
     // Waveform: a note through Waveform's own annotation API.
     await page.locator("#mainNavRecordingDetailsBtn").click();
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();

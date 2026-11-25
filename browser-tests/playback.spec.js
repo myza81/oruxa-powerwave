@@ -64,6 +64,7 @@ async function uploadFixture(page, stem) {
 // Assumes the Recordings page is already showing `sourceId`'s own row.
 async function displayFirstAnalogChannel(page, sourceId) {
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -287,7 +288,9 @@ test.describe("Event Playback Slice 1", () => {
     // Sources outright -- checked there instead; nothing of either
     // remains in this local canvas.
     await expect(page.locator("#wwAutoscaleXBtn")).toBeVisible();
-    await expect(page.locator("#wwAutoscaleYBtn")).toBeVisible();
+    // Y-scale controls moved from the page-level toolbar into each pane header (WUI-001,
+    // 3ed200c); the pane's own Autoscale Y is the equivalent of the retired #wwAutoscaleYBtn.
+    await expect(canvas.locator('.ww-panel [data-pane-y="auto"]').first()).toBeVisible();
     await expect(page.locator("#wwCursorModeBtn")).toBeVisible();
     await expect(page.locator("#wwT0Btn")).toBeVisible();
     await expect(canvas.locator(".ww-tg-t0-btn")).toHaveCount(0);

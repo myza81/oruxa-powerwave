@@ -330,6 +330,7 @@ test.describe("Event Reconstruction Grouped View -- cursors and isolation", () =
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: MIXED });
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:00.500000", channels: MIXED });
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const wfRows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     for (let i = 0; i < 3; i++) {

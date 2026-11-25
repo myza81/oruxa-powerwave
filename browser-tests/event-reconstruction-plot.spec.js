@@ -525,6 +525,7 @@ test.describe("Event Reconstruction Slice 3C -- Waveform isolation", () => {
     const sourceA = await sourceIdFor(page, "STN_A");
     // Waveform: one displayed channel, a zoomed viewport, a rename.
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();

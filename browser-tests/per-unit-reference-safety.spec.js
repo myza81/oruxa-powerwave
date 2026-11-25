@@ -6,6 +6,7 @@
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 const { BACKEND, workspaceId, sourceIdFor, addRecords, selectChannel, channelRow, waitForPlot } = require("./support/event_reconstruction_helpers");
+const { openRdCurrentEditor } = require("./support/recording_details_pu_helpers");
 
 async function json(response, status = 200) {
   expect(response.status(), await response.text()).toBe(status);
@@ -228,7 +229,7 @@ test("ER uses its own mode and explicit Unknown-reference status without changin
 // Slice 6C.1 — DEC-212 MG drawer: standard vs legacy Current groups
 // ---------------------------------------------------------------------------
 
-test("Current MG drawer shows no PU controls for standard Current group (DEC-212)", async ({ page }) => {
+test("Current group editor shows no PU controls for standard Current group (DEC-212)", async ({ page }) => {
   await page.goto("/index.html");
   const station = "MG_UI_STANDARD";
   const data = syntheticComtrade({ station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.1,
@@ -248,18 +249,16 @@ test("Current MG drawer shows no PU controls for standard Current group (DEC-212
     display_name: "Standard Current", status: "confirmed",
     channel_refs: [{ kind: "source", source_id: sid, channel_name: "IA" }] } }), 201);
 
-  await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
-  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+  // The MG drawer was replaced by the Recording Details Equipment Rating editor (PU-UI-001).
+  await openRdCurrentEditor(page, sid, group.id);
 
-  // Standard DEC-212 Current group: no PU configuration controls.
-  await expect(page.locator("#wwMgLegacyCurrentSection")).toHaveCount(0);
-  await expect(page.locator("#wwMgManualIbaseInput")).toHaveCount(0);
-  await expect(page.locator("#wwMgCurrentMethod")).toHaveCount(0);
-  await expect(page.locator("#wwMgDrawerBody")).toContainText("Current channels always display in A/kA");
-  await expect(page.locator("#wwMgDrawerBody")).toContainText("DEC-212");
+  // Standard DEC-212 Current group: no PU configuration controls -- the editor offers the
+  // equipment rating and its associated voltage group, and nothing else.
+  const controls = await page.locator("#wwRdDetailsBody input, #wwRdDetailsBody select").evaluateAll(els => els.map(el => el.id));
+  expect(controls).toEqual(["wwRdCurMva", "wwRdCurVoltageGroup"]);
+  await expect(page.locator("#wwRdVltKv")).toHaveCount(0);
+  // Not ported (reported in the P0 handover): the drawer's explanatory note "Current channels always
+  // display in A/kA ... DEC-212" -- no Recording Details surface carries that text.
 });
 
 test("Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)", async ({ page }) => {

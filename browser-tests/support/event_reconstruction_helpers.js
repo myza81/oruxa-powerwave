@@ -23,9 +23,12 @@ const VI = [
 ];
 const SLOW_VI = VI.map((c) => Object.assign({}, c, { frequencyHz: 0.5 }));
 
-// Uploads one synthetic record through the Recording Details flow (UX-3).
+// Uploads one synthetic record through the Recording Details flow (UX-3). Upload is only
+// available on the Recording Details page, so go there first (a no-op when already there):
+// a spec may upload a further record while it is on Waveform or Event Reconstruction.
 async function uploadRecord(page, { station, date, startClock, triggerClock, rateHz = 1000, durationS = 1, channels = VI }) {
   const { cfg, dat } = syntheticComtrade({ station, date, startClock, triggerClock, rateHz, durationS, channels });
+  await page.locator("#mainNavRecordingDetailsBtn").click();
   await page.locator("#wwRdUploadBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfg });

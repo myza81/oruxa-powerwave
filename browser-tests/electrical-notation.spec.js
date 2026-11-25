@@ -138,6 +138,7 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
 
     const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     await expect(rows.first()).toBeVisible();

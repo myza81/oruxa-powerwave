@@ -245,6 +245,7 @@ test.describe("Phase display convention (DEC-118)", () => {
   test("source channel names stay exactly as supplied in the Waveform sidebar", async ({ page }) => {
     await uploadFixture(page);
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     await expect(rows.first()).toBeVisible();
     for (const name of ["KPDN1_VR", "KPDN1_VY", "KPDN1_VB", "MCRS_VA", "MCRS_VB", "MCRS_VC", "AMBG_VB"]) {
@@ -542,6 +543,7 @@ test.describe("Phase display convention -- phase currents follow the bay", () =>
   test("source channel names and the source Phase column are never rewritten", async ({ page }) => {
     await uploadFixture(page);
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     await expect(rows.first()).toBeVisible();
     for (const name of ["KPDN1_IR", "KPDN1_IY", "KPDN1_IB", "MCRS_IA", "MCRS_IB", "MCRS_IC"]) {

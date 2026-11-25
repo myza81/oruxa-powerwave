@@ -53,6 +53,7 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
   // ---- Smoke C: display one analog channel ----
   await test.step("Smoke C - toggle one analog channel, waveform trace renders", async () => {
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-source-id", sourceId);
@@ -68,7 +69,13 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
   await test.step("Smoke D - displayed channel belongs to a rendered Time Group canvas", async () => {
     const canvas = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas").first();
     await expect(canvas).toBeVisible();
-    await expect(canvas.locator(".ww-tg-toolbar-row")).toBeVisible();
+    // Every local control of the Time Group toolbar row moved to the page-level #wwToolbar
+    // (DEC-158), so the row itself is collapsed while its structure stays in the canvas.
+    // The canvas shows its own header, and the page toolbar's zoom control is enabled for it.
+    await expect(canvas.locator(".ww-tg-header")).toBeVisible();
+    await expect(canvas.locator(".ww-tg-toolbar-row")).toBeAttached();
+    await expect(page.locator("#wwToolbar")).toBeVisible();
+    await expect(page.locator("#wwZoomXInBtn")).toBeEnabled();
     await expect(canvas.locator(".ww-tg-panels .ww-chart").first()).toBeVisible();
   });
 
@@ -196,6 +203,7 @@ test("Powerwave smoke: toggling a channel display immediately after opening a ju
   const sourceId = await row.getAttribute("data-source-id");
 
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   const chRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
   await expect(chRow).toBeVisible();
   await expect(chRow).toHaveAttribute("data-source-id", sourceId);

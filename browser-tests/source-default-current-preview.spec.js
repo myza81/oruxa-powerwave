@@ -1,3 +1,22 @@
+// Source Default derived Current base (kV + MVA -> kA): real backend numerics and
+// atomic rejection.
+//
+// P0 remediation (PU-MIG): the Source Default editor (#perUnitProfilesOverlay, its
+// live "calculated current base" preview and #perUnitProfileError) was removed from
+// the frontend by PU-UI-001 Step B (commit be1e7e0): "Recording Details is now the SSOT
+// for per-unit configuration. DEC-049 Source Default backend storage is preserved for
+// ungrouped fallback." No Recording Details control edits a Source Default, so this
+// spec drives the same real endpoint the retired editor called
+// (PUT /per-unit/sources/{source}) with the same request body and keeps every
+// engineering assertion about the backend: the accepted derived base (against
+// independently computed kA values, including the numeric extremes), the atomic
+// rejection of unusable bases with the backend's own message, the unchanged groups
+// and engineering samples, and the unchanged nominal L-L current base across
+// reference choices. Nothing is mocked.
+//
+// Retired with the editor (reported in the P0 remediation handover): the
+// client-side preview field, the preview-vs-backend comparison, the visible-error
+// element, and the retired helper wwPerUnitEditorResolvedCurrentBaseText().
 const { test, expect } = require("./support/test");
 const { uploadRecord, workspaceId, sourceIdFor } = require("./support/event_reconstruction_helpers");
 
@@ -18,22 +37,21 @@ async function setup(page) {
   return { source, root, config: `${root}/per-unit/sources/${source}` };
 }
 
-async function open(page, source) {
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenPerUnitProfilesFromSettingsBtn").click();
-  await page.locator("#perUnitSourceSelect").selectOption(source);
-  await page.locator('input[name="perUnitCurrentBaseMode"][value="derived"]').check();
+// The body the retired Source Default editor sent for a derived Current base.
+function derived(voltage, rating, reference = {}) {
+  return {
+    voltage_base_value: voltage,
+    voltage_reference_mode: reference.mode || "auto",
+    voltage_reference_override: reference.mode === "manual" ? reference.override : null,
+    current_base_mode: "derived",
+    apparent_power_base_value: rating,
+    direct_current_base_value: null,
+    current_base_reference_side: "primary",
+  };
 }
 
-async function enter(page, voltage, rating) {
-  await page.locator("#perUnitVoltageBaseValue").fill(String(voltage));
-  await page.locator("#perUnitApparentPowerBaseValue").fill(String(rating));
-}
-
-async function save(page, config, status = 200) {
-  const response = page.waitForResponse(r => r.url() === config && r.request().method() === "PUT");
-  await page.locator("#perUnitProfilesApplyBtn").click();
-  return json(await response, status);
+async function save(page, config, body, status = 200) {
+  return json(await page.request.put(config, { data: body }), status);
 }
 
 for (const [voltage, rating, expectedKa] of [
@@ -43,77 +61,57 @@ for (const [voltage, rating, expectedKa] of [
   [Number.MIN_VALUE, Number.MIN_VALUE, 0.5773502691896258],
   [1, 1e-320, 5.776e-321],
 ]) {
-  test(`derived preview agrees with accepted backend: ${rating} MVA / ${voltage} kV`, async ({ page }) => {
+  test(`derived current base agrees with the independent kA value on the accepted backend: ${rating} MVA / ${voltage} kV`, async ({ page }) => {
     const c = await setup(page);
     const groupsUrl = `${c.root}/sources/${c.source}/measurement-groups`;
     const groupsBefore = await json(await page.request.get(groupsUrl));
     const engineeringUrl = `${c.root}/sources/${c.source}/waveform?channel_name=IA`;
     const engineeringBefore = await json(await page.request.get(engineeringUrl));
-    await open(page, c.source);
-    await enter(page, voltage, rating);
-    const preview = page.locator("#perUnitCalculatedCurrentBase");
-    await expect(preview).toBeVisible();
-    const text = await preview.inputValue();
-    expect(text).toMatch(/ kA$/);
-    const value = Number(text.slice(0, -3));
-    expect(Number.isFinite(value)).toBe(true);
-    expect(value).toBeGreaterThan(0);
-    expect(Math.abs(value - expectedKa)).toBeLessThanOrEqual(Math.max(Math.abs(expectedKa) * 1e-12, expectedKa < 0.00005 ? Number.MIN_VALUE : 0.00005));
-    const accepted = await save(page, c.config);
+    const accepted = await save(page, c.config, derived(voltage, rating));
     expect(accepted.resolved_current_base.unit).toBe("A");
     const backendKa = accepted.resolved_current_base.value / 1000;
-    expect(Math.abs(value - backendKa)).toBeLessThanOrEqual(Math.max(Math.abs(backendKa) * 1e-12, backendKa < 0.00005 ? Number.MIN_VALUE : 0.00005));
+    expect(Number.isFinite(backendKa)).toBe(true);
+    expect(backendKa).toBeGreaterThan(0);
+    expect(Math.abs(backendKa - expectedKa)).toBeLessThanOrEqual(Math.max(Math.abs(expectedKa) * 1e-12, expectedKa < 0.00005 ? Number.MIN_VALUE : 0.00005));
     expect(accepted.voltage_base_value).toBe(voltage);
     expect(accepted.apparent_power_base_value).toBe(rating);
     expect(await json(await page.request.get(groupsUrl))).toEqual(groupsBefore);
     expect(await json(await page.request.get(engineeringUrl))).toEqual(engineeringBefore);
-    await expect(page.locator("#perUnitProfilesOverlay")).toBeHidden();
-    await open(page, c.source);
-    expect(await preview.inputValue()).toBe(text);
-    await expect(page.locator("#perUnitVoltageBaseValue")).toHaveValue(String(voltage));
-    await expect(page.locator("#perUnitApparentPowerBaseValue")).toHaveValue(String(rating));
+    // The accepted configuration is what the backend now stores, unchanged by reading it back.
+    const stored = await json(await page.request.get(c.config));
+    expect(stored.voltage_base_value).toBe(voltage);
+    expect(stored.apparent_power_base_value).toBe(rating);
+    expect(stored.resolved_current_base).toEqual(accepted.resolved_current_base);
   });
 }
 
-test("unusable bases show no fabricated preview and rejected saves preserve configuration", async ({ page }) => {
+test("unusable bases are rejected by the backend with its own message and rejected saves preserve configuration", async ({ page }) => {
   const c = await setup(page);
-  await open(page, c.source); await enter(page, 275, 1000);
-  await save(page, c.config);
+  await save(page, c.config, derived(275, 1000));
   const accepted = await json(await page.request.get(c.config));
-  await open(page, c.source);
   for (const [voltage, rating] of [[275, 1e308], [1e308, 1000], [100, Number.MIN_VALUE], [275, 0], [275, -1]]) {
-    await enter(page, voltage, rating);
-    await expect(page.locator("#perUnitCalculatedCurrentBase")).toHaveValue("—");
-    await save(page, c.config, 400);
-    await expect(page.locator("#perUnitProfileError")).toBeVisible();
+    const rejected = await json(await page.request.put(c.config, { data: derived(voltage, rating) }), 400);
+    // The message the editor used to show in its error element.
+    expect(typeof rejected.detail.message).toBe("string");
+    expect(rejected.detail.message.length).toBeGreaterThan(0);
     expect(await json(await page.request.get(c.config))).toEqual(accepted);
   }
-  await page.locator("#perUnitApparentPowerBaseValue").fill("");
-  await expect(page.locator("#perUnitCalculatedCurrentBase")).toHaveValue("—");
-  const invalid = await page.evaluate(() => [NaN, Infinity, -Infinity, null, "bad"].map(value =>
-    wwPerUnitEditorResolvedCurrentBaseText({ currentBaseMode: "derived", voltageBaseValue: 275,
-      apparentPowerBaseValue: value, voltageReferenceMode: "auto", autoDetection: { reference: "line_to_ground" } })));
-  expect(invalid).toEqual(Array(5).fill("—"));
 });
 
 test("auto and manual L-G/L-L references keep the nominal L-L current base", async ({ page }) => {
   const c = await setup(page);
-  await open(page, c.source); await enter(page, 275, 1000);
-  const initial = await json(await page.request.get(c.config));
-  await expect(page.locator("#perUnitCalculatedCurrentBase")).toHaveValue("2.0995 kA");
-  await page.locator("#perUnitOverrideReferenceBtn").click();
+  const initial = await save(page, c.config, derived(275, 1000));
+  expect(initial.voltage_reference_mode).toBe("auto");
+  expect(initial.resolved_current_base.value).toBeCloseTo(2099.455524325912, 9);
+  let accepted;
   for (const reference of ["line_to_line", "line_to_ground"]) {
-    await page.locator("#perUnitVoltageReferenceOverride").selectOption(reference);
-    await expect(page.locator("#perUnitCalculatedCurrentBase")).toHaveValue("2.0995 kA");
-    expect(await json(await page.request.get(c.config))).toEqual(initial);
+    accepted = await save(page, c.config, derived(275, 1000, { mode: "manual", override: reference }));
+    expect(accepted.voltage_reference_mode).toBe("manual");
+    expect(accepted.resolved_current_base.value).toBeCloseTo(2099.455524325912, 9);
+    expect(accepted.resolved_current_base).toEqual(initial.resolved_current_base);
   }
-  const accepted = await save(page, c.config);
   expect(accepted.voltage_reference_mode).toBe("manual");
-  expect(accepted.resolved_current_base.value).toBeCloseTo(2099.455524325912, 9);
-  await open(page, c.source);
-  await page.locator("#perUnitReturnToAutoBtn").click();
-  await expect(page.locator("#perUnitCalculatedCurrentBase")).toHaveValue("2.0995 kA");
-  const automatic = await save(page, c.config);
+  const automatic = await save(page, c.config, derived(275, 1000));
   expect(automatic.voltage_reference_mode).toBe("auto");
   expect(automatic.resolved_current_base).toEqual(accepted.resolved_current_base);
 });

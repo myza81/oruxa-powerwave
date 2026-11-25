@@ -251,6 +251,7 @@ test.describe("Event Reconstruction time display -- adaptive formats", () => {
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 2 });
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();

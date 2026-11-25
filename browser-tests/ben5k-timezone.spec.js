@@ -50,10 +50,15 @@ for (const timezoneId of ["UTC", "America/New_York", "Asia/Kuala_Lumpur"]) {
       await page.locator("#uploadModalSubmitBtn").click();
       await expect(page.locator("#uploadModalOverlay")).toBeHidden();
       const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
-      await expect(row.locator(".recording-start-time-cell")).toHaveText("2026-10-16 18:03:14.035400 (timezone unverified)");
-      await row.locator('[data-action="details"]').click();
-      await expect(page.locator(".recording-details-row").first()).toContainText("2026-10-16 18:03:14.535400 (timezone unverified)");
+      // The Recordings table cell (.recording-start-time-cell) and its details row were
+      // replaced by Recording Details: the start time sits in the list item's secondary line
+      // and the trigger time in the Recording Information tab -- both from the same
+      // formatters (formatRecordingStartTime / wwFormatSourceTimestamp), so the same text.
+      await expect(row.locator(".ww-rd-recording-item-meta")).toContainText("2026-10-16 18:03:14.035400 (timezone unverified)");
       await row.click();
+      await page.locator("#wwRdTabRecordingInfo").click();
+      await expect(page.locator("#wwRdDetailsBody")).toContainText("2026-10-16 18:03:14.535400 (timezone unverified)");
+      await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
       await expect(page.locator("#workspaceRow")).toBeVisible();
       const source = page.locator("#channelGroups details.source-recording").first();
       await expect(source.locator(":scope > summary")).toContainText("2026-10-16 18:03:14.035400 (timezone unverified)");

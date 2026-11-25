@@ -63,6 +63,7 @@ async function setupDisplayedRecording(page) {
   const context = await reuseOrCreateFullBayContext(page, workspaceId, sourceId, "ALPHA1", ALPHA_ROLES, "Alpha 1");
 
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
   await expect(channelRow).toBeVisible();

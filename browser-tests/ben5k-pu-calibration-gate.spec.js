@@ -185,7 +185,8 @@ test("BEN5K PU gate (original-risk): channel added while PU mode is already acti
   await page.locator("#mainNavWaveformBtn").click();
 
   // ── Enable PU mode BEFORE adding any channel ────────────────────────────
-  await page.locator("#wwUnitPerUnitBtn").click();
+  // No pane is displayed yet, so there is no pane-level mode control: select the mode itself.
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
   expect(
     await page.evaluate(() => ww.unitMode),
     "unit mode must be per_unit before channel add"

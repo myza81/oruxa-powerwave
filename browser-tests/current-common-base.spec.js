@@ -1,4 +1,16 @@
-// PC-001 Stage 5A: real existing editors, live Waveform/ER and automatic provenance.
+// PC-001 Stage 5A: real backend saves, live Waveform/ER and automatic provenance.
+//
+// P0 remediation (PU-MIG): the editors this spec used -- the Per-Unit Settings Hub, the
+// Measurement Group drawer (#wwMgBaseReferenceSide / #wwMgManualIbaseInput) and the
+// Source Default dialog (#perUnitCurrentBaseSide) -- were removed from the frontend by
+// PU-UI-001 (1c60a1e, 4161a63, be1e7e0); Recording Details edits only the equipment
+// rating and CT of a Current group, never its manual Ibase or Base reference side.
+// The same saves are therefore made through the real endpoints those editors called
+// (PUT .../current-config and PUT /per-unit/sources/{source}, same bodies) and followed by
+// the display refresh the editors ran after a successful save
+// (wwRefreshDisplayedChannelsForPerUnitChange). Every numerical, provenance and
+// atomic-rejection assertion is unchanged. Retired with the editors (reported in the P0
+// handover): the drawer's visible-error element and its Cancel/Close controls.
 const { test, expect } = require("./support/test");
 const {
   BACKEND, uploadRecord, workspaceId, sourceIdFor, addRecords, selectChannel,
@@ -78,43 +90,38 @@ async function scaled(page, context, eligible) {
   data.values.forEach((v, i) => expect(v).toBeCloseTo(context.physical.values[i] / (eligible ? 2000 : 1), 10));
 }
 
-async function editGroup(page, group) {
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+// The body the retired Measurement Group drawer sent for a manual Current base.
+const manualCurrent = (ibaseKa, side) => ({ method: "manual", manual_ibase_ka: ibaseKa, base_reference_side: side });
+
+async function declaredSide(page, c, group) {
+  const groups = await json(await page.request.get(c.groupsUrl));
+  return groups.find(g => g.id === group.id).current_config.base_reference_side;
 }
 
-async function saveGroup(page) {
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  await expect(page.locator("#wwMgDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-  await page.locator("#measurementGroupsCloseBtn").click();
+async function saveGroup(page, c, group, body, status = 200) {
+  const response = await json(await page.request.put(`${c.groupsUrl}/${group.id}/current-config`, { data: body }), status);
+  if (status === 200) await page.evaluate(sid => wwRefreshDisplayedChannelsForPerUnitChange(sid), c.sid);
+  return response;
 }
 
 test("independent side declarations enable a common base; a rejected save preserves state and PU", async ({ page }) => {
   const c = await setup(page);
   await scaled(page, c, false);
   for (let i = 0; i < c.groups.length; i++) {
-    await editGroup(page, c.groups[i]);
-    await expect(page.locator("#wwMgBaseReferenceSide")).toHaveValue("unknown");
-    await page.locator("#wwMgBaseReferenceSide").selectOption("primary");
-    await saveGroup(page);
+    expect(await declaredSide(page, c, c.groups[i])).toBe("unknown");
+    await saveGroup(page, c, c.groups[i], manualCurrent(2, "primary"));
     await scaled(page, c, i === 1);
   }
   const beforeGroups = await json(await page.request.get(c.groupsUrl));
   const waveformUrl = `${c.base}/calculated-channels/${c.nested.id}/waveform?unit_mode=per_unit`;
   const beforeWaveform = await json(await page.request.get(waveformUrl));
-  await editGroup(page, c.groups[1]);
-  await page.locator("#wwMgBaseReferenceSide").selectOption("secondary");
-  await page.locator("#wwMgManualIbaseInput").fill("-2");
-  const rejected = page.waitForResponse(r => r.url().endsWith("/current-config") && r.request().method() === "PUT");
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  expect((await rejected).status()).toBe(400);
-  await expect(page.locator("#wwMgDrawerError")).toBeVisible();
+  const rejected = await saveGroup(page, c, c.groups[1], manualCurrent(-2, "secondary"), 400);
+  // The message the drawer used to show in its error element.
+  expect(typeof rejected.detail.message).toBe("string");
+  expect(rejected.detail.message.length).toBeGreaterThan(0);
   expect(await json(await page.request.get(c.groupsUrl))).toEqual(beforeGroups);
   expect(await json(await page.request.get(waveformUrl))).toEqual(beforeWaveform);
   await scaled(page, c, true);
-  await page.locator("#wwMgDrawerCancelBtn").click();
-  await page.locator("#measurementGroupsCloseBtn").click();
   await c.row.click({ button: "right" });
   await page.locator("#wwChannelMenuPerUnitBtn").click();
   await expect(page.locator("#wwChannelPerUnitBody")).toContainText("Automatic common current base");
@@ -129,12 +136,10 @@ test("direct Source Default side changes refresh a mixed-authority result withou
   const groups = await json(await page.request.get(c.groupsUrl));
   await scaled(page, c, false);
   for (const side of ["primary", "unknown"]) {
-    await page.locator("#wwOpenPerUnitSettingsBtn").click();
-    await page.locator("#wwOpenPerUnitProfilesFromSettingsBtn").click();
-    await page.locator("#perUnitSourceSelect").selectOption(c.sid);
-    await page.locator("#perUnitCurrentBaseSide").selectOption(side);
-    await page.locator("#perUnitProfilesApplyBtn").click();
-    await expect(page.locator("#perUnitProfilesOverlay")).toBeHidden();
+    await json(await page.request.put(`${c.base}/per-unit/sources/${c.sid}`, { data: {
+      current_base_mode: "direct", direct_current_base_value: 2, current_base_reference_side: side,
+    } }));
+    await page.evaluate(sid => wwRefreshDisplayedChannelsForPerUnitChange(sid), c.sid);
     await scaled(page, c, side === "primary");
     expect(await json(await page.request.get(c.groupsUrl))).toEqual(groups);
   }
@@ -154,9 +159,7 @@ test("nested Current common base is consistent in ER and preserves ENG and selec
   expect(pu.unit).toBe("pu");
   pu.values.forEach((v, i) => expect(v).toBeCloseTo(eng.values[i] / 2000, 10));
   await page.locator("#mainNavWaveformBtn").click();
-  await editGroup(page, c.groups[1]);
-  await page.locator("#wwMgBaseReferenceSide").selectOption("secondary");
-  await saveGroup(page);
+  await saveGroup(page, c, c.groups[1], manualCurrent(2, "secondary"));
   await scaled(page, c, false);
   await page.locator("#mainNavEventReconstructionBtn").click();
   const row = await channelRow(page, c.station, c.nested.name);

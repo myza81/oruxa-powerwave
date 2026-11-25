@@ -408,6 +408,7 @@ test.describe("Event Reconstruction Slice 3E -- Waveform isolation", () => {
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:02.000000", durationS: 4 });
     // Waveform: one displayed channel with its own A/B cursors on.
     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();

@@ -79,6 +79,7 @@ test("GPTH workspace shows 35 analog channels and digital channels", async ({ pa
 
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -102,6 +103,7 @@ test("GPTH workspace shows expected analog channel names", async ({ page }) => {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -123,6 +125,7 @@ test("Enabling TBIN1 VR renders a waveform plot", async ({ page }) => {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -146,6 +149,7 @@ test("TBIN1 3-phase voltages all render in a single waveform panel", async ({ pa
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -170,6 +174,7 @@ test("TBIN1 CB_R OPEN digital channel is present and can be enabled", async ({ p
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -209,6 +214,7 @@ test("GPTH waveform uses relative elapsed time axis, not absolute wall-clock", a
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -270,6 +276,7 @@ test("Enabling all TBIN1 channels produces no console errors", async ({ page }) 
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }

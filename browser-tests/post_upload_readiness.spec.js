@@ -34,6 +34,21 @@ const path = require("path");
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const STEM = "compliance_smoke_multibay";
 
+// D5A-2B2C-1B (DEC-216 Amendment 6): Impedance Locus / Distance Protection take the
+// recorded side of every consumed channel from Recording Details and convert to the
+// requested OUTPUT side only where the two differ. The fixtures below declare their
+// Voltage and Current Primary (`P`) and carry no VT/CT, while the analyzers default the
+// output side to Secondary -- a conversion that is correctly refused
+// (`vt_authority_unavailable`, see d5a_2b2c_1b_protection_side.spec.js). The tests that
+// use these fixtures are about context auto-selection and compute/render, so they
+// request the recorded (Primary) side, which needs no ratio. Nothing is seeded and no
+// safeguard is bypassed.
+async function requestRecordedSide(page, panel) {
+  const select = page.locator(`#ww${panel}OutputBasisSelect`);
+  await select.selectOption("primary");
+  await expect(select).toHaveValue("primary");
+}
+
 async function uploadFixture(page) {
   await page.goto("/index.html");
   await page.locator("#wwRdUploadBtn").first().click();
@@ -221,6 +236,7 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
     await expect(page.locator("#pageAnalysis")).toBeVisible();
     await page.locator("#wwAnalysisTypeImpedanceBtn").click();
     await expect(page.locator("#wwAnalysisTypeImpedanceBtn")).toHaveClass(/active/);
+    await requestRecordedSide(page, "Impedance");
 
     await expect(page.locator("#wwImpedanceContextSelect")).not.toHaveValue("");
     await expect(async () => {
@@ -249,6 +265,7 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
     await expect(page.locator("#pageAnalysis")).toBeVisible();
     await page.locator("#wwAnalysisTypeDistanceBtn").click();
     await expect(page.locator("#wwAnalysisTypeDistanceBtn")).toHaveClass(/active/);
+    await requestRecordedSide(page, "Distance");
 
     await expect(page.locator("#wwDistanceContextSelect")).not.toHaveValue("");
     await expect(async () => {
@@ -357,6 +374,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
   test("Impedance Locus skips the Voltage-only bay and auto-selects the Voltage+Current bay; current point and locus both succeed", async ({ page }) => {
     await uploadMixedCapabilityFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await requestRecordedSide(page, "Impedance");
     await expect(page.locator("#wwImpedanceContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
 
     const kpdn2Id = await page.evaluate(() => wwImpedanceState.contexts.find((c) => c.display_name === "KPDN2").id);
@@ -370,6 +388,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
   test("Distance Protection skips the Voltage-only bay and auto-selects the Voltage+Current bay; loop impedance succeeds", async ({ page }) => {
     await uploadMixedCapabilityFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await requestRecordedSide(page, "Distance");
     await expect(page.locator("#wwDistanceContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
 
     const kpdn2Id = await page.evaluate(() => wwDistanceState.contexts.find((c) => c.display_name === "KPDN2").id);
@@ -525,6 +544,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
   test("Impedance Locus skips the RMS-shaped-current bay and auto-selects the instantaneous bay; current point, locus, and Related Waveforms all succeed", async ({ page }) => {
     await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
     await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await requestRecordedSide(page, "Impedance");
     await expect(page.locator("#wwImpedanceContextSelect option")).toHaveCount(3, { timeout: 10000 });
 
     const instbayId = await page.evaluate(() => wwImpedanceState.contexts.find((c) => c.display_name === "INSTBAY").id);
@@ -542,6 +562,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
   test("Distance Protection skips the RMS-shaped-current bay and auto-selects the instantaneous bay; loop impedance succeeds", async ({ page }) => {
     await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
     await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await requestRecordedSide(page, "Distance");
     await expect(page.locator("#wwDistanceContextSelect option")).toHaveCount(3, { timeout: 10000 });
 
     const instbayId = await page.evaluate(() => wwDistanceState.contexts.find((c) => c.display_name === "INSTBAY").id);
@@ -675,6 +696,7 @@ test.describe("DEC-108: multi-window waveform-form detector correctly accepts ge
   test("Impedance Locus: same context eligible, current point and locus both render", async ({ page }) => {
     await uploadDisturbanceRecordFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await requestRecordedSide(page, "Impedance");
 
     await expect(page.locator("#wwImpedanceContextSelect")).not.toHaveValue("", { timeout: 10000 });
     await expect(async () => {
@@ -688,6 +710,7 @@ test.describe("DEC-108: multi-window waveform-form detector correctly accepts ge
   test("Distance Protection: loop result renders", async ({ page }) => {
     await uploadDisturbanceRecordFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await requestRecordedSide(page, "Distance");
 
     await expect(page.locator("#wwDistanceContextSelect")).not.toHaveValue("", { timeout: 10000 });
     await expect(async () => {

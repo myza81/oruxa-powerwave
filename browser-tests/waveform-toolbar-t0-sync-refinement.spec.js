@@ -40,6 +40,7 @@ async function uploadFixture(page, stem) {
 
 async function displayChannel(page, sourceId, channelName) {
   await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();

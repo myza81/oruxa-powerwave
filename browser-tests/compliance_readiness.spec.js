@@ -209,24 +209,44 @@ test.describe("DEC-167 -- per-unit is required only when the Reference unit is p
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeHidden();
   });
 
-  test("Configure Base opens the existing group editor on the selected group; saving there updates Compliance and the shared configuration", async ({ page }) => {
+  // PU-UI-001 Step C (4161a63) says Configure Base opens Recording Details with the selected group
+  // pre-selected (wwNavigateToRdForGroup). That is the ORIGINAL intent ("on the selected group") and it
+  // is asserted here unchanged. It currently FAILS when the source's groups are not yet cached by
+  // Waveform: wwRdOnPageEntered() then calls wwRdSelectSource(), which clears selectedGroupId.
+  // Reported as an application defect in the P0 remediation handover; production code is not changed.
+  test("Configure Base opens Recording Details with the selected group pre-selected", async ({ page }) => {
+    await uploadSmokeMultibay(page);
+    await addReference(page, { representation: "phase_ground_rms" });
+    await openComplianceAndSelect(page, "KPDN1");
+    await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeVisible();
+    const group = await groupIdOf(page, "KPDN1");
+    await page.locator("#wwComplianceConfigureBaseBtn").click();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
+    await expect(page.locator(`#wwRdGroupsBody .ww-rd-group-item[data-group-id="${group.id}"]`)).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("Configure Base opens Recording Details; saving the group's base there updates Compliance and the shared configuration", async ({ page }) => {
     // Use smoke fixture (primary_ratio=1.0 V) — Slice 6B does not auto-configure its base.
     await uploadSmokeMultibay(page);
     await addReference(page, { representation: "phase_ground_rms" });
     await openComplianceAndSelect(page, "KPDN1");
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeVisible();
 
+    const group = await groupIdOf(page, "KPDN1");
     await page.locator("#wwComplianceConfigureBaseBtn").click();
-    // The EXISTING Measurement Groups modal and its own drawer -- not a Compliance editor.
-    await expect(page.locator("#measurementGroupsOverlay")).toBeVisible();
-    await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
-    await expect(page.locator("#wwMgDrawerTitle")).toHaveText("Edit Voltage Group");
-    await page.locator("#wwMgVoltageKvInput").fill("275");
-    await page.locator("#wwMgDrawerSaveBtn").click();
-    await expect(page.locator("#wwMgDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+    // PU-UI-001 Step C (4161a63): the Measurement Groups modal and drawer were retired. Configure
+    // Base opens the existing Recording Details group editor -- still not a Compliance editor.
+    // The group is selected explicitly here; the redirect's own pre-selection is the previous test.
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
+    await page.locator(`#wwRdGroupsBody .ww-rd-group-item[data-group-id="${group.id}"]`).click();
+    await page.locator("#wwRdTabGroupDetails").click();
+    await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
+    await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("275");
+    await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);   // saved: form closed
 
-    await page.locator("#measurementGroupsCloseBtn").click();
-    await expect(page.locator("#measurementGroupsOverlay")).toBeHidden();
+    await page.locator("#mainNavComplianceBtn").click();
+    await expect(page.locator("#pageCompliance")).toBeVisible();
     // Compliance re-checked readiness: the base is reused, the blocker is gone.
     const unitRow = page.locator('.ww-compliance-readiness-row[data-row="unit"]');
     await expect(unitRow).toHaveAttribute("data-state", "ready");
@@ -234,7 +254,6 @@ test.describe("DEC-167 -- per-unit is required only when the Reference unit is p
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeHidden();
 
     // One shared configuration: the group's own voltage config now holds it (what Waveform reads).
-    const group = await groupIdOf(page, "KPDN1");
     const groups = await (await page.request.get(await wsUrl(page, `/sources/${encodeURIComponent(group.source_id)}/measurement-groups`))).json();
     const stored = groups.find((g) => g.id === group.id);
     expect(JSON.stringify(stored)).toContain("275");

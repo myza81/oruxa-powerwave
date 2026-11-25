@@ -734,6 +734,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     // what the hidden-overlay assertion below checks against,
     // independent of which page actually drives the seek.
     await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
     const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     await expect(channelRow).toBeVisible();

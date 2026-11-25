@@ -108,6 +108,7 @@ test("Permas Jaya workspace shows 27 analog and ≥1 digital channels", async ({
   await uploadBen(page, PERMAS_BEN_PATH);
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -128,6 +129,7 @@ test("Permas Jaya workspace shows expected analog channel names", async ({ page 
   await uploadBen(page, PERMAS_BEN_PATH);
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -154,6 +156,7 @@ test("Enabling PLTG1 VR renders a waveform plot", async ({ page }) => {
   await uploadBen(page, PERMAS_BEN_PATH);
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -178,6 +181,7 @@ test("Permas Jaya waveform uses relative elapsed time axis, not absolute wall-cl
   await uploadBen(page, PERMAS_BEN_PATH);
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }

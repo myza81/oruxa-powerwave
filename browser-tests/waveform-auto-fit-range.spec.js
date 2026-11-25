@@ -91,6 +91,10 @@ async function openSourceInWorkspace(page, sourceId) {
     // Not on the Waveform page yet -- only the Recordings-page row
     // ("Open ... for analysis") navigates there.
     await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    // Selecting a recording in Recording Details no longer opens Waveform; the "Open ... for
+    // analysis" action is now Recording Details' View Waveform button (openRecordingForAnalysis),
+    // which is also what establishes the source's own initial bounds (DEC-037 zero-channel case).
+    await page.locator("#wwRdViewWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
   }
   const details = page.locator(`details.source-recording[data-source-id="${sourceId}"]`);

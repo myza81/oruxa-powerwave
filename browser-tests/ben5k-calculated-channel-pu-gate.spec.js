@@ -142,7 +142,8 @@ test("BEN5K calc gate: Reverse Polarity of BEN5K VA → calibration_unavailable 
   // Navigate to Waveform, enable PU mode, then add CalcA.
   await page.locator("#mainNavWaveformBtn").click();
   await expect(page.locator("#calculatedChannelsSidebarBody tr[data-calculated-channel-id]").first()).toBeVisible();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
   await showCalcChannel(page, calcA.name);
   await expect(page.locator(".ww-chart .plotly").first()).toBeVisible({ timeout: 15_000 });
 
@@ -182,7 +183,8 @@ test("BEN5K calc gate: chain CalcB-from-CalcA-from-BEN5K → calibration_unavail
 
   await page.locator("#mainNavWaveformBtn").click();
   await expect(page.locator("#calculatedChannelsSidebarBody tr[data-calculated-channel-id]").first()).toBeVisible();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
 
   await showCalcChannel(page, calcA.name);
   await showCalcChannel(page, calcB.name);
@@ -229,7 +231,8 @@ test("BEN5K calc gate (original-risk): CalcA added while PU already active → g
 
   // Navigate to Waveform and enable PU BEFORE adding CalcA.
   await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
   expect(
     await page.evaluate(() => ww.unitMode),
     "unit mode must be per_unit before channel add"
@@ -342,7 +345,8 @@ test("BEN5K calc gate (baseline): COMTRADE-sourced Reverse Polarity is NOT block
   const calcA = await createReversePolarity(page, "VA");
 
   await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
   await showCalcChannel(page, calcA.name);
   await expect(page.locator(".ww-chart .plotly").first()).toBeVisible({ timeout: 15_000 });
 

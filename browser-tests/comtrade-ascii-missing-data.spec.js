@@ -21,6 +21,7 @@ async function uploadFrequency(page, revision) {
   const source = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   const sid = await source.getAttribute("data-source-id");
   await source.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   return sid;
 }
 

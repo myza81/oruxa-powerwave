@@ -1,6 +1,7 @@
 // PU-005/008: real arrays and rendered cursor values, with controlled request timing.
 const { test, expect } = require("./support/test");
 const { BACKEND, uploadRecord, workspaceId, sourceIdFor } = require("./support/event_reconstruction_helpers");
+const { openRdVoltageEditor } = require("./support/recording_details_pu_helpers");
 const fs = require("node:fs");
 const path = require("node:path");
 let evidenceIndex = 0;
@@ -136,10 +137,15 @@ for (const visibility of [{ a: true, b: true }, { a: true, b: false }, { a: fals
   });
 }
 
-test("latest Engineering selection wins over delayed PU metadata", async ({ page }) => {
+// The former "delayed PU metadata" request (the Source Default list, GET
+// /per-unit/sources) is no longer made on a mode switch (PU-UI-001 Step B, be1e7e0), so
+// holding it would hold nothing. The same race -- an older PU response arriving after
+// the latest Engineering choice -- is exercised on the PU responses that remain: the PU
+// cursor values here and the PU waveform below.
+test("latest Engineering selection wins over delayed PU cursor values", async ({ page }) => {
   const { source } = await setup(page);
   await cursors(page, source);
-  const held = await holdResponse(page, "**/per-unit/sources");
+  const held = await holdResponse(page, "**/cursor-values", request => request.postDataJSON().unit_mode === "per_unit");
   await page.locator("#wwUnitPerUnitBtn").click();
   await held.reached;
   await page.locator("#wwUnitEngineeringBtn").click();
@@ -162,11 +168,12 @@ test("real Voltage Group save refreshes fixed cursors and rejects an old cursor 
   const held = await holdResponse(page, "**/cursor-values");
   await page.evaluate(source => { window.oldCursorJob = wwFetchCursorValuesForSource(source); }, source);
   await held.reached;
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${voltage.id}"]`).click();
-  await page.locator("#wwMgVoltageKvInput").fill("132");
-  await page.locator("#wwMgDrawerSaveBtn").click();
+  // The retired Settings Hub / MG drawer is replaced by the Recording Details voltage editor.
+  await openRdVoltageEditor(page, source, voltage.id);
+  await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("132");
+  await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);   // saved: form closed
+  await page.locator("#mainNavWaveformBtn").click();
   await expect.poll(async () => (await channelState(page, source)).peak).toBeCloseTo(Math.sqrt(2) * 275 / 132, 10);
   await expectCursors(page, source, Math.sqrt(2) * 275 / 132);
   held.release();
@@ -174,24 +181,22 @@ test("real Voltage Group save refreshes fixed cursors and rejects an old cursor 
   await expectCursors(page, source, Math.sqrt(2) * 275 / 132);
 });
 
-test("Source Default save and clear update fixed cursors through the real editor", async ({ page }) => {
-  const { source } = await setup(page, { sourceDefault: true });
+// The Source Default editor was removed from the frontend (PU-UI-001 Step B, be1e7e0);
+// its backend storage and endpoint remain "for ungrouped fallback". The save and the
+// clear are made through that real endpoint and followed by the same display refresh the
+// retired editor ran after a successful save/delete.
+test("Source Default save and clear update fixed cursors through the real endpoint", async ({ page }) => {
+  const { source, base } = await setup(page, { sourceDefault: true });
   await cursors(page, source);
   await switchMode(page, "per_unit");
   await expectCursors(page, source, Math.sqrt(2));
-  const open = async () => {
-    await page.locator("#wwOpenPerUnitSettingsBtn").click();
-    await page.locator("#wwOpenPerUnitProfilesFromSettingsBtn").click();
-    await page.locator("#perUnitSourceSelect").selectOption(source);
-  };
-  await open();
-  await page.locator("#perUnitVoltageBaseValue").fill("132");
-  await page.locator("#perUnitProfilesApplyBtn").click();
+  const config = `${base}/per-unit/sources/${source}`;
+  expect((await page.request.put(config, { data: { voltage_base_value: 132 } })).ok()).toBe(true);
+  await page.evaluate(source => wwRefreshDisplayedChannelsForPerUnitChange(source), source);
   await expectCursors(page, source, Math.sqrt(2) * 275 / 132);
   expect((await channelState(page, source)).unit).toBe("pu");
-  await open();
-  page.once("dialog", dialog => dialog.accept());
-  await page.locator("#perUnitDeleteProfileBtn").click();
+  expect((await page.request.delete(config)).ok()).toBe(true);
+  await page.evaluate(source => wwRefreshDisplayedChannelsForPerUnitChange(source), source);
   await expectCursors(page, source, PEAK_KV);
   await expect.poll(async () => (await channelState(page, source)).unit).toBe("kV");
 });
@@ -237,10 +242,10 @@ test("delayed PU waveform cannot override a later Engineering selection", async 
   await expectCursors(page, source, PEAK_KV);
 });
 
-test("rapid ENG-PU-ENG-PU intent wins even when the oldest metadata finishes last", async ({ page }) => {
+test("rapid ENG-PU-ENG-PU intent wins even when the oldest PU waveform finishes last", async ({ page }) => {
   const { source } = await setup(page);
   await cursors(page, source);
-  const held = await holdResponse(page, "**/per-unit/sources");
+  const held = await holdResponse(page, `**/sources/${source}/waveform?**`, request => new URL(request.url()).searchParams.get("unit_mode") === "per_unit");
   await page.locator("#wwUnitPerUnitBtn").click();
   await held.reached;
   await page.locator("#wwUnitEngineeringBtn").click();
@@ -278,17 +283,17 @@ for (const action of ["source removal", "workspace reset"]) {
   });
 }
 
-test("reset during delayed PU metadata cannot restore the old mode or arrays", async ({ page }) => {
+test("reset during a delayed PU waveform cannot restore the old mode or arrays", async ({ page }) => {
   const { source } = await setup(page);
   await cursors(page, source);
-  const held = await holdResponse(page, "**/per-unit/sources");
+  const held = await holdResponse(page, `**/sources/${source}/waveform?**`, request => new URL(request.url()).searchParams.get("unit_mode") === "per_unit");
   await page.locator("#wwUnitPerUnitBtn").click();
   await held.reached;
   await page.evaluate(() => wwClearWorkspace({ resetSourceBounds: true }));
   held.release();
   await page.evaluate(() => Promise.all(window.unitJobs));
-  expect(await page.evaluate(() => ({ mode: ww.unitMode, values: ww.cursorValues.size, displayed: ww.displayed.size, configs: ww.perUnitSourceConfigs.size })))
-    .toEqual({ mode: "engineering", values: 0, displayed: 0, configs: 0 });
+  expect(await page.evaluate(() => ({ mode: ww.unitMode, values: ww.cursorValues.size, displayed: ww.displayed.size })))
+    .toEqual({ mode: "engineering", values: 0, displayed: 0 });
 });
 
 async function addGroup(page, context, kind, names, configuration) {

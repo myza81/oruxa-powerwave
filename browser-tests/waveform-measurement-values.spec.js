@@ -18,6 +18,7 @@ async function upload(page, files, ben = true) {
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
   const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first(), sid = await row.getAttribute("data-source-id");
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   return `${BACKEND}/api/v1/workspaces/${await workspaceId(page)}/sources/${sid}`;
 }
 async function display(page, name) {
