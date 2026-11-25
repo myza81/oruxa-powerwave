@@ -1,0 +1,72 @@
+{
+ "baseline_tip": "446b566",
+ "code_commit": "3179cd4",
+ "phase_a_commit": "ac198ff",
+ "backend_full_run": {
+  "baseline_446b566": {
+   "passed": 14810,
+   "skipped": 405,
+   "xfailed": 6,
+   "failed": 0
+  },
+  "nf3d_3179cd4": {
+   "passed": 15109,
+   "skipped": 405,
+   "xfailed": 4,
+   "failed": 0,
+   "duration_s": 3127.98
+  },
+  "first_full_run_before_test_fixes": {
+   "failed": 26,
+   "groups": {
+    "test_phasor_calibration_gate": 18,
+    "test_calculated_timing_authority": 2,
+    "test_time_reference_interpretation": 2,
+    "test_nf3b_server_side_release_gate": 4
+   }
+  }
+ },
+ "approved_changes_manifest": {
+  "nf3d_pre_migration_baseline": {
+   "total": 946,
+   "provenance_added": 576,
+   "unusable_refusal": 347,
+   "sampling_unsupported": 23
+  },
+  "nf3b_frozen_baselines": {
+   "total": 79,
+   "provenance_added": 57,
+   "unusable_refusal": 22
+  }
+ },
+ "mutation_checks": {
+  "total": 17,
+  "killed": 17,
+  "first_run_survivors": [
+   "M14 (fixed by two new tests, then killed)"
+  ]
+ },
+ "browser": {
+  "focused_isolated_run": {
+   "passed": 511,
+   "skipped": 3,
+   "failed": 47
+  },
+  "failure_classification": {
+   "nf2_harness_artefact_passes_on_default_ports": 35,
+   "compliance_identical_on_446b566": 4,
+   "ben5k_phasor_gate_identical_on_446b566": 3,
+   "phasor_playback_known": 1,
+   "unexplained": 0
+  },
+  "default_port_rerun_of_failed_specs": {
+   "passed": 78,
+   "skipped": 1,
+   "failed": 7
+  },
+  "nf3c_tip_446b566_same_specs": {
+   "passed": 38,
+   "failed": 7
+  }
+ }
+}
