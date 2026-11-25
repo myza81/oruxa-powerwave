@@ -1,0 +1,2312 @@
+{
+ "baseline_git_sha": "6794150f430f60003879153606feed723b1c12ea",
+ "numpy": "2.4.6",
+ "outcomes": {
+  "ben_import_supplied_http": {
+   "not_supplied_assumed": {
+    "detect_event": {
+     "body": {
+      "baseline_rms": 272.235614256,
+      "candidate_source_time": 0.205,
+      "candidate_workspace_time": 0.205,
+      "change_ratio": 0.399993941565,
+      "changed_rms": 108.892596381,
+      "channel_unit": "kV",
+      "detector_method": "rms_sustained_change",
+      "direction": "decrease",
+      "found": true,
+      "nominal_frequency_hz": 50.0,
+      "quality": "strong",
+      "reason": "Sustained RMS reduction detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "assumed_default",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "assumed_default",
+     "usable": true
+    },
+    "oscillation_representation": {
+     "body": {
+      "bandwidth_half_power_hz": 22.1473235345,
+      "bandwidth_limit_hz": 50.0,
+      "boundary_loss_end_s": 0.0,
+      "boundary_loss_start_s": 0.02,
+      "derived_sample_count": 480,
+      "group_delay_s": 0.01,
+      "message": null,
+      "nominal_frequency_hz": 50.0,
+      "nominal_frequency_origin": "assumed_default",
+      "reason_code": null,
+      "reporting": "every_source_sample",
+      "representation": "rms_magnitude",
+      "representation_sample_rate_hz": 1000.0,
+      "source_end_s": 0.499,
+      "source_form": "instantaneous",
+      "source_sample_count": 500,
+      "source_sample_rate_hz": 1000.0,
+      "source_start_s": 0.0,
+      "status": "ready",
+      "valid_end_s": 0.499,
+      "valid_start_s": 0.02,
+      "window_alignment": "trailing",
+      "window_s": 0.02
+     },
+     "status": 200
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "supplied_50_explicit": {
+    "detect_event": {
+     "body": {
+      "baseline_rms": 272.235614256,
+      "candidate_source_time": 0.205,
+      "candidate_workspace_time": 0.205,
+      "change_ratio": 0.399993941565,
+      "changed_rms": 108.892596381,
+      "channel_unit": "kV",
+      "detector_method": "rms_sustained_change",
+      "direction": "decrease",
+      "found": true,
+      "nominal_frequency_hz": 50.0,
+      "quality": "strong",
+      "reason": "Sustained RMS reduction detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "import_supplied",
+     "effective_hz": 50.0,
+     "imported_text": "50.0",
+     "mode": "auto",
+     "origin": "import_supplied",
+     "usable": true
+    },
+    "oscillation_representation": {
+     "body": {
+      "bandwidth_half_power_hz": 22.1473235345,
+      "bandwidth_limit_hz": 50.0,
+      "boundary_loss_end_s": 0.0,
+      "boundary_loss_start_s": 0.02,
+      "derived_sample_count": 480,
+      "group_delay_s": 0.01,
+      "message": null,
+      "nominal_frequency_hz": 50.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": null,
+      "reporting": "every_source_sample",
+      "representation": "rms_magnitude",
+      "representation_sample_rate_hz": 1000.0,
+      "source_end_s": 0.499,
+      "source_form": "instantaneous",
+      "source_sample_count": 500,
+      "source_sample_rate_hz": 1000.0,
+      "source_start_s": 0.0,
+      "status": "ready",
+      "valid_end_s": 0.499,
+      "valid_start_s": 0.02,
+      "window_alignment": "trailing",
+      "window_s": 0.02
+     },
+     "status": 200
+    },
+    "source_summary_nominal_frequency": 50.0,
+    "upload_status": 201
+   },
+   "supplied_60": {
+    "detect_event": {
+     "body": {
+      "baseline_rms": 272.158685402,
+      "candidate_source_time": 0.203,
+      "candidate_workspace_time": 0.203,
+      "change_ratio": 0.368007128765,
+      "changed_rms": 100.156336383,
+      "channel_unit": "kV",
+      "detector_method": "rms_sustained_change",
+      "direction": "decrease",
+      "found": true,
+      "nominal_frequency_hz": 60.0,
+      "quality": "strong",
+      "reason": "Sustained RMS reduction detected."
+     },
+     "status": 200
+    },
+    "nominal_frequency_endpoint": {
+     "auto_origin": "import_supplied",
+     "effective_hz": 60.0,
+     "imported_text": "60.0",
+     "mode": "auto",
+     "origin": "import_supplied",
+     "usable": true
+    },
+    "oscillation_representation": {
+     "body": {
+      "bandwidth_half_power_hz": 26.5767882414,
+      "bandwidth_limit_hz": 60.0,
+      "boundary_loss_end_s": 0.0,
+      "boundary_loss_start_s": 0.017,
+      "derived_sample_count": 483,
+      "group_delay_s": 0.00833333333333,
+      "message": null,
+      "nominal_frequency_hz": 60.0,
+      "nominal_frequency_origin": "recording_metadata",
+      "reason_code": null,
+      "reporting": "every_source_sample",
+      "representation": "rms_magnitude",
+      "representation_sample_rate_hz": 1000.0,
+      "source_end_s": 0.499,
+      "source_form": "instantaneous",
+      "source_sample_count": 500,
+      "source_sample_rate_hz": 1000.0,
+      "source_start_s": 0.0,
+      "status": "ready",
+      "valid_end_s": 0.499,
+      "valid_start_s": 0.017,
+      "window_alignment": "trailing",
+      "window_s": 0.0166666666667
+     },
+     "status": 200
+    },
+    "source_summary_nominal_frequency": 60.0,
+    "upload_status": 201
+   }
+  },
+  "compliance_measurement_http": {
+   "assumed_50": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "assumed_on_60hz_signal": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB, VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "declared_0_5": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB, VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "declared_1001": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "rms",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "direct_rms",
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "rms",
+      "measurement_group_id": "mg-<id>",
+      "message": "Line-Line AB Voltage requires simultaneous complex phase phasors, which requires Instantaneous input. The resolved phase channels are already-RMS magnitude-only, with no phase-angle information -- deriving this quantity would require an unsafe balanced-system assumption during a disturbance.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "unsupported_representation",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "rms",
+      "measurement_group_id": "mg-<id>",
+      "message": "Positive Sequence Voltage requires simultaneous complex phase phasors, which requires Instantaneous input. The resolved phase channels are already-RMS magnitude-only, with no phase-angle information -- deriving this quantity would require an unsafe balanced-system assumption during a disturbance.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "unsupported_representation",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "declared_50_on_60hz_signal": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB, VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "declared_inf": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "phase_ab_ll_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "positive_sequence_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    }
+   },
+   "declared_nan": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "phase_ab_ll_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "positive_sequence_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    }
+   },
+   "declared_negative_50": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": null,
+      "measurement_group_id": "mg-<id>",
+      "message": "Could not confidently determine whether VA, VB, VC is Instantaneous or RMS. Powerwave does not guess this from the channel name.",
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "ambiguous_measurement_metadata",
+      "used_direct_pair": false,
+      "value_representation": null,
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "declared_zero": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "phase_ab_ll_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    },
+    "positive_sequence_rms": {
+     "body": "Internal Server Error",
+     "status": 500
+    }
+   },
+   "r50": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "r50_fs4096": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "r60": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   },
+   "r60_fs4096": {
+    "groups": [
+     {
+      "display_name": "ALPHA1 VOLTAGE",
+      "status": "suggested"
+     }
+    ],
+    "phase_a_lg_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Phase A Voltage",
+      "quantity_id": "phase_a_lg_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_ground"
+     },
+     "status": 200
+    },
+    "phase_ab_ll_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Line-Line AB Voltage",
+      "quantity_id": "phase_ab_ll_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "line_to_line"
+     },
+     "status": 200
+    },
+    "positive_sequence_rms": {
+     "body": {
+      "assessment_unit": "engineering_unit",
+      "base": null,
+      "input_type": "instantaneous",
+      "measurement_group_id": "mg-<id>",
+      "message": null,
+      "missing": [],
+      "phase_display": {
+       "convention": "ABC",
+       "reason": null,
+       "status": "established",
+       "symbols": {
+        "A": "A",
+        "AB": "AB",
+        "B": "B",
+        "BC": "BC",
+        "C": "C",
+        "CA": "CA"
+       }
+      },
+      "quantity_display_label": "Positive Sequence Voltage",
+      "quantity_id": "positive_sequence_rms",
+      "resolved_roles": [
+       {
+        "channel_name": "ALPHA1_VA",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VA",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Va",
+        "role": "A"
+       },
+       {
+        "channel_name": "ALPHA1_VB",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VB",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vb",
+        "role": "B"
+       },
+       {
+        "channel_name": "ALPHA1_VC",
+        "channel_ref": {
+         "calculated_channel_id": null,
+         "channel_name": "ALPHA1_VC",
+         "kind": "source",
+         "source_id": "<id>"
+        },
+        "display_name": "Vc",
+        "role": "C"
+       }
+      ],
+      "status": "available",
+      "used_direct_pair": false,
+      "value_representation": "fundamental_rms",
+      "voltage_representation": "positive_sequence"
+     },
+     "status": 200
+    }
+   }
+  },
+  "oscillation_representation_http": {
+   "assumed_50": {
+    "body": {
+     "bandwidth_half_power_hz": 22.1473235345,
+     "bandwidth_limit_hz": 50.0,
+     "boundary_loss_end_s": 0.0,
+     "boundary_loss_start_s": 0.02,
+     "derived_sample_count": 4900,
+     "group_delay_s": 0.01,
+     "message": null,
+     "nominal_frequency_hz": 50.0,
+     "nominal_frequency_origin": "assumed_default",
+     "reason_code": null,
+     "reporting": "every_source_sample",
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": 5000.0,
+     "source_end_s": 0.9998,
+     "source_form": "instantaneous",
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "ready",
+     "valid_end_s": 0.9998,
+     "valid_start_s": 0.02,
+     "window_alignment": "trailing",
+     "window_s": 0.02
+    },
+    "status": 200
+   },
+   "assumed_on_60hz_signal": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "nominal_frequency_hz": 50.0,
+     "nominal_frequency_origin": "assumed_default",
+     "reason_code": "form_unconfirmed",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_0_5": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "The recording's nominal frequency is missing or outside a sensible range.",
+     "nominal_frequency_hz": 0.5,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "invalid_nominal_frequency",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_1001": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "The recording's nominal frequency is missing or outside a sensible range.",
+     "nominal_frequency_hz": 1001.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "invalid_nominal_frequency",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_50_on_60hz_signal": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+     "nominal_frequency_hz": 50.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "form_unconfirmed",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_inf": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "The recording's nominal frequency is missing or outside a sensible range.",
+     "nominal_frequency_hz": null,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "invalid_nominal_frequency",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_nan": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "The recording's nominal frequency is missing or outside a sensible range.",
+     "nominal_frequency_hz": null,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "invalid_nominal_frequency",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_negative_50": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "The recording's nominal frequency is missing or outside a sensible range.",
+     "nominal_frequency_hz": -50.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "invalid_nominal_frequency",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "declared_zero": {
+    "body": {
+     "bandwidth_half_power_hz": null,
+     "bandwidth_limit_hz": null,
+     "boundary_loss_end_s": null,
+     "boundary_loss_start_s": null,
+     "derived_sample_count": null,
+     "group_delay_s": null,
+     "message": "The recording's nominal frequency is missing or outside a sensible range.",
+     "nominal_frequency_hz": 0.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": "invalid_nominal_frequency",
+     "reporting": null,
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": null,
+     "source_end_s": 0.9998,
+     "source_form": null,
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "unavailable",
+     "valid_end_s": null,
+     "valid_start_s": null,
+     "window_alignment": null,
+     "window_s": null
+    },
+    "status": 200
+   },
+   "r50": {
+    "body": {
+     "bandwidth_half_power_hz": 22.1473235345,
+     "bandwidth_limit_hz": 50.0,
+     "boundary_loss_end_s": 0.0,
+     "boundary_loss_start_s": 0.02,
+     "derived_sample_count": 4900,
+     "group_delay_s": 0.01,
+     "message": null,
+     "nominal_frequency_hz": 50.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": null,
+     "reporting": "every_source_sample",
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": 5000.0,
+     "source_end_s": 0.9998,
+     "source_form": "instantaneous",
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "ready",
+     "valid_end_s": 0.9998,
+     "valid_start_s": 0.02,
+     "window_alignment": "trailing",
+     "window_s": 0.02
+    },
+    "status": 200
+   },
+   "r50_fs4096": {
+    "body": {
+     "bandwidth_half_power_hz": 22.1473235345,
+     "bandwidth_limit_hz": 50.0,
+     "boundary_loss_end_s": 0.0,
+     "boundary_loss_start_s": 0.0200195,
+     "derived_sample_count": 4014,
+     "group_delay_s": 0.01,
+     "message": null,
+     "nominal_frequency_hz": 50.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": null,
+     "reporting": "every_source_sample",
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": 4096.68168783,
+     "source_end_s": 0.9997559,
+     "source_form": "instantaneous",
+     "source_sample_count": 4096,
+     "source_sample_rate_hz": 4096.68168783,
+     "source_start_s": 0.0,
+     "status": "ready",
+     "valid_end_s": 0.9997559,
+     "valid_start_s": 0.0200195,
+     "window_alignment": "trailing",
+     "window_s": 0.02
+    },
+    "status": 200
+   },
+   "r60": {
+    "body": {
+     "bandwidth_half_power_hz": 26.5767882414,
+     "bandwidth_limit_hz": 60.0,
+     "boundary_loss_end_s": 0.0,
+     "boundary_loss_start_s": 0.0168,
+     "derived_sample_count": 4916,
+     "group_delay_s": 0.00833333333333,
+     "message": null,
+     "nominal_frequency_hz": 60.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": null,
+     "reporting": "every_source_sample",
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": 5000.0,
+     "source_end_s": 0.9998,
+     "source_form": "instantaneous",
+     "source_sample_count": 5000,
+     "source_sample_rate_hz": 5000.0,
+     "source_start_s": 0.0,
+     "status": "ready",
+     "valid_end_s": 0.9998,
+     "valid_start_s": 0.0168,
+     "window_alignment": "trailing",
+     "window_s": 0.0166666666667
+    },
+    "status": 200
+   },
+   "r60_fs4096": {
+    "body": {
+     "bandwidth_half_power_hz": 26.5767882414,
+     "bandwidth_limit_hz": 60.0,
+     "boundary_loss_end_s": 0.0,
+     "boundary_loss_start_s": 0.0168457,
+     "derived_sample_count": 4027,
+     "group_delay_s": 0.00833333333333,
+     "message": null,
+     "nominal_frequency_hz": 60.0,
+     "nominal_frequency_origin": "recording_metadata",
+     "reason_code": null,
+     "reporting": "every_source_sample",
+     "representation": "rms_magnitude",
+     "representation_sample_rate_hz": 4096.68168783,
+     "source_end_s": 0.9997559,
+     "source_form": "instantaneous",
+     "source_sample_count": 4096,
+     "source_sample_rate_hz": 4096.68168783,
+     "source_start_s": 0.0,
+     "status": "ready",
+     "valid_end_s": 0.9997559,
+     "valid_start_s": 0.0168457,
+     "window_alignment": "trailing",
+     "window_s": 0.0166666666667
+    },
+    "status": 200
+   }
+  }
+ },
+ "platform": "Windows-11-10.0.26200-SP0",
+ "purpose": "Frozen pre-NF-3C consumer behaviour on the NF-3B tip (characterisation, defects included)",
+ "python": "3.12.10",
+ "scenario_runner": "backend/tests/nf3c_baseline_scenarios.py",
+ "schema": 1
+}
