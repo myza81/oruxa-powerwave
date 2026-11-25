@@ -1,4 +1,4 @@
-// NF-3C -- how the frontend words a recording's nominal-frequency provenance (owner decisions O-6 and O-11, 2026-11-26).
+// NF-3C -- how the frontend words a recording's nominal-frequency provenance (owner decisions O-6 and O-11, 2026-11-25).
 //
 // This file began as the Phase A HISTORICAL characterisation (commit 19d9755: "from the recording" / "assumed default" at the three oscillation
 // sites, and "null Hz" on the Technical facts card). NF-3C changed those on purpose; the assertions below are the approved result. The old
