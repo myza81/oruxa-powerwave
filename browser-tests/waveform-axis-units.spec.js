@@ -38,8 +38,15 @@ test('Voltage ENG/PU and recording-side changes use resolved response units, wit
   await json(await page.request.put(`${base}/sources/${sid}/measurement-side`,{data:{side:'secondary'}}));
   await page.evaluate(async()=>wwRefreshWaveformDisplayBasis());
   await expect(page.locator('[data-waveform-axis-unit="y"]')).toHaveText('pu');
-  // WUI-004 displays the engine result; changing interpretation does not invent a conversion here.
-  expect(await page.evaluate(()=>ww.panels[0].channels[0].values)).toEqual(pu);
+  // WUI-004 displays the engine result and invents no conversion of its own. PU-MIG S2 (S0 IC-7): the recording side is now the
+  // proof that places the Primary nominal base on the samples' side, so the ENGINE result changes with it -- here to 1200 times the
+  // Primary reading (132 kV nominal against the auto-derived 110 V secondary). What this test guards is unchanged: the pane shows
+  // exactly what the engine returned (compared with the API's own response), converted once and never twice.
+  const shown=await page.evaluate(()=>ww.panels[0].channels[0].values.slice());
+  const engine=(await json(await page.request.get(`${base}/sources/${sid}/waveform?channel_name=${encodeURIComponent(await page.evaluate(()=>ww.panels[0].channels[0].channelName))}&unit_mode=per_unit`))).values;
+  expect(shown).toEqual(engine);
+  expect(shown).not.toEqual(pu);
+  shown.forEach((v,i)=>expect(v).toBeCloseTo(pu[i]*1200,6));
   await page.evaluate(async()=>wwApplyUnitMode('engineering'));
   await expect(page.locator('[data-waveform-axis-unit="y"]')).toHaveText('kV');
 });
