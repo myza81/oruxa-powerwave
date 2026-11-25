@@ -36,15 +36,14 @@ FRONTEND_INDEX = BACKEND.parent / "frontend" / "index.html"
 #: G1. Every `<anything>.nominal_frequency` attribute READ (the imported value or a carried copy of it).
 ATTRIBUTE_READS = {
     "schemas/source.py": 1,                                  # D  the source summary echoes the imported value (original metadata)
-    "services/compliance_measurement_service.py": 1,         # M  C-05 NF-3C
-    "services/compliance_readiness_service.py": 1,           # M  C-04 NF-3C
+    # NF-3C migrated C-05 (compliance_measurement_service) and C-04 (compliance_readiness_service): both rows removed.
     "services/import_service.py": 1,                         # D  C-18 importer: provider metadata -> SourceMetadata
     "services/nominal_frequency_service.py": 1,              # D  the authority reads the immutable imported value
     "services/oscillation_representation_service.py": 1,     # M  C-06 NF-3C
     "services/overcurrent_analysis_service.py": 4,           # M  C-02 NF-3D (2 on the source metadata, 2 on the carried candidate)
     "services/phasor_analysis_service.py": 5,                # M  C-01 NF-3D (2 on the source metadata, 3 on the carried candidates)
     "services/preparation_conversion_service.py": 1,         # D  C-18 CSV/Excel importer
-    "services/synchronization_service.py": 2,                # M  C-03 NF-3C
+    "services/synchronization_service.py": 1,                # D  C-03 migrated in NF-3C; the one read left echoes the DECLARED value for an unusable recording (O-7 option A)
 }
 
 #: G2. Every string constant naming a frequency field (dictionary keys, `parameters[...]`, `.get(...)`): the wire/storage names.
@@ -94,7 +93,12 @@ FREQUENCY_DEFAULTS = {
 #: G5. Who may import which module. The NF-1 service layer owns the gate, so only the accessor imports it; in NF-3B only the
 #: application factory and the NF-1 router import the accessor (no engineering consumer yet).
 SERVICE_IMPORTERS = {"services/nominal_frequency_access.py"}
-ACCESS_IMPORTERS = {"main.py", "api/v1/nominal_frequency.py"}
+#: NF-3C: the migrated consumers (and the router dependency that hands the synchronization service its accessor) join the importers. Each later slice
+#: adds ITS files here, in the same commit that migrates them.
+ACCESS_IMPORTERS = {
+    "main.py", "api/v1/nominal_frequency.py", "api/v1/synchronization.py",
+    "services/compliance_measurement_service.py", "services/compliance_readiness_service.py", "services/synchronization_service.py",
+}
 #: Files that may mention the registry at all; of these only the service layer may READ it (lifecycle removal is the rest).
 REGISTRY_USERS = {
     "api/v1/sources.py", "api/v1/workspaces.py", "main.py", "services/nominal_frequency_access.py",
@@ -233,7 +237,7 @@ class TestTheAuthorityCannotBeBypassed:
     def test_only_the_gated_accessor_imports_the_nf1_service_layer(self):
         assert scan_importers(APP_DIR, "app.services.nominal_frequency_service") == SERVICE_IMPORTERS
 
-    def test_no_engineering_consumer_imports_the_accessor_yet(self):
+    def test_only_the_migrated_consumers_import_the_accessor(self):
         assert scan_importers(APP_DIR, "app.services.nominal_frequency_access") == ACCESS_IMPORTERS
 
     def test_the_stored_manual_value_is_read_only_by_the_service_layer(self):

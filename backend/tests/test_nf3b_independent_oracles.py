@@ -153,14 +153,16 @@ class TestConsumersMustRefuseAnUnusableDeclaredFrequencyWithoutAnException:
             "pickup_current_secondary": 1.0, "recording_basis": "secondary"})
         assert r.status_code == 200 and r.json()["status"] == "needs_configuration"
 
-    @pytest.mark.xfail(strict=True, reason="NF-3C: compliance measurement passes the declared value to the detector (D-C)")
     def test_compliance_measurement_does_not_raise_for_zero_hertz(self):
+        # NF-3C fixed this (the strict xfail flipped and its marker was removed in the same commit): an unusable declaration is
+        # never handed to the detector; the classifier answers "do not guess".
         from app.services.compliance_measurement_service import _classify_input_type
         from app.services.workspace_registry import WorkspaceRegistry
+        from tests.nf3c_access_support import access_for
         sources = WorkspaceRegistry()
         sources.add(scn.build_source("src", 0.0, {"source_format": "COMTRADE"}, 50.0))
         result = _classify_input_type(ChannelRef(kind="source", source_id="src", channel_name="IA"),
-                                      workspace_id=scn.WS, source_registry=sources)
+                                      workspace_id=scn.WS, source_registry=sources, frequency_access=access_for(sources))
         assert result is None                                                         # "do not guess"
 
     @pytest.mark.xfail(strict=True, reason="NF-3E: the eligibility body frequency is not validated; HTTP 500 for 0 (D-B, O-10)")

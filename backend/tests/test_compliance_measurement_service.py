@@ -54,6 +54,7 @@ from app.services.errors import (
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
+from tests.nf3c_access_support import access_for
 
 SAMPLE_RATE_HZ = 5000.0
 DURATION_S = 2.0
@@ -137,6 +138,7 @@ def _evaluate(registries, *, group_id: str, quantity_id: str) -> object:
         workspace_id=WORKSPACE_ID, measurement_group_id=group_id, quantity_id=quantity_id,
         source_registry=registries["source"], group_registry=registries["group"],
         voltage_config_registry=registries["voltage_config"], current_config_registry=registries["current_config"],
+        frequency_access=access_for(registries["source"]),
     )
 
 

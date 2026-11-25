@@ -208,6 +208,7 @@ def get_compliance_voltage_measurement(
             group_registry=get_measurement_group_registry(request),
             voltage_config_registry=get_voltage_group_config_registry(request),
             current_config_registry=get_current_group_config_registry(request),
+            frequency_access=request.app.state.nominal_frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -271,6 +272,7 @@ def _readiness_deps(request: Request) -> dict:
         current_config_registry=state.current_group_config_registry, calc_registry=state.calculated_channel_registry,
         context_registry=state.engineering_context_registry, layer_registry=state.reference_layer_registry,
         profile_registry=state.reference_profile_registry, per_unit_registry=state.per_unit_registry,
+        frequency_access=state.nominal_frequency_access,
     )
 
 

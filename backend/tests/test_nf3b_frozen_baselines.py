@@ -22,9 +22,12 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from tests import nf3b_baseline_scenarios as scenarios
+from tests import nf3c_approved_changes as approved
 
 BASELINE = json.loads((Path(__file__).parent / "fixtures" / "nf3b_baselines" / "nf3b_frozen_baselines.json").read_text(encoding="utf-8"))
-FROZEN = BASELINE["outcomes"]
+FROZEN = BASELINE["outcomes"]          # HISTORICAL: what the NF-3A tree did. Never edited.
+#: What the code under test must produce: the historical record plus the explicitly approved NF-3C changes (tests/nf3c_approved_changes.py).
+EXPECTED = approved.apply_approved(BASELINE, "nf3b_frozen_baselines")
 R0_API = json.loads(
     (Path(__file__).parent / "fixtures" / "rms_golden" / "service_behaviour_baseline.json").read_text(encoding="utf-8"))["outcomes"]["api"]
 
@@ -81,11 +84,11 @@ class TestBaselineIntegrity:
 class TestFrozenConsumerBehaviourIsUnchanged:
     @pytest.mark.parametrize("group", ["kernels", "in_process", "oscillation_selection", "power_gate"])
     def test_pure_and_in_process_consumers(self, current, group):
-        assert _same(FROZEN[group], current[group], group) == []
+        assert _same(EXPECTED[group], current[group], group) == []
 
     @pytest.mark.parametrize("recording", sorted(scenarios.HTTP_RECORDINGS))
     def test_http_consumers_per_recording(self, current, recording):
-        assert _same(FROZEN["http"][recording], current["http"][recording], recording) == []
+        assert _same(EXPECTED["http"][recording], current["http"][recording], recording) == []
 
 
 class TestTheR0AndR1ABaselinesRemainTheAuthorityForTheirOwnBehaviour:

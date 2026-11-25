@@ -14,12 +14,53 @@ comparison tests apply these entries to the historical record and require the cu
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 from typing import Any
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+_NF3B = "nf3b_frozen_baselines"
+_NF3C = "nf3c_pre_migration_baseline"
+_HISTORY = {
+    _NF3B: json.loads((_FIXTURES / "nf3b_baselines" / "nf3b_frozen_baselines.json").read_text(encoding="utf-8"))["outcomes"],
+    _NF3C: json.loads((_FIXTURES / "nf3c_baselines" / "nf3c_pre_migration_baseline.json").read_text(encoding="utf-8"))["outcomes"],
+}
 
 #: (baseline key, path inside "outcomes", frozen value, new value, matrix row / reason)
 Change = tuple[str, str, Any, Any, str]
 
+
+def _at(baseline: str, path: str) -> Any:
+    node: Any = _HISTORY[baseline]
+    for part in path.split("/"):
+        node = node[part]
+    return copy.deepcopy(node)
+
+
 APPROVED_CHANGES: list[Change] = []
+
+# --- OC-1 / OC-2: an unusable declaration is never handed to the form detector -----------------------------------------------------------
+# The shared input classifier answers "do not guess" (None) instead of raising (0, NaN, +/-infinity) or classifying a value outside the
+# NF-1 range (1001 Hz). The measurement and readiness endpoints therefore give EXACTLY the answer they already gave for a declared -50 or
+# 0.5 Hz (the unresolved/incompatible state), not an HTTP 500 and not an "available" classification.
+_UNUSABLE = {
+    "declared_zero": ("raises", "ZeroDivisionError"),
+    "declared_nan": ("raises", "ValueError"),
+    "declared_inf": ("raises", "ZeroDivisionError"),
+}
+for _recording, (_kind, _cls) in _UNUSABLE.items():
+    APPROVED_CHANGES.append((
+        _NF3B, f"in_process/{_recording}/compliance_measurement_input_type", {"raises": _cls}, {"returns": None},
+        "OC-1: the classifier no longer raises for an unusable declared frequency; it answers 'do not guess'"))
+APPROVED_CHANGES.append((
+    _NF3B, "in_process/declared_1001/compliance_measurement_input_type", {"returns": "rms"}, {"returns": None},
+    "OC-2: 1001 Hz is outside the NF-1 range (1-1000 Hz) and is no longer classified"))
+
+for _group in ("compliance_measurement_http", "compliance_readiness_http"):
+    for _recording in ("declared_zero", "declared_nan", "declared_inf", "declared_1001"):
+        APPROVED_CHANGES.append((
+            _NF3C, f"{_group}/{_recording}", _at(_NF3C, f"{_group}/{_recording}"), _at(_NF3C, f"{_group}/declared_negative_50"),
+            "OC-1/OC-2: an unusable declaration now behaves exactly as the already-unresolved declared -50 Hz (HTTP 200, 'unresolved'/'incompatible')"))
 
 
 def apply_approved(document: dict, baseline: str) -> dict:
@@ -34,7 +75,7 @@ def apply_approved(document: dict, baseline: str) -> dict:
             node = node[part]
         if node[leaf] != before:
             raise AssertionError(f"approved change {path!r}: the historical value is {node[leaf]!r}, not {before!r}")
-        node[leaf] = after
+        node[leaf] = copy.deepcopy(after)
     return outcomes
 
 

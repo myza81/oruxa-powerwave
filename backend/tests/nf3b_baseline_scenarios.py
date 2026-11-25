@@ -267,6 +267,8 @@ def run_inprocess_scenarios() -> dict:
     from app.services.oscillation_representation_service import derive_analysis_representation
     from app.services.synchronization_registry import SynchronizationRegistry
     from app.services.synchronization_service import detect_event_candidate
+    from app.services.nominal_frequency_access import NominalFrequencyAccess
+    from app.services.nominal_frequency_registry import NominalFrequencyRegistry
     from app.services.workspace_registry import WorkspaceRegistry
 
     out: dict = {}
@@ -278,11 +280,13 @@ def run_inprocess_scenarios() -> dict:
         entry: dict = {}
 
         # C-04 compliance readiness: the declared value, validated or None
-        entry["compliance_readiness_nominal_for"] = num(_nominal_frequency_for(
-            i_ref, workspace_id=WS, source_registry=sources, calc_registry=calcs))
-        # C-05 compliance measurement: the form classification of an unlabelled channel (declared value, unvalidated)
+        # NF-3C: the consumers ask the central accessor (gate closed: Auto only); the recorded representation is unchanged.
+        access = NominalFrequencyAccess(sources, NominalFrequencyRegistry(), manual_override_enabled=False)
+        nominal_for = _nominal_frequency_for(i_ref, workspace_id=WS, frequency_access=access, calc_registry=calcs)
+        entry["compliance_readiness_nominal_for"] = num(nominal_for.hz if nominal_for is not None and nominal_for.usable else None)
+        # C-05 compliance measurement: the form classification of an unlabelled channel
         entry["compliance_measurement_input_type"] = outcome(lambda: _classify_input_type(
-            i_ref, workspace_id=WS, source_registry=sources))
+            i_ref, workspace_id=WS, source_registry=sources, frequency_access=access))
 
         # C-06 oscillation representation: value, origin label and verdict
         def representation():
@@ -296,7 +300,7 @@ def run_inprocess_scenarios() -> dict:
         def detection():
             v = detect_event_candidate(workspace_id=WS, source_id="src", channel_name="IA", sensitivity="normal",
                                        search_start_time=None, search_end_time=None, source_registry=sources,
-                                       synchronization_registry=SynchronizationRegistry())
+                                       synchronization_registry=SynchronizationRegistry(), frequency_access=access)
             return {"found": v.found, "reason": v.reason, "nominal_frequency_hz": num(v.nominal_frequency_hz),
                     "candidate_source_time": num(v.candidate_source_time)}
         entry["event_detection_view"] = outcome(detection)
