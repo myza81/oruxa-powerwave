@@ -82,13 +82,15 @@ Secondary volts differ by the VT ratio of a 132 kV nominal with the 110 V defaul
 nominal 275 kV, the CFG's own VT secondary 1.0 kV stored as the group's secondary base = 1000 V). Independent expected values are in
 `test_pu_mig_s2_d7_closeout.py`; the engine matches them to 1e-12:
 
-| Case | Samples (peak) | VT authority | D (1 pu) | pu = sample / D |
+| Case | Sample peak (instantaneous) | VT authority | Base D | sample / D (peak-referred) |
 |---|---|---|---|---|
 | A: stored side Primary, no VT stored | Secondary, 0.577345 kV | `auto_nominal` 275 kV : 110 V, r = 2500 | 275 kV / 2500 = 0.110 kV | **5.2486** |
 | B: A + the engineer's manual VT 275 kV : 1 kV (existing correction) | Secondary, 0.577345 kV | `manual`, r = 275 | 275 kV / 275 = 1.000 kV | **0.577345** (= 158.77 kV / 275 kV on the Primary recording) |
 | C: stored side **Secondary** 1000 V (D-5: declared + valid value) | Secondary, 0.577345 kV | not read (same side) | the **stored** 1.000 kV | **0.577345** |
 | D: stored side Secondary 1000 V, Primary samples | Primary, 158.77 kV | `auto_nominal`, r = 2500 | 1.000 kV × 2500 = 2500 kV | **0.063508** |
 | E: D + manual VT, r = 275 | Primary, 158.77 kV | `manual` | 1.000 kV × 275 = 275 kV | **0.577345** |
+
+Every figure is an **instantaneous sample peak divided by a base**, not a per-unit of rated RMS voltage: the fixture's samples peak at 158.77 kV (= 275 kV / sqrt(3)), and a waveform at exactly rated RMS would peak at sqrt(2) times the RMS-referred base. The table checks the division and the side conversion. (See section 9.4.)
 
 A and B differ by exactly 2500 / 275 = 1000 V / 110 V = 9.0909: the ratio of the two VT assumptions, which is what the D-4 report
 (`base_diagnostics`: stored 1000 V, derived 110 V, relative difference 8.09, derivation `auto_nominal`) tells the engineer. The stored 1 kV base is
@@ -189,3 +191,86 @@ Implemented as specified and verified: backend 0 failures; browser 0 unexplained
 updated and re-verified; the 6 CSV failures are deferred and independent). **S2 is acceptable for owner review.** The D-7 point is
 resolved by correction (§4); no decision is outstanding from S2. S3 is not started.
 
+## 9. Owner verification of the concurrent correction (2026-11-26)
+
+Scope: commits `8ef6d5c` (guard removal and the historical-gate change) and `1dea5e4` (closeout tests and record), on the committed state
+`58ef97b`; reviewed and re-run on a separate verification branch (`verify/pu-mig-s2-correction`) so that the active PU session's uncommitted work
+in this worktree was not touched. **No production file was changed by this verification.**
+
+**Authorship.** Both commits were created by the PU session `3d20c740-5d83-440b-a7f3-ce61d7bbe558` (its transcript holds the commit tool call at
+00:37:49 UTC, 08:37:49 +08:00, in `.local-data/pu-mig-s1`); the git identity and the `Co-Authored-By` trailer are shared by every session and prove nothing.
+The verifying session (`ec1c6f12-…`) never ran a write command in that worktree.
+
+**Guard removal** (`per_unit_side_authority.py`): accepted. The shared ratio is returned unchanged; the D-4 P5 diagnostic is retained.
+
+### 9.1 Behavioural delta of the `per_unit_reference.py` change (exhaustive, 108 input rows, old `8ef6d5c^` against new)
+
+The change touches only the Voltage historical gate, which is reached when the resolver is NOT used: a Source Default that stores `secondary` (no
+base descriptor, D-5) and a resolution that is not configured. The Current branch (DEC-210), `side_denominator.py`, `per_unit_numerics.py` and every
+CT/VT and calibration module (DEC-213) are byte-identical.
+
+* **Unchanged (bit for bit):** every row whose sample side is not strict (unknown, inferred, unresolved, group conflict, or no authority supplied): 0 of those rows
+  changed. An inferred or unusable side is never promoted. `base_amount` is identical in all 108 rows: **no denominator changed**.
+* **Changed (strict effective side from Recording Details, resolver not used), configured Source Default stored `secondary`:**
+
+| Raw declaration | Effective side | Before | After | Class |
+|---|---|---|---|---|
+| Primary | Primary | blocked | blocked | unchanged |
+| Primary | **Secondary** | blocked | configured, compatible, **`verified_direct`** | newly allowed (engineer's correction) |
+| Secondary | Secondary | configured, `unverified_historical` | configured, **`verified_direct`** | relabelled |
+| Secondary | **Primary** | configured (compatible) | **blocked** | newly blocked (known mismatch, DEC-211/216) |
+| Unknown | **Primary** | configured, unverified | **blocked** | newly blocked |
+| Unknown | **Secondary** | configured, unverified | configured, compatible, **`verified_direct`** | newly allowed and relabelled |
+
+  For an unconfigured resolution (status already `base_required`) only `reference_compatibility` and the reported `measurement_side` change; no number.
+  With base side `unknown` only the reported `measurement_side` changes.
+
+### 9.2 Finding: the relabel to `verified_direct` is not justified on this path
+
+Numbers on the real API, Source Default, line-to-ground, 132 kV / 110 V VT (ratio 1200); `pu` is a sample peak divided by the base:
+
+| Case | Before | After |
+|---|---|---|
+| Base value 0.110 kV declared Secondary, Secondary samples at 110 V / sqrt(3) | 1.0, `unverified_historical` | 1.0, `verified_direct` |
+| **Base value 132 kV declared Secondary (by mistake), Secondary samples of the same condition (63.5085 V)** | **0.000833333**, `unverified_historical` | **0.000833333, `verified_direct`** |
+| The same, no raw declaration, the engineer sets Secondary | 0.000833333, `unverified_historical` | **0.000833333, `verified_direct`** |
+
+The second row is the 1200x error (63.5085 / 76,210.2 = 8.333e-4 against 1.0): a Source Default has no secondary value (D-5), the base resolver treats its
+nominal as Primary by meaning (`per_unit.py`), and the gate cannot tell a Secondary-valued base from a mistyped Primary one. The side of the SAMPLES is
+strictly established; the side of the DENOMINATOR is only the engineer's label. Before the change such a result was honestly `unverified_historical`; after it,
+the same wrong number carries `verified_direct`, `denominator_side = secondary`, `conversion = direct`. This does not meet the owner's condition that a
+strict side be "correctly paired with the actual denominator". The blocking half of the change (newly blocked rows) is the safe direction and is not affected.
+
+**Proposed minimal narrowing (not applied; the file is being edited by the PU session):** in the historical branch keep comparing the effective side for
+blocking and compatibility, but never emit `verified_direct`, `denominator_side` or `conversion`: a compatible result stays `unverified_historical`, a
+mismatch is `blocked`. Numbers are unaffected. Expected test change: the three `verified_direct` rows of
+`test_source_default_stored_secondary_keeps_its_side_safety` and `..._honours_the_engineers_side_correction` become `unverified_historical`; nothing else
+depends on the label. Verification of the pairing would need an established secondary base value for the Source Default (a separate decision).
+
+### 9.3 Required cases (committed `58ef97b`, real API, 132 kV / VT 1200; expected values from first principles)
+
+| Case | Samples | Result | Denominator | Expected | State |
+|---|---|---|---|---|---|
+| A: stored 1 kV, Primary base, no VT stored | Secondary 63.5085 V peak | **1.0** | `auto_nominal` r = 1200, base 63.5085 V | 1.0 | `verified_converted`, diagnostic `stored_secondary_differs_from_derived` retained |
+| A0: no stored secondary | Secondary 63.5085 V | **1.0** | same | 1.0 | `verified_converted` |
+| B: stored side Secondary + 1 kV (D-5) | Secondary 63.5085 V | **0.11** | the stored 1 kV / sqrt(3) = 577.35 V, no ratio read | 0.11 | `verified_direct` |
+| C: same base on Primary samples | Primary 76,210.2 V | **0.11** | 577.35 V x 1200 = 692.82 kV | 0.11 | `verified_converted` |
+| No nominal (no authority derivable) | Primary | raw 76,210.2 (blocked) | none | blocked | `blocked`, `vt_authority_unavailable` |
+| Invalid VT (0 V primary) | any | rejected at the API (`invalid_instrument_transformer_value`); cannot be stored | | | |
+
+### 9.4 RMS versus peak
+
+The S2 test and record wording is corrected: per unit is applied to **instantaneous samples**, `pu = sample / D` with the RMS-referred base D. The synthetic
+sinusoids have a **peak** equal to D (1.0 pu peak, 0.7071 pu RMS); a waveform at exactly rated RMS peaks at sqrt(2) = 1.4142 pu. "1.0 pu" in these tests, and
+the earlier statement "1.0 pu is the rated condition", mean "the same peak-referred value on either side of the VT".
+
+### 9.5 Results (verification branch, tests unchanged apart from comments)
+
+| Run | Result |
+|---|---|
+| Focused backend: 52 PU, per-unit, reference-safety (Voltage and Current), CT/VT, auto-nominal, side-denominator, D5A protection-context, measurement-group, calibration (DEC-213) and PU-MIG files | **2,492 passed, 5 skipped, 0 failed** (7 min 19 s) |
+| Full backend suite | **14,473 passed, 410 skipped, 0 failed** (27 min 37 s); the S2 record's 14,465 plus the 8 closeout tests |
+| PU browser specs (voltage and Current reference safety, axis units, atomic updates, display synchronisation, numeric integrity, eligibility, VT effective, overcurrent and protection side, BEN5K PU gates, Recording Details toolbar, auto-PU import) | **164 passed, 0 failed** (9.5 min) |
+| Dry run of the proposed narrowing (scratch export, not applied) | only the two predicted closeout label assertions fail; the other 5 failures of that run are an artefact of the partial export (no `frontend/`) |
+
+Governance statement: documents consulted — AGENTS.md (DEC-218 governance), DEC-210, DEC-211, DEC-213, DEC-215, DEC-216, the P0 decision register (D-1, D-4..D-8), the S2 record and the code. No approved policy changed. Unresolved: the `verified_direct` relabel on the Source Default path (9.2).

@@ -6,6 +6,11 @@ every source seam (range, cursor values, peak values, annotation anchor), the pr
 expected numbers are written out from the physics (never from application code): `pu = sample / D`, with `D` the base expressed in
 the unit of the SAMPLES' side.
 
+Instantaneous versus RMS (read before the numbers): per unit here is applied to INSTANTANEOUS samples, `pu = sample / D`, where `D` is
+the RMS-referred base (nominal L-L, or nominal L-L / sqrt(3) for a line-to-ground reference). The synthetic sinusoids below have a PEAK equal
+to `D`, so their peak reads 1.0 pu and their RMS 0.7071 pu; a waveform at exactly the rated RMS voltage would PEAK at sqrt(2) = 1.4142 pu.
+"The same 1.0 pu" in these tests therefore means "the same peak-referred value on either side of the VT", not "rated voltage".
+
 Approved policies exercised (owner decisions of 2026-11-25): D-1 R+ (historical numbers kept, explicitly qualified), D-4 P5 (a
 stored secondary base is never replaced; a discrepancy is reported), D-5 (the legacy secondary path needs an explicit Secondary
 declaration AND a valid stored value), D-6 (a Secondary base on Primary samples converts only with an authoritative ratio),
@@ -24,8 +29,8 @@ from tests.test_current_effective_base_inheritance import ROOT, checked, client 
 SQRT3 = math.sqrt(3.0)
 NOMINAL_KV = 132.0
 RATIO = 132000.0 / 110.0                      # a 132 kV / 110 V VT
-D_PRIMARY_LG = NOMINAL_KV * 1000.0 / SQRT3    # 1 pu in primary volts, phase to ground
-D_SECONDARY_LG = 110.0 / SQRT3                # 1 pu in secondary volts, phase to ground
+D_PRIMARY_LG = NOMINAL_KV * 1000.0 / SQRT3    # the line-to-ground base in primary volts (RMS-referred); a sinusoid whose PEAK is this reads 1.0 pu
+D_SECONDARY_LG = 110.0 / SQRT3                # the same base in secondary volts (110 V L-L VT); a sinusoid whose PEAK is this reads 1.0 pu
 SAMPLES = 100
 NAMES = ["VA", "VB", "VC"]
 
@@ -131,7 +136,7 @@ def test_same_side_secondary_legacy_path_keeps_its_numerics_and_needs_no_ratio(c
 # --------------------------------------------------------------------- Primary base, Secondary samples (converted)
 @pytest.mark.parametrize("vt,authority", [((132000.0, 110.0), "manual"), (None, "auto_nominal")])
 def test_primary_base_on_secondary_samples_is_converted_by_the_groups_vt(client, vt, authority):
-    """Physical equivalence: the SAME 1.0 pu whether the samples are primary or secondary volts (D-7 for auto_nominal)."""
+    """Physical equivalence: the SAME peak-referred 1.0 pu (peak = D, RMS 0.7071 pu) whether the samples are primary or secondary volts (D-7 for auto_nominal)."""
     sid, _ = build(client, flag="S", amplitude=D_SECONDARY_LG, stored_side="primary", vt=vt)
     body, cursor, anchor, peaks, p = seams(client, sid)
     assert body["per_unit_status"] == "configured" and body["per_unit_reference_compatibility"] == "compatible"

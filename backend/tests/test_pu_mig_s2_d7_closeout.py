@@ -9,6 +9,10 @@ values are written from the physics, never from application code:
     approved VT authority (DEC-215): manual > recording_metadata > auto_nominal;  auto_nominal = nominal kV x 1000 : 110 V  -> r = 2500
     an engineer's manual VT of 275 kV : 1 kV (the fixture's real VT)                                                  -> r = 275
 
+Instantaneous versus RMS: every `pu` below is an instantaneous SAMPLE PEAK divided by a base, not a per-unit of rated RMS voltage. The
+fixture's samples peak at 158.77 kV (= 275 kV / sqrt(3)) on the Primary recording and at 0.577345 kV on the Secondary one, and the base here is the
+L-L nominal; the figures (5.2486, 0.577345, 0.063508) check the DIVISION and the side conversion, not how far a rated voltage sits from 1.0 pu.
+
 The selected PU base (a stored 1 kV secondary, or the nominal) and the VT equipment ratio are independent quantities: neither changes
 the other, and a disagreement between them is REPORTED (decision D-4, option P5), never "corrected" and never a reason to refuse the
 approved VT authority.
