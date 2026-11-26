@@ -4682,6 +4682,9 @@
         .ww-cc-preview-info-value { display: block; font-size: 0.75rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         /* The calculated expression can be long (e.g. ROCOF names method, window and alignment): wrap it so it is never cut off. */
         .ww-cc-preview-info-value--wrap { white-space: normal; overflow-wrap: anywhere; }
+        /* PU-MIG S5: a sentence-length provenance row (Reference check, Reason, Stored base check) takes the whole row and wraps, so the
+           verification message is read in full instead of being cut to one grid cell. */
+        .ww-pu-info-row--wide { grid-column: 1 / -1; }
 
         /* Shrunk from 320px: the preview typically shows one selected
            channel now rather than every visible channel split by type, so
@@ -16087,7 +16090,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
          -- never independently re-derived here, so this can never
          disagree with the actual conversion. -->
     <div class="confirm-overlay" id="wwChannelPerUnitOverlay" hidden>
-        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="wwChannelPerUnitTitle">
+        <!-- PU-MIG S5: ww-pu-dialog (the established pinned header/footer pattern): the verification sentence adds a line, so a calculated
+             Current dialog (with its editor) can exceed 85vh on a short viewport; the body scrolls, Save and Close stay reachable. -->
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwChannelPerUnitTitle">
             <div class="group-editor-header">
                 <h3 id="wwChannelPerUnitTitle">Per-unit configuration</h3>
                 <button type="button" class="group-editor-close" id="wwChannelPerUnitCloseBtn" aria-label="Close">&times;</button>
@@ -21153,6 +21158,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     peakValue: peak ? peak.value : null,
                     perUnitStatus: reference?.status,
                     perUnitReferenceCompatibility: reference?.reference_compatibility,
+                    perUnitVerificationState: reference?.verification_state,
                     unit: peak ? peak.unit : (annotation.anchor ? annotation.anchor.unit : null),
                 },
             };
@@ -23129,7 +23135,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (!touches(channel.sourceId)) continue;
                 if (channel.abortController) channel.abortController.abort();
                 channel.requestSeq += 1; channel.time = []; channel.values = [];
-                channel.perUnitReferenceCompatibility = null;
+                channel.perUnitReferenceCompatibility = null; channel.perUnitVerificationState = null;
                 wwRefreshChannelSidebarRow(channel.sourceId, channel.channelName);
                 const index = panel.channels.indexOf(channel);
                 if (index >= 0 && panel.plotlyReady) Plotly.restyle(panel.chartEl, { x: [[]], y: [[]], customdata: [[]] }, [index]);
@@ -33252,17 +33258,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Backend reference proof is independent of conversion/base availability.
         // One compact status shared by lists, legends, hover and annotations.
-        function wwPuReferenceStatus(status, compatibility) {
+        function wwPuReferenceStatus(status, compatibility, verificationState) {
+            // The authoritative waveform samples are never transformed: a PU value is the sample divided by a base. When the
+            // recording and the base are on different sides the base may be referred to the measurement side with the group's
+            // authoritative CT/VT ratio; these two states are the ones where that was NOT possible or NOT checked.
             if (compatibility === "incompatible") return {
-                label: "PU unavailable", detail: "Measurement and base reference sides are incompatible. Engineering values are unchanged; no CT/VT scaling is applied." };
+                label: "PU unavailable", detail: "The measurement and base reference sides are incompatible, and no authoritative CT/VT ratio is available to refer the base to the measurement side. Engineering values are unchanged." };
+            // A historical result whose side labels merely match is "compatible" but not verified: the backend says so, the labels never do.
+            if (status === "configured" && compatibility === "compatible" && verificationState === "unverified_historical") return {
+                label: "Unverified reference", detail: "Historical PU conversion is available and the side labels match, but the base was not placed on the measurement side with a verified denominator and was not checked against a CT/VT ratio. Waveform samples are unchanged." };
             if (status === "configured" && compatibility === "unverified") return {
-                label: "Unverified reference", detail: "Historical PU conversion is available, but the measurement or base reference is unknown. Physical reference compatibility has not been verified; no CT/VT scaling is applied." };
+                label: "Unverified reference", detail: "Historical PU conversion is available, but the measurement or base reference side is unknown, so physical reference compatibility has not been verified and the base was not checked against a CT/VT ratio. Waveform samples are unchanged." };
             return null;
         }
 
         function wwDisplayedReference(sourceId, channelName) {
             const channel = ww.displayed.get(wwChannelKey(sourceId, channelName))?.channel;
-            return channel ? wwPuReferenceStatus(channel.perUnitStatus, channel.perUnitReferenceCompatibility) : null;
+            return channel ? wwPuReferenceStatus(channel.perUnitStatus, channel.perUnitReferenceCompatibility, channel.perUnitVerificationState) : null;
         }
 
         function wwPuReferenceBadgeHtml(reference) {
@@ -33285,7 +33297,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwErReference(kind, sourceId, channelName, unitMode = wwErState.unitMode) {
             const resolution = wwErChannelUnitDisplay(kind, sourceId, channelName, unitMode).resolution;
-            return resolution ? wwPuReferenceStatus(resolution.status, resolution.reference_compatibility) : null;
+            return resolution ? wwPuReferenceStatus(resolution.status, resolution.reference_compatibility, resolution.verification_state) : null;
         }
 
         function wwRenderCalculatedPuEditor() {
@@ -33372,9 +33384,92 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return null;
         }
 
-        function wwPerUnitInfoRowHtml(label, value) {
-            return '<div><span class="ww-cc-preview-info-label">' + escapeHtml(label) + '</span>' +
-                '<span class="ww-cc-preview-info-value">' + escapeHtml(value) + '</span></div>';
+        // PU-MIG S5 -- user-facing wording for the backend's verification provenance. Presentation only: every state, side, ratio and
+        // refusal below is read from `GET .../per-unit-resolution`; nothing is derived, converted or re-computed here.
+        const WW_PU_RATIO_AUTHORITY_TEXT = {
+            manual: "entered manually", recording_metadata: "from the recording", auto_nominal: "derived from the nominal voltage",
+            mixed: "from several sources",
+        };
+
+        function wwPuTransformerName(engineeringType) {
+            return engineeringType === "Current" ? "CT" : "VT";
+        }
+
+        // A base shown to two decimals would hide a small secondary-side denominator (0.0635 kV -> "0.06"): keep the backend's
+        // value readable without changing it.
+        function wwPuBaseText(amount) {
+            const fixed = Number(amount.toFixed(2));
+            if (amount !== 0 && Math.abs(amount) < 10 && fixed !== Number(amount.toPrecision(4))) return String(Number(amount.toPrecision(4)));
+            return amount.toFixed(2);
+        }
+
+        function wwPuRatioText(ratio) {
+            return String(Number(Number(ratio).toPrecision(6))) + " : 1";
+        }
+
+        // What an engineer should do about a blocked conversion -- never the internal code.
+        function wwPuRefusalText(resolution) {
+            const code = resolution.side_refusal_reason;
+            if (resolution.verification_state !== "blocked" || !code) return null;
+            const tx = wwPuTransformerName(resolution.engineering_type);
+            if (code === "vt_authority_unavailable" || code === "ct_authority_unavailable") {
+                const how = {
+                    not_configured: "No " + tx + " ratio is set for this Measurement Group. Enter it in Recording Details so the base can be referred to the measurement side.",
+                    no_group: "This base is not tied to a Measurement Group, so no " + tx + " ratio applies. Put the channel in a Measurement Group that has a " + tx + " ratio, or use a base on the recording's side.",
+                    invalid: "The " + tx + " ratio stored for this group is not a valid pair of positive numbers. Correct it in Recording Details.",
+                    untrusted_authority: "The source of this group's " + tx + " ratio is not trusted for per-unit conversion. Enter it manually in Recording Details.",
+                    conflict: "The channels belong to groups with different " + tx + " ratios, so no single ratio applies.",
+                    no_channels: "No channel was found to read a " + tx + " ratio from.",
+                };
+                return how[resolution.side_refusal_detail] ||
+                    ("No authoritative " + tx + " ratio is available to refer the base to the measurement side.");
+            }
+            if (code === "denominator_not_representable" || code === "invalid_base_value") {
+                return "The base referred to the measurement side cannot be represented as a finite positive number. Check the base and the " + tx + " ratio.";
+            }
+            if (code === "voltage_mixed_side") {
+                return "The calculation combines channels recorded on different sides (primary and secondary), so no single per-unit base applies.";
+            }
+            return null;
+        }
+
+        // [label, sentence] for the Reference check row, or null when the backend reports no verification state.
+        function wwPuVerificationText(resolution) {
+            const state = resolution.verification_state;
+            if (!state) return null;
+            const tx = wwPuTransformerName(resolution.engineering_type);
+            const side = resolution.denominator_side || resolution.measurement_side;
+            if (state === "verified_direct") {
+                return ["Verified", "The recording and the base are on the same side (" + wwReferenceSideText(side).toLowerCase() + "); no " + tx +
+                    " conversion was needed. Waveform samples are unchanged."];
+            }
+            if (state === "verified_converted") {
+                const authority = WW_PU_RATIO_AUTHORITY_TEXT[resolution.ratio_authority];
+                const ratio = resolution.ratio_applied != null
+                    ? " with the " + tx + " ratio " + wwPuRatioText(resolution.ratio_applied) + (authority ? " (" + authority + ")" : "") : "";
+                return ["Verified, base converted", "The per-unit base was referred to the " + side + " side" + ratio +
+                    "; waveform samples are unchanged."];
+            }
+            if (state === "unverified_historical") {
+                return ["Unverified", "The base was not placed on the measurement side with a verified denominator, so the historical per-unit value is kept without a " + tx +
+                    " check. Waveform samples are unchanged."];
+            }
+            if (state === "blocked") {
+                return ["Unavailable", wwPuRefusalText(resolution) || "The base cannot be referred to the measurement side. Engineering values are shown."];
+            }
+            return null;
+        }
+
+        function wwPuDiagnosticRowsHtml(resolution) {
+            return (resolution.base_diagnostics || []).filter(d => d && d.code === "stored_secondary_differs_from_derived").map(d =>
+                wwPerUnitInfoRowHtml("Stored base check", "The stored secondary base (" + Number(d.stored_secondary_ll_v).toFixed(2) + " V) differs by " +
+                    (Number(d.relative_difference) * 100).toFixed(2) + " % from the " + Number(d.derived_secondary_ll_v).toFixed(2) + " V derived from the nominal voltage and " +
+                    (d.derivation === "auto_nominal" ? "the default 110 V secondary" : "the stored VT") + ". The stored base is used and was not changed.", true)).join("");
+        }
+
+        function wwPerUnitInfoRowHtml(label, value, wide = false) {
+            return '<div' + (wide ? ' class="ww-pu-info-row--wide"' : '') + '><span class="ww-cc-preview-info-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ww-cc-preview-info-value' + (wide ? ' ww-cc-preview-info-value--wrap' : '') + '">' + escapeHtml(value) + '</span></div>';
         }
 
         // The ONE place this popover decides what to show -- built
@@ -33446,12 +33541,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // with the channel's own interpretation (L-G/L-L).
                     const suffix = refAbbrev ? " " + refAbbrev : "";
                     rows.push(wwPerUnitInfoRowHtml(
-                        "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit + suffix
+                        "Effective base", wwPuBaseText(resolution.effective_base_amount) + " " + resolution.effective_base_unit + suffix
                     ));
                 } else if (resolution.source_kind === "measurement_group" || resolution.resolution_origin === "automatic_common_base" || resolution.resolution_origin === "manual_calculated_current") {
                     const amount = resolution.effective_base_amount;
                     const amountText = resolution.resolution_origin === "manual_calculated_current" && amount > 0 && Number(amount.toFixed(2)) === 0
-                        ? String(amount) : amount.toFixed(2);
+                        ? String(amount) : wwPuBaseText(amount);
                     rows.push(wwPerUnitInfoRowHtml(
                         "Effective base", amountText + " " + resolution.effective_base_unit
                     ));
@@ -33460,7 +33555,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // suffix. Its own arithmetic has no reference-aware
                     // adjustment to expose (unlike Voltage above).
                     const label = resolution.engineering_type === "Voltage" ? "Voltage base" : "Current base";
-                    rows.push(wwPerUnitInfoRowHtml(label, resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit));
+                    rows.push(wwPerUnitInfoRowHtml(label, wwPuBaseText(resolution.effective_base_amount) + " " + resolution.effective_base_unit));
                 }
             }
 
@@ -33471,12 +33566,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 rows.push(wwPerUnitInfoRowHtml("Measurement side", wwReferenceSideText(resolution.measurement_side)));
                 rows.push(wwPerUnitInfoRowHtml("Base reference side", wwReferenceSideText(resolution.base_reference_side)));
                 const referenceLabels = { compatible: "Verified compatible", incompatible: "Known incompatible", unverified: "Unverified reference" };
-                if (resolution.reference_compatibility) rows.push(wwPerUnitInfoRowHtml("Reference compatibility", referenceLabels[resolution.reference_compatibility]));
+                // Matching side labels alone never read as verified: a historical result keeps the backend's own Unverified state.
+                if (resolution.reference_compatibility === "compatible" && resolution.verification_state === "unverified_historical") {
+                    rows.push(wwPerUnitInfoRowHtml("Reference compatibility", "Side labels match; not verified"));
+                } else if (resolution.reference_compatibility) rows.push(wwPerUnitInfoRowHtml("Reference compatibility", referenceLabels[resolution.reference_compatibility]));
             }
+            if (resolution.engineering_type === "Voltage" && resolution.verification_state) {
+                // Current already lists both sides above; Voltage now reports them whenever the backend verified (or refused) a side.
+                rows.push(wwPerUnitInfoRowHtml("Measurement side", wwReferenceSideText(resolution.measurement_side)));
+                rows.push(wwPerUnitInfoRowHtml("Base reference side", wwReferenceSideText(resolution.base_reference_side)));
+            }
+            const verification = wwPuVerificationText(resolution);
+            if (verification) rows.push(wwPerUnitInfoRowHtml("Reference check", verification[0] + ". " + verification[1], true));
+            // The applied ratio and where it came from are part of the Reference check sentence above (one place, not a second row).
             rows.push(wwPerUnitInfoRowHtml("Status", resolution.status === "configured" ? "Configured" : "Needs configuration"));
-            if (resolution.reason) {
-                rows.push(wwPerUnitInfoRowHtml("Reason", resolution.reason));
+            // A refusal is already the Reference check sentence above; the backend's plain reason is shown only when there is no such sentence.
+            if (!wwPuRefusalText(resolution) && resolution.reason) {
+                rows.push(wwPerUnitInfoRowHtml("Reason", resolution.reason, true));
             }
+            rows.push(wwPuDiagnosticRowsHtml(resolution));
 
             bodyEl.innerHTML = rows.join("");
             bodyEl.hidden = false;
@@ -34586,6 +34694,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             channelEntry.unit = body.unit;
             channelEntry.perUnitStatus = body.per_unit_status;
             channelEntry.perUnitReferenceCompatibility = body.per_unit_reference_compatibility;
+            channelEntry.perUnitVerificationState = body.per_unit_verification_state;
             wwRefreshChannelSidebarRow(channelEntry.sourceId, channelEntry.channelName);
 
             if (!opts.isInitialLoad) {
@@ -36227,7 +36336,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return '<label class="ww-cc-field"><span>Base reference side</span><select id="' + id + '">' +
                 ["unknown", "primary", "secondary"].map((value) => '<option value="' + value + '"' +
                     (side === value ? ' selected' : '') + '>' + wwReferenceSideText(value) + '</option>').join("") +
-                '</select></label><p class="hint">Declare the base reference independently of the recorded samples. Known mismatches make PU unavailable. Historical Unknown references remain Unverified; cross-group Automatic and result Manual require compatible known references.</p>';
+                '</select></label><p class="hint">Declare the base reference independently of the recorded samples. A known mismatch is referred across with the group CT when an authoritative ratio is configured; otherwise PU is unavailable. Historical Unknown references remain Unverified; cross-group Automatic and result Manual require compatible known references.</p>';
         }
 
         // A base/reference change can affect the CURRENTLY displayed
@@ -36259,7 +36368,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Retire presentation arrays while the new basis is pending.
                 // Physical samples stay immutable on the backend.
                 channel.time = []; channel.values = [];
-                channel.perUnitReferenceCompatibility = null;
+                channel.perUnitReferenceCompatibility = null; channel.perUnitVerificationState = null;
                 wwRefreshChannelSidebarRow(channel.sourceId, channel.channelName);
                 const index = panel.channels.indexOf(channel);
                 if (index >= 0 && panel.plotlyReady) Plotly.restyle(panel.chartEl, { x: [[]], y: [[]], customdata: [[]] }, [index]);
@@ -36283,10 +36392,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const data = annotation.data || {};
                 if (!affected.has(data.sourceId)) continue;
                 if (annotation.type === "callout") {
-                    data.anchorValue = null; data.unit = ""; data.perUnitStatus = null; data.perUnitReferenceCompatibility = null;
+                    data.anchorValue = null; data.unit = ""; data.perUnitStatus = null; data.perUnitReferenceCompatibility = null; data.perUnitVerificationState = null;
                     annotationJobs.push(wwResolveCalloutAnchorMove(annotation.id, data.sourceId, data.channelName, data.anchorElapsedSeconds, true));
                 } else if (wwIsPeakType(annotation.type)) {
-                    data.peakValue = null; data.unit = ""; data.perUnitStatus = null; data.perUnitReferenceCompatibility = null;
+                    data.peakValue = null; data.unit = ""; data.perUnitStatus = null; data.perUnitReferenceCompatibility = null; data.perUnitVerificationState = null;
                     peakSources.add(data.sourceId);
                 }
             }
@@ -38651,7 +38760,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const exploratoryNote = (calcObj && calcObj.calibration_provenance_status === "exploratory_unverified")
                 ? " ⚠" : "";
             return prefix + ": " + valueText + unitText + exploratoryNote + wwPuReferenceSuffix(
-                wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility));
+                wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility, data.perUnitVerificationState));
         }
 
         function wwAnnotationSummary(annotation) {
@@ -38698,7 +38807,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
                     : "—";
                 return displayName + " · " + time + " · " + value + wwPuReferenceSuffix(
-                    wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility));
+                    wwPuReferenceStatus(data.perUnitStatus, data.perUnitReferenceCompatibility, data.perUnitVerificationState));
             }
             if (wwIsPeakType(annotation.type)) {
                 if (!data.available) return displayName + " · Unavailable for current view";
@@ -39291,7 +39400,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // `data` is untouched by this patch's own generic merge.
             // A display refresh changes the value/unit only, never the anchor identity.
             if (refreshOnly) {
-                wwUpdateAnnotation(id, { data: { anchorValue: body.value, unit: body.unit, perUnitStatus: body.per_unit_status, perUnitReferenceCompatibility: body.per_unit_reference_compatibility } });
+                wwUpdateAnnotation(id, { data: { anchorValue: body.value, unit: body.unit, perUnitStatus: body.per_unit_status, perUnitReferenceCompatibility: body.per_unit_reference_compatibility, perUnitVerificationState: body.per_unit_verification_state } });
                 return;
             }
             wwUpdateAnnotation(id, {
@@ -39301,6 +39410,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     anchorValue: body.value,
                     perUnitStatus: body.per_unit_status,
                     perUnitReferenceCompatibility: body.per_unit_reference_compatibility,
+                    perUnitVerificationState: body.per_unit_verification_state,
                     unit: body.unit,
                 },
             });
@@ -39604,7 +39714,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwWireAnnotationNote(el, annotation.id);
                 }
                 if (isCallout) wwSyncPuReferenceBadge(el.querySelector(".ww-annotation-header"),
-                    wwPuReferenceStatus(annotation.data.perUnitStatus, annotation.data.perUnitReferenceCompatibility));
+                    wwPuReferenceStatus(annotation.data.perUnitStatus, annotation.data.perUnitReferenceCompatibility, annotation.data.perUnitVerificationState));
                 el.classList.toggle("ww-annotation--selected", ww.annotationSelectedId === annotation.id);
                 el.style.zIndex = String(annotation.zIndex);
 
@@ -40033,6 +40143,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 anchorValue: body.value,
                 perUnitStatus: body.per_unit_status,
                 perUnitReferenceCompatibility: body.per_unit_reference_compatibility,
+                perUnitVerificationState: body.per_unit_verification_state,
                 unit: body.unit,
                 // DEC-212 §2: stored at creation for reliable Current detection
                 // even after the channel is hidden (ww.displayed lookup unreliable).
@@ -40182,6 +40293,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     peakValue: result.value,
                     perUnitStatus: result.per_unit_status,
                     perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
+                    perUnitVerificationState: result.per_unit_verification_state,
                     unit: result.unit,
                     available: true,
                     // DEC-212 §2: stored at creation for reliable Current detection
@@ -40323,6 +40435,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             peakValue: result.value,
                             perUnitStatus: result.per_unit_status,
                             perUnitReferenceCompatibility: result.per_unit_reference_compatibility,
+                            perUnitVerificationState: result.per_unit_verification_state,
                             unit: result.unit,
                         },
                     });
