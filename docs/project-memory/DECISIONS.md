@@ -29567,7 +29567,7 @@ Supersedes: the D5A-1 "F5 / D4" position and the D5A-2A rule that `auto_nominal`
 
 Implementation and rationale: [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
 
-Governance note (2026-11-26): see [DEC-217](#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
+Governance note (2026-11-26): see [DEC-218](#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
 for how this decision applies alongside a selected Per-Unit base. It is a pointer, not an amendment.
 
 
@@ -29763,9 +29763,10 @@ Authority: the owner's direction "PU-MIG S0 Closure and S1" (2026-11-24). Ledger
 
 ---
 
-## DEC-217 — Approved decisions are binding; agents consult them before acting and preserve them (agent governance)
+## DEC-218 — Approved decisions are binding; agents consult them before acting and preserve them (agent governance)
 
 Date: 2026-11-26. Owner decision (governance only; no engineering policy is created, changed or superseded by this entry).
+Numbering: DEC-217 is already assigned to NF-001 (nominal frequency) on the nominal-frequency branches, so this governance entry is DEC-218.
 Trigger: an S2 discussion reopened the already-approved `auto_nominal` VT authority (DEC-215) because a legacy secondary base
 differed from the 110 V default; similar occurrences are to be prevented.
 

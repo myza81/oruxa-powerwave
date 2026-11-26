@@ -1,4 +1,4 @@
-"""PU-MIG S2 closeout (DEC-217 application): the shared VT authority is consumed as approved, a stored secondary base is never replaced.
+"""PU-MIG S2 closeout (DEC-218 application): the shared VT authority is consumed as approved, a stored secondary base is never replaced.
 
 Worked example on the ACTUAL legacy fixture (`synth_measurement_groups`, the recording the VLT-REF-001 contracts use): channel N275_VR,
 Line-to-line reference, nominal 275 kV, the CFG's own VT secondary 1.0 kV stored as the group's secondary base (1000 V). The expected

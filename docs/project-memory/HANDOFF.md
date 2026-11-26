@@ -4,7 +4,7 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Agent governance (2026-11-26, [DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)):
+Agent governance (2026-11-26, [DEC-218](DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)):
 approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
 [AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
 

@@ -59,7 +59,7 @@ blocked, a Primary sample is unchanged. A Source Default that stores `voltage_ba
 
 ## 4. D-7 reassessment and correction (closeout, 2026-11-26)
 
-Applied under [DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
+Applied under [DEC-218](DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
 and the owner's closeout direction. **No policy changed**: the approved `auto_nominal` VT (DEC-215: primary = accepted nominal, secondary =
 110 V default, provenance `auto_nominal`), the existing manual VT correction and the shared VT authority (manual > recording_metadata >
 auto_nominal > not_configured) are not reopened. The selected PU base and the VT equipment ratio are independent engineering quantities.
@@ -72,7 +72,7 @@ named below.
 **Finding 1 — the guard was unsupported.** The S2 provision "refuse the `auto_nominal` ratio for PU when the group stores a different
 `secondary_voltage_ll_v`" was a PU-specific VT authority. DEC-215 makes the derived VT "immediately valid for every consuming module";
 `secondary_voltage_ll_v` is a PU base, not a VT (the authority only checks a *stored VT* first); and D-4 (P5) requires a stored-versus-derived
-disagreement to be **reported, not acted on**. A per-consumer rule over a shared authority is what DEC-217 forbids. **Corrected:** the guard and its
+disagreement to be **reported, not acted on**. A per-consumer rule over a shared authority is what DEC-218 forbids. **Corrected:** the guard and its
 helper are removed; `per_unit_side_authority` passes the shared authority's answer through unchanged.
 
 **Finding 2 — the "1200×" is the approved arithmetic, not a discrepancy.** In `waveform-axis-units` the same raw numbers read as Primary and as

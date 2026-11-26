@@ -143,7 +143,7 @@ regression coverage; do not read every historical document. Approved decisions a
 not reopened by a new application of the same policy. The procedure, the classification of difficulties and the engineering-formula
 requirements are in
 [AGENTS.md — Decision preservation and engineering governance](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory)
-([DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance));
+([DEC-218](DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance));
 it is stated there once, for Claude Code and Codex alike.
 
 ## How facts, decisions, and proposals are distinguished

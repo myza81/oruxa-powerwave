@@ -41,7 +41,7 @@ later phase.
 ## Decision preservation and engineering governance — mandatory
 
 AGENTS.md is the **single governance authority for every agent** (Claude Code, Codex). Agent-specific files point here and do not
-restate these rules. Owner decision: [DEC-217](docs/project-memory/DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance).
+restate these rules. Owner decision: [DEC-218](docs/project-memory/DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance).
 
 ### Before a substantive task — consult, in proportion to the task
 
