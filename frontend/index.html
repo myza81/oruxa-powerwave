@@ -4683,7 +4683,9 @@
         /* The calculated expression can be long (e.g. ROCOF names method, window and alignment): wrap it so it is never cut off. */
         .ww-cc-preview-info-value--wrap { white-space: normal; overflow-wrap: anywhere; }
         /* PU-MIG S5: a sentence-length provenance row (Reference check, Reason, Stored base check) takes the whole row and wraps, so the
-           verification message is read in full instead of being cut to one grid cell. */
+           verification message is read in full instead of being cut to one grid cell. The Per-unit details dialog also carries the
+           established ww-pu-dialog pinned header/footer pattern: that extra line can make a calculated Current dialog (with its editor)
+           taller than 85vh on a short viewport, so the body scrolls while Save and Close stay reachable. */
         .ww-pu-info-row--wide { grid-column: 1 / -1; }
 
         /* Shrunk from 320px: the preview typically shows one selected
@@ -16090,8 +16092,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
          -- never independently re-derived here, so this can never
          disagree with the actual conversion. -->
     <div class="confirm-overlay" id="wwChannelPerUnitOverlay" hidden>
-        <!-- PU-MIG S5: ww-pu-dialog (the established pinned header/footer pattern): the verification sentence adds a line, so a calculated
-             Current dialog (with its editor) can exceed 85vh on a short viewport; the body scrolls, Save and Close stay reachable. -->
         <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwChannelPerUnitTitle">
             <div class="group-editor-header">
                 <h3 id="wwChannelPerUnitTitle">Per-unit configuration</h3>
