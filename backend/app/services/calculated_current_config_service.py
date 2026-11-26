@@ -22,7 +22,7 @@ def require_current_result(channel):
 def update_current_configuration(*, workspace_id, channel, mode, current_base_value,
                                  current_base_unit, base_reference_side, per_unit_registry,
                                  source_registry, calc_registry, group_registry,
-                                 voltage_config_registry, current_config_registry):
+                                 voltage_config_registry, current_config_registry, side_authority=None):
     require_current_result(channel)
     if mode not in ("automatic", "manual", "unassigned") or current_base_unit not in ("A", "kA"):
         raise InvalidCalculatedCurrentConfiguration("Invalid Current configuration mode or base unit.")
@@ -41,7 +41,8 @@ def update_current_configuration(*, workspace_id, channel, mode, current_base_va
             workspace_id=workspace_id, channel=channel, candidate_configuration=candidate,
             source_registry=source_registry, per_unit_registry=per_unit_registry,
             calc_registry=calc_registry, group_registry=group_registry,
-            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry)
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            side_authority=side_authority)
         if proof is None or proof.resolution.status != STATUS_CONFIGURED:
             reason = proof.resolution.reason if proof else "current_dependency_unavailable"
             raise InvalidCalculatedCurrentConfiguration(CURRENT_REASON_COPY.get(reason,

@@ -450,7 +450,8 @@ def build_calculated_channel_provenance(
         inherited = resolve_calculated_current_per_unit(
             workspace_id=workspace_id, channel=channel, source_registry=source_registry,
             per_unit_registry=per_unit_registry, calc_registry=calc_registry, group_registry=group_registry,
-            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry)
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            side_authority=side_authority)
         if inherited is not None:
             resolution = inherited.resolution
             if inherited.source_kind == SOURCE_KIND_MEASUREMENT_GROUP:
@@ -472,7 +473,8 @@ def build_calculated_channel_provenance(
                     reason = _reason_text(SOURCE_KIND_MEASUREMENT_GROUP, resolution.reason)
                 provenance = replace(_not_applicable_provenance(CURRENT), status=resolution.status,
                     reason=reason, effective_base_amount=amount, effective_base_unit=unit,
-                    resolution_origin=inherited.resolution_origin or "automatic_common_base")
+                    resolution_origin=inherited.resolution_origin or "automatic_common_base",
+                    side_provenance=resolution.side_provenance)
             return replace(provenance, measurement_side=inherited.measurement_side,
                            reference_compatibility=resolution.reference_compatibility,
                            base_reference_side=inherited.base_reference_side,

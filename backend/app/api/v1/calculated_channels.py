@@ -495,6 +495,7 @@ def put_current_result_config(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> CalculatedCurrentConfigOut:
     workspace_id = _validate_workspace_id(workspace_id)
     channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id, source_registry)
@@ -503,7 +504,7 @@ def put_current_result_config(
             workspace_id=workspace_id, channel=channel, **body.model_dump(),
             per_unit_registry=per_unit_registry, source_registry=source_registry, calc_registry=calc_registry,
             group_registry=measurement_group_registry, voltage_config_registry=voltage_group_config_registry,
-            current_config_registry=current_group_config_registry)
+            current_config_registry=current_group_config_registry, side_authority=recorded_authority)
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return CalculatedCurrentConfigOut(calculated_channel_id=channel.id, **asdict(config))

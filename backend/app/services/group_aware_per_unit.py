@@ -63,7 +63,15 @@ from app.domain.current_group_config import (
 )
 from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE, MeasurementGroup
 from app.domain.per_unit import STATUS_BASE_REQUIRED, STATUS_CONFIGURED, PerUnitResolution
-from app.domain.side_denominator import BASE_LEGACY_SECONDARY_VOLTAGE_LL, SIDE_PRIMARY, SIDE_SECONDARY, SideBase
+from app.domain.reference_side import configured_base_side
+from app.domain.side_denominator import (
+    BASE_EQUIPMENT_DERIVED_PRIMARY,
+    BASE_LEGACY_SECONDARY_VOLTAGE_LL,
+    BASE_MANUAL_DIRECT,
+    SIDE_PRIMARY,
+    SIDE_SECONDARY,
+    SideBase,
+)
 from app.domain.voltage_group_config import STATUS_CONFIGURED as _VOLTAGE_STATUS_CONFIGURED, resolve_voltage_base_for_group
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -131,12 +139,20 @@ def resolve_per_unit_for_group(
             group, current_config, linked_voltage_group=linked_voltage_group, linked_voltage_config=linked_voltage_config
         )
         if resolution.status == _CURRENT_STATUS_CONFIGURED:
+            # PU-MIG S4: hand the established Ibase on with what it is (an equipment-derived base is Primary by meaning; a manual base
+            # keeps its own declared side, possibly `unknown`, which the gate never assumes Primary). The base was CHOSEN above.
+            descriptor = SideBase(
+                kind=BASE_EQUIPMENT_DERIVED_PRIMARY if current_config.method == METHOD_EQUIPMENT_RATING else BASE_MANUAL_DIRECT,
+                value=resolution.ibase_ka * 1000.0,
+                declared_side=configured_base_side(current_config.method, current_config.base_reference_side),
+            )
             return PerUnitResolution(
                 status=STATUS_CONFIGURED,
                 profile_id=measurement_group_id,
                 base_amount=resolution.ibase_ka * 1000.0,
                 base_unit="A",
                 reason=None,
+                base_descriptor=descriptor,
             )
         return PerUnitResolution(
             status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,

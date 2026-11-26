@@ -16,17 +16,33 @@ from __future__ import annotations
 
 from app.domain.calculated_channel import CalculatedChannel, ChannelRef
 from app.domain.calculated_side_lineage import resolve_calculated_side
-from app.domain.channel_classification import VOLTAGE
+from app.domain.channel_classification import CURRENT, VOLTAGE
 from app.domain.per_unit import STATUS_CONFIGURED
 from app.domain.per_unit_reference import RawVoltageSideInputs, apply_source_reference
 from app.domain.side_denominator import RATIO_NO_GROUP, SampleSide, SideRatio
-from app.services.protection_instrument_context import QUANTITY_VOLTAGE, resolve_transformer_context
+from app.services.protection_instrument_context import QUANTITY_CURRENT, QUANTITY_VOLTAGE, resolve_transformer_context
 from app.services.recorded_side_authority import RecordedAuthority, evaluate_channel_side
 
 
 def raw_voltage_side_inputs(
     workspace_id: str, source_id: str, channel_name: str, *, authority: RecordedAuthority,
     group_status_cache: dict[tuple[str, str], bool] | None = None,
+) -> RawVoltageSideInputs:
+    return _raw_side_inputs(QUANTITY_VOLTAGE, workspace_id, source_id, channel_name, authority, group_status_cache)
+
+
+def raw_current_side_inputs(
+    workspace_id: str, source_id: str, channel_name: str, *, authority: RecordedAuthority,
+    group_status_cache: dict[tuple[str, str], bool] | None = None,
+) -> RawVoltageSideInputs:
+    """PU-MIG S4: the same for a raw Current channel -- the side is the one shared `evaluate_channel_side` policy and the ratio is the CT
+    of the channel's own Current Measurement Group (`ct_authority`), read only when the base side differs from the sample side."""
+    return _raw_side_inputs(QUANTITY_CURRENT, workspace_id, source_id, channel_name, authority, group_status_cache)
+
+
+def _raw_side_inputs(
+    quantity: str, workspace_id: str, source_id: str, channel_name: str, authority: RecordedAuthority,
+    group_status_cache: dict[tuple[str, str], bool] | None,
 ) -> RawVoltageSideInputs:
     ref = ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
     evaluated = evaluate_channel_side(workspace_id, ref, authority=authority, group_status_cache=group_status_cache)
@@ -38,11 +54,11 @@ def raw_voltage_side_inputs(
 
     def ratio_for() -> SideRatio:
         context = resolve_transformer_context(
-            workspace_id, (ref,), QUANTITY_VOLTAGE,
+            workspace_id, (ref,), quantity,
             group_registry=authority.side.group_registry, voltage_config_registry=authority.voltage_config_registry,
             current_config_registry=authority.current_config_registry, source_registry=authority.side.source_registry,
         )
-        # The ONE shared VT authority, exactly as DEC-215 defines it (manual > recording_metadata > auto_nominal > not_configured).
+        # The ONE shared VT/CT authority, exactly as DEC-215 defines it (manual > recording_metadata > auto_nominal > not_configured).
         # PU adds no rule of its own: the selected PU base (stored or derived) and the VT equipment ratio are independent
         # quantities, so a stored secondary base never changes what the VT authority says (decision D-4: it is only reported).
         return SideRatio(
@@ -60,14 +76,14 @@ def apply_raw_source_reference(
     group_status_cache: dict[tuple[str, str], bool] | None = None,
 ):
     """`per_unit_reference.apply_source_reference` for a SOURCE channel, with Recording Details' side authority when the
-    caller has one. Without `side_authority` (or for Current, or for a resolution that is not configured) it is exactly the
-    historical gate."""
+    caller has one. Without `side_authority` (or for a resolution that is not configured) it is exactly the historical gate."""
     side_inputs = None
     if (
-        side_authority is not None and engineering_type == VOLTAGE and resolution.status == STATUS_CONFIGURED
+        side_authority is not None and engineering_type in (VOLTAGE, CURRENT) and resolution.status == STATUS_CONFIGURED
         and workspace_id is not None and source_id is not None
     ):
-        side_inputs = raw_voltage_side_inputs(
+        build = raw_voltage_side_inputs if engineering_type == VOLTAGE else raw_current_side_inputs
+        side_inputs = build(
             workspace_id, source_id, channel_name, authority=side_authority, group_status_cache=group_status_cache,
         )
     return apply_source_reference(

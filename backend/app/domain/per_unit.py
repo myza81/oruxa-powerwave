@@ -53,7 +53,14 @@ from app.domain.per_unit_numerics import (
     channel_values_representable, convert_array, convert_scalar,
     derived_current_ka, positive_finite, scaled_base,
 )
-from app.domain.side_denominator import BASE_NOMINAL_LL_PRIMARY, SIDE_PRIMARY, SideBase
+from app.domain.reference_side import configured_base_side
+from app.domain.side_denominator import (
+    BASE_EQUIPMENT_DERIVED_PRIMARY,
+    BASE_MANUAL_DIRECT,
+    BASE_NOMINAL_LL_PRIMARY,
+    SIDE_PRIMARY,
+    SideBase,
+)
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -365,7 +372,15 @@ def resolve_per_unit(
         return PerUnitResolution(
             status=STATUS_BASE_REQUIRED, profile_id=profile.source_id, base_amount=None, base_unit=None, reason=reason
         )
-    return PerUnitResolution(status=STATUS_CONFIGURED, profile_id=profile.source_id, base_amount=amount, base_unit="A", reason=None)
+    # PU-MIG S4: what the Source Default Ibase IS (derived = Primary by meaning; direct = its own declared side).
+    descriptor = SideBase(
+        kind=BASE_MANUAL_DIRECT if profile.current_base_mode == CURRENT_BASE_MODE_DIRECT else BASE_EQUIPMENT_DERIVED_PRIMARY,
+        value=amount, declared_side=configured_base_side(profile.current_base_mode, profile.current_base_reference_side),
+    )
+    return PerUnitResolution(
+        status=STATUS_CONFIGURED, profile_id=profile.source_id, base_amount=amount, base_unit="A", reason=None,
+        base_descriptor=descriptor,
+    )
 
 
 def _measured_unit_scale(engineering_type: str, measured_unit: str | None) -> float | None:

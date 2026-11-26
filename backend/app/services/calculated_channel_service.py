@@ -1736,6 +1736,7 @@ def _resolve_effective_per_unit_for_calculated_channel(
             workspace_id=workspace_id, channel=channel, source_registry=source_registry,
             per_unit_registry=per_unit_registry, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            side_authority=side_authority,
         )
         if inherited is not None:
             return inherited.resolution
