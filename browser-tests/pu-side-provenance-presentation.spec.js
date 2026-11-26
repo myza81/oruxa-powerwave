@@ -259,6 +259,8 @@ test("Source Default counterexample: a 132 kV base labelled Secondary on rated S
   await expect(body(page)).not.toContainText(/Verified[,.]/);
   await expect(body(page)).not.toContainText("Verified compatible");                        // Voltage lists no label-compatibility row at all
   await expect(body(page)).not.toContainText("VT ratio");
+  await expect(infoValue(page, "Base reference side")).toHaveText("Secondary");               // the stored declaration the gate compared (S6), not "Unknown"
+  await expect(infoValue(page, "Measurement side")).toHaveText("Secondary");
   await expectFullyShown(infoValue(page, "Reference check"));
   await shot(page, "09-source-default-counterexample.png");
   await page.locator("#wwChannelPerUnitCloseBtn").click();

@@ -291,6 +291,21 @@ def _provenance_from_group(
     )
 
 
+def _source_default_base_side(resolution: PerUnitResolution, per_unit_profile: PerUnitBaseProfile | None, engineering_type: str) -> str:
+    """The reference side the Source Default's base is DECLARED on, as the gate evaluated it (PU-MIG S6).
+
+    Current reads its stored declaration, as before. Voltage previously always reported `unknown` although the stored
+    `voltage_base_reference_side` is what the reference-compatibility gate compares (`per_unit_reference.apply_source_reference`);
+    the gate's own result carries that same value, so it is reported rather than re-derived. A Source Default that stores nothing
+    (`unknown`) still reports Unknown, and no number, state or eligibility depends on this field.
+    """
+    if per_unit_profile and engineering_type == CURRENT:
+        return configured_base_side(per_unit_profile.current_base_mode, per_unit_profile.current_base_reference_side)
+    if engineering_type == VOLTAGE:
+        return resolution.base_reference_side
+    return "unknown"
+
+
 def _provenance_from_legacy(
     resolution: PerUnitResolution,
     *,
@@ -333,7 +348,7 @@ def _provenance_from_legacy(
         reference_compatibility=resolution.reference_compatibility,
         side_provenance=resolution.side_provenance,
         reason=_reason_text(SOURCE_KIND_SOURCE_DEFAULT, resolution.reason),
-        base_reference_side=configured_base_side(per_unit_profile.current_base_mode, per_unit_profile.current_base_reference_side) if per_unit_profile and engineering_type == CURRENT else "unknown",
+        base_reference_side=_source_default_base_side(resolution, per_unit_profile, engineering_type),
         measurement_group_id=None,
         measurement_group_name=None,
         nominal_base_kv=nominal_base_kv,
