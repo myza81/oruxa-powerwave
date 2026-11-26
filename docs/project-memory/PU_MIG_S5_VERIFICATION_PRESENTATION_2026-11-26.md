@@ -109,7 +109,7 @@ not carried to the badge (M5), dialog not pinned (M6, caught by `calculated-curr
   string on responses that already exist; the rows are built only when the dialog opens; no recomputation of any denominator in JavaScript.
 * **Protected files:** none of `per_unit_reference.py`, `side_denominator.py`, `per_unit_side_authority.py`, the group-config resolvers, `calculated_current_per_unit.py`, `group_aware_per_unit.py`, calibration, RMS or power was touched.
 * Limitations:
-  1. **Source Default Voltage reports "Base reference side: Unknown"** in the dialog even where a `secondary` label is stored: the backend provenance has never carried a base
+  1. *(Resolved in S6, `ee4dfae`: the stored declaration is now reported; Unknown remains only where nothing is stored.)* **Source Default Voltage reported "Base reference side: Unknown"** in the dialog even where a `secondary` label is stored: the backend provenance has never carried a base
      side for that path (it is shown as reported; the check line says the base was not placed on the measurement side). Reporting the stored label would be a backend response
      change; recommended for a later slice only if the owner wants it.
   2. **A calculated Voltage has no details dialog** (DEC-070 A1): its Unverified/unavailable state is the badge; a *verified* calculated Voltage has no surface other than the API.
