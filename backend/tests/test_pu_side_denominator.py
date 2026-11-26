@@ -500,6 +500,7 @@ S2_IMPORTERS = {
     "domain/voltage_group_config.py",          # the established group base (kind) the base resolver already chose
     "services/group_aware_per_unit.py",        # carries that base to the gate
     "services/per_unit_side_authority.py",     # Recording Details' side / VT, translated for the gate
+    "domain/calculated_side_lineage.py",       # S3: only the `SampleSide` vocabulary; it never calls the resolver
 }
 S2_CALLERS = {"domain/per_unit_reference.py"}
 
