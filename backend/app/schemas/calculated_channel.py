@@ -323,6 +323,7 @@ class CalculatedWaveformRangeOut(BaseModel):
     values: list[float | None]
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedWaveformRangeResult) -> "CalculatedWaveformRangeOut":
@@ -339,6 +340,7 @@ class CalculatedWaveformRangeOut(BaseModel):
             values=_sanitize_float_list(result.values),
             per_unit_status=result.per_unit_status,
             per_unit_reference_compatibility=result.per_unit_reference_compatibility,
+            per_unit_verification_state=result.per_unit_verification_state,
         )
 
 
@@ -358,6 +360,7 @@ class CalculatedCursorValuesItemOut(BaseModel):
     b_value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedCursorValues) -> "CalculatedCursorValuesItemOut":
@@ -366,6 +369,7 @@ class CalculatedCursorValuesItemOut(BaseModel):
             unit=result.unit, a_value=result.a_value, b_value=result.b_value,
             per_unit_status=result.per_unit_status,
             per_unit_reference_compatibility=result.per_unit_reference_compatibility,
+            per_unit_verification_state=result.per_unit_verification_state,
         )
 
 
@@ -396,6 +400,7 @@ class CalculatedPeakResultOut(BaseModel):
     unit: str | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedPeakResult) -> "CalculatedPeakResultOut":
@@ -405,6 +410,7 @@ class CalculatedPeakResultOut(BaseModel):
             elapsed_seconds=result.elapsed_seconds, value=result.value, unit=result.unit,
             per_unit_status=result.per_unit_status,
             per_unit_reference_compatibility=result.per_unit_reference_compatibility,
+            per_unit_verification_state=result.per_unit_verification_state,
         )
 
 
@@ -432,6 +438,7 @@ class CalculatedAnnotationAnchorOut(BaseModel):
     value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedAnnotationAnchorResult) -> "CalculatedAnnotationAnchorOut":
@@ -440,6 +447,7 @@ class CalculatedAnnotationAnchorOut(BaseModel):
             sample_index=result.sample_index, elapsed_seconds=result.elapsed_seconds, value=result.value,
             per_unit_status=result.per_unit_status,
             per_unit_reference_compatibility=result.per_unit_reference_compatibility,
+            per_unit_verification_state=result.per_unit_verification_state,
         )
 
 

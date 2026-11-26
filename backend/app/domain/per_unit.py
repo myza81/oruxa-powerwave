@@ -283,6 +283,12 @@ class PerUnitResolution:
     # The verification and conversion provenance of the final result: `per_unit_reference.SideProvenance`.
     side_provenance: object | None = None
 
+    @property
+    def verification_state(self) -> str | None:
+        """PU-MIG S5: the backend's own verification state of this result, for the presentation layer (never derived from the
+        reference labels); `None` where no side provenance was recorded (Power, Frequency, not-applicable, engineering mode)."""
+        return getattr(self.side_provenance, "verification_state", None)
+
 
 def resolve_per_unit(
     engineering_type: str,

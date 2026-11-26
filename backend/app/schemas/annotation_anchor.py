@@ -53,6 +53,7 @@ class AnnotationAnchorOut(BaseModel):
     value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
     @classmethod
     def from_result(cls, result: AnnotationAnchorResult) -> "AnnotationAnchorOut":
@@ -65,4 +66,5 @@ class AnnotationAnchorOut(BaseModel):
             value=result.value,
             per_unit_status=result.per_unit_status,
             per_unit_reference_compatibility=result.per_unit_reference_compatibility,
+            per_unit_verification_state=result.per_unit_verification_state,
         )

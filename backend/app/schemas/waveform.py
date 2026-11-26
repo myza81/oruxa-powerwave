@@ -105,6 +105,7 @@ class WaveformRangeOut(BaseModel):
     # when this is "configured".
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
     @classmethod
     def from_result(cls, result: WaveformRangeResult) -> "WaveformRangeOut":
@@ -121,4 +122,5 @@ class WaveformRangeOut(BaseModel):
             values=_sanitize_float_array(result.values),
             per_unit_status=result.per_unit_status,
             per_unit_reference_compatibility=result.per_unit_reference_compatibility,
+            per_unit_verification_state=result.per_unit_verification_state,
         )

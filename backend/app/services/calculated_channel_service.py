@@ -1806,6 +1806,7 @@ class CalculatedWaveformRangeResult:
     values: np.ndarray
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def extract_calculated_waveform_range(
@@ -1859,6 +1860,7 @@ def extract_calculated_waveform_range(
     unit = channel.unit
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         resolution = _resolve_effective_per_unit_for_calculated_channel(
             channel, per_unit_profile, voltage_channel_names,
@@ -1867,6 +1869,7 @@ def extract_calculated_waveform_range(
             source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
+        per_unit_verification_state = resolution.verification_state
         out_values, unit, per_unit_status = apply_per_unit_to_array(
             out_values, channel.unit, channel.engineering_type, resolution
         )
@@ -1882,6 +1885,7 @@ def extract_calculated_waveform_range(
         values=out_values,
         per_unit_status=per_unit_status,
         per_unit_reference_compatibility=per_unit_reference_compatibility,
+        per_unit_verification_state=per_unit_verification_state,
     )
 
 
@@ -1894,6 +1898,7 @@ class CalculatedCursorValues:
     b_value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def extract_calculated_cursor_values(
@@ -1955,6 +1960,7 @@ def extract_calculated_cursor_values(
         unit = channel.unit
         per_unit_status: str | None = None
         per_unit_reference_compatibility: str | None = None
+        per_unit_verification_state: str | None = None
         if unit_mode == UNIT_MODE_PER_UNIT:
             profile = (per_unit_profiles or {}).get(channel.id)
             names = (voltage_channel_names_by_id or {}).get(channel.id)
@@ -1965,6 +1971,7 @@ def extract_calculated_cursor_values(
             source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
             )
             per_unit_reference_compatibility = resolution.reference_compatibility
+            per_unit_verification_state = resolution.verification_state
             a_value, unit, per_unit_status = apply_per_unit_to_value(a_value, channel.unit, channel.engineering_type, resolution)
             b_value, unit, per_unit_status = apply_per_unit_to_value(b_value, channel.unit, channel.engineering_type, resolution)
 
@@ -1977,6 +1984,7 @@ def extract_calculated_cursor_values(
                 b_value=b_value,
                 per_unit_status=per_unit_status,
                 per_unit_reference_compatibility=per_unit_reference_compatibility,
+                per_unit_verification_state=per_unit_verification_state,
             )
         )
     return results
@@ -1993,6 +2001,7 @@ class CalculatedPeakResult:
     unit: str | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def resolve_calculated_peak_value(
@@ -2045,6 +2054,7 @@ def resolve_calculated_peak_value(
     unit = channel.unit if available else None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
     if available and unit_mode == UNIT_MODE_PER_UNIT:
         resolution = _resolve_effective_per_unit_for_calculated_channel(
             channel, per_unit_profile, voltage_channel_names,
@@ -2053,6 +2063,7 @@ def resolve_calculated_peak_value(
             source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
+        per_unit_verification_state = resolution.verification_state
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedPeakResult(
         calculated_channel_id=channel.id,
@@ -2064,6 +2075,7 @@ def resolve_calculated_peak_value(
         unit=unit,
         per_unit_status=per_unit_status,
         per_unit_reference_compatibility=per_unit_reference_compatibility,
+        per_unit_verification_state=per_unit_verification_state,
     )
 
 
@@ -2081,6 +2093,7 @@ class CalculatedAnnotationAnchorResult:
     value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def resolve_calculated_annotation_anchor(
@@ -2136,6 +2149,7 @@ def resolve_calculated_annotation_anchor(
     unit = channel.unit
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         resolution = _resolve_effective_per_unit_for_calculated_channel(
             channel, per_unit_profile, voltage_channel_names,
@@ -2144,6 +2158,7 @@ def resolve_calculated_annotation_anchor(
             source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
+        per_unit_verification_state = resolution.verification_state
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedAnnotationAnchorResult(
         calculated_channel_id=channel.id,
@@ -2153,4 +2168,5 @@ def resolve_calculated_annotation_anchor(
         value=value,
         per_unit_status=per_unit_status,
         per_unit_reference_compatibility=per_unit_reference_compatibility,
+        per_unit_verification_state=per_unit_verification_state,
     )
