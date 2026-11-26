@@ -49,7 +49,7 @@ Separation of concerns:
 | **D-4 P5** | nothing is selected or replaced; a stored secondary base that disagrees with the one derived from nominal ÷ VT is reported as `base_diagnostics` (`stored_secondary_differs_from_derived`); P4 not implemented |
 | **D-5** | the legacy secondary path is activated only by a stored `base_reference_side == "secondary"` **and** a valid stored `secondary_voltage_ll_v` (unchanged selection; the mere presence of a value does nothing — mutation-checked) |
 | **D-6** | a Secondary base on Primary samples converts (`base × VT ratio`) only with an authoritative ratio, else it is blocked; no new automatic base selection |
-| **D-7** | the existing `auto_nominal` VT is consumed with its provenance (`ratio_authority: auto_nominal`) — **with the one exception in §4** |
+| **D-7** | the existing shared VT authority (DEC-215, `auto_nominal` included) is consumed exactly as approved, with its provenance (`ratio_authority`); PU adds no rule of its own (reassessed and corrected in §4) |
 | **D-8** | no `*_base_reference_side` field is touched or deprecated |
 | **N-2** | existing vocabulary: a required-but-unavailable VT is the existing PU reason `voltage_reference_side_incompatible` (and compatibility `incompatible`), a non-representable denominator is `effective_base_not_representable`; the resolver's own code and detail (`vt_authority_unavailable` + `no_group` / `not_configured` / `untrusted_authority` …) travel additively as `side_refusal_reason` / `side_refusal_detail`. No new production code was needed. The mapping is tested over every oracle refusal |
 
@@ -57,23 +57,51 @@ Source Default (ungrouped) channels: the nominal base is Primary by meaning, a S
 blocked, a Primary sample is unchanged. A Source Default that stores `voltage_base_reference_side == "secondary"` has no secondary value
 (D-5), so nothing is handed to the resolver and the historical gate decides exactly as before.
 
-## 4. The one point raised under D-7
+## 4. D-7 reassessment and correction (closeout, 2026-11-26)
 
-> **Governance note (2026-11-26, [DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)).**
-> The approved `auto_nominal` VT authority is not reopened by this point: the VT equipment ratio and the selected PU base are
-> independent engineering quantities, and a legacy secondary base differing from the 110 V default does not by itself reopen DEC-215 or
-> D-7. The question below is to be assessed against the existing approved VT-authority and base-selection policies, not treated as a
-> request to amend any of them; the guard described is an implementation provision pending that assessment. No policy was changed.
+Applied under [DEC-217](DECISIONS.md#dec-217--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
+and the owner's closeout direction. **No policy changed**: the approved `auto_nominal` VT (DEC-215: primary = accepted nominal, secondary =
+110 V default, provenance `auto_nominal`), the existing manual VT correction and the shared VT authority (manual > recording_metadata >
+auto_nominal > not_configured) are not reopened. The selected PU base and the VT equipment ratio are independent engineering quantities.
 
-The `auto_nominal` contract (DEC-215, `auto_nominal_vt.py`) derives *primary = nominal kV × 1000, secondary = 110 V* — a documented
-default. For Impedance and Distance this is exactly what the owner approved. For per unit the same ratio makes a Primary nominal base on
-Secondary samples read `1 pu = 110 V · ρ` **whatever the nominal**. That is supported by the contract when nothing contradicts it; it is
-**not** supported when the group itself stores a different secondary base (`secondary_voltage_ll_v`, for example the 1.0 kV the CFG
-declares in the P0 fixtures): the default is then contradicted by the group's own evidence and the converted PU would be wrong by the
-ratio of the two. The affected path is therefore **not enabled** for that combination: the `auto_nominal` ratio is refused
-(`untrusted_authority`) and the channel is blocked (`voltage_reference_side_incompatible`), with the diagnostic of §3 explaining why.
-A manual or recording-metadata VT is unaffected. No new inference was added. **Decision requested:** keep that fail-closed rule, or accept
-the `auto_nominal` default even against a contradicting stored secondary.
+**Documents and records consulted:** DEC-215 and `D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md`; DEC-216 Amendments 6–7; DEC-211 and DEC-212;
+`PER_UNIT_MEASUREMENT_MODEL.md` §11 (a VT ratio is measurement scaling, not itself a Vbase); the S0 reconciliation (§4.3 denominator, §4.5
+selection, §8 rows) and the owner decisions D-1, D-4 (P5), D-5, D-6, D-7, D-8, N-2 of 2026-11-25; the S1 specification; and the code and tests
+named below.
+
+**Finding 1 — the guard was unsupported.** The S2 provision "refuse the `auto_nominal` ratio for PU when the group stores a different
+`secondary_voltage_ll_v`" was a PU-specific VT authority. DEC-215 makes the derived VT "immediately valid for every consuming module";
+`secondary_voltage_ll_v` is a PU base, not a VT (the authority only checks a *stored VT* first); and D-4 (P5) requires a stored-versus-derived
+disagreement to be **reported, not acted on**. A per-consumer rule over a shared authority is what DEC-217 forbids. **Corrected:** the guard and its
+helper are removed; `per_unit_side_authority` passes the shared authority's answer through unchanged.
+
+**Finding 2 — the "1200×" is the approved arithmetic, not a discrepancy.** In `waveform-axis-units` the same raw numbers read as Primary and as
+Secondary volts differ by the VT ratio of a 132 kV nominal with the 110 V default: 132 000 / 110 = 1200. Nothing was scaled twice.
+
+**Worked example on the actual legacy fixture** (`synth_measurement_groups`, channel `N275_VR`, L-L reference as the VLT-REF-001 tests set it,
+nominal 275 kV, the CFG's own VT secondary 1.0 kV stored as the group's secondary base = 1000 V). Independent expected values are in
+`test_pu_mig_s2_d7_closeout.py`; the engine matches them to 1e-12:
+
+| Case | Samples (peak) | VT authority | D (1 pu) | pu = sample / D |
+|---|---|---|---|---|
+| A: stored side Primary, no VT stored | Secondary, 0.577345 kV | `auto_nominal` 275 kV : 110 V, r = 2500 | 275 kV / 2500 = 0.110 kV | **5.2486** |
+| B: A + the engineer's manual VT 275 kV : 1 kV (existing correction) | Secondary, 0.577345 kV | `manual`, r = 275 | 275 kV / 275 = 1.000 kV | **0.577345** (= 158.77 kV / 275 kV on the Primary recording) |
+| C: stored side **Secondary** 1000 V (D-5: declared + valid value) | Secondary, 0.577345 kV | not read (same side) | the **stored** 1.000 kV | **0.577345** |
+| D: stored side Secondary 1000 V, Primary samples | Primary, 158.77 kV | `auto_nominal`, r = 2500 | 1.000 kV × 2500 = 2500 kV | **0.063508** |
+| E: D + manual VT, r = 275 | Primary, 158.77 kV | `manual` | 1.000 kV × 275 = 275 kV | **0.577345** |
+
+A and B differ by exactly 2500 / 275 = 1000 V / 110 V = 9.0909: the ratio of the two VT assumptions, which is what the D-4 report
+(`base_diagnostics`: stored 1000 V, derived 110 V, relative difference 8.09, derivation `auto_nominal`) tells the engineer. The stored 1 kV base is
+used as stored (C, D, E) and never replaced (D-4); the diagnostic is the whole of the PU-specific response; the engineer's remedy is the existing
+manual VT (B, E). Without a nominal the authority derives nothing, and a Secondary base on Primary samples stays blocked (D-6).
+
+**Finding 3 — Source Default historical gate.** It preserves the approved side-safety restrictions: a stored `secondary` base against
+Secondary samples is the same-side number (no ratio read), against Primary samples it is blocked (an ungrouped channel has no ratio authority,
+S0 §8), and an undeclared side keeps the historical Unverified number (D-1). One gap was found and **corrected**: the gate compared the stored
+base side with the recording's *raw declaration*, so an engineer's correction (DEC-216) could be ignored and a declared-Secondary recording
+corrected to Primary still read "compatible". The gate now compares the **effective** side when Recording Details has established one; it
+never alters a denominator, so no number changes. D-5 is applied unchanged: the legacy path needs an explicit Secondary declaration and a valid
+stored value, and a stored value alone activates nothing.
 
 ## 5. Verification
 
@@ -94,7 +122,8 @@ the `auto_nominal` default even against a contradicting stored secondary.
 * browser (3): the converted case, the Recording Details refresh, and the updated axis-units expectation.
 * Anti-vacuity: 9 mutants of the S2 wiring (ratio ignored; ratio read for same side; legacy path activated by a stored value;
   historical labelled verified; `auto_nominal` guard removed; coverage dropping the group config; a refusal given a number;
-  effective side not reported; stored secondary replaced by a derived one) — all caught; the frontend refresh removed — caught.
+  effective side not reported; stored secondary replaced by a derived one) — all caught; the frontend refresh removed — caught. Closeout mutants (historical gate ignoring the effective side; a PU-specific `auto_nominal`
+  refusal reintroduced; the stored secondary base altered on the legacy path) — all caught.
 
 ### 5.2 Numerical parity and equivalence
 
@@ -107,7 +136,7 @@ reference for every denominator the gate produces.
 
 | Test | Change | Why |
 |---|---|---|
-| `test_per_unit_voltage_reference_safety` (group + Source Default matrix) | 3 new rows state the converted outcomes (strict `S`/primary, strict `P`/unknown, strict `S`/unknown); the "incompatible" rows keep every original assertion and now store the VT secondary the CFG declares (1.0 kV), which contradicts the 110 V default so no authoritative ratio exists; `C` and empty (non-strict) rows unchanged | IC-1/IC-2/IC-3, D-7 |
+| `test_per_unit_voltage_reference_safety` (group + Source Default matrix) | 4 new rows state the converted outcomes (strict `S`/primary, strict `P`/unknown, strict `S`/unknown, strict `P`/secondary base); the blocking cases keep every original assertion and obtain "no authoritative ratio" the approved way — Primary samples against a stored Secondary base with **no nominal**, so the shared VT authority has nothing to derive; `C` and empty (non-strict) rows unchanged | IC-1/IC-2/IC-3/IC-4, D-6 |
 | `test_per_unit_reference_safety[default_derived-S-primary]` | the nine Source Default Voltage channels are no longer counted "unverified": their strict Primary side is the proof (same numbers, label only); the count of enabled channels is unchanged | IC-3 |
 | `test_pu_side_denominator` disconnection guard | becomes an AST-based allowlist of the five S2 integration modules and the single caller | S1 said "deliberately changed by S2" |
 | `per-unit-voltage-reference-safety.spec.js` (browser) | same treatment as the backend matrix, plus two new tests | IC-1 |
@@ -144,18 +173,19 @@ the changed files.
 
 ## 7. Remaining limitations
 
-* **D-7 fail-closed rule** (§4) awaits the owner's decision.
 * The badge/popover text "no CT/VT scaling is applied" (frontend lines 33257/33259) is now inaccurate for a converted result; it belongs to
   S5 (UI wording) and was deliberately not touched.
 * Calculated Voltage (S3) and every Current path (S4) still use the historical gate; `measurement_side` there remains the raw declaration.
-* A Source Default that stores `voltage_base_reference_side == "secondary"` keeps the historical gate (it has no secondary value, D-5).
+* A Source Default that stores `voltage_base_reference_side == "secondary"` keeps the historical gate (no resolver base; D-5), now comparing the
+  effective side (§4, Finding 3).
 * The verification state is on the provenance endpoint only; the five waveform response schemas still carry `per_unit_reference_compatibility`
   (whose `compatible` now includes "normalised by an authoritative ratio", as the S0 matrix stated).
-* The auto_nominal conversion assumes the documented 110 V secondary default wherever the group stores nothing that contradicts it.
+* The auto_nominal conversion uses the documented 110 V secondary default exactly as DEC-215 approves; where the real VT differs the engineer
+  enters it (existing manual VT) and the D-4 report says so (§4).
 
 ## 8. S2 acceptance verdict
 
 Implemented as specified and verified: backend 0 failures; browser 0 unexplained failures (the only regression is an intentional change,
-updated and re-verified; the 6 CSV failures are deferred and independent). **S2 is acceptable for owner review.** One decision is requested
-(§4, D-7). S3 is not started.
+updated and re-verified; the 6 CSV failures are deferred and independent). **S2 is acceptable for owner review.** The D-7 point is
+resolved by correction (§4); no decision is outstanding from S2. S3 is not started.
 

@@ -7,11 +7,11 @@ detection, compatibility classification, and the full consumer surface.
 
 PU-MIG S2 (owner-approved, S0 intentional changes IC-1..IC-4): when Recording Details establishes the SAMPLE side strictly
 (a P/S declaration, or an engineer's correction), a known Primary/Secondary mismatch is no longer a flat block -- the base is
-placed on the samples' side with the group's own authoritative VT. It stays blocked only when no authoritative ratio exists. These
-tests keep every original assertion: the "incompatible" cases now give the group the evidence that makes its ratio non-authoritative
-(`SECONDARY_V`: the VT secondary the CFG itself declares, 1.0 kV, which contradicts the 110 V `auto_nominal` default -- decision
-D-7), and the new rows state the converted outcomes. A sample side that is NOT strict (`C`, empty) keeps the historical Unverified
-behaviour bit for bit.
+placed on the samples' side with the group's own authoritative VT (the shared VT authority, DEC-215: manual > recording_metadata >
+auto_nominal). It stays blocked only when NO authoritative ratio exists. These tests keep every original blocking assertion by giving
+the group exactly that condition: a stored Secondary base (`SECONDARY_V`, the 1.0 kV the CFG declares) and NO nominal voltage, so the
+VT authority has nothing to derive a ratio from (`auto_nominal` needs the nominal). With a nominal the same group converts (rows
+marked IC-1/IC-4). A sample side that is NOT strict (`C`, empty) keeps the historical Unverified behaviour bit for bit.
 """
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def recording(client, fixtures, marker="P"):
 SECONDARY_V = 1000.0
 
 
-def setup_voltage_base(client, sid, base_side="primary", scope="group", secondary_v=None):
+def setup_voltage_base(client, sid, base_side="primary", scope="group", secondary_v=None, nominal=275):
     """Configure a Voltage Measurement Group with a base_reference_side."""
     if scope == "group":
         url = f"{ROOT}/sources/{sid}/measurement-groups"
@@ -86,11 +86,12 @@ def setup_voltage_base(client, sid, base_side="primary", scope="group", secondar
         }), 201)
         path = url + "/" + group["id"] + "/voltage-config"
         body: dict = {
-            "nominal_voltage_ll_kv": 275,
             "reference_mode": "manual",
             "reference_override": "line_to_line",
             "base_reference_side": base_side,
         }
+        if nominal is not None:
+            body["nominal_voltage_ll_kv"] = nominal
         if base_side == "secondary" or secondary_v is not None:
             # Fixture: secondary=1.0 kV (LL) in the CFG primary/secondary ratio fields.
             # VT secondary circuit L-L voltage = 1.0 kV = 1000 V.
@@ -223,24 +224,27 @@ class TestApplyVoltageReference:
 # Integration: Measurement Group path
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("marker,base_side,secondary_v,expected_compat,eligible", [
-    ("P", "primary", None, "compatible", True),
-    ("S", "secondary", None, "compatible", True),
-    ("P", "secondary", None, "incompatible", False),
-    ("S", "primary", SECONDARY_V, "incompatible", False),     # no authoritative ratio: the original block, unchanged
-    ("C", "primary", None, "unverified", True),
-    ("", "primary", None, "unverified", True),
-    ("C", "unknown", None, "unverified", True),               # historical Unverified, bit for bit
-    ("", "unknown", None, "unverified", True),
-    # PU-MIG S2 intentional changes (S0 IC-1/IC-2/IC-3): a STRICT sample side is the proof, the stored side no longer is.
-    ("S", "primary", None, "compatible", True),               # IC-1: converted with the group's auto-derived VT
-    ("P", "unknown", None, "compatible", True),               # IC-3: same number, label only
-    ("S", "unknown", None, "compatible", True),               # IC-2: converted (was an unverified 0.0004-pu class)
+NO_NOMINAL = None
+
+
+@pytest.mark.parametrize("marker,base_side,nominal,expected_compat,eligible", [
+    ("P", "primary", 275, "compatible", True),
+    ("S", "secondary", 275, "compatible", True),
+    ("P", "secondary", NO_NOMINAL, "incompatible", False),    # no nominal, so no VT authority: the original block, unchanged
+    ("C", "primary", 275, "unverified", True),
+    ("", "primary", 275, "unverified", True),
+    ("C", "unknown", 275, "unverified", True),                # historical Unverified, bit for bit
+    ("", "unknown", 275, "unverified", True),
+    # PU-MIG S2 intentional changes (S0 IC-1/IC-2/IC-3/IC-4): a STRICT sample side is the proof, the stored side no longer is.
+    ("S", "primary", 275, "compatible", True),                # IC-1: converted with the group's VT (auto-derived here)
+    ("P", "unknown", 275, "compatible", True),                # IC-3: same number, label only
+    ("S", "unknown", 275, "compatible", True),                # IC-2: converted (was an unverified 0.0004-pu class)
+    ("P", "secondary", 275, "compatible", True),              # IC-4 / D-6: Secondary base on Primary samples, authoritative ratio
 ])
-def test_voltage_group_reference_safety(client, comtrade_fixtures_dir, marker, base_side, secondary_v, expected_compat, eligible):
+def test_voltage_group_reference_safety(client, comtrade_fixtures_dir, marker, base_side, nominal, expected_compat, eligible):
     """Group path: the PS-marker x base_side matrix (strict sides convert or block; non-strict stay historical)."""
     sid = recording(client, comtrade_fixtures_dir, marker)
-    setup_voltage_base(client, sid, base_side, scope="group", secondary_v=secondary_v)
+    setup_voltage_base(client, sid, base_side, scope="group", nominal=nominal)
     prov = provenance(client, sid, VNAMES[0])
     assert prov["reference_compatibility"] == expected_compat
     expected_status = "configured" if eligible else "base_required"
@@ -286,8 +290,8 @@ def test_voltage_source_default_base_reference_side_persists_through_api(client,
 
 def test_voltage_incompatible_does_not_mutate_stored_state(client, comtrade_fixtures_dir):
     """Incompatible reference must not alter the stored configuration."""
-    sid = recording(client, comtrade_fixtures_dir, "S")
-    setup_voltage_base(client, sid, "primary", scope="group", secondary_v=SECONDARY_V)
+    sid = recording(client, comtrade_fixtures_dir, "P")
+    setup_voltage_base(client, sid, "secondary", scope="group", secondary_v=SECONDARY_V, nominal=NO_NOMINAL)
     before = configuration_snapshot(client)
     prov = provenance(client, sid, VNAMES[0])
     assert prov["status"] == "base_required"
@@ -296,21 +300,18 @@ def test_voltage_incompatible_does_not_mutate_stored_state(client, comtrade_fixt
 
 
 def test_voltage_reference_side_change_takes_effect_immediately(client, comtrade_fixtures_dir):
-    """Changing base_reference_side from incompatible to compatible resolves inline.
-    recording(marker="S") produces genuinely Secondary-referred values (a rescaled by
-    secondary/primary). After correcting base to "secondary" with the matching
-    secondary_voltage_ll_v, the classifier yields "compatible" and PU is enabled."""
-    sid = recording(client, comtrade_fixtures_dir, "S")
-    path, _gid = setup_voltage_base(client, sid, "primary", scope="group", secondary_v=SECONDARY_V)
+    """Changing the base from incompatible to compatible resolves inline. recording(marker="P") has Primary samples; a
+    stored Secondary base with no nominal (no VT authority) cannot be placed on them, so it blocks. After the engineer gives the
+    group its nominal voltage and Primary base side the same samples are compatible and PU is enabled."""
+    sid = recording(client, comtrade_fixtures_dir, "P")
+    path, _gid = setup_voltage_base(client, sid, "secondary", scope="group", secondary_v=SECONDARY_V, nominal=NO_NOMINAL)
     prov = provenance(client, sid, VNAMES[0])
     assert prov["status"] == "base_required"
-    # Fix: set base to secondary with the VT secondary circuit L-L voltage from the fixture
-    # (secondary=1.0 kV in the CFG → secondary_voltage_ll_v=1000 V).
     checked(client.put(path, json={
         "nominal_voltage_ll_kv": 275,
         "reference_mode": "manual",
         "reference_override": "line_to_line",
-        "base_reference_side": "secondary",
+        "base_reference_side": "primary",
         "secondary_voltage_ll_v": 1000.0,
     }))
     prov2 = provenance(client, sid, VNAMES[0])
@@ -320,8 +321,8 @@ def test_voltage_reference_side_change_takes_effect_immediately(client, comtrade
 
 def test_voltage_incompatible_uses_raw_value_not_pu(client, comtrade_fixtures_dir):
     """Waveform endpoint must return raw engineering values when incompatible."""
-    sid = recording(client, comtrade_fixtures_dir, "S")
-    setup_voltage_base(client, sid, "primary", scope="group", secondary_v=SECONDARY_V)
+    sid = recording(client, comtrade_fixtures_dir, "P")
+    setup_voltage_base(client, sid, "secondary", scope="group", secondary_v=SECONDARY_V, nominal=NO_NOMINAL)
     wave = wave_status(client, sid, VNAMES[0])
     assert wave["per_unit_status"] == "base_required"
     # Raw unit, not "pu"
@@ -351,8 +352,8 @@ def test_voltage_reference_safety_coverage_unverified_count(client, comtrade_fix
 
 def test_voltage_incompatible_coverage_needs_configuration(client, comtrade_fixtures_dir):
     """An incompatible Voltage channel contributes to needs_configuration_count."""
-    sid = recording(client, comtrade_fixtures_dir, "S")
-    setup_voltage_base(client, sid, "primary", scope="group", secondary_v=SECONDARY_V)
+    sid = recording(client, comtrade_fixtures_dir, "P")
+    setup_voltage_base(client, sid, "secondary", scope="group", secondary_v=SECONDARY_V, nominal=NO_NOMINAL)
     cov = checked(client.get(f"{ROOT}/per-unit/sources/{sid}/coverage"))
     assert cov["needs_configuration_count"] > 0
 
@@ -376,7 +377,7 @@ def test_voltage_invalid_base_reference_side_rejected(client, comtrade_fixtures_
 
 def test_voltage_lgl_and_ll_channels_both_classified(client, comtrade_fixtures_dir):
     """Both L-G (N275_VR) and L-L (E275_VRY) channels go through the reference gate."""
-    sid = recording(client, comtrade_fixtures_dir, "S")
+    sid = recording(client, comtrade_fixtures_dir, "P")
     # Create a group containing both L-G and L-L voltage channels
     url = f"{ROOT}/sources/{sid}/measurement-groups"
     group = checked(client.post(url, json={
@@ -388,10 +389,9 @@ def test_voltage_lgl_and_ll_channels_both_classified(client, comtrade_fixtures_d
     }), 201)
     path = url + "/" + group["id"] + "/voltage-config"
     checked(client.put(path, json={
-        "nominal_voltage_ll_kv": 275,
         "reference_mode": "manual",
         "reference_override": "line_to_line",
-        "base_reference_side": "primary",
+        "base_reference_side": "secondary",
         "secondary_voltage_ll_v": SECONDARY_V,
     }))
     for ch in ("N275_VR", "E275_VRY"):
