@@ -501,6 +501,7 @@ S2_IMPORTERS = {
     "services/group_aware_per_unit.py",        # carries that base to the gate
     "services/per_unit_side_authority.py",     # Recording Details' side / VT, translated for the gate
     "domain/calculated_side_lineage.py",       # S3: only the `SampleSide` vocabulary; it never calls the resolver
+    "services/calculated_current_per_unit.py", # S4: vocabulary only; the K-3 comparison calls `per_unit_reference.place_current_base`
 }
 S2_CALLERS = {"domain/per_unit_reference.py"}
 
