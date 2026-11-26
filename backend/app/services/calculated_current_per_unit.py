@@ -165,8 +165,7 @@ def resolve_calculated_current_per_unit(*, workspace_id, channel: CalculatedChan
     strict = trace["strict_side"] is not None
     aggregate = SampleSide(side=trace["strict_side"], problem=None if strict else trace["problem"], authority=trace["authority"])
     qualified = qualify_historical(
-        resolution, RawVoltageSideInputs(sample=aggregate, ratio_for=lambda: None), strict=strict,
-        base_side=inherited.base_reference_side)
+        resolution, RawVoltageSideInputs(sample=aggregate, ratio_for=lambda: None), base_side=inherited.base_reference_side)
     return replace(inherited, resolution=qualified)
 
 
@@ -209,6 +208,15 @@ def _resolve_calculated_current(*, workspace_id, channel: CalculatedChannel,
         visiting.remove(node.id)
         visited.add(node.id)
         return True
+
+    def gate_reference(resolution, bases, **kw):
+        """`apply_current_reference` on the raw declarations; the effective (Recording Details) sides can only add a block."""
+        out = apply_current_reference(resolution, sample_sides, bases, **kw)
+        if effective_sides is not None and out.status == STATUS_CONFIGURED:
+            by_effective = apply_current_reference(resolution, effective_sides, bases, **kw)
+            if by_effective.status != STATUS_CONFIGURED:
+                return by_effective
+        return out
 
     def unavailable(reason, kind=None, identity=None, measurement="unknown", base_side="unknown"):
         if manual:
@@ -268,10 +276,11 @@ def _resolve_calculated_current(*, workspace_id, channel: CalculatedChannel,
     kind, identity = next(iter(authorities)) if len(authorities) == 1 and not manual else (None, None)
     samples = [c[4] for c in contributors]
     sample_sides, base_sides = {c[2] for c in contributors}, {c[3] for c in contributors}
+    effective_sides = None
     if side_authority is not None:
-        # DEC-216: the side compared with the base is Recording Details' strict side where one is established (an engineer's correction
-        # is neither ignored nor allowed to produce a "compatible" result against a known mismatch); the raw declaration otherwise.
-        sample_sides = {c[4].side if c[4].problem is None else c[2] for c in contributors}
+        # DEC-216: Recording Details' strict side may only ADD a block to what the raw declarations decide (a known mismatch with the base
+        # label); it never turns a blocked result into an allowed one, and the historical gate never verifies.
+        effective_sides = {c[4].side if c[4].problem is None else c[2] for c in contributors}
         sides = {s.side for s in samples if s.problem is None}
         problems = [s.problem for s in samples if s.problem is not None]
         trace.update(complete=True, strict_side=next(iter(sides)) if not problems and len(sides) == 1 else None,
@@ -294,9 +303,9 @@ def _resolve_calculated_current(*, workspace_id, channel: CalculatedChannel,
             return CurrentInheritance(
                 resolution, kind, resolution.measurement_side, resolution.base_reference_side,
                 origin, "manual" if manual else "automatic", configuration.current_base_amps if manual else None)
-    reference = apply_current_reference(
+    reference = gate_reference(
         PerUnitResolution(STATUS_CONFIGURED, identity, contributors[0][1].base_amount, "A", None),
-        sample_sides, base_sides, strict=manual or len(authorities) > 1, cross_authority=len(authorities) > 1)
+        base_sides, strict=manual or len(authorities) > 1, cross_authority=len(authorities) > 1)
     if reference.status != STATUS_CONFIGURED:
         return unavailable(reference.reason, kind, identity, measurement, base_side)
     if legacy_manual and not manual:
@@ -320,8 +329,7 @@ def _resolve_calculated_current(*, workspace_id, channel: CalculatedChannel,
             legacy = resolve_per_unit(CURRENT, profile, names)
             side = configured_base_side(profile.current_base_mode, profile.current_base_reference_side) if profile else "unknown"
             kind = "source_default"
-        legacy = apply_current_reference(legacy, sample_sides, [side], strict=len(authorities) > 1,
-                                         cross_authority=len(authorities) > 1)
+        legacy = gate_reference(legacy, [side], strict=len(authorities) > 1, cross_authority=len(authorities) > 1)
         legacy = resolve_conversion_eligibility(legacy, channel.unit, CURRENT, channel.values)
         return CurrentInheritance(legacy, kind, measurement, side)
     bases = [c[1].base_amount for c in contributors]

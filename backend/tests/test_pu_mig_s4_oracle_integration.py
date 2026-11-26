@@ -179,14 +179,51 @@ def test_without_the_side_authority_the_gate_is_exactly_the_historical_gate():
     assert after.base_amount == 5.0 and after.side_provenance is None and after.reference_compatibility == "compatible"
 
 
-def test_the_historical_current_gate_compares_and_reports_the_effective_side_not_the_raw_declaration():
-    """A strict Recording Details side (an engineer's correction) beside an undeclared base: the number is historical, the compared side is the effective one."""
-    resolution = PerUnitResolution(
-        status=STATUS_CONFIGURED, profile_id="s", base_amount=1200.0, base_unit="A", reason=None,
-        base_descriptor=SideBase(kind="manual_direct", value=1200.0, declared_side="unknown"))
-    after = apply_source_reference(
-        resolution, "Current", "primary", profile=_Profile("unknown"),
-        side_inputs=RawVoltageSideInputs(sample=SampleSide(side="secondary", problem=None, authority="engineer_recording_correction"),
-                                         ratio_for=lambda: pytest.fail("an undeclared base reads no CT")))
-    assert after.base_amount == 1200.0 and after.measurement_side == "secondary"
-    assert after.side_provenance.verification_state == UNVERIFIED_HISTORICAL and after.side_provenance.effective_side == "secondary"
+def _no_descriptor(base_side):
+    """A configured Current base the resolver cannot place (no descriptor): only the historical gate can decide it."""
+    return PerUnitResolution(status=STATUS_CONFIGURED, profile_id="s", base_amount=1200.0, base_unit="A", reason=None, base_descriptor=None)
+
+
+def _strict(side):
+    return RawVoltageSideInputs(sample=SampleSide(side=side, problem=None, authority="engineer_recording_correction"),
+                                ratio_for=lambda: pytest.fail("the historical gate reads no CT"))
+
+
+@pytest.mark.parametrize("raw,effective,stored", [
+    ("primary", "primary", "primary"), ("secondary", "secondary", "secondary"),       # label == both sides: compatible, STILL never verified
+    ("unknown", "primary", "primary"), ("unknown", "secondary", "secondary"),
+])
+def test_a_historical_current_result_is_never_verified_whatever_the_labels_say(raw, effective, stored):
+    """S2 correction applied to Current: a compatible / strict reference-side label does not prove the denominator is on that side."""
+    resolution = _no_descriptor(stored)
+    after = apply_source_reference(resolution, "Current", raw, profile=_Profile(stored), side_inputs=_strict(effective))
+    assert after.status == STATUS_CONFIGURED and after.base_amount == 1200.0                       # the historical number, unchanged
+    provenance = after.side_provenance
+    assert provenance.verification_state == UNVERIFIED_HISTORICAL
+    assert provenance.denominator_side is None and provenance.conversion is None and provenance.ratio_applied is None
+
+
+def test_the_effective_side_can_only_add_a_block_to_the_historical_current_gate():
+    resolution = _no_descriptor("primary")
+    # raw declaration allows (primary/primary); a strict Secondary side from Recording Details contradicts the label -> blocked (DEC-210/216)
+    blocked = apply_source_reference(resolution, "Current", "primary", profile=_Profile("primary"), side_inputs=_strict("secondary"))
+    assert blocked.status == STATUS_BASE_REQUIRED and blocked.reason == REASON_CURRENT_SIDE_INCOMPATIBLE
+    assert blocked.side_provenance.verification_state == BLOCKED
+    # raw declaration blocks (secondary vs a primary label): a strict effective Primary side must NOT unblock it
+    still = apply_source_reference(resolution, "Current", "secondary", profile=_Profile("primary"), side_inputs=_strict("primary"))
+    assert still.status == STATUS_BASE_REQUIRED and still.reason == REASON_CURRENT_SIDE_INCOMPATIBLE
+    assert still.side_provenance.verification_state == BLOCKED
+
+
+def test_a_resolver_placed_manual_base_is_still_verified_only_through_the_resolver():
+    """The configured Manual base (descriptor, declared side) keeps its verified states -- but only because the resolver placed it."""
+    base = SideBase(kind="manual_direct", value=5.0, declared_side="secondary")
+    resolution = PerUnitResolution(status=STATUS_CONFIGURED, profile_id="s", base_amount=5.0, base_unit="A", reason=None, base_descriptor=base)
+    direct = apply_source_reference(resolution, "Current", "secondary", profile=_Profile("secondary"), side_inputs=_strict("secondary"))
+    assert direct.base_amount == 5.0 and direct.side_provenance.verification_state == VERIFIED_DIRECT
+    assert direct.side_provenance.denominator_side == "secondary" and direct.side_provenance.conversion == "direct"
+    converted = apply_source_reference(
+        resolution, "Current", "primary", profile=_Profile("secondary"),
+        side_inputs=RawVoltageSideInputs(sample=SampleSide(side="primary", problem=None, authority="recording_channel_declared"),
+                                         ratio_for=lambda: SideRatio(status="configured", value=240.0, authority="manual", group_ids=("g",))))
+    assert converted.base_amount == pytest.approx(1200.0) and converted.side_provenance.verification_state == VERIFIED_CONVERTED

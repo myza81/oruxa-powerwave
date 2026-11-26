@@ -512,16 +512,16 @@ def test_an_engineers_side_correction_reaches_a_calculated_current_result(client
     assert peak(cwave(client, cid)["values"]) == pytest.approx(1.0, rel=1e-12)
 
 
-def test_k2_holds_for_an_engineer_established_secondary_side_too(client):
-    """The effective (corrected) side, not the undeclared raw flag, is what K-2 compares: the refusal changes from `side unknown` to the
-    K-2 `secondary reference unestablished` once Recording Details establishes the side."""
+def test_an_engineer_established_side_never_turns_a_blocked_k2_result_into_a_number(client):
+    """Recording Details' side may only ADD a block to the historical gate (S2 correction): undeclared leaves across two CT authorities are
+    refused for an unknown side; establishing the Secondary side in Recording Details leaves the result refused (K-2), never allowed."""
     sid = two_groups(client, "", sides=("secondary", "secondary"), bases=(0.005, 0.005), amplitude=5.0)
     cid = calc(client, sid, "addition", ("IA", "IB"))
     assert cwave(client, cid)["per_unit_status"] == "base_required" and "unknown" in cprov(client, cid)["reason"].lower()
     checked(client.put(f"{ROOT}/sources/{sid}/measurement-side", json={"side": "secondary"}))
     body, p = cwave(client, cid), cprov(client, cid)
-    assert body["per_unit_status"] == "base_required" and p["verification_state"] == "blocked"
-    assert "secondary" in p["reason"].lower()
+    assert body["per_unit_status"] == "base_required" and body["values"] == cwave(client, cid, "engineering")["values"]
+    assert p["verification_state"] == "blocked"
 
 
 # ------------------------------------------------------------------------------- additional safeguards (mutation closeout)
@@ -549,3 +549,36 @@ def test_a_conversion_across_two_ct_authorities_is_refused_even_when_both_cts_ag
     body, p = cwave(client, cid), cprov(client, cid)
     assert body["per_unit_status"] == "base_required" and body["values"] == cwave(client, cid, "engineering")["values"]
     assert p["verification_state"] == "blocked" and p["side_refusal_reason"] == "ct_authority_unavailable"
+
+
+# ---------------------------------------------------------------- the S2 numerical-integrity correction applied to calculated Current
+def test_a_legacy_manual_pointer_keeps_its_historical_denominator_and_is_never_verified(client):
+    """The legacy explicit profile-pointer path is the historical gate: same number as before, never `verified_*`, no denominator side,
+    conversion or ratio claimed -- even when the recording's side and the base label are both strictly Primary."""
+    sid, _ = build(client, flags="P", amplitude=IBASE_A)
+    cid = calc(client, sid, "reverse_polarity")
+    assert cprov(client, cid)["verification_state"] == "verified_direct"                  # the resolver placed the automatic base
+    client.app.state.per_unit_registry.set_manual_assignment_for_calculated_channel(ROOT.split("/workspaces/")[1], cid, sid)
+    body, p = cwave(client, cid), cprov(client, cid)
+    assert body["values"] == [v / IBASE_A for v in cwave(client, cid, "engineering")["values"]]      # the historical number, bit for bit
+    assert p["verification_state"] == "unverified_historical"
+    assert p["denominator_side"] is None and p["side_conversion"] is None and p["ratio_applied"] is None
+
+
+def test_recording_details_side_adds_a_block_to_the_legacy_manual_pointer_but_never_removes_one(client):
+    """The effective side may only ADD a block: the pointer's raw-Primary / Primary-label result becomes refused once Recording Details
+    establishes Secondary, whereas the opposite correction cannot unblock a result the raw declaration refused."""
+    ws = ROOT.split("/workspaces/")[1]
+    sid, _ = build(client, flags="P", amplitude=IBASE_A)
+    cid = calc(client, sid, "reverse_polarity")
+    client.app.state.per_unit_registry.set_manual_assignment_for_calculated_channel(ws, cid, sid)
+    assert cwave(client, cid)["per_unit_status"] == "configured"
+    checked(client.put(f"{ROOT}/sources/{sid}/measurement-side", json={"side": "secondary"}))
+    body, p = cwave(client, cid), cprov(client, cid)
+    assert body["per_unit_status"] == "base_required" and p["verification_state"] == "blocked"
+    sid2, _ = build(client, flags="S", amplitude=5.0, ct=None)
+    cid2 = calc(client, sid2, "reverse_polarity", name="second")
+    client.app.state.per_unit_registry.set_manual_assignment_for_calculated_channel(ws, cid2, sid2)
+    assert cwave(client, cid2)["per_unit_status"] == "base_required"                       # raw Secondary vs Primary label
+    checked(client.put(f"{ROOT}/sources/{sid2}/measurement-side", json={"side": "primary"}))
+    assert cwave(client, cid2)["per_unit_status"] == "base_required"                       # the correction cannot unblock it

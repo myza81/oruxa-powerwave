@@ -206,21 +206,18 @@ def _apply_strict_reference(quantity: str, resolution: PerUnitResolution, side_i
     )
 
 
-def qualify_historical(
-    historical: PerUnitResolution, side_inputs: RawVoltageSideInputs, *, strict: bool, base_side: str,
-) -> PerUnitResolution:
-    """D-1 (R+): the historical result is kept bit-for-bit and explicitly qualified (shared by raw Voltage and raw Current)."""
-    if historical.status != STATUS_CONFIGURED:
-        state = BLOCKED
-    elif strict and historical.reference_compatibility == "compatible":
-        state = VERIFIED_DIRECT          # both sides are established and equal: same side, no conversion
-    else:
-        state = UNVERIFIED_HISTORICAL
+def qualify_historical(historical: PerUnitResolution, side_inputs: RawVoltageSideInputs, *, base_side: str) -> PerUnitResolution:
+    """D-1 (R+): the historical result is kept bit-for-bit and explicitly qualified (shared by raw Voltage and raw / calculated Current).
+
+    A result of the historical gate is NEVER verified. A compatible or strict reference-side LABEL does not prove that the numerical
+    denominator is expressed on that side (a Source Default that stores `secondary` carries the nominal Primary voltage; a legacy manual
+    Current base is only as right as its declaration): `verified_direct` / `verified_converted` are produced only by the S1 resolver,
+    which places a base on the sample's side, and claim a denominator side, a conversion and a ratio. Here the state is
+    `unverified_historical`, or `blocked` when the gate refused; no denominator side, conversion or ratio is claimed."""
+    state = BLOCKED if historical.status != STATUS_CONFIGURED else UNVERIFIED_HISTORICAL
     return replace(historical, side_provenance=SideProvenance(
         verification_state=state, effective_side=side_inputs.sample.side,
         side_authority=side_inputs.sample.authority, base_side=base_side,
-        denominator_side=side_inputs.sample.side if state == VERIFIED_DIRECT else None,
-        conversion="direct" if state == VERIFIED_DIRECT else None,
         refusal_reason=historical.reason if state == BLOCKED else None,
     ))
 
@@ -247,10 +244,15 @@ def apply_source_reference(
         ):
             return apply_strict_current_reference(resolution, side_inputs)
         # Otherwise (a base whose side is not declared -- never assumed Primary -- or a sample side that is not strict) the historical gate
-        # decides, exactly as before; the effective Recording Details side, when established, is the one compared (DEC-216).
-        historical = apply_current_reference(resolution, [side_inputs.sample.side if strict else measurement_side], [side])
+        # decides, exactly as before, and its result is never verified. The raw declaration decides; Recording Details' strict effective side
+        # (DEC-216) may only ADD a block when it contradicts the base label -- it never turns a blocked result into an allowed one.
+        historical = apply_current_reference(resolution, [measurement_side], [side])
+        if strict and historical.status == STATUS_CONFIGURED:
+            by_effective = apply_current_reference(resolution, [side_inputs.sample.side], [side])
+            if by_effective.status != STATUS_CONFIGURED:
+                historical = by_effective
         if side_inputs is not None and resolution.status == STATUS_CONFIGURED:
-            historical = qualify_historical(historical, side_inputs, strict=strict, base_side=side)
+            historical = qualify_historical(historical, side_inputs, base_side=side)
         return historical
     if engineering_type == "Voltage":
         if voltage_group_config is not None:
@@ -276,15 +278,18 @@ def apply_source_reference(
             and resolution.base_descriptor is not None and resolution.representation is not None
         ):
             return apply_strict_voltage_reference(resolution, side_inputs, measurement_side, base_side)
-        # The historical gate decides without the resolver (a base it cannot place: a Source Default that stores `secondary`, or a
-        # side that is not strict). When Recording Details HAS established the sample side (DEC-216), that side -- not the
-        # recording's raw declaration -- is the one compared with the base side, so an engineer's correction can neither be ignored
-        # nor produce a "compatible" result against a known mismatch. Numbers are unchanged: this gate never alters a denominator.
-        strict = _strict_sample(side_inputs)
-        historical = apply_voltage_reference(
-            resolution, side_inputs.sample.side if strict else measurement_side, base_side,
-        )
+        # The historical gate decides without the resolver: a base whose side is only a LABEL (a Source Default that stores `secondary`
+        # carries the nominal L-L voltage, never a Secondary denominator, D-5) or a side that is not strict. Its numbers are never altered
+        # and a result of this gate is never verified: the side of the DENOMINATOR is not established here, so neither `verified_direct`
+        # nor `verified_converted` (nor a denominator side or a conversion) can be claimed, whatever side Recording Details reports.
+        # Recording Details' effective side (DEC-216) may only ADD protection: when it is strict and contradicts the base label it is a known
+        # mismatch and blocks (DEC-211); it never turns a result the raw declaration blocked into an allowed one.
+        historical = apply_voltage_reference(resolution, measurement_side, base_side)
+        if _strict_sample(side_inputs):
+            by_effective = apply_voltage_reference(resolution, side_inputs.sample.side, base_side)
+            if by_effective.reference_compatibility == "incompatible":
+                historical = by_effective
         if side_inputs is not None and resolution.status == STATUS_CONFIGURED:
-            historical = qualify_historical(historical, side_inputs, strict=strict, base_side=base_side)
+            historical = qualify_historical(historical, side_inputs, base_side=base_side)
         return historical
     return resolution
