@@ -52,12 +52,12 @@ Unverified for undeclared bases and non-strict samples (never assumed Primary); 
 
 ### 4.1 Tests added
 
-* `tests/test_pu_mig_s4_oracle_integration.py` (the S1 independent oracle through the production Current gate): every Current row with a
+* `tests/test_pu_mig_s4_oracle_integration.py` (219; the S1 independent oracle through the production Current gate): every Current row with a
   declared base side (equipment-derived Primary and manual-direct, both sides, grid + 132/138 kV case + extremes) matches the oracle's
   denominator (Decimal tolerance), reads the CT only for a conversion, and maps each refusal to the **existing** Current vocabulary with the
   resolver's code/detail carried additively; the undeclared-base rows keep today's number, labelled `unverified_historical` and read no CT; the
   non-strict and known-mismatch historical rows; the effective (Recording Details) side is the one compared; no authority = the historical gate.
-* `tests/test_pu_mig_s4_current_side.py` (API-level, 46): raw Current Primary/Secondary samples, same-side and cross-side (`B`, `B / r`,
+* `tests/test_pu_mig_s4_current_side.py` (API-level, 45): raw Current Primary/Secondary samples, same-side and cross-side (`B`, `B / r`,
   `B × r`), manual and equipment-derived Ibase, manual (CT 1200 A : 5 A) and missing CT, undeclared base side, undeclared sample side and the
   engineer's Recording Details correction, Source Default (direct, no CT authority), measured-unit scaling (kA), overflow / non-representable,
   samples unchanged, coverage agreement, all four source seams plus provenance; calculated Current: unary ops, chain, addition (ENG first),
