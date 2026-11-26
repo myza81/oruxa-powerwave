@@ -67,6 +67,7 @@ from app.services.line_to_line_voltage_service import (
 )
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_provenance_service import build_calculated_channel_provenance
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import voltage_channel_names_for_source
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -146,6 +147,11 @@ def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry
 
 def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigRegistry:
     return request.app.state.voltage_group_config_registry
+
+
+def get_recorded_authority(request: Request) -> RecordedAuthority:
+    """PU-MIG S3: Recording Details' side authority (the registries the shared side/ratio resolvers read)."""
+    return RecordedAuthority.from_app_state(request.app.state)
 
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
@@ -399,6 +405,7 @@ def get_channel_waveform(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> CalculatedWaveformRangeOut:
     """Section 48/49: reuses the exact same full-resolution-threshold +
     peak-preserving-reduction pipeline GET .../sources/{id}/waveform
@@ -419,7 +426,7 @@ def get_channel_waveform(
             unit_mode=unit_mode, per_unit_profile=per_unit_profile,
             voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry, side_authority=recorded_authority,
             source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
     except ImportServiceError as exc:
@@ -437,6 +444,7 @@ def get_channel_per_unit_resolution(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> PerUnitResolutionOut:
     """Per-Unit Settings hierarchy, Slice 3: this calculated channel's
     own Per-Unit provenance, built from the exact same resolution
@@ -456,7 +464,7 @@ def get_channel_per_unit_resolution(
         calc_registry=calc_registry,
         group_registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry,
-        current_config_registry=current_group_config_registry,
+        current_config_registry=current_group_config_registry, side_authority=recorded_authority,
         source_registry=source_registry, per_unit_registry=per_unit_registry,
     )
     return PerUnitResolutionOut.from_provenance(provenance)
@@ -545,6 +553,7 @@ def get_cursor_values(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> CalculatedCursorValuesOut:
     """Section 54: A/B cursor values for a batch of calculated channels --
     unknown ids are silently skipped (mirrors extract_cursor_values's own
@@ -570,7 +579,7 @@ def get_cursor_values(
             unit_mode=body.unit_mode, per_unit_profiles=per_unit_profiles,
             voltage_channel_names_by_id=voltage_channel_names_by_id,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry, side_authority=recorded_authority,
             source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
     except ImportServiceError as exc:
@@ -588,6 +597,7 @@ def get_peak_values(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> CalculatedPeakBatchOut:
     """Section 55: +Peak/-Peak for a batch of calculated channels, mirroring
     the source-channel .../peak-values batch contract (DEC-046) --
@@ -624,7 +634,7 @@ def get_peak_values(
                 unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
                 voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
                 workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-                voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+                voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry, side_authority=recorded_authority,
                 source_registry=source_registry, per_unit_registry=per_unit_registry,
             )
         except ImportServiceError as exc:
@@ -644,6 +654,7 @@ def resolve_annotation_anchor(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    recorded_authority: RecordedAuthority = Depends(get_recorded_authority),
 ) -> CalculatedAnnotationAnchorOut:
     """Section 56: Callout anchor resolution for a calculated channel --
     reuses the exact same nearest-sample rule
@@ -663,7 +674,7 @@ def resolve_annotation_anchor(
             unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
             voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=measurement_group_registry,
-            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
+            voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry, side_authority=recorded_authority,
             source_registry=source_registry, per_unit_registry=per_unit_registry,
         )
     except ImportServiceError as exc:

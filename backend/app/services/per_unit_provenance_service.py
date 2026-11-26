@@ -51,7 +51,7 @@ from sys import float_info
 from app.domain.reference_side import ReferenceSide, configured_base_side
 from app.domain.per_unit_reference import VERIFIED_CONVERTED, VERIFIED_DIRECT
 from app.domain.secondary_base_diagnostic import secondary_base_discrepancy
-from app.services.per_unit_side_authority import apply_raw_source_reference
+from app.services.per_unit_side_authority import apply_calculated_source_reference, apply_raw_source_reference
 from app.services.recorded_side_authority import RecordedAuthority
 from app.services.calculated_current_per_unit import resolve_calculated_current_per_unit, CURRENT_REASON_COPY
 
@@ -401,6 +401,15 @@ def _build_source_channel_provenance(
     )
 
 
+def _with_effective_side(provenance: PerUnitChannelProvenance) -> PerUnitChannelProvenance:
+    """S3: `measurement_side` reports the EFFECTIVE (lineage) side when Recording Details established one, else it stays as it was."""
+    side = provenance.side_provenance
+    if side is not None and side.verification_state in (VERIFIED_DIRECT, VERIFIED_CONVERTED) and side.effective_side:
+        return replace(provenance, measurement_side=side.effective_side,
+                       base_reference_side=side.base_side or provenance.base_reference_side)
+    return provenance
+
+
 def build_source_channel_provenance(*, measurement_side: ReferenceSide = "unknown", **kwargs) -> PerUnitChannelProvenance:
     provenance = _build_source_channel_provenance(measurement_side=measurement_side, **kwargs)
     # S2: `measurement_side` reports the EFFECTIVE side when Recording Details established one (strict-usable); otherwise
@@ -424,6 +433,7 @@ def build_calculated_channel_provenance(
     current_config_registry: CurrentGroupConfigRegistry,
     source_registry=None,
     per_unit_registry=None,
+    side_authority: RecordedAuthority | None = None,
 ) -> PerUnitChannelProvenance:
     """Mirrors `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`'s
     own exact dispatch order for a CALCULATED channel -- including
@@ -482,24 +492,34 @@ def build_calculated_channel_provenance(
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
+        # The shared calculated gate (S3), then the eligibility check -- the display seam's own order, so a converted denominator is the
+        # one whose representability is checked.
+        group_resolution = apply_calculated_source_reference(
+            group_resolution, channel, workspace_id=workspace_id, calc_registry=calc_registry,
+            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id),
+            voltage_group_config=(
+                voltage_config_registry.get(workspace_id, group_resolution.profile_id) if channel.engineering_type == VOLTAGE else None
+            ),
+            side_authority=side_authority)
         group_resolution = resolve_conversion_eligibility(group_resolution, channel.unit, channel.engineering_type, channel.values)
-        group_resolution = apply_source_reference(group_resolution, channel.engineering_type,
-            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id))
-        return _provenance_from_group(
+        provenance = _provenance_from_group(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id,
             engineering_type=channel.engineering_type, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
             explicit_voltage_reference=channel.voltage_representation,
         )
+        return _with_effective_side(provenance)
 
     legacy_resolution = resolve_per_unit(
         channel.engineering_type, per_unit_profile, voltage_channel_names,
         explicit_voltage_reference=channel.voltage_representation,
     )
+    legacy_resolution = apply_calculated_source_reference(
+        legacy_resolution, channel, workspace_id=workspace_id, calc_registry=calc_registry, profile=per_unit_profile,
+        side_authority=side_authority)
     legacy_resolution = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type, channel.values)
-    legacy_resolution = apply_source_reference(legacy_resolution, channel.engineering_type, profile=per_unit_profile)
-    return _provenance_from_legacy(
+    return _with_effective_side(_provenance_from_legacy(
         legacy_resolution, engineering_type=channel.engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,
         explicit_voltage_reference=channel.voltage_representation,
-    )
+    ))

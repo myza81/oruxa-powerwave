@@ -66,6 +66,9 @@ class RawVoltageSideInputs:
 
     sample: SampleSide
     ratio_for: Callable[[], SideRatio | None]
+    #: PU-MIG S3 (calculated Voltage): set when the strict leaves of a calculated result disagree on their side
+    #: (`calculated_side_lineage.REASON_LEAF_SIDES_DIFFER`). The result is refused; no number, no ratio read.
+    refusal: str | None = None
 
 ReferenceCompatibility = Literal["compatible", "incompatible", "unverified"]
 
@@ -200,6 +203,18 @@ def apply_source_reference(
             base_side = profile.voltage_base_reference_side
         else:
             base_side = "unknown"
+        if (
+            side_inputs is not None and side_inputs.refusal is not None and resolution.status == STATUS_CONFIGURED
+            and resolution.base_descriptor is not None
+        ):
+            return replace(
+                resolution, status=STATUS_BASE_REQUIRED, base_amount=None, reason=REASON_SIDE_INCOMPATIBLE,
+                reference_compatibility="incompatible", base_reference_side=resolution.base_descriptor.declared_side,
+                side_provenance=SideProvenance(
+                    verification_state=BLOCKED, base_kind=resolution.base_descriptor.kind,
+                    base_side=resolution.base_descriptor.declared_side, refusal_reason=side_inputs.refusal,
+                ),
+            )
         if (
             _strict_sample(side_inputs) and resolution.status == STATUS_CONFIGURED
             and resolution.base_descriptor is not None and resolution.representation is not None
