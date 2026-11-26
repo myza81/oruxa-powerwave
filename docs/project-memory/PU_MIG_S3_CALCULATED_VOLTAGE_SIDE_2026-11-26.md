@@ -119,3 +119,28 @@ numeric integrity / display synchronisation / atomic updates, power provenance, 
 **S3 acceptance recommendation:** implemented as specified and verified; backend 0 unexplained failures (one intentional guard allow-list
 update), browser 0 failures, mutation testing clean apart from equivalent redundant-guard mutants. Acceptable for owner review. No owner
 decision is outstanding from S3. S4 is not started.
+
+## 9. S3 closeout (owner message "PU Migration — S3 Acceptance and S4 Authorisation", 2026-11-26)
+
+**S3 accepted**; commits `03e1b77` and `01b0364` preserved; the importer allow-list correction accepted.
+
+* **`compliance_series` coverage.** `tests/test_pu_mig_s3_compliance_series.py` (5 tests) builds `Registries` exactly as `api/v1/compliance.py`
+  does and calls `load_series(ref, "pu")` for calculated Voltage members: a Secondary-sample result is the converted 1.0 pu and equals the
+  calculated waveform display (same numbers, provenance `verified_converted`); without the authority the same result is the historical
+  unconverted number (~0.0008 pu, the documented hazard class), proving the authority is what the consumer reads; a Primary result is
+  `verified_direct` and bit-identical to the display; a Source Default Secondary result is refused by the display, by provenance and by the
+  series alike; a non-strict leaf keeps the historical numbers (`unverified_historical`). A mutant that stops `compliance_series` passing the
+  authority is caught. No production change was needed.
+* **Disposition of the surviving mutants (§4.3).** `source_default_gets_a_group_ratio`, `ratio_for_source_default_not_refused` and
+  `ratio_group_mismatch_ignored` each survive alone because two independent safeguards enforce the same rule (the `group_id is None`
+  guard and the `context.group_ids != (group_id,)` guard in `calculated_voltage_side_inputs`); each one alone is an equivalent mutant of
+  the pair. `both_ratio_group_guards_removed` is **caught** by
+  `test_leaves_in_two_groups_fall_back_to_the_source_default_and_never_borrow_either_groups_vt`. The overlapping guards are retained
+  deliberately (defence in depth); the surviving single mutants are accepted.
+* **`manual_conflict_detected` observation (recorded, not changed).** While building the KPDN1 multibay fixture, saving a VT pair through
+  the public `PUT …/voltage-config` (with the default or an explicit `auto` reference mode, with or without a stored nominal) left the
+  line-to-line calculated channels `base_required` with raw reason `manual_conflict_detected`, whereas saving the same VT through the
+  service `update_voltage_configuration(vt_primary_v, vt_secondary_v)` (reference pair preserved) resolved normally. The cause was not
+  investigated (out of S3 scope, no S4 dependency identified); no production code was changed for it. Reproduce: upload
+  `line_to_line_multibay`, create the KPDN1 Voltage group, `PUT` a config with `vt_primary_v`/`vt_secondary_v`, create the L-L channels, read
+  `per-unit-resolution`.
