@@ -124,6 +124,9 @@ def test_without_a_nominal_there_is_no_vt_authority_and_the_conversion_stays_blo
 
 
 # ------------------------------------------------------------------------- Source Default (historical gate) side safety
+# A Source Default's `voltage_base_value` is the nominal system L-L voltage. A stored `secondary` reference-side LABEL does not turn it
+# into a Secondary denominator (D-5: that needs an explicit declaration AND a valid stored `secondary_voltage_ll_v`, which a Source
+# Default does not have), so the historical gate can never verify a result: Recording Details' side may only ADD a block.
 def source_default(client, *, flag, stored_side, value_kv):
     sid, _ = build(client, flag=flag, amplitude=value_kv * 1000.0 / 3 ** 0.5, group=False)
     checked(client.put(f"{ROOT}/per-unit/sources/{sid}", json={
@@ -134,7 +137,7 @@ def source_default(client, *, flag, stored_side, value_kv):
 
 
 @pytest.mark.parametrize("flag,expected_status,state,compat", [
-    ("S", "configured", "verified_direct", "compatible"),         # Secondary samples on a stored Secondary base: same side, direct
+    ("S", "configured", "unverified_historical", "compatible"),   # label-matched: the historical number, NEVER verified (denominator side unestablished)
     ("P", "base_required", "blocked", "incompatible"),            # a known mismatch with no ratio authority (ungrouped): blocked
     ("", "configured", "unverified_historical", "unverified"),    # no side established: the historical Unverified number (D-1)
 ])
@@ -142,20 +145,83 @@ def test_source_default_stored_secondary_keeps_its_side_safety(client, flag, exp
     sid = source_default(client, flag=flag, stored_side="secondary", value_kv=0.110)
     body, p = wave(client, sid), source_provenance(client, sid)
     assert (body["per_unit_status"], p["verification_state"], p["reference_compatibility"]) == (expected_status, state, compat)
+    assert p.get("denominator_side") is None and p.get("side_conversion") is None            # no unsupported provenance
     if expected_status == "configured":
-        assert pu_peak(body) == pytest.approx(1.0, rel=1e-12)                                # 110 V / sqrt(3) base, unchanged
+        assert pu_peak(body) == pytest.approx(1.0, rel=1e-12)                                # the historical arithmetic, unchanged
 
 
-def test_source_default_stored_secondary_honours_the_engineers_side_correction(client):
-    """DEC-216: Recording Details' effective side, not the raw declaration, is compared with the base side."""
+def test_source_default_stored_secondary_side_correction_only_adds_protection(client):
+    """DEC-216: Recording Details' effective side may block a known mismatch; it never unblocks or verifies a Source Default result."""
+    # no raw declaration, the engineer sets Secondary: the historical Unverified number, still never verified
     undeclared = source_default(client, flag="", stored_side="secondary", value_kv=0.110)
     checked(client.put(f"{ROOT}/sources/{undeclared}/measurement-side", json={"side": "secondary"}))
     p = source_provenance(client, undeclared)
-    assert (p["verification_state"], p["reference_compatibility"]) == ("verified_direct", "compatible")
+    assert (p["verification_state"], p["reference_compatibility"]) == ("unverified_historical", "unverified")
     assert pu_peak(wave(client, undeclared)) == pytest.approx(1.0, rel=1e-12)
-    # A recording DECLARED Secondary whose engineer sets Primary is a known mismatch: it must not remain "compatible".
+    # declared Secondary, the engineer sets Primary: a known mismatch with the Secondary label, blocked (it used to read compatible)
     declared = source_default(client, flag="S", stored_side="secondary", value_kv=0.110)
     checked(client.put(f"{ROOT}/sources/{declared}/measurement-side", json={"side": "primary"}))
     p = source_provenance(client, declared)
     assert (p["verification_state"], p["reference_compatibility"], p["status"]) == ("blocked", "incompatible", "base_required")
     assert wave(client, declared)["per_unit_status"] == "base_required"
+    # declared Primary (blocked against the Secondary label), the engineer sets Secondary: it must NOT be newly allowed
+    primary = source_default(client, flag="P", stored_side="secondary", value_kv=0.110)
+    checked(client.put(f"{ROOT}/sources/{primary}/measurement-side", json={"side": "secondary"}))
+    p = source_provenance(client, primary)
+    assert (p["verification_state"], p["reference_compatibility"], p["status"]) == ("blocked", "incompatible", "base_required")
+    assert wave(client, primary)["per_unit_status"] == "base_required"
+
+
+def test_a_mislabelled_source_default_is_never_verified(client):
+    """The 1200x case: a 132 kV (Primary-valued) base labelled Secondary, rated Secondary samples of a 132 kV / 110 V VT.
+
+    The number is the historical arithmetic (63.5085 V / 76.2102 kV = 8.333e-4, 1200x below the physical 1.0 pu peak-referred) and must never
+    carry a verified state, a denominator side or a conversion, whatever Recording Details says."""
+    d_primary_lg = 132000.0 / 3 ** 0.5
+    secondary_peak = d_primary_lg / (132000.0 / 110.0)
+    for correction in (None, "secondary"):
+        sid, _ = build(client, flag="S" if correction is None else "", amplitude=secondary_peak, group=False)
+        checked(client.put(f"{ROOT}/per-unit/sources/{sid}", json={
+            "voltage_base_value": 132.0, "voltage_reference_mode": "manual", "voltage_reference_override": "line_to_ground",
+            "voltage_base_reference_side": "secondary"}))
+        if correction:
+            checked(client.put(f"{ROOT}/sources/{sid}/measurement-side", json={"side": correction}))
+        body, p = wave(client, sid), source_provenance(client, sid)
+        assert pu_peak(body) == pytest.approx(secondary_peak / d_primary_lg, rel=1e-12)       # 8.333e-4
+        assert p["verification_state"] == "unverified_historical"
+        assert p.get("denominator_side") is None and p.get("side_conversion") is None and p.get("ratio_applied") is None
+
+
+# ------------------------------------------------------------------------- the four required cases on the 132 kV / 110 V (ratio 1200) fixture
+def test_cases_a_a0_b_c_denominators(client):
+    """Expected values from first principles; `pu` is an instantaneous sample peak divided by the base (see the module docstring).
+
+    One condition, two sides: a primary peak of D = 132 kV / sqrt(3) = 76,210.2 V is a secondary peak of D / 1200 = 63.5085 V. The stored
+    1 kV secondary base is a PU base chosen by the engineer, never a VT: it neither vetoes the approved `auto_nominal` ratio (A) nor is replaced
+    by it (B, C); a disagreement between the two is only reported (D-4, P5).
+    """
+    import math
+    d_pri = 132000.0 / math.sqrt(3)
+    ratio = 132000.0 / 110.0
+    sec_peak, d_sec_stored = d_pri / ratio, 1000.0 / math.sqrt(3)
+    cases = {                                    # name -> (build arguments, expected pu, expected state, ratio applied, expected base in volts)
+        "A":  (dict(flag="S", amplitude=sec_peak, stored_side="primary", secondary_v=1000.0), 1.0, "verified_converted", ratio, sec_peak),
+        "A0": (dict(flag="S", amplitude=sec_peak, stored_side="primary", secondary_v=None), 1.0, "verified_converted", ratio, sec_peak),
+        "B":  (dict(flag="S", amplitude=sec_peak, stored_side="secondary", secondary_v=1000.0), sec_peak / d_sec_stored, "verified_direct", None, d_sec_stored),
+        "C":  (dict(flag="P", amplitude=d_pri, stored_side="secondary", secondary_v=1000.0), d_pri / (d_sec_stored * ratio), "verified_converted", ratio,
+               d_sec_stored * ratio),
+    }
+    for name, (args, pu, state, applied, base_volts) in cases.items():
+        sid, _ = build(client, **args)
+        body, prov = wave(client, sid), source_provenance(client, sid)
+        assert pu_peak(body) == pytest.approx(pu, rel=1e-12), name
+        assert prov["verification_state"] == state and prov["ratio_applied"] == applied, name
+        assert prov["effective_base_amount"] * 1000.0 == pytest.approx(base_volts, rel=1e-12), name          # kV -> V
+        assert ("stored_secondary_differs_from_derived" in [d["code"] for d in prov["base_diagnostics"]]) == (name != "A0"), name
+        if applied is not None:
+            assert prov["ratio_authority"] == "auto_nominal", name
+    assert (cases["A"][1], cases["B"][1]) == (1.0, pytest.approx(0.11))
+    # a VT is required but not derivable (no nominal): the Primary samples stay blocked, the raw value is returned
+    sid, _ = build(client, flag="P", amplitude=d_pri, stored_side="secondary", secondary_v=1000.0, nominal=None)
+    prov = source_provenance(client, sid)
+    assert (wave(client, sid)["per_unit_status"], prov["verification_state"], prov["side_refusal_reason"]) == ("base_required", "blocked", "vt_authority_unavailable")
