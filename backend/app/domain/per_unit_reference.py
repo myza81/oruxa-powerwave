@@ -205,13 +205,27 @@ def apply_source_reference(
             and resolution.base_descriptor is not None and resolution.representation is not None
         ):
             return apply_strict_voltage_reference(resolution, side_inputs, measurement_side, base_side)
-        historical = apply_voltage_reference(resolution, measurement_side, base_side)
+        # The historical gate decides without the resolver (a base it cannot place: a Source Default that stores `secondary`, or a
+        # side that is not strict). When Recording Details HAS established the sample side (DEC-216), that side -- not the
+        # recording's raw declaration -- is the one compared with the base side, so an engineer's correction can neither be ignored
+        # nor produce a "compatible" result against a known mismatch. Numbers are unchanged: this gate never alters a denominator.
+        strict = _strict_sample(side_inputs)
+        historical = apply_voltage_reference(
+            resolution, side_inputs.sample.side if strict else measurement_side, base_side,
+        )
         if side_inputs is not None and resolution.status == STATUS_CONFIGURED:
             # D-1 (R+): the historical result is kept bit-for-bit and explicitly qualified.
-            state = BLOCKED if historical.status != STATUS_CONFIGURED else UNVERIFIED_HISTORICAL
+            if historical.status != STATUS_CONFIGURED:
+                state = BLOCKED
+            elif strict and historical.reference_compatibility == "compatible":
+                state = VERIFIED_DIRECT          # both sides are established and equal: same side, no conversion
+            else:
+                state = UNVERIFIED_HISTORICAL
             historical = replace(historical, side_provenance=SideProvenance(
                 verification_state=state, effective_side=side_inputs.sample.side,
                 side_authority=side_inputs.sample.authority, base_side=base_side,
+                denominator_side=side_inputs.sample.side if state == VERIFIED_DIRECT else None,
+                conversion="direct" if state == VERIFIED_DIRECT else None,
                 refusal_reason=historical.reason if state == BLOCKED else None,
             ))
         return historical

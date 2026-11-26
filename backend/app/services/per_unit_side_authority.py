@@ -18,18 +18,9 @@ from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import VOLTAGE
 from app.domain.per_unit import STATUS_CONFIGURED
 from app.domain.per_unit_reference import RawVoltageSideInputs, apply_source_reference
-from app.domain.auto_nominal_vt import AUTHORITY_AUTO_NOMINAL
-from app.domain.secondary_base_diagnostic import secondary_base_discrepancy
-from app.domain.side_denominator import RATIO_UNTRUSTED_AUTHORITY, SampleSide, SideRatio
+from app.domain.side_denominator import SampleSide, SideRatio
 from app.services.protection_instrument_context import QUANTITY_VOLTAGE, resolve_transformer_context
 from app.services.recorded_side_authority import RecordedAuthority, evaluate_channel_side
-
-
-def _contradicts_default_secondary(workspace_id: str, context, authority: RecordedAuthority) -> bool:
-    for group_id in context.group_ids:
-        if secondary_base_discrepancy(authority.voltage_config_registry.get(workspace_id, group_id)) is not None:
-            return True
-    return False
 
 
 def raw_voltage_side_inputs(
@@ -50,15 +41,12 @@ def raw_voltage_side_inputs(
             group_registry=authority.side.group_registry, voltage_config_registry=authority.voltage_config_registry,
             current_config_registry=authority.current_config_registry, source_registry=authority.side.source_registry,
         )
-        ratio = SideRatio(
+        # The ONE shared VT authority, exactly as DEC-215 defines it (manual > recording_metadata > auto_nominal > not_configured).
+        # PU adds no rule of its own: the selected PU base (stored or derived) and the VT equipment ratio are independent
+        # quantities, so a stored secondary base never changes what the VT authority says (decision D-4: it is only reported).
+        return SideRatio(
             status=context.ratio_status, value=context.ratio, authority=context.authority, group_ids=context.group_ids,
         )
-        if context.authority == AUTHORITY_AUTO_NOMINAL and _contradicts_default_secondary(workspace_id, context, authority):
-            # D-7: `auto_nominal` is the approved DEFAULT (nominal as primary, 110 V as secondary). A group that itself stores a
-            # different secondary base is evidence against that default, so the default is not consumed for PU -- no new
-            # inference is made and nothing is guessed. The refusal is reported; the engineer enters the VT in Recording Details.
-            return SideRatio(status=RATIO_UNTRUSTED_AUTHORITY, value=None, authority=context.authority, group_ids=context.group_ids)
-        return ratio
 
     return RawVoltageSideInputs(sample=sample, ratio_for=ratio_for)
 
