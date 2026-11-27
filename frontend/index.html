@@ -36436,7 +36436,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             narrowPanel: "recordings", // "recordings"|"groups"|"details" — narrow-layout only
             detailsView: "recording", // "recording"|"group" — what Column 3 shows (Slice C-1)
             // D2: inline voltage-base edit state (null = not editing)
-            voltageEdit: null,       // null | { draftKv, draftRefMode, draftRefOverride, draftRefSide, pending, error }
+            voltageEdit: null,       // null | { draftKv, draftRefMode, draftRefOverride, pending, error }
             // D3: inline current equipment-rating edit state (null = not editing)
             currentEdit: null,       // null | { draftMva, draftLinkedGroupId, pending, error }
             // D4: inline VT/CT instrument-transformer edit state (null = not editing)
@@ -37562,10 +37562,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const overrideOptions =
                         '<option value="line_to_ground"' + (ed.draftRefOverride === "line_to_ground" ? ' selected' : '') + '>Line-to-ground</option>' +
                         '<option value="line_to_line"' + (ed.draftRefOverride === "line_to_line" ? ' selected' : '') + '>Line-to-line</option>';
-                    const sideOptions =
-                        '<option value="unknown"' + (ed.draftRefSide === "unknown" ? ' selected' : '') + '>Unknown</option>' +
-                        '<option value="primary"' + (ed.draftRefSide === "primary" ? ' selected' : '') + '>Primary</option>' +
-                        '<option value="secondary"' + (ed.draftRefSide === "secondary" ? ' selected' : '') + '>Secondary</option>';
                     const canRevert = vc && (vc.base_authority === "manual" || vc.base_authority === "legacy_manual") && vc.nominal_voltage_ll_kv != null;
                     // Read-only reference display (reflects current draft state)
                     const refIsUnresolved = !isManual && !(vc && vc.effective_reference);
@@ -37605,6 +37601,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         configHtml += '</div>';
                     }
                     configHtml += '</div>'; // .ww-rd-field-grid
+                    configHtml += wwRdLegacySecondaryBaseNoteHtml(vc, true);
                     // Advanced reference settings toggle
                     configHtml += '<button class="ww-rd-advanced-toggle" id="wwRdVltAdvancedToggle" type="button">' +
                         advArrow + ' Advanced reference settings</button>';
@@ -37634,9 +37631,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             configHtml += '</div>'; // .ww-rd-correct-ref-content
                         }
                         configHtml += '<div class="ww-rd-field-grid">';
-                        configHtml += '<div class="ww-rd-field ww-rd-field-full"><label class="ww-rd-field-label" for="wwRdVltRefSide">Base reference side</label>' +
-                            '<select class="ww-rd-edit-select" id="wwRdVltRefSide">' + sideOptions + '</select>' +
-                            '<div class="ww-rd-field-sub">Controls which voltage level is used as the PU denominator. Does not modify waveform calibration.</div></div>';
                         if (canRevert) {
                             configHtml += '<div class="ww-rd-field ww-rd-field-full">' +
                                 '<button class="ww-rd-revert-btn" id="wwRdVoltageRevertBtn">Clear manual nominal voltage</button>' +
@@ -37718,6 +37712,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         configHtml += '</div>';
                         configHtml += '</div>'; // .ww-rd-field-grid
                     }
+                    // A legacy Secondary base is shown whether or not a nominal voltage exists (A15: the no-nominal cases are preserved too).
+                    configHtml += wwRdLegacySecondaryBaseNoteHtml(vc, false);
                     configHtml += '</div>'; // .ww-rd-section
                 }
             } else if (kind === "current") {
@@ -37732,7 +37728,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // D2: Apply the in-progress voltage edit to the backend.
-        // PUT body echoes reference_override and base_reference_side from draft state.
+        // DEC-219: the nominal system voltage is always the PRIMARY PU base, so the separate Base Reference Side input is gone. The side is
+        // therefore never a draft value and never echoed: a save that establishes a nominal base (a new, changed or reviewed value) declares
+        // "primary" explicitly through the existing contract; every other save omits the field, and the backend then preserves the stored
+        // declaration (a legacy Secondary base, a historical Unknown) exactly as it was. The effective denominator is the backend's.
+        function wwRdVoltageNominalSave(vc, rawKv) {
+            const stored = vc && vc.nominal_voltage_ll_kv != null ? Number(vc.nominal_voltage_ll_kv) : null;
+            const send = rawKv !== null && (stored === null || stored !== rawKv || (vc && vc.base_authority === "legacy_manual"));
+            return { sendNominal: send, side: send ? "primary" : null };
+        }
+
+        // A legitimate legacy Secondary base (stored Secondary declaration AND a valid stored secondary value, the D-5 criterion) stays
+        // identifiable and is never rewritten by an unrelated save. Read-only: management of it awaits owner approval.
+        function wwRdLegacySecondaryBaseNoteHtml(vc, editing) {
+            if (!vc || vc.base_reference_side !== "secondary" || vc.secondary_voltage_ll_v == null) return "";
+            const volts = Number(vc.secondary_voltage_ll_v);
+            const shown = Number.isFinite(volts) ? String(Number(volts.toPrecision(6))) + " V (L‑L)" : "stored value";
+            return '<div class="ww-rd-field ww-rd-field-full" id="wwRdLegacySecondaryBase">' +
+                '<div class="ww-rd-field-label">Legacy Secondary base</div>' +
+                '<div class="ww-rd-field-value">' + escapeHtml(shown) + ', Secondary — kept as stored</div>' +
+                '<div class="ww-rd-field-sub">' + (editing
+                    ? "Saving a new or changed nominal voltage replaces this base with the nominal voltage as the Primary base."
+                    : "Used as stored; it is unchanged unless the nominal voltage is changed.") + '</div></div>';
+        }
+
         async function wwRdVoltageApply() {
             const ed = wwRdState.voltageEdit;
             if (!ed || ed.pending) return;
@@ -37749,12 +37768,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 "/sources/" + encodeURIComponent(sourceId) +
                 "/measurement-groups/" + encodeURIComponent(groupId) + "/voltage-config";
+            const storedGroup = (ww.measurementGroups.get(sourceId) || []).find((x) => x.id === groupId);
+            const nominalSave = wwRdVoltageNominalSave(storedGroup && storedGroup.voltage_config, rawKv);
             const body = {
                 reference_mode: ed.draftRefMode,
                 reference_override: ed.draftRefMode === "manual" ? ed.draftRefOverride : null,
-                base_reference_side: ed.draftRefSide,
             };
-            if (rawKv !== null) body.nominal_voltage_ll_kv = rawKv;
+            if (nominalSave.sendNominal) body.nominal_voltage_ll_kv = rawKv;
+            if (nominalSave.side) body.base_reference_side = nominalSave.side;
             let response;
             try {
                 response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -37781,7 +37802,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // D2: Revert the manual kV to auto-detected (clear_nominal_voltage=true).
-        // Preserves reference_mode, reference_override, base_reference_side (OQ-D2-1).
+        // Preserves reference_mode and reference_override (OQ-D2-1); the stored base side is omitted, so the backend preserves it (DEC-219).
         async function wwRdVoltageRevert() {
             const ed = wwRdState.voltageEdit;
             if (!ed || ed.pending) return;
@@ -37799,7 +37820,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 clear_nominal_voltage: true,
                 reference_mode: (vc && vc.reference_mode) || "auto",
                 reference_override: (vc && vc.reference_mode === "manual") ? vc.reference_override : null,
-                base_reference_side: (vc && vc.base_reference_side) || "unknown",
             };
             let response;
             try {
@@ -37926,7 +37946,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Echo reference fields to prevent silent reset (D2 safety requirement)
                 reference_mode: (vc && vc.reference_mode) || "auto",
                 reference_override: (vc && vc.reference_mode === "manual") ? vc.reference_override : null,
-                base_reference_side: (vc && vc.base_reference_side) || "unknown",
             };
             if (primaryGiven) {
                 body.vt_primary_v = rawPrimaryKv * 1000; // convert kV to V
@@ -37976,7 +37995,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 clear_vt: true,
                 reference_mode: (vc && vc.reference_mode) || "auto",
                 reference_override: (vc && vc.reference_mode === "manual") ? vc.reference_override : null,
-                base_reference_side: (vc && vc.base_reference_side) || "unknown",
             };
             let response;
             try {
@@ -62489,7 +62507,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     draftKv: vc && vc.nominal_voltage_ll_kv != null ? String(vc.nominal_voltage_ll_kv) : "",
                     draftRefMode: (vc && vc.reference_mode) || "auto",
                     draftRefOverride: (vc && vc.reference_override) || null,
-                    draftRefSide: (vc && vc.base_reference_side) || "unknown",
                     advancedOpen: !!(vc && vc.reference_mode && vc.reference_mode !== "auto"),
                     correctRefOpen: !!(vc && vc.reference_mode === "manual"),
                     pending: false,
@@ -62638,7 +62655,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         wwRdState.voltageEdit.draftRefMode = "manual";
                         wwRdState.voltageEdit.draftRefOverride = e.target.value;
                     }
-                } else if (id === "wwRdVltRefSide") wwRdState.voltageEdit.draftRefSide = e.target.value;
+                }
             }
             if (wwRdState.currentEdit) {
                 // D3: sync current equipment-rating draft

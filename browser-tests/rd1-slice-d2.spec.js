@@ -116,9 +116,9 @@ test("D2-02: Edit button opens inline edit form with kV input; reference selecto
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageCancelBtn")).toBeVisible();
     // Advanced section — open it first to verify its contents
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    // No Reference Mode dropdown; "Correct voltage reference" toggle and base reference side present
+    // No Reference Mode dropdown; "Correct voltage reference" toggle present; the Base Reference Side selector is retired (DEC-219)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
 });
 
 // ---- D2-03: Cancel restores read mode ----------------------------------------
@@ -306,23 +306,17 @@ test("D2-09: Voltage Base Configuration heading shows the Edit button, not the r
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn")).toBeVisible();
 });
 
-// ---- D2-10: Base reference side selector present in edit form ----------------
+// ---- D2-10: Base reference side selector retired (DEC-219) -------------------
 
-test("D2-10: Advanced section includes base reference side selector with Unknown/Primary/Secondary options", async ({ page }) => {
+test("D2-10: the Voltage Base Reference Side selector is retired; nominal voltage is the Primary base (DEC-219)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { base_reference_side: "primary" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    // Open Advanced section to access base reference side selector
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible({ timeout: 3000 });      // the nominal voltage control stays
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    const sel = page.locator("#wwRdDetailsBody #wwRdVltRefSide");
-    await expect(sel).toBeVisible({ timeout: 3000 });
-    const options = await sel.locator("option").allTextContents();
-    expect(options).toContain("Unknown");
-    expect(options).toContain("Primary");
-    expect(options).toContain("Secondary");
-    // Pre-selected to current group value
-    const selected = await sel.inputValue();
-    expect(selected).toBe("primary");
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
+    await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Base reference side");
 });

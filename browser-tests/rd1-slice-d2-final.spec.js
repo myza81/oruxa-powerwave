@@ -323,19 +323,17 @@ test("FIN-10: Advanced Reference Settings auto-opens when group has manual refer
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
 });
 
-// ---- FIN-11: Base reference side still present in Advanced ------------------
+// ---- FIN-11: Base reference side selector retired from Advanced (DEC-219) ---
 
-test("FIN-11: Base reference side selector remains in Advanced Reference Settings", async ({ page }) => {
+test("FIN-11: the Base reference side selector is no longer in Advanced Reference Settings (DEC-219)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", base_reference_side: "primary" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    const sel = page.locator("#wwRdDetailsBody #wwRdVltRefSide");
-    await expect(sel).toBeVisible({ timeout: 3000 });
-    const selected = await sel.inputValue();
-    expect(selected).toBe("primary");
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
 });
 
 // ---- FIN-12: Cancel closes edit without PUT ---------------------------------

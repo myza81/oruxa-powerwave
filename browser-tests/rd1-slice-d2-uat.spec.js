@@ -185,10 +185,10 @@ test("UAT-D2-06: clicking Advanced toggle expands and shows reference selects", 
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).not.toBeVisible();
     // Click toggle to expand
     await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    // Advanced content appears with Correct voltage reference toggle and base reference side
+    // Advanced content appears with the Correct voltage reference toggle; the base reference side selector is retired (DEC-219)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
     // Reference Mode dropdown still absent (removed per DEC-214)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
 });
