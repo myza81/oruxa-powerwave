@@ -91,6 +91,8 @@ from app.domain.calculated_channel import (
     would_create_cycle,
 )
 from app.domain.missing_data_estimation import apply_estimation
+from app.services.calculated_channel_staleness import BASIS_EXPLICIT, BASIS_RECORDING, KNOWN_BASES, assert_inputs_not_stale
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.domain.channel_classification import (
     CURRENT,
     FREQUENCY,
@@ -771,6 +773,11 @@ def check_rms_eligibility(
     (section 23/24: block-by-default, override allowed), never whether an
     override was actually supplied -- that check happens in the caller.
     """
+    if not nominal_frequency_valid(nominal_frequency_hz):
+        # NF-3E / O-10: an invalid user-supplied frequency is a client error, as it is at creation (it used to divide by zero: HTTP 500).
+        raise InvalidNominalFrequencyError(
+            "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+        )
     resolved = _resolve_input(
         input_ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry
     )
@@ -926,8 +933,14 @@ def create_calculated_channel(
     local_mean_radius: int | None = None,
     voltage_reference_confirmed: bool = False,
     phase_pairing_confirmed: bool = False,
+    frequency_access: NominalFrequencyAccess | None = None,
 ) -> CalculatedChannel:
     """Validate, evaluate, and store one new calculated channel.
+
+    `frequency_access` (NF-3E) is the central nominal-frequency authority. With it, a NEW calculation on a STALE calculated input (direct
+    or transitive) is refused (`stale_calculated_input`, Option B), a recording-following RMS channel's frequency is verified against its
+    recording, and the recording's origin and revision are stamped into the channel's parameters (O-6). Every production caller passes it
+    (a static guard pins that); without it none of those checks can run.
 
     Order of validation (each an independent, clearly-attributable
     rejection reason -- section 44): operation known -> arity -> name ->
@@ -1001,6 +1014,9 @@ def create_calculated_channel(
     existing_names = {c.name for c in calc_registry.list_for_workspace(workspace_id)}
     if clean_name in existing_names:
         raise DuplicateCalculatedChannelNameError(f"A calculated channel named '{clean_name}' already exists.")
+
+    if frequency_access is not None:
+        assert_inputs_not_stale(inputs, workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
 
     # Stage 3B-2B-2 (DEC-213): pre-flight Invalid-calibration authority gate.
     # OD-5 (strict): fires for ALL engineering types, before _resolve_input().
@@ -1365,6 +1381,7 @@ def create_calculated_channel(
 
     constant: float | None = None
     nominal_frequency_hz: float | None = None
+    rms_basis = rms_origin = rms_revision = None
     if operation == OP_MULTIPLY_CONSTANT:
         raw_constant = parameters.get("constant") if parameters else None
         if isinstance(raw_constant, bool) or not isinstance(raw_constant, (int, float)) or not np.isfinite(raw_constant):
@@ -1377,6 +1394,26 @@ def create_calculated_channel(
                 "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
             )
         nominal_frequency_hz = float(raw_frequency)
+
+        # NF-3E: the caller DECLARES whether this frequency follows the recording or was chosen explicitly. It is never inferred from the
+        # number being equal to the recording's. An omitted basis is explicit (the caller supplied the number).
+        raw_basis = parameters.get("nominal_frequency_basis") if parameters else None
+        rms_basis = BASIS_EXPLICIT if raw_basis is None else raw_basis
+        if isinstance(rms_basis, bool) or rms_basis not in KNOWN_BASES:
+            raise InvalidNominalFrequencyError(
+                f"nominal_frequency_basis must be one of {', '.join(KNOWN_BASES)} (got {raw_basis!r})."
+            )
+        if rms_basis == BASIS_RECORDING and frequency_access is None:
+            raise InvalidNominalFrequencyError("A recording-following frequency cannot be verified without the recording's authority.")
+        if frequency_access is not None:
+            grounding = frequency_access.for_source(workspace_id, first.reference_source_id)
+            rms_origin, rms_revision = grounding.origin, grounding.revision
+            if rms_basis == BASIS_RECORDING and not (grounding.usable and abs(grounding.hz - nominal_frequency_hz) <= 1e-9):
+                now = "not usable" if not grounding.usable else f"{grounding.hz:g} Hz"
+                raise InvalidNominalFrequencyError(
+                    f"The recording's nominal frequency is now {now}, not {nominal_frequency_hz:g} Hz. Reload the recording's frequency "
+                    "(or choose a frequency explicitly) and calculate again."
+                )
 
         eligibility = check_rms_eligibility(
             workspace_id=workspace_id,
@@ -1532,6 +1569,13 @@ def create_calculated_channel(
             "window_mode": "trailing",
             "rms_kind": "true_rms",
         }
+        if frequency_access is not None:
+            # NF-3E / O-6: the declared intent and the recording's origin and revision at creation (informational; staleness is derived).
+            output_parameters |= {
+                "nominal_frequency_basis": rms_basis,
+                "nominal_frequency_origin": rms_origin,
+                "nominal_frequency_revision": rms_revision,
+            }
     elif operation == OP_ROCOF:
         # Retained explicitly (like RMS's window_mode/rms_kind): a stored
         # channel always states how it was differentiated and whether it

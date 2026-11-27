@@ -50,6 +50,7 @@ FREQUENCY_KEYS = {
     ("domain/oscillation_classification.py", "nominal_frequency_hz"): 3,       # M  C-08 NF-3G
     ("providers/ben/provider.py", "nominal_frequency_hz"): 1,                  # D  C-18 BEN upload value
     ("services/calculated_channel_service.py", "nominal_frequency_hz"): 4,     # D/M C-14 (RMS parameter), C-13 (power: NF-3F)
+    ("services/calculated_channel_staleness.py", "nominal_frequency_hz"): 1,   # K  NF-3E: reads the STORED parameter to compare it with the accessor
     ("services/compliance_readiness_service.py", "nominal_frequency_hz"): 2,   # M  C-04 NF-3C
     ("services/oscillation_cross_signal_service.py", "nominal_frequency_hz"): 2,  # M  C-07 NF-3C
     ("services/oscillation_representation_service.py", "nominal_frequency_hz"): 1,  # M  C-06 NF-3C
@@ -104,6 +105,9 @@ ACCESS_IMPORTERS = {
     "services/analysis_reference_frequency.py", "services/phasor_analysis_service.py", "services/overcurrent_analysis_service.py",
     "services/impedance_analysis_service.py", "services/distance_protection_analysis_service.py", "services/sequence_components_analysis_service.py",
     "services/line_to_line_voltage_service.py", "api/v1/engineering_contexts.py", "api/v1/calculated_channels.py",
+    # NF-3E: derived staleness compares a stored RMS frequency with the accessor's answer (the only reader of the effective frequency there);
+    # the creation service takes the accessor to stamp provenance, verify a recording-following frequency and refuse stale inputs.
+    "services/calculated_channel_staleness.py", "services/calculated_channel_service.py",
 }
 #: Files that may mention the registry at all; of these only the service layer may READ it (lifecycle removal is the rest).
 REGISTRY_USERS = {
@@ -115,8 +119,8 @@ REGISTRY_READ_METHODS = {"get", "snapshot", "revision", "set", "clear", "count"}
 #: G6. The frontend (`frontend/index.html`): exact occurrence counts of every frequency token. NF-3A C-22..C-24 and the NF-2 block.
 FRONTEND_TOKENS = {
     "nominal_frequency_hz": 9,
-    "nominal_frequency(bare)": 10,
-    "nominalFrequency": 33,          # NF-3C: +2 (the dormant facts card takes an optional `nominalFrequencyInfo`)
+    "nominal_frequency(bare)": 11,   # NF-3E: +1 (`nominal_frequency_basis` in the RMS create payload)
+    "nominalFrequency": 53,          # NF-3C: +2 (the dormant facts card takes an optional `nominalFrequencyInfo`); NF-3E: +20 (O-8 builder authority)
     "reference_frequency": 2,
     "nominalFrequencyOverride": 2,
 }
@@ -257,7 +261,8 @@ class TestTheAuthorityCannotBeBypassed:
         # calls the resolver. The accessor is still its only source of a frequency (see the importer test above).
         assert users == {"services/nominal_frequency_service.py", "services/nominal_frequency_registry.py",
                          "services/nominal_frequency_access.py", "schemas/nominal_frequency.py",
-                         "services/oscillation_representation_service.py"}
+                         "services/oscillation_representation_service.py",
+                         "services/calculated_channel_staleness.py"}                  # NF-3E: ORIGIN_* names for the reason text only
 
     def test_the_server_side_gate_is_read_from_settings_by_one_place(self):
         users = sorted(rel for rel, _ in _files(APP_DIR) if "nominal_frequency_manual_override_enabled" in (APP_DIR / rel).read_text(encoding="utf-8"))

@@ -90,6 +90,7 @@ from app.domain.reference_layer import ReferenceLayer
 from app.domain.reference_profile import ReferenceProfile
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import create_calculated_channel
+from app.services.calculated_channel_staleness import frequency_staleness
 from app.services.compliance_series import Registries, timebase_key, unit_problem
 from app.services.compliance_measurement_service import (
     INPUT_TYPE_INSTANTANEOUS,
@@ -211,15 +212,19 @@ class PreparationOutcome:
 
 def find_equivalent_rms(
     calc_registry: CalculatedChannelRegistry, workspace_id: str, input_ref: ChannelRef, nominal_frequency_hz: float,
+    *, frequency_access: NominalFrequencyAccess | None = None,
 ) -> CalculatedChannel | None:
     """An existing RMS calculated channel with the SAME calculation
-    identity -- never matched by name."""
+    identity -- never matched by name. NF-3E: with `frequency_access`, a STALE channel (its own frequency or an input's no longer matches
+    its recording) is never reused as a current input."""
     for channel in calc_registry.list_for_workspace(workspace_id):
         if (
             channel.operation == OP_RMS
             and channel.inputs == [input_ref]
             and channel.null_policy == DEFAULT_NULL_POLICY
             and channel.parameters.get("nominal_frequency_hz") == nominal_frequency_hz
+            and not (frequency_access is not None and frequency_staleness(
+                channel, workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access).stale)
         ):
             return channel
     return None
@@ -329,7 +334,7 @@ def _rms_step_or_state(ctx: _Context, member: str, ref: ChannelRef, *, label: st
             message=f"{label}: fundamental RMS is required, but {what}. {remedy}",
         )
     frequency = outcome.hz
-    existing = find_equivalent_rms(ctx.calc_registry, ctx.workspace_id, ref, frequency)
+    existing = find_equivalent_rms(ctx.calc_registry, ctx.workspace_id, ref, frequency, frequency_access=ctx.frequency_access)
     if existing is not None:
         return MemberReadiness(
             member=member, state=STATE_REUSED, channel_name=existing.name, calculated_channel_id=existing.id,
@@ -769,7 +774,9 @@ def prepare_measurement(
                 created.append(create_calculated_channel(
                     workspace_id=workspace_id, name=_unique_name(calc_registry, workspace_id, f"RMS ({source_name})"),
                     operation=OP_RMS, inputs=[step.input_ref],
-                    parameters={"nominal_frequency_hz": step.nominal_frequency_hz},
+                    # The step's frequency is the recording's effective one (the readiness just resolved it): recording-following.
+                    parameters={"nominal_frequency_hz": step.nominal_frequency_hz, "nominal_frequency_basis": "recording"},
                     source_registry=source_registry, calc_registry=calc_registry, per_unit_registry=per_unit_registry,
+                    frequency_access=frequency_access,
                 ))
     return PreparationOutcome(created=tuple(created), result=evaluate())

@@ -30,9 +30,12 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 
+from tests import nf3e_approved_changes as approved
 from tests import rms_baseline_scenarios as scn
 
-BASELINE = json.loads(scn.SERVICE_BASELINE_PATH.read_text(encoding="utf-8"))
+BASELINE = json.loads(scn.SERVICE_BASELINE_PATH.read_text(encoding="utf-8"))      # the frozen HISTORY: never edited
+# NF-3E (O-10, O-6): the explicitly approved changes, as data (tests/nf3e_approved_changes.py). Expected = history + approved changes.
+EXPECTED = approved.apply_r0(BASELINE["outcomes"])
 SERVICE_KEYS = [(group, key) for group, items in BASELINE["outcomes"]["service"].items() for key in items]
 API_KEYS = list(BASELINE["outcomes"]["api"])
 
@@ -69,13 +72,13 @@ class TestBaselineFile:
 
 @pytest.mark.parametrize("group,key", SERVICE_KEYS)
 def test_service_scenario_outcome_is_unchanged(actual, group, key):
-    expected = BASELINE["outcomes"]["service"][group][key]
+    expected = EXPECTED["service"][group][key]
     assert _canonical(actual["service"][group][key]) == _canonical(expected)
 
 
 @pytest.mark.parametrize("key", API_KEYS)
 def test_api_scenario_outcome_is_unchanged(actual, key):
-    expected = BASELINE["outcomes"]["api"][key]
+    expected = EXPECTED["api"][key]
     assert _canonical(actual["api"][key]) == _canonical(expected)
 
 

@@ -163,7 +163,6 @@ class TestConsumersMustRefuseAnUnusableDeclaredFrequencyWithoutAnException:
                                       workspace_id=scn.WS, source_registry=sources, frequency_access=access_for(sources))
         assert result is None                                                         # "do not guess"
 
-    @pytest.mark.xfail(strict=True, reason="NF-3E: the eligibility body frequency is not validated; HTTP 500 for 0 (D-B, O-10)")
     def test_rms_eligibility_rejects_zero_hertz_as_a_client_error(self, client):
         ws = "ws-oracle-elig"
         sid = _upload(client, ws, 5000.0, 50.0, "50")

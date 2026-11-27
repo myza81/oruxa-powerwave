@@ -4632,6 +4632,7 @@
         }
         .ww-cc-list-row-summary { font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ww-cc-list-row-error { grid-column: 1 / -1; color: var(--error); font-size: 0.7rem; margin-top: 4px; }
+        .ww-cc-list-row-advisory { grid-column: 1 / -1; color: var(--warn); font-size: 0.7rem; margin-top: 4px; }
         .ww-cc-list-row-unit { font-size: 0.72rem; color: var(--text-dim); }
         .ww-cc-list-row-controls { display: flex; justify-content: flex-end; gap: 2px; position: relative; }
 
@@ -8355,6 +8356,8 @@
         .ww-calc-provenance-badge { font-size: 0.75em; margin-left: 0.3em; white-space: nowrap; }
         .ww-calc-provenance-badge--exploratory { color: #a86a00; }
         .ww-calc-provenance-badge--not-fully-verified { color: #888; }
+        /* NF-3E: the stale-frequency marker (same shape as the provenance badge) and its one advisory line. */
+        .ww-calc-freq-stale-badge { font-size: 0.75em; margin-left: 0.3em; white-space: nowrap; color: var(--warn); }
         /* Stage 3B-3 (DEC-213): physical calibration status badge on source channel rows. */
         .ww-source-calib-badge { font-size: 0.75em; margin-left: 0.3em; white-space: nowrap; }
         .ww-source-calib-badge--unverified { color: #a86a00; }
@@ -34244,6 +34247,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // compact label is appropriate. Null causes callers to fall through to
         // Stage 3B-2C-3 (DEC-213, OD-12): calibration provenance badge for
         // calculated channels. Returns an HTML span or "" (no badge needed).
+        // NF-3E: a calculated channel whose stored values no longer reflect its recording's nominal frequency (derived by the backend; the
+        // values are unchanged). One small marker and one advisory sentence naming the reason.
+        function wwCcIsFrequencyStale(calc) {
+            return !!(calc && calc.frequency_staleness && calc.frequency_staleness.state === "stale" && calc.frequency_staleness.causes.length);
+        }
+
+        function wwCcFrequencyAdvisoryText(calc) {
+            if (!wwCcIsFrequencyStale(calc)) return "";
+            const cause = calc.frequency_staleness.causes[0];
+            const stored = cause.stored_hz + " Hz";
+            const reason = cause.reason === "recording_frequency_unusable"
+                ? "its recording no longer has a usable nominal frequency"
+                : "the recording's nominal frequency is now " + cause.effective_hz + " Hz" + (cause.effective_origin === "manual" ? " (Manual)" : "");
+            const lead = cause.own ? "Calculated at " + stored : "Depends on '" + cause.channel_name + "', calculated at " + stored;
+            return lead + "; " + reason + ". Values are unchanged. Create a new channel to use the current frequency.";
+        }
+
+        function wwCalcChannelFrequencyStaleBadgeHtml(calc) {
+            if (!wwCcIsFrequencyStale(calc)) return "";
+            return '<span class="ww-calc-freq-stale-badge" data-ww-freq-stale="true" title="' + escapeHtml(wwCcFrequencyAdvisoryText(calc)) + '">stale</span>';
+        }
+
         function wwCalcChannelProvenanceBadgeHtml(calc) {
             if (!calc) return "";
             const s = calc.calibration_provenance_status;
@@ -37353,6 +37378,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             ok = true;
                             const result = await response.json().catch(function() { return null; });
                             if (result && typeof result.revision === "number") wwRdNf.revision = Math.max(wwRdNf.revision, result.revision);
+                            // NF-3E: the one in-page notification after a successful Manual or Auto change (consumers refresh metadata only).
+                            document.dispatchEvent(new CustomEvent("nominal-frequency-changed", { detail: {
+                                workspaceId, sourceId, revision: result ? result.revision : null,
+                                effectiveHz: result ? result.effective_hz : null, origin: result ? result.origin : null } }));
                         } else {
                             const detail = await response.json().catch(function() { return null; });
                             message = (detail && detail.detail && detail.detail.message) || "The change could not be saved.";
@@ -42116,6 +42145,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // or an active selectable control -- the two must never look
             // the same (owner's own explicit UAT requirement).
             nominalFrequencySource: "user",
+            // NF-3E / O-8: why the locked frequency is what it is (the recording's origin) and whether the engineer chose a frequency
+            // explicitly. Neither is sent as such; `nominalFrequencySource` decides the declared basis ("metadata" = follows the recording).
+            nominalFrequencyOrigin: null, nominalFrequencyChosen: false,
             // DEC-190: ROCOF-only. The calculation method and the
             // measurement window (a string, from the <select>) are both
             // part of the estimate itself. `override` above doubles as the
@@ -42184,6 +42216,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nameEditedByUser = false;
             wwCcBuilder.nominalFrequency = "50";
             wwCcBuilder.nominalFrequencySource = "user";
+            wwCcBuilder.nominalFrequencyOrigin = null;
+            wwCcBuilder.nominalFrequencyChosen = false;
             wwCcBuilder.override = false;
             wwCcBuilder.rocofMethod = "rolling_frequency_difference";
             wwCcBuilder.rocofWindowMs = "500";
@@ -42215,14 +42249,78 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // found, or `{ value: null, source: "user" }` when the grounding
         // source has no cached entry at all (never invented) -- callers
         // fall back to the manual dropdown/50 Hz default in that case.
+        // NF-3E / O-8: the recording that grounds a candidate (the source itself, or a calculated channel's reference source).
+        function wwCcGroundingSourceId(inputCandidate) {
+            if (!inputCandidate) return null;
+            if (inputCandidate.kind === "source") return inputCandidate.sourceId;
+            const calc = ww.calculatedChannels.get(inputCandidate.calculatedChannelId);
+            return calc ? calc.reference_source_id : null;
+        }
+
+        // NF-3E / O-8: the APPLICABLE nominal frequency of a recording (the backend authority's effective value: Auto or Manual), cached per
+        // workspace and recording; the Recording Details change notification drops and reloads the entry. Never computed in the page.
+        const wwCcEffectiveFrequency = new Map();
+        function wwCcFreqKey(workspaceId, sourceId) { return workspaceId + "::" + sourceId; }
+
+        async function wwCcLoadEffectiveFrequency(sourceId) {
+            const workspaceId = currentWorkspaceId();
+            let response;
+            try {
+                response = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/nominal-frequency");
+            } catch (error) { return; }
+            if (!response.ok) return;
+            let body = null;
+            try { body = await response.json(); } catch (error) { return; }
+            if (!body || workspaceId !== currentWorkspaceId()) return;
+            const key = wwCcFreqKey(workspaceId, sourceId);
+            const previous = wwCcEffectiveFrequency.get(key);
+            const usable = body.usable === true && Number.isFinite(body.effective_hz);
+            wwCcEffectiveFrequency.set(key, { hz: usable ? body.effective_hz : null, usable, origin: body.origin });
+            if (!previous || previous.hz !== (usable ? body.effective_hz : null) || previous.origin !== body.origin) wwCcReapplyFrequencyAuthority(sourceId);
+        }
+
+        function wwCcApplyRmsFrequencyAuthority(candidate) {
+            const authority = wwCcResolveNominalFrequencyAuthority(candidate);
+            wwCcBuilder.nominalFrequencyChosen = false;
+            if (authority.source === "metadata") {
+                wwCcBuilder.nominalFrequency = String(authority.value);
+                wwCcBuilder.nominalFrequencySource = "metadata";
+                wwCcBuilder.nominalFrequencyOrigin = authority.origin || null;
+            } else {
+                // O-8: a recording with no usable frequency has nothing to preselect; the engineer chooses explicitly.
+                wwCcBuilder.nominalFrequency = authority.unusable ? "" : "50";
+                wwCcBuilder.nominalFrequencySource = "user";
+                wwCcBuilder.nominalFrequencyOrigin = null;
+            }
+            const sourceId = wwCcGroundingSourceId(candidate);
+            if (sourceId && !wwCcEffectiveFrequency.has(wwCcFreqKey(currentWorkspaceId(), sourceId))) wwCcLoadEffectiveFrequency(sourceId);
+        }
+
+        function wwCcReapplyFrequencyAuthority(sourceId) {
+            const b = wwCcBuilder;
+            if (b.operation !== "rms" || !b.inputs[0] || b.nominalFrequencyChosen) return; // an explicit choice is preserved
+            if (wwCcGroundingSourceId(b.inputs[0]) !== sourceId) return;
+            const next = wwCcResolveNominalFrequencyAuthority(b.inputs[0]);
+            const nextFrequency = next.source === "metadata" ? String(next.value) : (next.unusable ? "" : b.nominalFrequency);
+            if (nextFrequency === b.nominalFrequency && (next.source === "metadata") === (b.nominalFrequencySource === "metadata")
+                && (next.origin || null) === b.nominalFrequencyOrigin) return; // nothing the builder shows would change
+            wwCcApplyRmsFrequencyAuthority(b.inputs[0]);
+            wwCcResetRmsEligibility();
+            wwCcRenderBuilderFields();
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
+            wwCcScheduleRmsEligibilityCheck();
+        }
+
         function wwCcResolveNominalFrequencyAuthority(inputCandidate) {
             if (!inputCandidate) return { value: null, source: "user" };
-            let sourceId = null;
-            if (inputCandidate.kind === "source") {
-                sourceId = inputCandidate.sourceId;
-            } else {
-                const calc = ww.calculatedChannels.get(inputCandidate.calculatedChannelId);
-                sourceId = calc ? calc.reference_source_id : null;
+            const sourceId = wwCcGroundingSourceId(inputCandidate);
+            const effective = sourceId ? wwCcEffectiveFrequency.get(wwCcFreqKey(currentWorkspaceId(), sourceId)) : null;
+            if (effective) {
+                if (effective.usable) return { value: effective.hz, source: "metadata", origin: effective.origin };
+                return { value: null, source: "user", unusable: true };
             }
             const inventory = sourceId ? ww.sourceChannelInventory.get(sourceId) : null;
             const value = inventory ? inventory.nominalFrequency : null;
@@ -43222,8 +43320,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Category B (metadata-derived) -- locked, never
                 // accidentally editable (owner section 3/4): the
                 // recording's own declared system frequency, not a guess.
+                const origin = wwCcBuilder.nominalFrequencyOrigin;
+                const hint = origin === "manual" ? "Set in Recording Details"
+                    : origin === "assumed_default" ? "Assumed (not declared by the recording)" : "From recording metadata";
                 html += '<input type="text" readonly tabindex="-1" value="' + escapeHtml(String(wwCcBuilder.nominalFrequency)) + ' Hz">' +
-                    '<p class="hint">From recording metadata</p>';
+                    '<p class="hint">' + hint + '</p>';
             } else {
                 // Category A (user-selectable) -- a constrained dropdown,
                 // never free text (owner section 3: "Do NOT use free
@@ -43231,10 +43332,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // available for the currently selected input (or none is
                 // selected yet).
                 html += '<select id="wwCcNominalFrequencySelect">' +
+                    (wwCcBuilder.nominalFrequency === "" ? '<option value="" selected disabled>Select frequency</option>' : '') +
                     '<option value="50"' + (wwCcBuilder.nominalFrequency === "50" ? " selected" : "") + '>50 Hz</option>' +
                     '<option value="60"' + (wwCcBuilder.nominalFrequency === "60" ? " selected" : "") + '>60 Hz</option>' +
                     '</select>' +
-                    '<p class="hint">Select nominal system frequency</p>';
+                    '<p class="hint">' + (wwCcBuilder.nominalFrequency === "" ? "The recording has no usable nominal frequency. Select the frequency to use."
+                        : "Select nominal system frequency") + '</p>';
             }
             html += '</div>';
 
@@ -43995,6 +44098,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.constant = "";
             wwCcBuilder.nominalFrequency = "50";
             wwCcBuilder.nominalFrequencySource = "user";
+            wwCcBuilder.nominalFrequencyOrigin = null;
+            wwCcBuilder.nominalFrequencyChosen = false;
             wwCcBuilder.override = false;
             wwCcBuilder.rocofMethod = "rolling_frequency_difference";
             wwCcBuilder.rocofWindowMs = "500";
@@ -44035,14 +44140,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Section 29: switching input must refresh nominal-frequency
                 // AUTHORITY too, never just leave a stale value from the
                 // previous input's own source in place.
-                const authority = wwCcResolveNominalFrequencyAuthority(candidate);
-                if (authority.source === "metadata") {
-                    wwCcBuilder.nominalFrequency = String(authority.value);
-                    wwCcBuilder.nominalFrequencySource = "metadata";
-                } else {
-                    wwCcBuilder.nominalFrequency = "50";
-                    wwCcBuilder.nominalFrequencySource = "user";
-                }
+                wwCcApplyRmsFrequencyAuthority(candidate);
                 wwCcResetRmsEligibility(); // section 62: switching input clears old warning/status immediately
                 wwCcScheduleRmsEligibilityCheck();
             }
@@ -44216,9 +44314,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '<div class="ww-cc-list-row' + (selected ? " ww-cc-list-row--selected" : "") + '" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
-                        '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span>' + wwCalcChannelProvenanceBadgeHtml(calc) + '</div>' +
+                        '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span>' + wwCalcChannelProvenanceBadgeHtml(calc) + wwCalcChannelFrequencyStaleBadgeHtml(calc) + '</div>' +
                         '<div class="ww-cc-list-row-expr">' + wwCcExpressionHtmlFor(calc) + '</div>' +
                         '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
+                        (wwCcIsFrequencyStale(calc) ? '<div class="ww-cc-list-row-advisory" data-ww-freq-advisory="true">' + escapeHtml(wwCcFrequencyAdvisoryText(calc)) + '</div>' : '') +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
                     '<div class="ww-cc-list-row-class"><span class="ww-cc-type-badge">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
@@ -45131,6 +45230,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRenderCalculatedChannelsPage();
         }
 
+        // NF-3E: a recording's nominal frequency changed. The backend derives staleness, so the page only re-reads the channel metadata
+        // (and the builder's applicable frequency); stored values are never recomputed and no waveform is refetched by this.
+        document.addEventListener("nominal-frequency-changed", function(event) {
+            const detail = event.detail || {};
+            if (!detail.sourceId) return;
+            wwCcEffectiveFrequency.delete(wwCcFreqKey(detail.workspaceId || currentWorkspaceId(), detail.sourceId));
+            wwCcLoadEffectiveFrequency(detail.sourceId);
+            wwFetchCalculatedChannels();
+        });
+
         // Section 64: called after a source is removed -- the backend
         // already cascade-deleted every calculated channel grounded on
         // it; reconciling against the now-authoritative list (rather than
@@ -45174,7 +45283,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             ));
             let parameters = {};
             if (wwCcBuilder.operation === "multiply_constant") parameters = { constant: Number(wwCcBuilder.constant) };
-            else if (wwCcBuilder.operation === "rms") parameters = { nominal_frequency_hz: Number(wwCcBuilder.nominalFrequency) };
+            else if (wwCcBuilder.operation === "rms") {
+                // NF-3E: the declared intent. A locked frequency follows the recording; a selected one is explicit and never goes stale
+                // merely because the recording's frequency differs.
+                parameters = {
+                    nominal_frequency_hz: Number(wwCcBuilder.nominalFrequency),
+                    nominal_frequency_basis: wwCcBuilder.nominalFrequencySource === "metadata" ? "recording" : "explicit",
+                };
+            }
             else if (wwCcBuilder.operation === "rocof") {
                 parameters = {
                     method: wwCcBuilder.rocofMethod, window_ms: Number(wwCcBuilder.rocofWindowMs), alignment: "centered",
@@ -45394,6 +45510,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // metadata-derived display is a plain readonly input with
                 // no listener needed (never user-editable, section 4).
                 wwCcBuilder.nominalFrequency = event.target.value;
+                wwCcBuilder.nominalFrequencyChosen = true;
                 wwCcResetRmsEligibility();
                 // Section 6/25: Window is DERIVED, not entered -- a full
                 // re-render (not a targeted DOM patch) keeps its displayed

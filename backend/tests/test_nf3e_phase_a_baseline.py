@@ -18,11 +18,13 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests import nf3e_approved_changes as approved
 from tests import nf3e_baseline_scenarios as scenarios
 from tests.test_nf3b_frozen_baselines import _same
 
 BASELINE = json.loads((Path(__file__).parent / "fixtures" / "nf3e_baselines" / "nf3e_phase_a_baseline.json").read_text(encoding="utf-8"))
-H = BASELINE["outcomes"]
+H = BASELINE["outcomes"]                                  # the frozen HISTORY: never edited
+EXPECTED = approved.apply_phase_a(H)                       # history + the explicitly approved NF-3E additive changes
 
 
 @pytest.fixture(scope="module")
@@ -147,4 +149,4 @@ class TestHistoricalFacts:
 class TestCurrentBehaviourEqualsHistory:
     @pytest.mark.parametrize("group", sorted(H))
     def test_group(self, current, group):
-        assert _same(H[group], current[group], group) == []
+        assert _same(EXPECTED[group], current[group], group) == []

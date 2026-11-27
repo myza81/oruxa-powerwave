@@ -61,6 +61,7 @@ from app.domain.physical_calibration import (
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import ImportServiceError, InvalidCalibrationAuthorityError
+from app.services.calculated_channel_staleness import frequency_staleness
 from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.line_to_line_voltage_service import (
     create_line_to_line_voltage_channels,
@@ -95,6 +96,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_calculated_operation": status.HTTP_400_BAD_REQUEST,
     "invalid_time_range": status.HTTP_400_BAD_REQUEST,
     "invalid_nominal_frequency": status.HTTP_400_BAD_REQUEST,
+    # NF-3E (Option B): a new calculation on a stale input conflicts with the current state of the recording's frequency.
+    "stale_calculated_input": status.HTTP_409_CONFLICT,
     "rms_recording_too_short": status.HTTP_400_BAD_REQUEST,
     "rms_sampling_too_sparse": status.HTTP_400_BAD_REQUEST,
     "rms_override_required": status.HTTP_400_BAD_REQUEST,
@@ -240,13 +243,19 @@ def _compute_provenance(channel, workspace_id, source_registry, calc_registry):
     return "not_assessed", None
 
 
-def _channel_out(channel, sources, registry, workspace_id=None):
+def _channel_out(channel, sources, registry, workspace_id=None, frequency_access=None):
     prov_status, prov_reason = _compute_provenance(channel, workspace_id, sources, registry)
+    # NF-3E: derived on every request from the central authority; nothing is stored, so it cannot go out of date.
+    staleness = (
+        frequency_staleness(channel, workspace_id=workspace_id, calc_registry=registry, frequency_access=frequency_access)
+        if frequency_access is not None and workspace_id is not None else None
+    )
     return CalculatedChannelOut.from_domain(
         channel,
         calculated_timing_metadata(channel, source_registry=sources, calc_registry=registry),
         calibration_provenance_status=prov_status,
         calibration_provenance_reason=prov_reason,
+        frequency_staleness=staleness,
     )
 
 
@@ -272,6 +281,7 @@ def create_channel(
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> CalculatedChannelOut:
     """Create + eagerly evaluate one calculated channel (section 46: eager
     evaluation at creation, never re-evaluated on later requests -- see
@@ -295,11 +305,12 @@ def create_channel(
             local_mean_radius=body.local_mean_radius,
             voltage_reference_confirmed=body.voltage_reference_confirmed,
             phase_pairing_confirmed=body.phase_pairing_confirmed,
+            frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
         raise _http_error(exc) from exc
-    return _channel_out(channel, source_registry, calc_registry, workspace_id=workspace_id)
+    return _channel_out(channel, source_registry, calc_registry, workspace_id=workspace_id, frequency_access=frequency_access)
 
 
 @router.get("/line-to-line-voltage/readiness", response_model=list[LineToLineContextReadinessOut])
@@ -359,7 +370,8 @@ def create_line_to_line_channels(
         raise _http_error(exc) from exc
     return LineToLineCreateResponse(
         creation_batch_id=channels[0].creation_batch_id if channels else None,
-        channels=[_channel_out(c, source_registry, calc_registry, workspace_id=workspace_id) for c in channels],
+        channels=[_channel_out(c, source_registry, calc_registry, workspace_id=workspace_id, frequency_access=frequency_access)
+                  for c in channels],
     )
 
 
@@ -368,10 +380,12 @@ def list_channels(
     workspace_id: str,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> list[CalculatedChannelOut]:
     workspace_id = _validate_workspace_id(workspace_id)
     channels = calc_registry.list_for_workspace(workspace_id)
-    return [_channel_out(c, source_registry, calc_registry, workspace_id=workspace_id) for c in channels]
+    return [_channel_out(c, source_registry, calc_registry, workspace_id=workspace_id, frequency_access=frequency_access)
+            for c in channels]
 
 
 @router.delete("/{calculated_channel_id}", status_code=status.HTTP_204_NO_CONTENT)

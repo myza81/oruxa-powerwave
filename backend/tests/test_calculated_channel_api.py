@@ -362,8 +362,10 @@ class TestRmsOperation:
         body = resp.json()
         assert body["operation"] == "rms"
         assert body["waveform_form"] == "rms"
+        # NF-3E (O-6): the API also records the caller-declared basis (omitted = explicit) and the recording's origin and revision.
         assert body["parameters"] == {
             "nominal_frequency_hz": 50.0, "window_mode": "trailing", "rms_kind": "true_rms",
+            "nominal_frequency_basis": "explicit", "nominal_frequency_origin": "recording_metadata", "nominal_frequency_revision": 0,
         }
         assert body["sample_count"] == 2500
 
