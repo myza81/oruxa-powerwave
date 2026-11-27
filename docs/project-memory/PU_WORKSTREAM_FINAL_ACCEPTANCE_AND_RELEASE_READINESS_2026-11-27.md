@@ -173,3 +173,28 @@ W-1 targeted 5,482, 0 failed; BEN owner-reference backend 284 passed; independen
 4. Retire `docs/dec-217-governance` (duplicate DEC-218) and the superseded individual WUI branches, or state how they are to be reconciled.
 5. For the first PROD release: confirm the PROD state identified in section 6, provide or confirm the PROD secrets and configuration, approve the rollback tag, and give the explicit instruction to dispatch `target=prod`.
 6. Deferred items in section 4 stay unscheduled until the owner asks for them.
+
+## 11. Integration instruction and superseded branches (owner, 2026-11-27)
+
+The owner accepted the readiness report above and authorised the integration steps below. This section records those instructions; it creates no engineering
+policy.
+
+**Resolved from section 10.** Decision 1: one merge-commit PR into `main` carrying the complete accepted lineage (D5A, RD-1, WUI-001–004 as already integrated, PU-MIG S1–S6,
+DEC-218, DEC-219 and its amendments, this acceptance record); the dependency stack is not split. Decision 2: pushing the branch as a new remote branch and opening the PR are
+authorised; the PR is **not** merged until the owner approves. Decision 3: the full browser run (gate G4) is mandatory **before** the merge, not only before PROD. Decision 4:
+recorded below. Decisions 5 and 6 remain open.
+
+Excluded: NF development, RMS development, any paused WUI work and every other unaccepted workstream. No squash, rebase or force-push; no existing branch history is rewritten.
+
+**Superseded branches.** None of these is merged independently, deleted or removed from its worktree; cleanup is deferred until after a successful production release.
+
+| Branch (local only unless stated) | Tip | Status |
+|---|---|---|
+| `docs/dec-217-governance` | `8affd9c` | **Superseded by DEC-218.** Two documentation commits on a `main` base (the governance decision first numbered DEC-217, then renumbered DEC-218); the same decision is already carried, with later amendments, by the candidate. DEC-217 stays reserved for NF-001. Merging it would conflict in `DECISIONS.md` and `HANDOFF.md`. |
+| `feature/wui-001-pane-local-y-controls` | `5bce71a` | Superseded by the integrated lineage (WUI-001–004 consolidation, PR #13). |
+| `feature/wui-002-global-toolbar-redesign` | `9594a8a` | Superseded by the integrated lineage. |
+| `feature/wui-003-modern-pane-adaptive-legend` | `ec10270` | Superseded by the integrated lineage. |
+| `feature/wui-004-compact-y-axis-units` | `d513fba` | Superseded by the integrated lineage (`d513fba` is the accepted final UI commit). |
+| `integration/wui-001-002-into-dev-20261122` | `b355e69` | Superseded by the integrated lineage. |
+
+`integration/wui-001-004-into-dev-20261123` (`ad1b6ed`) and `integration/wui-001-004-dev-f24f1d7` (`3ed200c`, on `origin`, merged by PR #13) are already ancestors of the candidate.

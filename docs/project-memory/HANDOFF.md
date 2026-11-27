@@ -27,6 +27,8 @@ Rollback of DEV: dispatch `target=dev` with `uat/dev-pu-mig-20261127` (`9ec49d9`
 **Next:** owner reviews [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md) (sections 5, 8 and 10 list the readiness findings, the gate and the open decisions). Do not merge to `main`, push, or deploy to PROD until the owner decides;
 do not resume NF, RMS or WUI work from this record.
 
+**Update 2026-11-27 (owner integration instruction):** one merge-commit PR to `main` is authorised (push as a new branch; PR **not** merged until owner approval); the full browser run (G4) is required before the merge. `docs/dec-217-governance` is superseded by DEC-218 and the per-feature WUI branches by the integrated lineage; none is merged, deleted or removed yet (cleanup after a successful production release). See section 11 of the acceptance record.
+
 ---
 
 ## Controlled WUI-001–004 consolidation
