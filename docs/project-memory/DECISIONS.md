@@ -29855,3 +29855,24 @@ configurations, so the automatic base configuration service (`auto_base_service`
    (the fixture's real VT, 275 : 1) gives 0.577345 pu, equal to the Primary recording of the same condition (158.77 kV / 275 kV = 0.57735).
 
 W-2 (the legacy management mechanism) remains a separate proposal awaiting owner approval. Record: [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md), section 9.
+
+
+### Amendment 2 (2026-11-27) — final UI simplification
+
+Owner direction (2026-11-27): the existing Recording Details UI is retained without redesigning its layout, styling or configuration workflow. The changes are limited to
+removing the Voltage Base Reference Side section and the **Advanced reference settings** container that held it, with the controls that lived in the container kept and
+integrated into the existing layout. W-1 is accepted; DEC-215, DEC-219 and Amendment 1 are preserved; the nominal-voltage requirement prompt, the 110 V default VT secondary
+and the Manual VT override are retained.
+
+1. The Voltage group editor has no Base Reference Side selector and no Advanced container. The Voltage reference select (L-N / L-L, selecting a value is a manual correction,
+   the detected value shown selected) and its *Clear reference override* link now sit in the **Voltage reference** field; *Clear manual nominal voltage* sits under the
+   **Nominal voltage** field. Nothing else in the page changed.
+2. **Not introduced** (deferred with W-2): a legacy management section, a legacy Secondary base editor, a Switch-to-nominal-base button, additional dialogs or explanatory panels.
+3. **Legacy limitation (reported, not solved here):** a legitimate legacy Secondary base (stored Secondary declaration with a valid stored secondary value, the D-5 criterion) keeps its
+   engineering meaning. It is identified by one read-only line, and its nominal voltage is **not editable in Recording Details**, because changing it would be a transition to the
+   Primary nominal base (the backend replaces the stored base) and no transition mechanism is approved. Reference and VT editing remain; unrelated saves send neither the side nor the
+   nominal. The transition awaits the deferred W-2 mechanism.
+4. Unchanged: the shared CT/VT authority, the denominator resolver, the `*_base_reference_side` API fields, the Calculated Current side control, DEC-212, the verification and
+   refusal safeguards, the samples.
+
+Record: [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md), section 11.

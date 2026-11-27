@@ -64,10 +64,10 @@ authority". It cannot be corrected without changing numbers (D-4 / D-5): on the 
 what the engineer configures); **(B)** the writer declares Primary and stores no secondary base, together with a decision on consuming the CFG VT ratio as `recording_metadata` authority (DEC-215) so the numbers stay physically
 correct; **(C)** keep the value only as the D-4 diagnostic. I changed nothing; the test pins today's behaviour.
 
-**W-2 — the legacy management contract (below) is not implemented.** Until it is approved, a legacy group is identified and protected from unrelated saves, and an engineer's **explicit** new or changed nominal replaces the
+**W-2 — the legacy management contract (below) is not implemented and is deferred by the owner (Amendment 2).** Until it is approved, a legacy group is identified and protected from unrelated saves, and an engineer's **explicit** new or changed nominal replaces the
 stored Secondary base (the existing stale-secondary rule of `voltage_group_config_service`, previously reachable through the same Apply) and declares Primary; the edit form states this before saving.
 
-## 6. Proposed legacy replacement contract and UI (for approval — not implemented)
+## 6. Proposed legacy replacement contract and UI — **DEFERRED by the owner (2026-11-27, Amendment 2); not implemented**
 
 **Definition.** A *legacy Secondary base* is a group whose stored `base_reference_side` is `secondary` **and** whose stored `secondary_voltage_ll_v` is valid (D-5). A *historical Unknown* has a stored `unknown`. Neither is rewritten except by an explicit
 per-group action; there is no bulk migration, no automatic replacement and no inference. API fields and storage are unchanged.
@@ -159,3 +159,32 @@ The 110 V auto default is a configured default, not a measurement; the engineer 
 | Mutation — 3 writer mutants | **all killed** (legacy Secondary base re-created → 5 tests fail; the legacy-skip guard removed → 2 fail; the insufficient path declaring Secondary again → 3 fail) |
 
 Not run (not authorised for this change): the full backend and full browser suites. The browser runs regenerate seven tracked evidence screenshots as a known side effect; they were restored and are not part of the commit.
+
+
+## 11. Final UI simplification (Amendment 2, 2026-11-27)
+
+Owner direction: keep the Recording Details UI as it is; remove the Voltage Base Reference Side section and the Advanced reference settings container; integrate any control that lived in the container
+into the existing layout; introduce nothing new. Frontend only (`index.html`, net −63 lines plus the removal of 21 lines of CSS that only the container used); no backend change.
+
+| Control | Before (DEC-219 first pass) | Now |
+|---|---|---|
+| Base reference side selector | retired | — |
+| *Advanced reference settings* toggle and container | collapsible block under the fields | **removed** |
+| *Correct voltage reference* sub-toggle and its L-N / L-L select (`wwRdVltRefOverride`) | inside the container | the **Voltage reference** field holds the select directly (detected value preselected; "— Select —" only when unresolved; selecting a value is a manual correction) |
+| *Clear reference override* (`wwRdVltClearRefOverride`) | inside the container | under the select, only when the stored reference is manual |
+| *Clear manual nominal voltage* (`wwRdVoltageRevertBtn`) | inside the container | under the **Nominal voltage** field (not shown for a legacy Secondary base) |
+| Read-only reference display and the separate inline selector for an unresolved reference | two variants | one select |
+| Nominal voltage, Measurement Value, VT section, Apply / Cancel | — | unchanged |
+| Legacy Secondary base note | a labelled block | **one line** in the existing sub-text style: "Legacy Secondary base: 110 V (L‑L) — kept as stored." (read mode; edit mode adds that the nominal is not editable) |
+
+**Legacy configurations.** A legitimate legacy Secondary base keeps its engineering meaning: its nominal voltage field is disabled in the edit form, because changing it would be a transition to the Primary
+nominal base (the backend replaces the stored base) and no transition mechanism is approved. Unrelated saves send neither the side nor the nominal (tested); a historical Unknown is never rewritten. **Remaining
+limitation:** a legacy group's nominal voltage cannot be corrected from Recording Details until the deferred W-2 mechanism exists (the reference, the VT and the API remain available).
+
+**Tests.** Static: the container, its ids, its CSS and its state are absent and its controls are present (7 guards, one added). Browser: ~70 assertions across the five existing Recording Details specs were moved from the container to
+the integrated controls with their engineering intent kept; the DEC-219 spec covers the absence, the Primary declaration on a new nominal, the legacy base (one line, nominal disabled, unrelated save sends neither field) and the Calculated
+Current side control. Evidence: `evidence/dec-219-2026-11-27/` — `before-*` (deployed `9ec49d9`) and `final-*` (normal, manual-reference, legacy Secondary; Light and Dark).
+
+**Targeted results (measured):** static and backend 2,533 tests (2,255 static frontend files plus the DEC-219, W-1, Slice 5D-3, auto-base and per-unit voltage modules) — 0 failed, 0 skipped; browser 30 spec files
+(the `rd1-*` family, group details, the DEC-219 and S5 specs, per-unit reference-safety / eligibility, voltage-only PU, calculated-Current manual PU, auto-PU import, current common base; 1 worker) — **327 passed, 0 failed** (21.7 min).
+The full backend and browser suites were not run. The browser runs regenerate tracked evidence screenshots as a known side effect; they were restored and are not part of the commit.
