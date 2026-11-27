@@ -31,8 +31,8 @@ manual base-side control, DEC-212, calculated-Current PU, RMS/power mathematics 
 | **Clear manual nominal** (`wwRdVoltageRevert`) | echoed the stored side, or **Unknown** with no stored config | omitted |
 | **Set VT** (`wwRdVtApply`) / **Clear VT** (`wwRdVtRemove`) | same echo | omitted |
 | Auto-base **Primary path** (`auto_base_service`) | writes nominal + `"primary"` | unchanged and **consistent** with DEC-219 (tested) |
-| Auto-base **insufficient-evidence path** | writes the measurement side as the label (`primary` / `secondary`) without a nominal | unchanged; a later entered nominal now declares **Primary** (finding W-2 note) |
-| Auto-base **Secondary path** | writes a legacy `secondary` declaration **and** a stored secondary base (the VT winding value), nominal optional | unchanged — **finding W-1, owner decision needed** |
+| Auto-base **insufficient-evidence path** | wrote the measurement side as the label (`primary` / `secondary`) without a nominal | the Primary label is unchanged; a Secondary **sample** side no longer writes a Secondary **base** label (§9) |
+| Auto-base **Secondary path** | wrote a legacy `secondary` declaration **and** a stored secondary base (the VT winding value) | **changed by Amendment 1 (W-1, §9):** no legacy base is created for Secondary samples; existing ones are preserved |
 | API consumers | `base_reference_side` accepted and stored | unchanged (D-8) |
 
 ## 4. Verification against the 13 required demonstrations
@@ -51,13 +51,13 @@ manual base-side control, DEC-212, calculated-Current PU, RMS/power mathematics 
 | 10 | unrelated saves do not overwrite legacy declarations | the same tests; static `test_the_voltage_writers_never_echo_or_default_the_side` |
 | 11 | missing VT authority still refuses | `test_a_required_conversion_without_vt_authority_is_still_refused` (`vt_authority_unavailable`, ENG shown) |
 | 12 | the Calculated Current side control remains | browser test 5 (`#wwCalculatedPuSide` visible in Manual); static `test_the_calculated_current_manual_base_side_control_remains` |
-| 13 | auto-base writers consistent | Primary path pinned consistent; the Secondary path is **pinned as a documented deviation** (W-1) |
+| 13 | auto-base writers consistent | the Primary path and, since Amendment 1, the Secondary path (§9) |
 
 Expected values are first-principles and reuse the S1 oracle fixture values (no application arithmetic in the tests, none in the frontend).
 
 ## 5. Findings that need an owner decision
 
-**W-1 — the auto-base Secondary path is not consistent with DEC-219.** For a recording whose P/S marker says Secondary, `auto_base_service` stores `base_reference_side = "secondary"` plus a stored secondary base
+**W-1 — RESOLVED by the owner's clarification (Amendment 1, §9). The original finding:** the auto-base Secondary path was not consistent with DEC-219. For a recording whose P/S marker says Secondary, `auto_base_service` stores `base_reference_side = "secondary"` plus a stored secondary base
 (the CFG VT winding value, e.g. 1.0 kV) and, when its evidence allows, a nominal. D-5 then activates the legacy path, so a **new** Secondary recording is not given "nominal = Primary base, denominator from the VT
 authority". It cannot be corrected without changing numbers (D-4 / D-5): on the fixture the legacy denominator is 1.0 kV (0.5773 pu, physically right because the CFG VT is 275 : 1), whereas nominal ÷ `auto_nominal`
 (110 V) gives 5.2486 unless the recording's VT metadata is first accepted as a VT authority. Options for the owner: **(A)** leave it as is (legacy declarations keep being written for new Secondary recordings; DEC-219 applies to
@@ -96,8 +96,8 @@ Decisions requested: approve the contract (retain / correct / explicit transitio
 
 ## 7. Limitations
 
-* Only the Recording Details Voltage selector is retired (DEC-219 scope); the Calculated Current side control stays. API fields and the auto-base writers are unchanged.
-* The legacy management action (§6) and W-1 await the owner.
+* Only the Recording Details Voltage selector is retired (DEC-219 scope); the Calculated Current side control stays. API fields are unchanged; the auto-base writer is aligned by Amendment 1 (§9).
+* The legacy management action (§6) awaits the owner; W-1 is resolved (§9).
 * No full regression was run for this initial UI change (as instructed); targeted results are in §8.
 
 ## 8. Targeted regression results
@@ -114,3 +114,48 @@ Targeted only (the full S1–S6 regression was not repeated, as instructed); eve
 
 Not run (not authorised for this change): the full backend suite, the full browser suite, the BEN owner-reference suites. The browser runs regenerate seven tracked evidence screenshots (`rd1-d2-refine/*`, `recording-details-toolbar/*`) as a known side effect; they were restored and are not part of any commit.
 
+
+## 9. W-1 resolution — the automatic base service follows DEC-219 (Amendment 1, 2026-11-27)
+
+Owner clarification: DEC-215 is retained (auto VT primary = nominal system voltage, auto VT secondary = 110 V L-L, Manual VT override through the existing configuration); no new VT or CFG
+authority. The change is confined to `backend/app/services/auto_base_service.py`:
+
+| Case | Before | After |
+|---|---|---|
+| New recording with **Secondary samples** | a legacy `secondary` declaration + a stored `secondary_voltage_ll_v` (the CFG winding value, e.g. 1000 V) per group; PU available at once | **no** Secondary declaration, **no** stored secondary value; the group is `needs_review` (the CFG winding rating of a Secondary recording is only a low-confidence candidate, C2) until the engineer enters the nominal; then Primary base + the shared VT authority |
+| Evidence supports a nominal for Secondary samples | (path unreachable in practice) | nominal written as the **Primary** base, no secondary base |
+| Primary recording | nominal + `primary` | unchanged (tested) |
+| Insufficient evidence, Secondary samples | wrote the label `secondary` | writes no base side |
+| **Existing** group with a stored Secondary declaration (auto, re-run or membership change) | re-evaluated and rewritten | **skipped** (`skipped_legacy_secondary`): nothing migrated, refreshed or demoted |
+| Manual / legacy-manual authority | never overwritten (C4) | unchanged |
+
+**Checks the owner asked for.** No authoritative metadata is discarded: the CFG VT ratio stays on the immutable recording channels (`primary_ratio` / `secondary_ratio`); the stored secondary value was never read by any
+consumer except the PU base resolver and the D-4 diagnostic (verified by search), so no other consumer loses data; no `recording_metadata` VT authority existed to be preserved (nothing in the code stores one, so no
+precedence is altered); no protected historical configuration is changed (guarded and tested).
+
+**Fixture verification — numerical vs physical correctness** (nominal 275 kV, line-to-line base, Secondary peak 0.577345 kV, `synth_measurement_groups`):
+
+| VT configuration | Ratio r | Denominator D = nominal / r | PU peak | Numerically correct for the configured ratio | Physically correct |
+|---|---|---|---|---|---|
+| Auto VT 275 kV : 110 V (DEC-215 default) | 2500 | 0.110 kV | **5.2486** | yes | **only if the equipment really is 2500 : 1** — the fixture's real VT is 275 : 1, so this reads 9.0909 × high |
+| Manual VT 275 kV : 1000 V (the fixture's real VT) | 275 | 1.000 kV | **0.577345** | yes | **yes** — equals the Primary recording of the same condition, 158.77 / 275 = 0.57735 (1e-5; the CFG rounds a to six digits) |
+
+The 110 V auto default is a configured default, not a measurement; the engineer overrides it through the existing Manual VT when the real ratio differs. Tests: `test_pu_dec219_auto_base_w1.py` (11).
+
+**Consequence to know.** For a **new** Secondary recording the group no longer arrives with an automatically available PU (it did, via the legacy base, before): the engineer enters the nominal voltage in Recording Details
+(the existing "Nominal voltage is required for voltage per-unit calculation" prompt), after which PU follows the Auto or Manual VT. Existing legacy groups are unaffected.
+
+**Existing tests superseded (policy-bearing, updated with this record):** three Slice 5D-3 tests that asserted the automatic legacy Secondary base (`TestAT2SecondaryComtrade`, `TestAT9MixedPrimarySecondaryGroups`,
+`TestAT15NumericalPuEquivalence`) now assert the DEC-219 contract with first-principles values for both VTs; the interim "pinned deviation" test of §4 is replaced by `test_pu_dec219_auto_base_w1.py`.
+
+
+## 10. W-1 targeted regression results (measured; the full PU migration regression was not repeated)
+
+| Suite | Result |
+|---|---|
+| New W-1 tests (`test_pu_dec219_auto_base_w1.py`) | 11 / 11: no legacy base for Secondary samples; Primary recordings unchanged; the CFG ratio is not made an authority; Auto VT 5.2486 and Manual VT 0.577345 (numerical, configured ratio); Primary ≡ Secondary-with-Manual-VT (1e-5) and the Auto/Manual ratio 2500 / 275; legacy bases survive a service re-run and a membership change; an engineer-set Secondary base is never overwritten; a missing VT authority still refuses |
+| Backend — PU, per-unit, Measurement Group, auto-base, side / VT authority, Recording Details and every `test_frontend_*` file (5,482 tests, 544 s) | **0 failed, 0 errors, 5 skipped** (the pre-existing PU skips); includes the three updated Slice 5D-3 tests, the retirement tests and the S1–S6 suites unmodified |
+| Browser — 18 spec files (auto-PU import, the Recording Details D2/D4/C-slice specs, the DEC-219 Voltage spec, the S5 spec, per-unit reference-safety / eligibility, voltage-only PU, group details, line-to-line, calculated-Current manual PU; 1 worker) | **209 passed, 0 failed** (8.1 min) |
+| Mutation — 3 writer mutants | **all killed** (legacy Secondary base re-created → 5 tests fail; the legacy-skip guard removed → 2 fail; the insufficient path declaring Secondary again → 3 fail) |
+
+Not run (not authorised for this change): the full backend and full browser suites. The browser runs regenerate seven tracked evidence screenshots as a known side effect; they were restored and are not part of the commit.

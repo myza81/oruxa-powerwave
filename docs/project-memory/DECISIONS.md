@@ -29831,3 +29831,27 @@ authority policy and no approved numerical behaviour. Implementation record, wri
 [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md).
 
 Open, for owner decision (reported, not decided here): the legacy management contract (finding W-2); the auto-base writer's Secondary path (finding W-1).
+
+
+### Amendment 1 (2026-11-27) — W-1: the automatic base service follows DEC-219
+
+Owner clarification (2026-11-27): the DEC-215 VT policy is retained unchanged — the auto VT primary follows the nominal system voltage, the auto VT
+secondary defaults to 110 V line-to-line, and the engineer overrides the VT equipment ratings through the existing Manual VT configuration. **No new VT
+authority and no new CFG authority semantics are required.** Under DEC-219 the nominal system voltage is the Primary PU base for new normal Voltage
+configurations, so the automatic base configuration service (`auto_base_service`) is aligned:
+
+1. A recording that contains **Secondary samples no longer receives a legacy Secondary PU base** (a stored Secondary declaration plus the CFG VT winding
+   value stored as the denominator). Its Secondary samples are divided by the Primary nominal base referred through the shared VT authority
+   (manual > recording_metadata > auto_nominal) by the accepted side-denominator resolver, exactly as for the engineer's own configuration.
+2. A nominal is written by the service, as the Primary base with no stored secondary base, only when the evidence supports it under the existing rules. The
+   CFG primary winding rating of a Secondary recording remains the low-confidence candidate it already was (C2), so such a group normally stays
+   `needs_review` until the engineer enters the nominal in Recording Details (which declares Primary, DEC-219).
+3. A Secondary **sample** side never writes a Secondary **base** side (also on the insufficient-evidence path).
+4. **Existing legitimate Secondary bases and historical configurations are preserved**: a group that already carries a stored Secondary declaration is skipped
+   by every automatic re-run and membership change; manual and legacy-manual authorities were already never overwritten (C4). Nothing is migrated, refreshed or
+   demoted silently.
+5. Numerical correctness is stated for the **configured** VT ratio; physical correctness requires the configured ratio to be the equipment's actual ratio.
+   On the reported fixture (nominal 275 kV, line-to-line, Secondary peak 0.577345 kV): Auto VT 275 kV : 110 V gives 5.2486 pu; Manual VT 275 kV : 1000 V
+   (the fixture's real VT, 275 : 1) gives 0.577345 pu, equal to the Primary recording of the same condition (158.77 kV / 275 kV = 0.57735).
+
+W-2 (the legacy management mechanism) remains a separate proposal awaiting owner approval. Record: [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md), section 9.
