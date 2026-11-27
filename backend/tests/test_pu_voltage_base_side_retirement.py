@@ -196,10 +196,4 @@ def test_the_auto_base_primary_path_declares_a_primary_nominal_base(client, comt
     assert resolved and all(c["base_reference_side"] == "primary" and c["secondary_voltage_ll_v"] is None for c in resolved)
 
 
-def test_the_auto_base_secondary_path_is_pinned_pending_the_owner_decision(client, comtrade_fixtures_dir):
-    """DOCUMENTED DEVIATION (DEC-219 report, finding W-1): for a Secondary-declared recording the auto-base writer still stores a legacy
-    Secondary declaration plus a stored secondary base (the VT winding value). It is pinned exactly as it behaves today because changing it
-    changes the numbers of new Secondary recordings (D-4 / D-5); that is the owner's decision. When it is taken this test is updated with it."""
-    configs = upload_and_read_auto_voltage_configs(client, comtrade_fixtures_dir, "S")
-    secondary = [c for c in configs if c["base_reference_side"] == "secondary"]
-    assert secondary and all(c["secondary_voltage_ll_v"] is not None for c in secondary)
+# The auto-base Secondary path (finding W-1) is covered by test_pu_dec219_auto_base_w1.py: a Secondary recording no longer gets a legacy Secondary base.

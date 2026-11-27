@@ -22,6 +22,15 @@ Design constraints (from Slice 5D-2 Final Engineering Contract):
   C6  Never raises -- all exceptions are caught, logged, and surfaced in the
       result only.  An auto-base failure NEVER turns an upload into an error.
   C7  Idempotent -- safe to call multiple times on the same source.
+  C9  DEC-219 / W-1: the nominal system voltage is ALWAYS the Primary PU base.  A recording
+      with Secondary samples no longer receives a legacy Secondary base (the VT winding value
+      stored as the denominator): its Secondary samples are divided by the Primary base referred
+      through the shared VT authority (manual > recording_metadata > auto_nominal) by the
+      side-denominator resolver, exactly as for the engineer's own configuration.  A legacy
+      Secondary declaration that already exists is a historical configuration and is preserved:
+      neither migrated, refreshed from new evidence nor demoted by a re-run.  No CFG authority
+      semantics are added; the CFG winding rating of a Secondary recording stays a low-confidence
+      candidate (C2), so such a group normally awaits the engineer's nominal voltage.
   C8  When an optional ``waveform_provider`` callable is supplied, waveform RMS
       evidence is used to annotate the hypothesis resolution (Slice 6B) for
       transparency and provenance only.  A ``magnitude_disagreement`` verdict
@@ -68,8 +77,8 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class VoltageGroupAutoResult:
     group_id: str
-    action: str   # "configured_primary" | "configured_secondary" | "needs_review"
-                  # | "skipped_manual" | "skipped_no_channels" | "error"
+    action: str   # "configured_primary" | "needs_review" | "skipped_manual" | "skipped_legacy_secondary"
+                  # | "skipped_no_channels" | "error"   ("configured_secondary" is no longer produced, DEC-219)
     reason: str | None = None
 
 
@@ -191,6 +200,15 @@ def _configure_voltage_group(
             reason=f"authority_{existing.base_authority}",
         )
 
+    # DEC-219 / W-1: an existing legacy Secondary declaration is a historical configuration -- preserved exactly, never migrated to a
+    # Primary nominal base, refreshed from new evidence or demoted by a re-run or a membership change.
+    if existing is not None and existing.base_reference_side == "secondary":
+        return VoltageGroupAutoResult(
+            group_id=group_id,
+            action="skipped_legacy_secondary",
+            reason="legacy_secondary_preserved",
+        )
+
     # Build ChannelAutoMetadata for this group's source channels
     metadata_list: list[ChannelAutoMetadata] = []
     for ref in group.channel_refs:
@@ -238,33 +256,12 @@ def _configure_voltage_group(
         waveform_evidence=waveform_evidence,
     )
 
-    # --- Secondary path ---
-    # C2: REASON_SECONDARY_REQUIRES_REDESIGN is now resolved by Slice 5D-1.
-    # Use sufficient_for_auto_side (not sufficient_for_auto_nominal) as the gate.
-    if (evidence.measurement_side == "secondary"
-            and evidence.sufficient_for_auto_side
-            and evidence.secondary_measured is not None):
-        secondary_v = evidence.secondary_measured.value_kv * 1000.0
-        # C1: secondary value → secondary_voltage_ll_v, NOT nominal_voltage_ll_kv.
-        # Also set nominal if primary evidence is sufficient and consistent (best-effort).
-        nominal_kv: float | None = None
-        if evidence.sufficient_for_auto_nominal:
-            nominal_kv = _best_candidate_kv(evidence.primary_nominal_candidates)
-        voltage_config_registry.update_fields(
-            workspace_id, group_id,
-            nominal_voltage_ll_kv=nominal_kv,
-            base_reference_side="secondary",
-            base_authority=BASE_AUTHORITY_AUTO,
-            secondary_voltage_ll_v=secondary_v,
-            update_secondary=True,
-        )
-        reason = f"secondary_v={secondary_v:.4g}V"
-        if nominal_kv is not None:
-            reason += f",nominal={nominal_kv}kV"
-        return VoltageGroupAutoResult(group_id=group_id, action="configured_secondary", reason=reason)
-
-    # --- Primary path ---
-    if evidence.measurement_side == "primary" and evidence.sufficient_for_auto_nominal:
+    # --- Primary base (DEC-219 / W-1) ---
+    # The nominal system voltage is always the Primary PU base, whatever side the samples were recorded on.  When the evidence supports a
+    # nominal (for Secondary samples the CFG winding rating is only a low-confidence candidate, C2, so this is normally not the case) it is
+    # written as the Primary base with NO stored secondary base; Secondary samples are then converted by the side-denominator resolver with
+    # the shared VT authority.  No legacy Secondary declaration is created because a recording has Secondary samples.
+    if evidence.measurement_side in ("primary", "secondary") and evidence.sufficient_for_auto_nominal:
         nominal_kv = _best_candidate_kv(evidence.primary_nominal_candidates)
         # C8: waveform corroboration is attached to hypothesis_resolution for transparency
         # only — it does NOT change authority.  A magnitude_disagreement may reflect a
@@ -280,7 +277,7 @@ def _configure_voltage_group(
         )
         return VoltageGroupAutoResult(
             group_id=group_id, action="configured_primary",
-            reason=f"nominal={nominal_kv}kV",
+            reason=f"nominal={nominal_kv}kV" + (",secondary_samples" if evidence.measurement_side == "secondary" else ""),
         )
 
     # --- Insufficient evidence: mark needs_review ---
@@ -294,8 +291,8 @@ def _configure_voltage_group(
     side_kwargs: dict = {}
     if (evidence.measurement_side == "primary" and evidence.sufficient_for_auto_side):
         side_kwargs["base_reference_side"] = "primary"
-    elif (evidence.measurement_side == "secondary" and evidence.sufficient_for_auto_side):
-        side_kwargs["base_reference_side"] = "secondary"
+    # DEC-219 / W-1: Secondary SAMPLES never declare a Secondary BASE side; the nominal, once the engineer enters it or the evidence
+    # supports it, is the Primary base.
     voltage_config_registry.update_fields(
         workspace_id, group_id,
         base_authority=BASE_AUTHORITY_NEEDS_REVIEW,
