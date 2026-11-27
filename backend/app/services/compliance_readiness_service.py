@@ -90,7 +90,7 @@ from app.domain.reference_layer import ReferenceLayer
 from app.domain.reference_profile import ReferenceProfile
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import create_calculated_channel
-from app.services.calculated_channel_staleness import frequency_staleness
+from app.services.calculated_channel_staleness import frequency_staleness, stale_input_problem
 from app.services.compliance_series import Registries, timebase_key, unit_problem
 from app.services.compliance_measurement_service import (
     INPUT_TYPE_INSTANTANEOUS,
@@ -564,6 +564,23 @@ def _plottable_problem(
     return "incompatible", None
 
 
+def _block_stale_members(ctx: _Context, members: tuple[MemberReadiness, ...]) -> tuple[MemberReadiness, ...]:
+    """NF-3E: a member whose channel (or the input of its RMS step) is a STALE calculated channel is BLOCKED, naming the channel and the
+    reason; the reference then needs action. The same shared guard the execution path enforces; the readiness only reports it."""
+    blocked = []
+    for m in members:
+        refs = [m.channel_ref, m.step.input_ref if m.step is not None else None]
+        problem = stale_input_problem(
+            refs, workspace_id=ctx.workspace_id, calc_registry=ctx.calc_registry, frequency_access=ctx.frequency_access)
+        if problem is None:
+            blocked.append(m)
+            continue
+        blocked.append(MemberReadiness(
+            member=m.member, state=STATE_BLOCKED, channel_name=m.channel_name, calculated_channel_id=m.calculated_channel_id,
+            channel_ref=m.channel_ref, message=problem))
+    return tuple(blocked)
+
+
 def _evaluate_reference(
     ctx: _Context, layer: ReferenceLayer, profile: ReferenceProfile, base: BaseInfo | None,
 ) -> ReferenceReadiness:
@@ -586,6 +603,7 @@ def _evaluate_reference(
         )
 
     members = tuple(_plan_member(ctx, requirement, m) for m in requirement.required_members)
+    members = _block_stale_members(ctx, members)
 
     # The resolved base channels of one Reference must agree on Instantaneous
     # vs RMS -- they cannot be combined into one assessment otherwise.
@@ -666,7 +684,7 @@ def evaluate_readiness(
         registries=(
             Registries(
                 source=source_registry, calc=calc_registry, per_unit=per_unit_registry, group=group_registry,
-                voltage_config=voltage_config_registry, current_config=current_config_registry,
+                voltage_config=voltage_config_registry, current_config=current_config_registry, frequency_access=frequency_access,
             )
             if per_unit_registry is not None else None
         ),

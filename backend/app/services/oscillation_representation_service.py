@@ -51,6 +51,7 @@ from app.services.calculated_channel_service import (
     _resolve_input,
     check_rms_eligibility,
 )
+from app.services.calculated_channel_staleness import assert_inputs_not_stale
 from app.services.errors import ImportServiceError, SourceNotFoundError
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -115,6 +116,8 @@ def derive_analysis_representation(
     if representation not in IMPLEMENTED_REPRESENTATIONS:
         raise UnsupportedRepresentationError(f"Analysis representation '{representation}' is not implemented.")
 
+    # NF-3E: a stale calculated channel is not a valid input for a new analysis (typed `stale_calculated_input`, HTTP 409).
+    assert_inputs_not_stale([input_ref], workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
     resolved = _resolve_input(
         input_ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry
     )

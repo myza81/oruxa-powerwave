@@ -83,6 +83,9 @@ from app.services.analysis_reference_frequency import (
 )
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.calculated_channel_staleness import (
+    REASON_STALE_CALCULATED_INPUT, StaleInputBlocked, stale_input_block,
+)
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.nominal_frequency_access import NominalFrequencyAccess, SourceFrequency
 from app.services.overcurrent_recorded_input import (
@@ -120,7 +123,7 @@ class _CurrentCandidate:
 def _fetch_current_candidate(
     channel_ref: ChannelRef, *, workspace_id: str,
     source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
-) -> _CurrentCandidate | None:
+) -> _CurrentCandidate | StaleInputBlocked | None:
     """Fetches the resolved current role's own full-resolution sample
     array and engineering metadata. Locally-owned copy of the same
     source/calculated-channel branching `phasor_analysis_service._fetch_
@@ -140,6 +143,10 @@ def _fetch_current_candidate(
             unit=matching.unit, waveform_form=matching.waveform_form,
             start_epoch=_source_start_epoch(active), frequency=frequency_access.for_source(workspace_id, channel_ref.source_id),
         )
+    # NF-3E: a stale calculated channel is not a valid input for a new engineering calculation (shared staleness authority).
+    stale = stale_input_block(channel_ref, workspace_id=workspace_id, calc_registry=calculated_channel_registry, frequency_access=frequency_access)
+    if stale is not None:
+        return stale
     calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id, source_registry=source_registry, calc_registry=calculated_channel_registry)
     if calculated is None:
         return None
@@ -292,6 +299,11 @@ def compute_overcurrent_analysis(
         channel_ref, workspace_id=workspace_id, source_registry=source_registry,
         calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
+    if isinstance(candidate, StaleInputBlocked):
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
+        )
     if candidate is None:
         return _short_circuit(
             STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
@@ -494,6 +506,10 @@ def check_overcurrent_readiness(
         channel_ref, workspace_id=workspace_id, source_registry=source_registry,
         calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
+    if isinstance(candidate, StaleInputBlocked):
+        return OvercurrentReadiness(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
+        )
     if candidate is None:
         return OvercurrentReadiness(
             status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_CHANNEL_UNAVAILABLE,
@@ -581,6 +597,11 @@ def read_recorded_current_input(
         resolution.resolved_roles[_ROLE_KEY_BY_PHASE[phase]], workspace_id=workspace_id,
         source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
+    if isinstance(candidate, StaleInputBlocked):
+        return RecordedCurrentInput(
+            status=STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
+        )
     if candidate is None:
         return RecordedCurrentInput(
             status=STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,

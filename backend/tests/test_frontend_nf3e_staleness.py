@@ -116,3 +116,11 @@ def test_accepting_the_recording_follows_it_and_choosing_a_frequency_is_explicit
     assert 'wwCcBuilder.nominalFrequencySource = "metadata";' in following and "nominalFrequencyChosen = false" in following
     assert 'wwCcBuilder.nominalFrequencySource = "user";' in explicit and "nominalFrequencyChosen = true" in explicit
     assert "recording" not in explicit.replace("the recording", "")            # the explicit branch never looks at the recording's value
+
+
+def test_a_refused_analysis_gets_an_actionable_sentence_through_the_existing_reason_table():
+    source = _source()
+    table = _body(source, "const WW_PHASOR_REASON_TEXT = {", "function wwPhasorReasonText(code)")
+    assert "stale_calculated_input:" in table
+    sentence = table[table.index("stale_calculated_input:"):].splitlines()[0]
+    assert "stale" in sentence and "Create a new channel" in sentence and "restore the recording" in sentence

@@ -98,6 +98,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "measurement_group_not_found": status.HTTP_404_NOT_FOUND,
     "compliance_measurement_group_not_voltage_kind": status.HTTP_400_BAD_REQUEST,
     "invalid_calibration_authority": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # NF-3E: a new assessment on a stale calculated input conflicts with the recording's current nominal frequency.
+    "stale_calculated_input": status.HTTP_409_CONFLICT,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -338,6 +340,7 @@ def get_compliance_voltage_measurement_traces(
                 source=state.workspace_registry, calc=state.calculated_channel_registry,
                 per_unit=state.per_unit_registry, group=state.measurement_group_registry,
                 voltage_config=state.voltage_group_config_registry, current_config=state.current_group_config_registry,
+                frequency_access=state.nominal_frequency_access,
             ),
             alignment=alignment,
         )

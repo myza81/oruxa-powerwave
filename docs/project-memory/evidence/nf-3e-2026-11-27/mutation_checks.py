@@ -65,7 +65,7 @@ MUTATIONS = [
 
 
 def run(python: str, scratch: Path) -> tuple[int, str]:
-    result = subprocess.run([python, "-m", "pytest", "-o", "addopts=--strict-markers", "-p", "no:cacheprovider", "-q", "--no-header", "-W", "ignore", "-x", TEST],
+    result = subprocess.run([python, "-m", "pytest", "-o", "addopts=--strict-markers", "-p", "no:cacheprovider", "-q", "--no-header", "-W", "ignore", "-x", *TEST.split()],
                             cwd=scratch, capture_output=True, text=True)
     return result.returncode, (result.stdout + result.stderr)[-400:]
 
@@ -77,6 +77,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         scratch = Path(tmp) / "backend"
         shutil.copytree(BACKEND, scratch, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+        shutil.copytree(BACKEND.parent / "frontend", Path(tmp) / "frontend")          # static frontend tests read ../frontend/index.html
         code, tail = run(python, scratch)
         if code != 0:
             print("BASELINE FAILS before any mutation:\n" + tail)

@@ -108,6 +108,9 @@ ACCESS_IMPORTERS = {
     # NF-3E: derived staleness compares a stored RMS frequency with the accessor's answer (the only reader of the effective frequency there);
     # the creation service takes the accessor to stamp provenance, verify a recording-following frequency and refuse stale inputs.
     "services/calculated_channel_staleness.py", "services/calculated_channel_service.py",
+    # NF-3E closeout: compliance execution takes the accessor (type only) so a NEW assessment can refuse a stale calculated input through the
+    # shared staleness authority; it never reads a frequency itself.
+    "services/compliance_series.py",
 }
 #: Files that may mention the registry at all; of these only the service layer may READ it (lifecycle removal is the rest).
 REGISTRY_USERS = {

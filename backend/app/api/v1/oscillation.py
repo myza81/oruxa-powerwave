@@ -51,6 +51,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_analysis_window": status.HTTP_400_BAD_REQUEST,
     "invalid_frequency_range": status.HTTP_400_BAD_REQUEST,
     "representation_unavailable": status.HTTP_409_CONFLICT,
+    # NF-3E: a new analysis on a stale calculated input conflicts with the recording's current nominal frequency.
+    "stale_calculated_input": status.HTTP_409_CONFLICT,
     "representation_mismatch": status.HTTP_409_CONFLICT,
     "insufficient_samples": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "non_finite_samples": status.HTTP_422_UNPROCESSABLE_CONTENT,

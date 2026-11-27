@@ -56,6 +56,7 @@ from app.domain.spectral_estimation import (
 from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import _resolve_input
+from app.services.calculated_channel_staleness import assert_inputs_not_stale
 from app.services.errors import ImportServiceError, SourceNotFoundError
 from app.services.oscillation_representation_service import (
     NOMINAL_FREQUENCY_ASSUMED_DEFAULT,
@@ -148,7 +149,11 @@ def _analysis_series(
     source_registry: WorkspaceRegistry, calc_registry: CalculatedChannelRegistry,
     frequency_access: NominalFrequencyAccess,
 ):
-    """`(series, active_source)` for the requested representation."""
+    """`(series, active_source)` for the requested representation.
+
+    NF-3E: the one entry of every oscillation analysis (native and RMS-magnitude alike), so a stale calculated channel is refused here with
+    the typed `stale_calculated_input`, before any form or representation rule."""
+    assert_inputs_not_stale([input_ref], workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
     resolved = _resolve_input(
         input_ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry
     )

@@ -18,6 +18,11 @@ Rules
   inherit; `assessment` says so.
 * **Option B** (`assert_inputs_not_stale`): a NEW calculation on a stale input is refused with `StaleCalculatedInputError`. Raw source
   inputs are never stale. Viewing, inspecting and deleting a stale channel is unaffected.
+* **Governing principle** (owner, 2026-11-27): a stale calculated channel stays available for HISTORICAL INSPECTION (waveform, cursors, peaks,
+  list) but is not a valid input for a new engineering calculation or assessment. Every consumer that starts a new calculation reuses THIS
+  module (never a private staleness rule): `assert_inputs_not_stale` where a typed error is the convention (creation, line-to-line,
+  compliance execution, oscillation), `stale_input_block` where a result carries a reason code (phasor family, overcurrent), and
+  `stale_input_problem` where readiness reports a blocked state (compliance). The shared array fetchers are never guarded.
 """
 
 from __future__ import annotations
@@ -44,6 +49,9 @@ ASSESSMENT_INHERITED_ONLY = "inherited_only"        # only upstream staleness ca
 
 REASON_CHANGED = "recording_frequency_changed"
 REASON_UNUSABLE = "recording_frequency_unusable"
+
+#: The result-level reason code of analyses that report refusals as a reason code (phasor family, overcurrent). One public value.
+REASON_STALE_CALCULATED_INPUT = "stale_calculated_input"
 
 _ORIGIN_TEXT = {
     "recording_metadata": "recording metadata", "import_supplied": "supplied at import", ORIGIN_ASSUMED_DEFAULT: "assumed default",
@@ -155,13 +163,13 @@ def stale_input_message(input_name: str, staleness: FrequencyStaleness, input_id
     return f"'{input_name}' cannot be used as an input because " + "; ".join(sentences) + ". " + remedy
 
 
-def assert_inputs_not_stale(
+def first_stale_input(
     inputs: Iterable[ChannelRef], *, workspace_id: str, calc_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
-) -> None:
-    """Option B: refuse a NEW calculation whose input (direct or transitive) is stale. Raw source inputs are never stale."""
+):
+    """`(channel, staleness)` of the first stale calculated input (direct or transitive), or None. Raw source inputs are never stale."""
     memo: dict = {}
     for ref in inputs:
-        if ref.kind != "calculated":
+        if ref is None or ref.kind != "calculated":
             continue
         channel = calc_registry.get(workspace_id, ref.calculated_channel_id)
         if channel is None:
@@ -169,4 +177,38 @@ def assert_inputs_not_stale(
         staleness = frequency_staleness(channel, workspace_id=workspace_id, calc_registry=calc_registry,
                                         frequency_access=frequency_access, _memo=memo)
         if staleness.stale:
-            raise StaleCalculatedInputError(stale_input_message(channel.name, staleness, channel.id))
+            return channel, staleness
+    return None
+
+
+def stale_input_problem(
+    inputs: Iterable[ChannelRef], *, workspace_id: str, calc_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
+) -> str | None:
+    """The actionable sentence for the first stale input, or None. For consumers that REPORT a refusal (readiness, reason codes)."""
+    found = first_stale_input(inputs, workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
+    return None if found is None else stale_input_message(found[0].name, found[1], found[0].id)
+
+
+@dataclass(frozen=True, slots=True)
+class StaleInputBlocked:
+    """Sentinel an analysis candidate-fetcher returns for a stale calculated input (cf. the calibration-blocked sentinel): the caller
+    turns it into its own result with `REASON_STALE_CALCULATED_INPUT` and this actionable message."""
+
+    message: str
+
+
+def stale_input_block(
+    ref: ChannelRef, *, workspace_id: str, calc_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
+) -> StaleInputBlocked | None:
+    problem = stale_input_problem([ref], workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
+    return None if problem is None else StaleInputBlocked(problem)
+
+
+def assert_inputs_not_stale(
+    inputs: Iterable[ChannelRef], *, workspace_id: str, calc_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
+) -> None:
+    """Option B: refuse a NEW calculation whose input (direct or transitive) is stale. Raw source inputs are never stale."""
+    found = first_stale_input(inputs, workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
+    if found is not None:
+        channel, staleness = found
+        raise StaleCalculatedInputError(stale_input_message(channel.name, staleness, channel.id))

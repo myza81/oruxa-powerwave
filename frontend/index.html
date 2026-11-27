@@ -55665,6 +55665,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // conservative for genuine disturbance COMTRADE channels.
             waveform_form_not_eligible: "This channel does not look like a raw sinusoidal waveform (already RMS/magnitude, or its form could not be confirmed).",
             channel_unavailable: "The resolved channel could not be read.",
+            // NF-3E: a calculated channel computed at an earlier nominal frequency is not a valid input for a new analysis.
+            stale_calculated_input: "This calculated channel is stale: its recording's nominal frequency changed after it was calculated. Create a new channel at the current frequency (Calculated Channels), or restore the recording's frequency.",
             insufficient_window_history: "Not enough history exists before this time for a full one-cycle window.",
             analysis_time_out_of_range: "The selected time is outside this recording.",
             invalid_samples_in_window: "The selected window contains invalid or missing samples.",

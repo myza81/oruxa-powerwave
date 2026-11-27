@@ -122,6 +122,9 @@ from app.services.analysis_reference_frequency import (
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import _collect_leaf_authorities
+from app.services.calculated_channel_staleness import (
+    REASON_STALE_CALCULATED_INPUT, StaleInputBlocked, stale_input_block,
+)
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.nominal_frequency_access import NominalFrequencyAccess, SourceFrequency
@@ -176,7 +179,7 @@ class _RoleCandidate:
 def _fetch_role_candidate(
     role_key: str, channel_ref: ChannelRef, *, workspace_id: str,
     source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
-) -> "_RoleCandidate | _CalibrationBlockedResult | None":
+) -> "_RoleCandidate | _CalibrationBlockedResult | StaleInputBlocked | None":
     """Fetches ONE resolved role's own full-resolution sample arrays and
     engineering metadata. Mirrors `calculated_channel_service._resolve_
     input()`'s own source/calculated-channel branching exactly (a
@@ -222,6 +225,10 @@ def _fetch_role_candidate(
             start_epoch=_source_start_epoch(active), frequency=frequency_access.for_source(workspace_id, channel_ref.source_id),
             reference_source_id=channel_ref.source_id,
         )
+    # NF-3E: a stale calculated channel is not a valid input for a new engineering calculation (shared staleness authority).
+    stale = stale_input_block(channel_ref, workspace_id=workspace_id, calc_registry=calculated_channel_registry, frequency_access=frequency_access)
+    if stale is not None:
+        return stale
     calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id, source_registry=source_registry, calc_registry=calculated_channel_registry)
     if calculated is None:
         return None
@@ -361,6 +368,13 @@ def compute_phasor_analysis(
                 reason_code="calibration_unavailable",
                 message=f"Role '{role_key}' is blocked by physical calibration authority ({candidate.reason}).",
                 role_reasons={role_key: "calibration_unavailable"},
+            )
+        if isinstance(candidate, StaleInputBlocked):
+            return _short_circuit(
+                STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
+                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
+                reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
+                role_reasons={role_key: REASON_STALE_CALCULATED_INPUT},
             )
         if candidate is None:
             return _short_circuit(
@@ -620,6 +634,10 @@ def prepare_phasor_diagram(
         if isinstance(candidate, _CalibrationBlockedResult):
             role_statuses[role_key] = ROLE_STATUS_CALIBRATION_UNAVAILABLE
             role_reason_codes[role_key] = candidate.reason
+            continue
+        if isinstance(candidate, StaleInputBlocked):
+            role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
+            role_reason_codes[role_key] = REASON_STALE_CALCULATED_INPUT
             continue
         if candidate is None:
             role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
@@ -1019,6 +1037,11 @@ def check_phasor_diagram_readiness(
             role_readiness[role_key] = RoleReadiness(
                 status=STATUS_NEEDS_CONFIGURATION, reason_code="calibration_unavailable",
                 message=f"Role {role_key!r} is blocked by physical calibration authority ({candidate.reason}).",
+            )
+            continue
+        if isinstance(candidate, StaleInputBlocked):
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
             )
             continue
         if candidate is None:
