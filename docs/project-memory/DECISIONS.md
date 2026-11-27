@@ -29794,3 +29794,40 @@ base (a stored secondary base, a nominal-derived base, a manual base) are **inde
 authority is not to be reopened merely because a legacy secondary PU base differs from the default VT secondary equipment rating. The open S2
 question about that combination is to be assessed against the existing approved VT-authority and base-selection policies (DEC-215, DEC-216
 Amendments 6–7, and the owner decisions D-4, D-5, D-6 and D-7 of 2026-11-25), not as a request to amend them.
+
+---
+
+## DEC-219 — The nominal system voltage is always the Primary Voltage PU base; the separate Voltage Base Reference Side input is retired
+
+Date: 2026-11-27. Status: **Owner decision.** Authority: the owner's direction "Voltage Base Reference Side Retirement" (PU-MIG UAT, 2026-11-27).
+Numbering: DEC-217 is NF-001 (nominal frequency, on the NF branches) and DEC-218 is the agent-governance decision; no branch, local or remote, holds a
+higher number, so this is DEC-219 (checked 2026-11-27 across every local and remote ref).
+
+Decision:
+
+1. **Nominal system voltage is always the Primary Voltage PU base** for new and normal Voltage configurations. The effective denominator is resolved
+   automatically from the authoritative measurement side (Recording Details), the voltage representation (L-L / L-G, existing engineering rules) and the
+   existing VT authority (DEC-215, manual > recording_metadata > auto_nominal), by the existing side-denominator authority (S1). It is never computed in
+   the frontend.
+2. **The separate Voltage Base Reference Side input is retired** from normal Recording Details configuration. This authorises the retirement that
+   DEC-216 deferred ("the separate PU Base Reference Side input is retired", a later slice) and establishes the replacement contract that D-2 / OD-3
+   required, for normal Voltage configurations. The nominal-voltage, Measurement Value and VT controls are preserved.
+3. **A new normal configuration declares the Primary base explicitly** through the existing configuration contract: a save that establishes a nominal base
+   (a new, a changed or a reviewed value) sends `base_reference_side: "primary"`; the page never hides the selector while allowing the field to be
+   defaulted to Unknown or inherited as Secondary.
+4. **Legacy declarations are preserved.** A legitimate existing Secondary base (a stored Secondary declaration with a valid stored secondary value, the
+   D-5 criterion) and a historical Unknown declaration are never silently reinterpreted, replaced by a derived value, rewritten in bulk, overwritten by
+   submitting Unknown, or changed by an unrelated save (the field is omitted and the backend preserves it). They stay identifiable (the stored base is
+   shown read-only) and manageable through a **legacy-only mechanism whose replacement contract and UI are a proposal awaiting owner approval** (it is not
+   implemented by this decision).
+5. **API and storage are unchanged.** The `*_base_reference_side` fields, their contracts and historical storage are preserved; D-8 is unchanged and no
+   deprecation is undertaken. Retiring a UI control does not remove an API field.
+6. **Preserved unchanged:** the Calculated Current manual base reference-side control (Stage 5B, D-2), DEC-212 raw Current ENG, calculated-Current PU and
+   Current base selection, the shared CT/VT authority, historical Unverified (D-1 R+), D-4 (P5, diagnostic only), D-5, D-6, D-7, RMS and power
+   mathematics, authoritative waveform samples.
+
+Relationship to earlier decisions: fulfils the DEC-216 PU bullet for Voltage and D-2 / OD-3 for normal Voltage configurations; changes no mathematics, no
+authority policy and no approved numerical behaviour. Implementation record, writer inventory, verification and the legacy replacement-contract proposal:
+[PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md).
+
+Open, for owner decision (reported, not decided here): the legacy management contract (finding W-2); the auto-base writer's Secondary path (finding W-1).
