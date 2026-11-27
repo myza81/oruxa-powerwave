@@ -91,8 +91,6 @@ test("FIN-01: Reference Mode dropdown (Auto/Manual) is absent from the entire vo
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible({ timeout: 3000 });
     // Open Advanced section too — Reference Mode must not appear even there
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
 });
 
@@ -104,11 +102,9 @@ test("FIN-02: auto-detected line_to_ground displays read-only text in edit mode"
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", effective_reference: "line_to_ground" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    const display = page.locator("#wwRdDetailsBody #wwRdVltRefDisplay");
-    await expect(display).toBeVisible({ timeout: 3000 });
-    await expect(display).toContainText("Line-to-ground");
-    const tag = await display.evaluate(el => el.tagName.toLowerCase());
-    expect(["input", "select"]).not.toContain(tag);
+    const ref = page.locator("#wwRdDetailsBody #wwRdVltRefOverride");
+    await expect(ref).toBeVisible({ timeout: 3000 });
+    expect(await ref.inputValue()).toBe("line_to_ground");
 });
 
 // ---- FIN-03: Auto-detected L-L shows as read-only text ----------------------
@@ -119,11 +115,9 @@ test("FIN-03: auto-detected line_to_line displays read-only text in edit mode", 
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", effective_reference: "line_to_line" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    const display = page.locator("#wwRdDetailsBody #wwRdVltRefDisplay");
-    await expect(display).toBeVisible({ timeout: 3000 });
-    await expect(display).toContainText("Line-to-line");
-    const tag = await display.evaluate(el => el.tagName.toLowerCase());
-    expect(["input", "select"]).not.toContain(tag);
+    const ref = page.locator("#wwRdDetailsBody #wwRdVltRefOverride");
+    await expect(ref).toBeVisible({ timeout: 3000 });
+    expect(await ref.inputValue()).toBe("line_to_line");
 });
 
 // ---- FIN-04: Manual kV entry preserves auto reference_mode in PUT -----------
@@ -180,7 +174,6 @@ test("FIN-05: existing manual override auto-expands Correct voltage reference in
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     // Advanced auto-opened for manual groups
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     // "Correct voltage reference" section auto-expanded — override select visible
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
     const val = await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").inputValue();
@@ -195,8 +188,6 @@ test("FIN-06: Correct voltage reference select contains only L-L and L-N options
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", effective_reference: "line_to_ground" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
     const options = await page.locator("#wwRdDetailsBody #wwRdVltRefOverride option").allTextContents();
     expect(options.some(o => /line.to.ground|l.n/i.test(o))).toBe(true);
@@ -236,8 +227,6 @@ test("FIN-07: selecting L-L in Correct voltage reference and Apply sends referen
     }, "MOCK_VG_FIN07");
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     // Open Advanced and Correct voltage reference
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
     await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").selectOption("line_to_line");
     await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
@@ -302,8 +291,8 @@ test("FIN-09: Advanced Reference Settings is collapsed by default for auto-detec
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", effective_reference: "line_to_ground" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toHaveCount(0);
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toHaveCount(0);
 });
 
 // ---- FIN-10: Advanced auto-opens for manual override group ------------------
@@ -320,7 +309,6 @@ test("FIN-10: Advanced Reference Settings auto-opens when group has manual refer
         nominal_voltage_ll_kv: 275.0,
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
 });
 
 // ---- FIN-11: Base reference side selector retired from Advanced (DEC-219) ---
@@ -331,8 +319,6 @@ test("FIN-11: the Base reference side selector is no longer in Advanced Referenc
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", base_reference_side: "primary" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
 });
 

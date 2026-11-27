@@ -253,8 +253,6 @@ test("REF-06: Revert button absent in Advanced when base_authority is auto_resol
     });
 
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     // Revert button should NOT be present
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).not.toBeVisible();
 });
@@ -274,11 +272,10 @@ test("REF-07: auto-detected reference displayed as read-only text (not select) i
 
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     // Read-only display element present
-    const display = page.locator("#wwRdDetailsBody #wwRdVltRefDisplay");
-    await expect(display).toBeVisible({ timeout: 3000 });
-    await expect(display).toContainText("Line-to-ground");
-    // No inline select for reference when already resolved
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefInline")).not.toBeVisible();
+    const ref = page.locator("#wwRdDetailsBody #wwRdVltRefOverride");
+    await expect(ref).toBeVisible({ timeout: 3000 });
+    expect(await ref.inputValue()).toBe("line_to_ground");              // the detected reference is shown selected
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-ref-unresolved-note")).toHaveCount(0);
 });
 
 // ---- REF-08: Auto-detected L-L reference displayed correctly -----------------
@@ -295,9 +292,9 @@ test("REF-08: auto-detected L-L reference shows Line-to-line and Auto-detected p
     });
 
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    const display = page.locator("#wwRdDetailsBody #wwRdVltRefDisplay");
-    await expect(display).toBeVisible({ timeout: 3000 });
-    await expect(display).toHaveText("Line-to-line");
+    const ref = page.locator("#wwRdDetailsBody #wwRdVltRefOverride");
+    await expect(ref).toBeVisible({ timeout: 3000 });
+    expect(await ref.inputValue()).toBe("line_to_line");
     const prov = page.locator("#wwRdDetailsBody #wwRdVltRefProvenance");
     await expect(prov).toHaveText("Auto-detected");
 });
@@ -319,11 +316,11 @@ test("REF-09: unresolved voltage reference shows inline selector (not in Advance
 
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     // Inline select should be visible immediately (without opening Advanced)
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefInline")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
     // "Not resolved" note should be present
     await expect(page.locator("#wwRdDetailsBody .ww-rd-ref-unresolved-note")).toBeVisible();
-    // Read-only display should NOT be present
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefDisplay")).not.toBeVisible();
+    // nothing is preselected for an unresolved reference
+    expect(await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").inputValue()).toBe("");
 });
 
 // ---- REF-10: Existing manual override survives nominal kV editing ---------------
@@ -412,8 +409,8 @@ test("REF-13: Advanced section collapsed by default for auto-detected group", as
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", effective_reference: "line_to_ground" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).not.toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toHaveCount(0);
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toHaveCount(0);
 });
 
 // ---- REF-14: Expanding Advanced does not send PUT ---------------------------
@@ -431,8 +428,6 @@ test("REF-14: expanding Advanced Reference Settings does not trigger a PUT", asy
 
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto", effective_reference: "line_to_ground" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await page.waitForTimeout(400);
     expect(putSent).toBe(false);
 });
@@ -545,8 +540,6 @@ test("REF-19: Clear manual nominal voltage button present inside Advanced for ma
         effective_reference: "line_to_ground",
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toHaveText("Clear manual nominal voltage");
 });

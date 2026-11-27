@@ -4,7 +4,7 @@ Nominal system voltage is always the Primary PU base; the effective denominator 
 in the frontend. These checks pin what the frontend may and may not send, because a stored declaration (a legacy Secondary base, a historical
 Unknown) must never be overwritten as a side effect of an unrelated save:
 
-  * the selector, its option list and its draft state are gone;
+  * the selector, its option list and its draft state are gone, and so is the Advanced reference settings container that held it;
   * the three non-Apply Voltage writers (clear nominal, set VT, clear VT) do not send `base_reference_side` at all;
   * Apply sends it only through `wwRdVoltageNominalSave`, which declares "primary" and only when a nominal base is established;
   * no denominator arithmetic appears in the Voltage configuration code;
@@ -38,6 +38,20 @@ def test_the_selector_and_its_draft_state_are_gone():
     assert "Controls which voltage level is used as the PU denominator" not in source
 
 
+def test_the_advanced_reference_settings_container_is_gone_and_its_controls_are_kept():
+    source = _source()
+    for retired in ("wwRdVltAdvancedToggle", "wwRdVltAdvancedContent", "wwRdVltCorrectRefToggle", "wwRdVltRefInline", "wwRdVltRefDisplay",
+                    "advancedOpen", "correctRefOpen", 'class="ww-rd-advanced-toggle"', "Advanced reference settings", "ww-rd-advanced-content"):
+        assert retired not in source, retired
+    # the controls that lived in it stay, in their own fields
+    form = _between(source, "const legacySecondary = wwRdIsLegacySecondaryBase(vc);", "configHtml += '<div class=\"ww-rd-edit-actions\">';")
+    assert 'id="wwRdVltRefOverride"' in form                          # the voltage reference select (L-N / L-L), in the Voltage reference field
+    assert 'id="wwRdVltClearRefOverride"' in form                     # Clear reference override
+    assert 'id="wwRdVoltageRevertBtn"' in form                        # Clear manual nominal voltage, under the nominal
+    assert 'id="wwRdVltKv"' in form                                   # nominal voltage
+    assert 'id="wwRdVltAdvancedToggle"' not in form
+
+
 def test_the_voltage_writers_never_echo_or_default_the_side():
     source = _source()
     apply_writer = _between(source, "async function wwRdVoltageApply()", "async function wwRdVoltageRevert()")
@@ -53,7 +67,8 @@ def test_the_voltage_writers_never_echo_or_default_the_side():
 
 
 def test_a_primary_side_is_declared_only_when_a_nominal_base_is_established():
-    helper = _between(_source(), "function wwRdVoltageNominalSave(vc, rawKv)", "function wwRdLegacySecondaryBaseNoteHtml")
+    helper = _between(_source(), "function wwRdVoltageNominalSave(vc, rawKv)", "function wwRdIsLegacySecondaryBase")
+    assert "if (wwRdIsLegacySecondaryBase(vc)) return { sendNominal: false, side: null };" in helper    # a legacy base is never rewritten here
     assert 'side: send ? "primary" : null' in helper
     assert "stored === null || stored !== rawKv" in helper                       # new or changed nominal
     assert 'vc.base_authority === "legacy_manual"' in helper                     # a reviewed (confirmed) nominal
@@ -62,11 +77,15 @@ def test_a_primary_side_is_declared_only_when_a_nominal_base_is_established():
 
 def test_a_legacy_secondary_base_stays_identifiable_read_only():
     source = _source()
+    criterion = _between(source, "function wwRdIsLegacySecondaryBase(vc)", "function wwRdLegacySecondaryBaseNoteHtml")
+    assert 'vc.base_reference_side === "secondary" && vc.secondary_voltage_ll_v != null' in criterion    # the D-5 criterion
     note = _between(source, "function wwRdLegacySecondaryBaseNoteHtml(vc, editing)", "async function wwRdVoltageApply()")
-    assert 'vc.base_reference_side !== "secondary" || vc.secondary_voltage_ll_v == null' in note     # the D-5 criterion
-    assert "Legacy Secondary base" in note and "kept as stored" in note
-    assert "<select" not in note and "<input" not in note                        # read-only: management awaits owner approval
-    assert source.count("configHtml += wwRdLegacySecondaryBaseNoteHtml(vc,") == 2   # shown in read mode and in edit mode
+    assert "Legacy Secondary base: " in note and "kept as stored" in note
+    assert "<select" not in note and "<input" not in note and "<button" not in note        # one read-only line; no editor, no new button
+    assert "class=\"ww-rd-field-sub\"" in note                                            # an existing style, not a new section
+    assert source.count("configHtml += wwRdLegacySecondaryBaseNoteHtml(vc,") == 2          # read mode and edit mode
+    # its nominal voltage is not editable, so no unapproved transition can start from this form
+    assert "(legacySecondary ? ' disabled' : '')" in source
 
 
 def test_the_frontend_does_no_denominator_arithmetic_in_the_voltage_configuration_code():

@@ -153,8 +153,6 @@ test("SS-04: screenshot edit mode advanced expanded clear button light", async (
     }, "SS_EDIT_MANUAL");
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible({ timeout: 3000 });
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await page.locator("#wwRdDetailsBody").screenshot({
         path: path.join(OUT_DIR, "4-edit-advanced-clear-light.png"),
     });

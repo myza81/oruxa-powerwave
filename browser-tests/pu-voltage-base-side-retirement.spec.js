@@ -72,17 +72,6 @@ async function shot(page, file) {
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
 }
 
-// A manual reference opens Advanced (and its "Correct voltage reference" section) by itself; open them only when they are not already.
-async function ensureAdvancedOpen(page) {
-  if (!(await page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent").count())) await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-  await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible();
-}
-async function ensureCorrectReferenceOpen(page) {
-  await ensureAdvancedOpen(page);
-  if (!(await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").count())) await page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle").click();
-  await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible();
-}
-
 const NOMINAL_ONLY = { reference_mode: "manual", reference_override: "line_to_line" };
 
 test("the Voltage Base Reference Side selector is retired; nominal voltage and the reference controls stay", async ({ page }) => {
@@ -92,8 +81,8 @@ test("the Voltage Base Reference Side selector is retired; nominal voltage and t
   await expect(page.locator("#wwRdDetailsBody")).toContainText("Nominal voltage");
   await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
   await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible();                          // nominal voltage control stays
-  await ensureAdvancedOpen(page);
-  await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible();            // voltage reference (L-L / L-G) stays
+  await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible();                   // voltage reference (L-L / L-G) stays
+  await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toHaveCount(0);              // the Advanced container is retired
   await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
   await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Base reference side");
   await expect(page.locator("#wwRdDetailsBody #wwRdLegacySecondaryBase")).toHaveCount(0);           // a normal group shows no legacy note
@@ -123,16 +112,15 @@ test("an unrelated save leaves a legacy Secondary base exactly as stored and the
   const resolutionUrl = `${c.base}/sources/${c.sid}/per-unit-resolution?channel_name=VA`;
   const before = await json(await page.request.get(resolutionUrl));
   await openGroup(page, "Bay VBS");
-  const legacy = page.locator("#wwRdDetailsBody #wwRdLegacySecondaryBase");
-  await expect(legacy).toContainText("Legacy Secondary base");
-  await expect(legacy).toContainText("110 V");
-  await expect(legacy).toContainText("kept as stored");
+  const legacy = page.locator("#wwRdDetailsBody #wwRdLegacySecondaryBase");                       // one line, no new section
+  await expect(legacy).toHaveText("Legacy Secondary base: 110 V (L‑L) — kept as stored.");
   await shot(page, "03-after-legacy-secondary-read.png");
   const puts = recordPuts(page);
   await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-  await expect(legacy).toContainText("replaces this base with the nominal voltage");                // the consequence is stated before any change
+  await expect(legacy).toContainText("the nominal voltage is not editable for this group");
+  await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeDisabled();                         // changing it would be an unapproved transition
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toHaveCount(0);
   await shot(page, "04-after-legacy-secondary-edit.png");
-  await ensureCorrectReferenceOpen(page);
   await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").selectOption("line_to_line");            // an unrelated (reference) edit
   await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
   await expect.poll(() => puts.length).toBe(1);
@@ -150,7 +138,6 @@ test("a historical Unknown declaration is not rewritten by an unrelated save", a
   await openGroup(page, "Bay VBS");
   const puts = recordPuts(page);
   await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-  await ensureCorrectReferenceOpen(page);
   await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").selectOption("line_to_ground");
   await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
   await expect.poll(() => puts.length).toBe(1);

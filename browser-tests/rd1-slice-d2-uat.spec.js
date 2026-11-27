@@ -97,7 +97,7 @@ test("UAT-D2-01: default edit shows kV input; reference select inputs not visibl
 
 // ---- UAT-D2-02: Reference shown as read-only display (not an input) ----------
 
-test("UAT-D2-02: voltage reference is displayed as read-only text in default edit view", async ({ page }) => {
+test("UAT-D2-02: the detected voltage reference is shown selected in the Voltage reference select (DEC-219)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -107,13 +107,10 @@ test("UAT-D2-02: voltage reference is displayed as read-only text in default edi
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible({ timeout: 3000 });
-    // Read-only display element should be present
-    const display = page.locator("#wwRdDetailsBody #wwRdVltRefDisplay");
-    await expect(display).toBeVisible({ timeout: 3000 });
-    // It must NOT be an input element
-    const tagName = await display.evaluate(el => el.tagName.toLowerCase());
-    expect(tagName).not.toBe("input");
-    expect(tagName).not.toBe("select");
+    // The Voltage reference field holds the select directly (no Advanced container); the detected value is preselected
+    const ref = page.locator("#wwRdDetailsBody #wwRdVltRefOverride");
+    await expect(ref).toBeVisible({ timeout: 3000 });
+    expect(await ref.inputValue()).toBe("line_to_ground");
 });
 
 // ---- UAT-D2-03: Auto-detected provenance label (muted) ----------------------
@@ -157,16 +154,15 @@ test("UAT-D2-04: manual reference mode shows Manual provenance label with amber 
 
 // ---- UAT-D2-05: Advanced section collapsed by default -----------------------
 
-test("UAT-D2-05: Advanced reference settings section is collapsed by default", async ({ page }) => {
+test("UAT-D2-05: there is no Advanced reference settings container (DEC-219)", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toBeVisible({ timeout: 3000 });
-    // Advanced content is not rendered until opened
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).not.toBeVisible();
-    // Reference Mode dropdown removed; side select inside Advanced (not rendered)
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toHaveCount(0);
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toHaveCount(0);
+    // Reference Mode dropdown removed; no side select anywhere
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).not.toBeVisible();
 });
@@ -179,15 +175,13 @@ test("UAT-D2-06: clicking Advanced toggle expands and shows reference selects", 
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, { reference_mode: "auto" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toHaveCount(0);
     // Collapsed: Reference Mode dropdown absent, side select not rendered
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).not.toBeVisible();
     // Click toggle to expand
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
     // Advanced content appears with the Correct voltage reference toggle; the base reference side selector is retired (DEC-219)
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toHaveCount(0);
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
     // Reference Mode dropdown still absent (removed per DEC-214)
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefMode")).not.toBeVisible();
@@ -195,7 +189,7 @@ test("UAT-D2-06: clicking Advanced toggle expands and shows reference selects", 
 
 // ---- UAT-D2-07: Advanced auto-opens when existing config has manual reference
 
-test("UAT-D2-07: Advanced section auto-opens when group has manual reference_mode", async ({ page }) => {
+test("UAT-D2-07: a group with a manual reference shows its override in the Voltage reference select", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
@@ -206,10 +200,8 @@ test("UAT-D2-07: Advanced section auto-opens when group has manual reference_mod
         nominal_voltage_ll_kv: 132.0,
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    // Advanced should already be expanded — no toggle click needed
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
-    // Reference Mode dropdown is gone; "Correct voltage reference" section auto-opens for manual groups
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible();
+    // Reference Mode dropdown is gone and there is nothing to expand: the override is in the Voltage reference select
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toHaveCount(0);
     // Override select pre-populated with the existing manual override value
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
     const selectedOverride = await page.locator("#wwRdDetailsBody #wwRdVltRefOverride").inputValue();
@@ -309,8 +301,6 @@ test("UAT-D2-10: Clear manual nominal voltage button in Advanced section trigger
     });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     // Revert button is now inside Advanced section — open it first
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toHaveText("Clear manual nominal voltage");
 

@@ -115,9 +115,8 @@ test("D2-02: Edit button opens inline edit form with kV input; reference selecto
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageCancelBtn")).toBeVisible();
     // Advanced section — open it first to verify its contents
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
     // No Reference Mode dropdown; "Correct voltage reference" toggle present; the Base Reference Side selector is retired (DEC-219)
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toHaveCount(0);
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
 });
 
@@ -136,25 +135,17 @@ test("D2-03: Cancel button restores read-only view with Edit button", async ({ p
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).not.toBeVisible();
 });
 
-// ---- D2-04: "Correct voltage reference" reveals override select (no Auto option) ----
-// Updated: Reference Mode dropdown removed per DEC-214. Now uses "Correct voltage
-// reference" toggle inside Advanced to reveal an L-L/L-N select without an Auto option.
+// ---- D2-04: the Voltage reference select is directly in the Voltage reference field (no Auto option) ----
+// DEC-219: the Advanced reference settings container is retired; the L-L / L-N select sits in the Voltage reference field.
 
-test("D2-04: expanding Correct voltage reference reveals override select without Auto option", async ({ page }) => {
+test("D2-04: the Voltage reference select offers L-L and L-N directly, without an Auto option or an Advanced container", async ({ page }) => {
     await page.goto("/index.html");
     await uploadFixture(page);
     await navigateToRd(page);
     await injectAndSelectVoltageGroup(page, {});
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
-    // Open Advanced section
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle")).toBeVisible({ timeout: 3000 });
-    // Override select NOT yet visible (Correct ref section collapsed)
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).not.toBeVisible();
-    // Click "Correct voltage reference" to expand
-    await page.locator("#wwRdDetailsBody #wwRdVltCorrectRefToggle").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefOverride")).toBeVisible({ timeout: 3000 });
-    // Select has L-L and L-N options but NO "Auto" option
+    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle")).toHaveCount(0);
     const options = await page.locator("#wwRdDetailsBody #wwRdVltRefOverride option").allTextContents();
     expect(options.some(o => /line.to.ground|l.n/i.test(o))).toBe(true);
     expect(options.some(o => /line.to.line|l.l/i.test(o))).toBe(true);
@@ -228,8 +219,6 @@ test("D2-06b: Revert button shown inside Advanced section when group has manual 
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible({ timeout: 3000 });
     // Revert button is inside Advanced section — open it first
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toBeVisible();
     await expect(page.locator("#wwRdDetailsBody #wwRdVoltageRevertBtn")).toHaveText("Clear manual nominal voltage");
 });
@@ -315,8 +304,6 @@ test("D2-10: the Voltage Base Reference Side selector is retired; nominal voltag
     await injectAndSelectVoltageGroup(page, { base_reference_side: "primary" });
     await page.locator("#wwRdDetailsBody #wwRdVoltageEditBtn").click();
     await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible({ timeout: 3000 });      // the nominal voltage control stays
-    await page.locator("#wwRdDetailsBody #wwRdVltAdvancedToggle").click();
-    await expect(page.locator("#wwRdDetailsBody #wwRdVltAdvancedContent")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#wwRdDetailsBody #wwRdVltRefSide")).toHaveCount(0);
     await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Base reference side");
 });
