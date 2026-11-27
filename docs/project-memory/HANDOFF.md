@@ -8,7 +8,24 @@ Agent governance (2026-11-26, [DEC-218](DECISIONS.md#dec-218--approved-decisions
 approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
 [AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
 
-Last updated: **2026-11-24** — D5A-2B2C-1B integrated onto the deployed WUI-001–004 baseline `3ed200c` (candidate branch, DEV release prepared); WUI-001–004 consolidation and its DEV deployment recorded below. Earlier engineering handoffs retain their original implementation context.
+Last updated: **2026-11-27** — Per-Unit workstream accepted by the owner after DEV UAT (baseline `4885ca2`); integration readiness reviewed, awaiting owner review (below). Earlier engineering handoffs retain their original dates.
+
+---
+
+## Per-Unit workstream — final acceptance and release readiness (2026-11-27)
+
+[UAT] Owner DEV UAT passed; PU-MIG S1–S6, DEC-219, W-1 and the Voltage-configuration UI simplification are accepted. Frozen functional baseline **`4885ca2`**
+(`feature/pu-mig-s5-verification-presentation`; DEV release branch `uat/dev-pu-mig-dec219-20261127`; CI `45986951629`; Deploy `45988779482`). No owner-reported PU defects.
+Do **not** add PU features: raw Current ENG/PU toggle, more Current PU reference types, creation-time Current PU configuration, Stage 6D, legacy Secondary base management (W-2), legacy API-field
+deprecation and a CFG transformer-ratio authority are deferred and unauthorised.
+
+Integration facts (measured 2026-11-27): `origin/main` `b743a67` is an ancestor of `4885ca2` (198 ahead / 0 behind; merge-tree clean; no NF/RMS; WUI-001–004 and D5A included because PR #13
+merged them into `uat/dev-d5a-20261121`, not `main`). PROD is a `/health`-only skeleton since `main` @ `947b72b` (run `31597729649`); `deploy-dev.yml` auto-deploys `main` to DEV after CI.
+Recommended: one merge-commit PR (no squash, no force-push), CI on the PR head, a full browser run before PROD, `RELAY_REVIEW_SIGNING_KEY` and a rollback tag before any PROD dispatch.
+Rollback of DEV: dispatch `target=dev` with `uat/dev-pu-mig-20261127` (`9ec49d9`) or `uat/dev-d5a-20261121` (`e9c621c`).
+
+**Next:** owner reviews [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md) (sections 5, 8 and 10 list the readiness findings, the gate and the open decisions). Do not merge to `main`, push, or deploy to PROD until the owner decides;
+do not resume NF, RMS or WUI work from this record.
 
 ---
 

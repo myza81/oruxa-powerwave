@@ -29876,3 +29876,10 @@ and the Manual VT override are retained.
    refusal safeguards, the samples.
 
 Record: [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md), section 11.
+
+
+### Acceptance (2026-11-27) — owner DEV UAT
+
+DEC-219, Amendment 1 (W-1) and Amendment 2 (UI simplification) were accepted by the owner after DEV UAT of `4885ca2`. This note records the acceptance only; it changes no rule.
+Numbering: DEC-217 remains reserved for NF-001 on the unpublished NF branches. Deferred, not authorised: the legacy Secondary base management mechanism (W-2) and the deprecation of the
+`*_base_reference_side` API fields. Record: [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md).

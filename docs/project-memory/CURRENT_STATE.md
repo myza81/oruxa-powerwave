@@ -9,6 +9,26 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Per-Unit workstream — owner UAT passed; accepted and frozen (2026-11-27)
+
+[UAT] The owner accepted the Per-Unit migration (PU-MIG S1–S6), DEC-219, the W-1 auto-base alignment and the final Voltage-configuration UI simplification
+after DEV UAT. Accepted functional baseline: **`4885ca2`** on `feature/pu-mig-s5-verification-presentation`, deployed to DEV from
+`uat/dev-pu-mig-dec219-20261127` (CI `45986951629`, Deploy Powerwave `45988779482`). No outstanding owner-reported PU defects. No further PU feature work is authorised.
+
+[FACT] Current behaviour: one shared side-denominator resolver; verification states `verified_direct` / `verified_converted` / `unverified_historical` / `blocked`
+(additive API field `per_unit_verification_state`); the nominal system voltage is always the Primary Voltage PU base and the Voltage Base Reference Side input is
+retired ([DEC-219](DECISIONS.md#dec-219--the-nominal-system-voltage-is-always-the-primary-voltage-pu-base-the-separate-voltage-base-reference-side-input-is-retired));
+the auto-base service never creates a legacy Secondary base; the DEC-215 VT policy is unchanged. Accepted limitations: a legacy Secondary base is kept as stored and its
+nominal is not editable in Recording Details; a new Secondary recording stays `needs_review` until a nominal is entered.
+
+[DEFERRED] Raw Current ENG/PU display toggle; additional Current PU reference types; creation-time Current PU configuration; Stage 6D proposals; legacy Secondary base
+management UI (W-2); legacy `*_base_reference_side` API field deprecation; a new CFG transformer-ratio authority. These are enhancements, not incomplete release requirements.
+
+[FACT] Integration: `origin/main` = `b743a67` is a direct ancestor of the candidate (198 ahead, 0 behind); no merge conflict; no NF or RMS content; the WUI-001–004
+and D5A base are included because they were merged into the DEV base, not into `main`. PROD currently runs only a `/health` skeleton (last PROD deploy `31597729649`,
+`main` @ `947b72b`), so a PROD release of this line is the first production release of the application. Nothing is merged or deployed to PROD; the integration needs
+owner approval. See [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md).
+
 ## WUI-001–004 controlled DEV consolidation (2026-11-23)
 
 [UAT] The owner accepted WUI-001 through WUI-004, final UI commit `d513fba`.
