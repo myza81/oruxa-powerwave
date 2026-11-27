@@ -43316,29 +43316,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     "Nominal frequency sets the duration of the one-cycle RMS window. 50 Hz uses a 20 ms window; 60 Hz uses approximately 16.67 ms."
                 ) +
                 '</span>';
-            if (wwCcBuilder.nominalFrequencySource === "metadata") {
-                // Category B (metadata-derived) -- locked, never
-                // accidentally editable (owner section 3/4): the
-                // recording's own declared system frequency, not a guess.
-                const origin = wwCcBuilder.nominalFrequencyOrigin;
-                const hint = origin === "manual" ? "Set in Recording Details"
-                    : origin === "assumed_default" ? "Assumed (not declared by the recording)" : "From recording metadata";
-                html += '<input type="text" readonly tabindex="-1" value="' + escapeHtml(String(wwCcBuilder.nominalFrequency)) + ' Hz">' +
-                    '<p class="hint">' + hint + '</p>';
-            } else {
-                // Category A (user-selectable) -- a constrained dropdown,
-                // never free text (owner section 3: "Do NOT use free
-                // text"), because no trustworthy source metadata is
-                // available for the currently selected input (or none is
-                // selected yet).
-                html += '<select id="wwCcNominalFrequencySelect">' +
-                    (wwCcBuilder.nominalFrequency === "" ? '<option value="" selected disabled>Select frequency</option>' : '') +
-                    '<option value="50"' + (wwCcBuilder.nominalFrequency === "50" ? " selected" : "") + '>50 Hz</option>' +
-                    '<option value="60"' + (wwCcBuilder.nominalFrequency === "60" ? " selected" : "") + '>60 Hz</option>' +
-                    '</select>' +
-                    '<p class="hint">' + (wwCcBuilder.nominalFrequency === "" ? "The recording has no usable nominal frequency. Select the frequency to use."
-                        : "Select nominal system frequency") + '</p>';
+            // NF-3E / O-8: when the recording has a usable applicable frequency it is PRESELECTED (the first option, "Recording (X Hz)": the
+            // calculation follows the recording) but never imposed. Choosing 50 Hz or 60 Hz is a deliberate, explicit selection, even when
+            // it equals the recording's: the intent is the option chosen, never inferred from the number.
+            const recordingFrequency = wwCcBuilder.inputs[0] ? wwCcResolveNominalFrequencyAuthority(wwCcBuilder.inputs[0]) : { source: "user" };
+            const hasRecordingFrequency = recordingFrequency.source === "metadata";
+            const following = hasRecordingFrequency && wwCcBuilder.nominalFrequencySource === "metadata";
+            const origin = recordingFrequency.origin;
+            // Category A (user-selectable) -- a constrained dropdown, never free text (owner section 3: "Do NOT use free text"). With no usable
+            // recording frequency (or none selected yet) the engineer must choose one.
+            let hint = "Select nominal system frequency";
+            if (hasRecordingFrequency) {
+                hint = following
+                    ? (origin === "manual" ? "Set in Recording Details"
+                        : origin === "assumed_default" ? "Assumed (not declared by the recording)" : "From recording metadata")
+                    : "Selected explicitly; does not follow the recording";
+            } else if (wwCcBuilder.nominalFrequency === "") {
+                hint = "The recording has no usable nominal frequency. Select the frequency to use.";
             }
+            html += '<select id="wwCcNominalFrequencySelect">' +
+                (hasRecordingFrequency
+                    ? '<option value="recording"' + (following ? " selected" : "") + '>Recording (' + escapeHtml(String(recordingFrequency.value)) + ' Hz)</option>'
+                    : (wwCcBuilder.nominalFrequency === "" ? '<option value="" selected disabled>Select frequency</option>' : '')) +
+                '<option value="50"' + (!following && wwCcBuilder.nominalFrequency === "50" ? " selected" : "") + '>50 Hz</option>' +
+                '<option value="60"' + (!following && wwCcBuilder.nominalFrequency === "60" ? " selected" : "") + '>60 Hz</option>' +
+                '</select>' +
+                '<p class="hint">' + hint + '</p>';
             html += '</div>';
 
             // Category C (automatically calculated) -- never a text box
@@ -45505,12 +45508,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
             } else if (event.target.id === "wwCcNominalFrequencySelect") {
-                // Section 3/24/25: a constrained dropdown, only ever
-                // rendered when nominalFrequencySource === "user" -- the
-                // metadata-derived display is a plain readonly input with
-                // no listener needed (never user-editable, section 4).
-                wwCcBuilder.nominalFrequency = event.target.value;
-                wwCcBuilder.nominalFrequencyChosen = true;
+                // Section 3/24/25: a constrained dropdown, never free
+                // text. NF-3E / O-8: with a usable recording frequency its
+                // first option ("Recording (X Hz)") is the preselected,
+                // recording-following choice; 50/60 Hz are explicit.
+                if (event.target.value === "recording") {
+                    // Accepting the recording's frequency: the calculation follows the recording (O-8 / NF-3E).
+                    const authority = wwCcResolveNominalFrequencyAuthority(wwCcBuilder.inputs[0]);
+                    if (authority.source === "metadata") {
+                        wwCcBuilder.nominalFrequency = String(authority.value);
+                        wwCcBuilder.nominalFrequencySource = "metadata";
+                        wwCcBuilder.nominalFrequencyOrigin = authority.origin || null;
+                        wwCcBuilder.nominalFrequencyChosen = false;
+                    }
+                } else {
+                    // A deliberate selection is explicit, whatever the recording's frequency is.
+                    wwCcBuilder.nominalFrequency = event.target.value;
+                    wwCcBuilder.nominalFrequencySource = "user";
+                    wwCcBuilder.nominalFrequencyOrigin = null;
+                    wwCcBuilder.nominalFrequencyChosen = true;
+                }
                 wwCcResetRmsEligibility();
                 // Section 6/25: Window is DERIVED, not entered -- a full
                 // re-render (not a targeted DOM patch) keeps its displayed

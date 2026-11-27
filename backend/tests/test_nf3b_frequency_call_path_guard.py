@@ -120,7 +120,7 @@ REGISTRY_READ_METHODS = {"get", "snapshot", "revision", "set", "clear", "count"}
 FRONTEND_TOKENS = {
     "nominal_frequency_hz": 9,
     "nominal_frequency(bare)": 11,   # NF-3E: +1 (`nominal_frequency_basis` in the RMS create payload)
-    "nominalFrequency": 53,          # NF-3C: +2 (the dormant facts card takes an optional `nominalFrequencyInfo`); NF-3E: +20 (O-8 builder authority)
+    "nominalFrequency": 56,          # NF-3C: +2 (the dormant facts card takes an optional `nominalFrequencyInfo`); NF-3E: +23 (O-8 builder authority)
     "reference_frequency": 2,
     "nominalFrequencyOverride": 2,
 }

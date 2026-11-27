@@ -236,6 +236,19 @@ class TestInheritance:
         s = staleness(client, ws, "sum")
         assert s["state"] == "stale" and [c["channel_name"] for c in s["causes"]] == ["rms_b"]
 
+    def test_an_explicit_channel_is_exempt_from_direct_staleness_but_still_inherits_upstream_staleness(self, client, ws):
+        sid = rec(client, ws)
+        upstream = following(client, ws, "rms_follow", sid, 50)["id"]
+        made = nf3e.create(client, ws, "rms_of_rms_explicit", "rms", [nf3e.calc(upstream)],
+                           {"nominal_frequency_hz": 50, "nominal_frequency_basis": "explicit"}, override=True)
+        assert made["status"] == 201
+        nf3e.put_manual(client, ws, sid, 60.0)
+        s = staleness(client, ws, "rms_of_rms_explicit")
+        assert s["state"] == "stale" and s["assessment"] == "inherited_only"
+        assert [(c["channel_name"], c["own"]) for c in s["causes"]] == [("rms_follow", False)]
+        nf3e.put_auto(client, ws, sid)
+        assert staleness(client, ws, "rms_of_rms_explicit")["state"] == "current"
+
     def test_frequency_independent_channels_on_source_inputs_are_current_and_say_they_are_not_assessed(self, client, ws):
         sid = rec(client, ws)
         nf3e.create(client, ws, "sum_raw", "addition", [nf3e.src(sid, "VA"), nf3e.src(sid, "VB")])

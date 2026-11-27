@@ -94,3 +94,25 @@ def test_the_builder_preselects_the_applicable_frequency_and_requires_an_explici
     fields = _body(source, "function wwCcRenderRmsParameterFields()", "// Category C (automatically calculated)")
     assert 'value="" selected disabled>Select frequency</option>' in fields
     assert "Set in Recording Details" in fields and "Assumed (not declared by the recording)" in fields and "From recording metadata" in fields
+
+
+def test_a_usable_recording_frequency_is_preselected_but_never_imposed_o8():
+    source = _source()
+    fields = _body(source, "function wwCcRenderRmsParameterFields()", "// Category C (automatically calculated)")
+    # one dropdown: the recording option first (selected while the calculation follows the recording), then explicit 50/60 Hz
+    assert fields.count("<select") == 1 and "readonly tabindex=\"-1\" value=\"' + escapeHtml(String(wwCcBuilder.nominalFrequency))" not in fields
+    assert '\'<option value="recording"\' + (following ? " selected" : "")' in fields
+    assert "Recording (" in fields and "Selected explicitly; does not follow the recording" in fields
+    # an explicit option is selected only when the calculation is NOT following, even when the numbers are equal
+    assert fields.count('!following && wwCcBuilder.nominalFrequency ===') == 2
+
+
+def test_accepting_the_recording_follows_it_and_choosing_a_frequency_is_explicit_whatever_the_number():
+    source = _source()
+    start = source.index('event.target.id === "wwCcNominalFrequencySelect"')
+    handler = source[start:source.index("wwCcResetRmsEligibility();", start)]
+    following, explicit = handler.split("} else {", 1)
+    assert 'event.target.value === "recording"' in following
+    assert 'wwCcBuilder.nominalFrequencySource = "metadata";' in following and "nominalFrequencyChosen = false" in following
+    assert 'wwCcBuilder.nominalFrequencySource = "user";' in explicit and "nominalFrequencyChosen = true" in explicit
+    assert "recording" not in explicit.replace("the recording", "")            # the explicit branch never looks at the recording's value

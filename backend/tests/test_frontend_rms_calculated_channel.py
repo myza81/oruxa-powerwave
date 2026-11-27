@@ -301,9 +301,9 @@ def test_rms_parameter_fields_distinguish_all_four_authority_categories():
     source = _source()
     body = _function_body(source, "function wwCcRenderRmsParameterFields()", "// ---")
 
-    # Category A/B: Nominal Frequency is EITHER the constrained dropdown
-    # (user-selectable, only 50/60 Hz, never free text) OR a readonly
-    # metadata display -- never both rendered as identical text boxes.
+    # Category A/B: Nominal Frequency is ONE constrained dropdown (never free
+    # text): 50/60 Hz are explicit selections; NF-3E / O-8 adds a preselected
+    # "Recording (X Hz)" option when the recording has a usable frequency.
     assert 'wwCcBuilder.nominalFrequencySource === "metadata"' in body
     assert "wwCcNominalFrequencySelect" in body
     assert '<option value="50"' in body

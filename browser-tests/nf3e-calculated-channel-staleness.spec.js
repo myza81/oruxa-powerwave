@@ -143,25 +143,61 @@ test.describe("NF-3E stale calculated channels", () => {
     expect(detail.message).toContain("Create a new RMS channel");
   });
 
-  test("the RMS builder preselects the applicable (Manual) frequency, locked, and declares a recording-following calculation", async ({ page, context }) => {
-    await gateOn(context);
-    await seed(page, { lf: "50" });
-    await setManual(page, 60);
+  async function openRmsBuilderOnVa(page) {
     await openCalculatedChannels(page);
     await page.locator("#wwCcNewChannelBtn").click();
     await page.locator('.ww-cc-operation-card[data-operation="rms"]').click();
     const select = page.locator("#wwCcUnaryInputSelect");
     const value = await select.locator("option").evaluateAll((options) => (options.find((o) => o.textContent.includes("NF3E_VA")) || {}).value);
     await select.selectOption(value);
-    await expect(page.locator('#wwCcBuilderFields input[readonly][value="60 Hz"]')).toHaveCount(1);   // the locked, preselected value
-    await expect(page.locator("#wwCcBuilderFields")).toContainText("Set in Recording Details");
-    await expect(page.locator("#wwCcNominalFrequencySelect")).toHaveCount(0);
+  }
 
-    const sent = page.waitForRequest((r) => r.method() === "POST" && /\/calculated-channels$/.test(r.url()));
-    await page.locator("#wwCcNameInput").fill("rms_builder");
+  async function createAndCapture(page, name) {
+    await page.locator("#wwCcNameInput").fill(name);
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled({ timeout: 10000 });
+    const sent = page.waitForRequest((r) => r.method() === "POST" && /\/calculated-channels$/.test(r.url()));
     await page.locator("#wwCcCreateBtn").click();
-    expect((await sent).postDataJSON().parameters).toEqual({ nominal_frequency_hz: 60, nominal_frequency_basis: "recording" });
+    return (await sent).postDataJSON().parameters;
+  }
+
+  test("the RMS builder preselects the applicable (Manual) frequency as Recording (60 Hz), and accepting it declares a recording-following calculation", async ({ page, context }) => {
+    await gateOn(context);
+    await seed(page, { lf: "50" });
+    await setManual(page, 60);
+    await openRmsBuilderOnVa(page);
+    const select = page.locator("#wwCcNominalFrequencySelect");
+    await expect(select).toHaveValue("recording");
+    await expect(select.locator("option:checked")).toHaveText("Recording (60 Hz)");
+    await expect(select.locator("option")).toHaveText(["Recording (60 Hz)", "50 Hz", "60 Hz"]);
+    await expect(page.locator("#wwCcBuilderFields")).toContainText("Set in Recording Details");
+    expect(await createAndCapture(page, "rms_builder")).toEqual({ nominal_frequency_hz: 60, nominal_frequency_basis: "recording" });
+  });
+
+  test("the preselection never prevents a different frequency: a deliberate choice is explicit, even when it equals the recording's", async ({ page, context }) => {
+    await gateOn(context);
+    await seed(page, { lf: "50" });
+    await setManual(page, 60);
+    await openRmsBuilderOnVa(page);
+    const select = page.locator("#wwCcNominalFrequencySelect");
+
+    await select.selectOption("50");                                        // a different frequency
+    await expect(page.locator("#wwCcBuilderFields")).toContainText("Selected explicitly");
+    await select.selectOption("60");                                        // the SAME number as the recording's: still a deliberate, explicit choice
+    await expect(select).toHaveValue("60");
+    await expect(page.locator("#wwCcBuilderFields")).toContainText("Selected explicitly");
+    expect(await createAndCapture(page, "rms_explicit_60")).toEqual({ nominal_frequency_hz: 60, nominal_frequency_basis: "explicit" });
+  });
+
+  test("returning to the Recording option restores recording-following intent; the layout keeps one dropdown", async ({ page, context }) => {
+    await gateOn(context);
+    await seed(page, { lf: "50" });
+    await openRmsBuilderOnVa(page);
+    const select = page.locator("#wwCcNominalFrequencySelect");
+    await expect(select).toHaveValue("recording");                          // preselected from the recording (Auto 50 Hz)
+    await select.selectOption("60");
+    await select.selectOption("recording");
+    await expect(page.locator("#wwCcBuilderFields select#wwCcNominalFrequencySelect")).toHaveCount(1);
+    expect(await createAndCapture(page, "rms_follow_again")).toEqual({ nominal_frequency_hz: 50, nominal_frequency_basis: "recording" });
   });
 
   test("a recording with no usable frequency requires an explicit choice and declares an explicit calculation", async ({ page, context }) => {
