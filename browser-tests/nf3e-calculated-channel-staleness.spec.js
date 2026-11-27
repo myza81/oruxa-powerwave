@@ -153,7 +153,7 @@ test.describe("NF-3E stale calculated channels", () => {
     const select = page.locator("#wwCcUnaryInputSelect");
     const value = await select.locator("option").evaluateAll((options) => (options.find((o) => o.textContent.includes("NF3E_VA")) || {}).value);
     await select.selectOption(value);
-    await expect(page.locator("#wwCcBuilderFields")).toContainText("60 Hz");
+    await expect(page.locator('#wwCcBuilderFields input[readonly][value="60 Hz"]')).toHaveCount(1);   // the locked, preselected value
     await expect(page.locator("#wwCcBuilderFields")).toContainText("Set in Recording Details");
     await expect(page.locator("#wwCcNominalFrequencySelect")).toHaveCount(0);
 

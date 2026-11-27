@@ -1,0 +1,101 @@
+{
+ "killed": 17,
+ "total": 19,
+ "results": [
+  {
+   "id": "M1",
+   "status": "KILLED",
+   "why": "frequencies always agree: nothing is ever stale"
+  },
+  {
+   "id": "M2",
+   "status": "KILLED",
+   "why": "frequencies never agree: a channel is stale even when the recording returns to its frequency"
+  },
+  {
+   "id": "M3",
+   "status": "KILLED",
+   "why": "an explicit frequency is assessed (stale because it differs)"
+  },
+  {
+   "id": "M4",
+   "status": "SURVIVED",
+   "why": "intent inferred: an omitted basis would follow the recording"
+  },
+  {
+   "id": "M5",
+   "status": "KILLED",
+   "why": "no inheritance from dependants' ancestors"
+  },
+  {
+   "id": "M6",
+   "status": "KILLED",
+   "why": "an ancestor reached twice is reported twice"
+  },
+  {
+   "id": "M7",
+   "status": "KILLED",
+   "why": "an unusable recording frequency is not stale"
+  },
+  {
+   "id": "M8",
+   "status": "KILLED",
+   "why": "the unusable reason is lost"
+  },
+  {
+   "id": "M9",
+   "status": "KILLED",
+   "why": "a stale input is never refused"
+  },
+  {
+   "id": "M10",
+   "status": "KILLED",
+   "why": "only a DIRECTLY stale input is refused (transitive staleness slips through)"
+  },
+  {
+   "id": "M11",
+   "status": "SURVIVED",
+   "why": "a source input first in the list hides a later stale calculated input"
+  },
+  {
+   "id": "M12",
+   "status": "KILLED",
+   "why": "a recording-following frequency that is not the recording's is accepted"
+  },
+  {
+   "id": "M13",
+   "status": "KILLED",
+   "why": "origin and revision are not stamped"
+  },
+  {
+   "id": "M14",
+   "status": "KILLED",
+   "why": "an omitted basis defaults to recording-following"
+  },
+  {
+   "id": "M15",
+   "status": "KILLED",
+   "why": "an unknown basis is accepted"
+  },
+  {
+   "id": "M16",
+   "status": "KILLED",
+   "why": "the eligibility endpoint no longer validates the frequency (HTTP 500 for zero)"
+  },
+  {
+   "id": "M17",
+   "status": "KILLED",
+   "why": "the readiness identity reuses a stale channel"
+  },
+  {
+   "id": "M18",
+   "status": "KILLED",
+   "why": "the API forgets to pass the authority to creation"
+  },
+  {
+   "id": "M19",
+   "status": "KILLED",
+   "why": "the response never carries the derived staleness"
+  }
+ ]
+}

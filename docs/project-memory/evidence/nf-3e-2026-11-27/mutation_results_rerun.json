@@ -1,0 +1,16 @@
+{
+ "killed": 2,
+ "total": 2,
+ "results": [
+  {
+   "id": "M4",
+   "status": "KILLED",
+   "why": "intent inferred: an omitted basis would follow the recording"
+  },
+  {
+   "id": "M11",
+   "status": "KILLED",
+   "why": "a source input first in the list hides a later stale calculated input"
+  }
+ ]
+}

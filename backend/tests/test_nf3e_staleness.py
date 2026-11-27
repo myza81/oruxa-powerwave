@@ -167,6 +167,20 @@ class TestRecordingFollowingStaleness:
         assert s["state"] == "stale" and s["causes"][0]["reason"] == "recording_frequency_unusable"
         assert s["causes"][0]["effective_hz"] is None
 
+    def test_a_channel_with_no_declared_basis_is_never_assessed_whatever_its_frequency(self, client, ws):
+        sid = rec(client, ws)
+        rms = following(client, ws, "f50", sid, 50)["id"]
+        registry = client.app.state.calculated_channel_registry
+        source = registry.get(ws, rms)
+        parameters = {k: v for k, v in source.parameters.items() if not k.startswith("nominal_frequency_") or k == "nominal_frequency_hz"}
+        registry.add(CalculatedChannel(
+            id="calc-no-basis", workspace_id=ws, name="no_basis", unit=source.unit, operation=source.operation, inputs=list(source.inputs),
+            parameters=parameters, dependency_ids=[], reference_source_id=source.reference_source_id, time=source.time,
+            values=np.array(source.values), created_at=source.created_at))
+        nf3e.put_manual(client, ws, sid, 60.0)
+        assert staleness(client, ws, "f50")["state"] == "stale"
+        assert staleness(client, ws, "no_basis")["state"] == "current"             # intent is never inferred when it was not declared
+
     def test_another_recordings_change_does_not_affect_the_channel(self, client, ws):
         a, b = rec(client, ws, "a"), rec(client, ws, "b")
         following(client, ws, "fa", a, 50)
@@ -291,6 +305,13 @@ class TestStaleInputRefusal:
         nf3e.put_manual(client, ws, sid, 60.0)
         assert following(client, ws, "rms60", sid, 60)["status"] == 201
         assert nf3e.create(client, ws, "raw_sum", "addition", [nf3e.src(sid, "VA"), nf3e.src(sid, "VB")])["status"] == 201
+
+    def test_a_stale_calculated_input_is_refused_wherever_it_sits_in_the_input_list(self, client, ws):
+        sid = rec(client, ws)
+        rms = following(client, ws, "rms", sid, 50)["id"]
+        nf3e.put_manual(client, ws, sid, 60.0)
+        made = nf3e.create(client, ws, "mixed_inputs", "addition", [nf3e.src(sid, "VB"), nf3e.calc(rms)])
+        assert made["status"] == 409 and made["body"]["detail"]["code"] == "stale_calculated_input"
 
     def test_the_refusal_lifts_when_the_staleness_clears(self, client, ws):
         sid = rec(client, ws)
