@@ -8,7 +8,21 @@ Agent governance (2026-11-26, [DEC-218](DECISIONS.md#dec-218--approved-decisions
 approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
 [AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
 
-Last updated: **2026-11-28** — NF-3F/G/H implemented on `feature/nf-3fgh-consolidated` (functional candidate `194d8ba`), verified locally, awaiting owner review (first section below); NF-1..NF-3E integration (`ae5dfd9`) was accepted by the owner. Earlier engineering handoffs follow.
+Last updated: **2026-11-28** — NF-3I (DEV-only activation of the Nominal Frequency feature) implemented on `feature/nf-3fgh-consolidated` (`5a2d3e0`), verified locally, awaiting interactive owner UAT (first section below); NF-3F/G/H (`194d8ba`) and the NF-1..NF-3E integration (`ae5dfd9`) were accepted by the owner. Earlier engineering handoffs follow.
+
+---
+
+## NF-3I — Nominal Frequency feature activation, DEV only (2026-11-28)
+
+[LOCAL] **NF-3I `5a2d3e0`** on `feature/nf-3fgh-consolidated` (worktree `.local-data/nf-3fgh`), on top of the accepted NF-3F/G/H functional `194d8ba`. Not pushed, merged or deployed; PROD untouched. Record: [NF_3I_DEV_ACTIVATION_2026-11-28.md](NF_3I_DEV_ACTIVATION_2026-11-28.md); decisions: DEC-217 Amendment 2 (NF-3F/G/H accepted, native oscillation members retained, O-12 approved).
+
+[FACT] Gate changes: `config.py` accepts `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED` only for `ENVIRONMENT=development` (was: refused in every deployed build, which blocked DEV) and refuses any other environment; the frontend entrypoint emits `featureFlags.nominalFrequencyOverride` only for the same variable and only in development, and fails the start otherwise; `WW_NF_CONSUMERS_MIGRATED = true` with a scope statement (Auto Base evidence and native oscillation named as not covered). DEV configuration: `compose.dev.yaml` sets the variable for the backend and the frontend; no other deployment file mentions it (pinned by a static test); defaults stay closed outside DEV.
+
+[FACT] Results: full backend 16,948 passed / 410 skipped / 0 failed; UAT scenarios over HTTP 20 passed; gate/entrypoint/compose/config 190 passed; 11 / 11 mutations killed; focused browser 597 passed (flag off) and 596 passed (flag on; the single failure is the NF-2 "off by default" test, by construction). The NF-3F/G/H full browser and BEN results are reused.
+
+**Next:** the owner's interactive UAT in DEV (checklist in the record), then push, merge to `main` (CI, then the automatic DEV deploy) and any deployment, each separately authorised. Remaining limitations: native oscillation members and Auto Base evidence (named in the page text), the documented browser qualifications, in-memory Manual values reset on a backend restart.
+
+Governance compliance (DEC-218): documents consulted are AGENTS.md, CLAUDE.md, the project-memory README, DEC-217 (Amendments 1 and 2), DEC-218/219, NF-3A section 8 and 10, the NF-2 and NF-3B gate records, the NF-3F/G/H record, `compose*.yaml`, the workflows and `scripts/deploy.sh`. Decisions preserved; the only amendment is DEC-217 Amendment 2 (the owner's instructions); no unresolved conflict; no deviation from scope.
 
 ---
 

@@ -31,7 +31,17 @@ and D5A base are included because they were merged into the DEV base, not into `
 `main` @ `947b72b`), so a PROD release of this line is the first production release of the application. Nothing is merged or deployed to PROD; the integration needs
 owner approval. See [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md).
 
-## NF-3F / NF-3G / NF-3H — consolidated consumer migration implemented; verified locally, awaiting owner review (2026-11-28)
+## NF-3I — Nominal Frequency feature activated for DEV only; verified locally, awaiting interactive owner UAT (2026-11-28)
+
+[UAT-PENDING] The owner accepted NF-3F/G/H (functional `194d8ba`) with the documented browser qualifications, retained the NF-3C native-oscillation behaviour, and approved O-12 ([DEC-217 Amendment 2](DECISIONS.md#dec-217--a-recording-has-one-nominal-frequency-decided-by-one-shared-authority-nf-001--nf-1)): interactive owner UAT is mandatory, activation is restricted to DEV, PROD is out of scope. **NF-3I `5a2d3e0`** on `feature/nf-3fgh-consolidated` (worktree `.local-data/nf-3fgh`) opens the gates for DEV. Local only: not pushed, merged or deployed. Record: [NF_3I_DEV_ACTIVATION_2026-11-28.md](NF_3I_DEV_ACTIVATION_2026-11-28.md).
+
+[FACT] Current configuration: `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED` is accepted by the backend (`config.py`) and by the frontend container entrypoint **only when `ENVIRONMENT=development`** and refused at start for any other environment, PROD included; only `compose.dev.yaml` sets it (backend = enforcement, frontend = shows the control); the default is closed everywhere else. The frontend constant `WW_NF_CONSUMERS_MIGRATED` is `true`; the preview line is replaced by a statement of what the setting applies to, including the Auto Base evidence exclusion (O-3) and the native-oscillation limitation. The 50 Hz fallback, immutable recording metadata, provenance and staleness are unchanged.
+
+[FACT] Verification of `5a2d3e0`: full backend **16,948 passed, 410 skipped, 0 failed**; the owner's UAT scenarios pass over HTTP on an app built from the DEV environment (20 tests); gate, entrypoint, compose and config tests 190 passed; 11 of 11 mutations killed; focused browser set 597 passed with the UI flag off and 596 passed with it on (the one failure there is the NF-2 "off by default" test, which fails by construction when the flag is on and passes with it off). The NF-3F/G/H full browser (1,883 / 8 / 9) and BEN (1,015) results are reused, because `index.html` differs only inside the gated Nominal Frequency block.
+
+[OPEN] Interactive owner UAT in DEV (checklist in the record), then push / merge / deployment, each separately authorised. Not started and not authorised: PROD release of the feature.
+
+## NF-3F / NF-3G / NF-3H — consolidated consumer migration implemented; verified locally, accepted by the owner (2026-11-28)
 
 [UAT-PENDING] The owner accepted the NF-1..NF-3E integration (functional `ae5dfd9`) and approved O-2, O-9 and one consolidated NF-3F/G/H cycle ([DEC-217 Amendment 1](DECISIONS.md#dec-217--a-recording-has-one-nominal-frequency-decided-by-one-shared-authority-nf-001--nf-1)). Implemented on `feature/nf-3fgh-consolidated` (worktree `.local-data/nf-3fgh`, from `c5ebe6d`) as three separate commits: **NF-3F `113fd5e`**, **NF-3G `550a808`**, **NF-3H `194d8ba`** (functional candidate `194d8ba`). Local only: not pushed, merged or deployed; no gate changed. Record: [NF_3FGH_CONSOLIDATED_MIGRATION_2026-11-28.md](NF_3FGH_CONSOLIDATED_MIGRATION_2026-11-28.md).
 
