@@ -1,0 +1,1598 @@
+{
+ "changes": {
+  "nf3b_frozen_baselines": [
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_50",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "assumed_default",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_50",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_50",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_50",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "assumed_default",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_50",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_50",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_on_60hz_signal",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "assumed_default",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_on_60hz_signal",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_on_60hz_signal",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_on_60hz_signal",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "assumed_default",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_on_60hz_signal",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "assumed_on_60hz_signal",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "active_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "active_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "active_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "MW",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "active_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000866025409867,
+     "mean": 0.000866025409867,
+     "min": 0.000866025409867
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "active_power",
+     "values"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "reactive_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "reactive_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "reactive_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "Mvar",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "reactive_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000500000002722,
+     "mean": 0.000500000002722,
+     "min": 0.000500000002722
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_1001",
+     "power_channels",
+     "reactive_power",
+     "values"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "declared_50_on_60hz_signal",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "declared_50_on_60hz_signal",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "declared_50_on_60hz_signal",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "declared_50_on_60hz_signal",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "declared_50_on_60hz_signal",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "declared_50_on_60hz_signal",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "active_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "active_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "active_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "MW",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "active_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000866025409867,
+     "mean": 0.000866025409867,
+     "min": 0.000866025409867
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "active_power",
+     "values"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "reactive_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "reactive_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "reactive_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "Mvar",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "reactive_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000500000002722,
+     "mean": 0.000500000002722,
+     "min": 0.000500000002722
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_nan",
+     "power_channels",
+     "reactive_power",
+     "values"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "active_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "active_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "active_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "MW",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "active_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000866025409867,
+     "mean": 0.000866025409867,
+     "min": 0.000866025409867
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "active_power",
+     "values"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "reactive_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "reactive_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "reactive_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "Mvar",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "reactive_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000500000002722,
+     "mean": 0.000500000002722,
+     "min": 0.000500000002722
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_negative_50",
+     "power_channels",
+     "reactive_power",
+     "values"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "active_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "active_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "active_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "MW",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "active_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000866025409867,
+     "mean": 0.000866025409867,
+     "min": 0.000866025409867
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "active_power",
+     "values"
+    ]
+   },
+   {
+    "after": {
+     "code": "invalid_nominal_frequency",
+     "message": "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. Set the nominal frequency in Recording Details and calculate again."
+    },
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "reactive_power",
+     "error"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "nominal_frequency_hz": 50.0,
+     "sign_convention": "passive",
+     "window_mode": "trailing"
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "reactive_power",
+     "parameters"
+    ]
+   },
+   {
+    "after": 400,
+    "before": 201,
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "reactive_power",
+     "status"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": "Mvar",
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "reactive_power",
+     "unit"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 4500,
+     "finite": 4500,
+     "max": 0.000500000002722,
+     "mean": 0.000500000002722,
+     "min": 0.000500000002722
+    },
+    "kind": "power_refused_unusable_frequency",
+    "path": [
+     "http",
+     "declared_zero",
+     "power_channels",
+     "reactive_power",
+     "values"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r50_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": 60.0,
+    "before": 50.0,
+    "kind": "power_frequency_effective",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_hz"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": 0.000874078219792,
+    "before": 0.000923419986914,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "values",
+     "max"
+    ]
+   },
+   {
+    "after": 0.000866039394064,
+    "before": 0.000764177184507,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "values",
+     "mean"
+    ]
+   },
+   {
+    "after": 0.000858002259696,
+    "before": 0.000604967911988,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "active_power",
+     "values",
+     "min"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": 60.0,
+    "before": 50.0,
+    "kind": "power_frequency_effective",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_hz"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": 0.000499991922047,
+    "before": 0.000433953811252,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "values",
+     "max"
+    ]
+   },
+   {
+    "after": 0.000499991918159,
+    "before": 0.000433953809415,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "values",
+     "mean"
+    ]
+   },
+   {
+    "after": 0.000499991915496,
+    "before": 0.000433953807016,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60",
+     "power_channels",
+     "reactive_power",
+     "values",
+     "min"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": 60.0,
+    "before": 50.0,
+    "kind": "power_frequency_effective",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_hz"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": 0.000887394136732,
+    "before": 0.000924694836579,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "values",
+     "max"
+    ]
+   },
+   {
+    "after": 0.000866121435212,
+    "before": 0.000764094354982,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "values",
+     "mean"
+    ]
+   },
+   {
+    "after": 0.000844852592672,
+    "before": 0.000603487793158,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "active_power",
+     "values",
+     "min"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": 60.0,
+    "before": 50.0,
+    "kind": "power_frequency_effective",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_hz"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": 0.000499943463902,
+    "before": 0.000433778125599,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "values",
+     "max"
+    ]
+   },
+   {
+    "after": 0.000499943448531,
+    "before": 0.000433777924539,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "values",
+     "mean"
+    ]
+   },
+   {
+    "after": 0.000499943430607,
+    "before": 0.000433777656992,
+    "kind": "power_values_corrected_for_recording_frequency",
+    "path": [
+     "http",
+     "r60_fs4096",
+     "power_channels",
+     "reactive_power",
+     "values",
+     "min"
+    ]
+   }
+  ],
+  "nf3e_phase_a_baseline": [
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "power_channels",
+     "r50",
+     "stored",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "power_channels",
+     "r50",
+     "stored",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "power_channels",
+     "r50",
+     "stored",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   },
+   {
+    "after": "recording",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "power_channels",
+     "r60",
+     "stored",
+     "parameters",
+     "nominal_frequency_basis"
+    ]
+   },
+   {
+    "after": 60.0,
+    "before": 50.0,
+    "kind": "power_frequency_effective",
+    "path": [
+     "power_channels",
+     "r60",
+     "stored",
+     "parameters",
+     "nominal_frequency_hz"
+    ]
+   },
+   {
+    "after": "recording_metadata",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "power_channels",
+     "r60",
+     "stored",
+     "parameters",
+     "nominal_frequency_origin"
+    ]
+   },
+   {
+    "after": 0,
+    "before": {
+     "__absent__": true
+    },
+    "kind": "power_provenance_added",
+    "path": [
+     "power_channels",
+     "r60",
+     "stored",
+     "parameters",
+     "nominal_frequency_revision"
+    ]
+   }
+  ]
+ },
+ "kinds": [
+  "power_provenance_added",
+  "power_frequency_effective",
+  "power_values_corrected_for_recording_frequency",
+  "power_refused_unusable_frequency"
+ ],
+ "purpose": "The approved NF-3F (O-2) changes to the NF-3B HTTP baseline and the NF-3E Phase A power group; applied after the earlier overlays. Generated by generate_nf3f_approved_changes.py; every entry has a kind, an unclassified difference aborts generation.",
+ "schema": 1
+}

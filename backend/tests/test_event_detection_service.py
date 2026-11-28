@@ -23,6 +23,7 @@ from app.services.errors import (
     SourceNotFoundError,
 )
 from app.services.synchronization_registry import SynchronizationRegistry
+from tests.nf3c_access_support import access_for
 from app.services.synchronization_service import detect_event_candidate
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -111,6 +112,7 @@ class TestFindsCandidate:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is True
         assert view.quality == "strong"
@@ -128,6 +130,7 @@ class TestAlignmentOffsetComposition:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.candidate_workspace_time == pytest.approx(view.candidate_source_time)
 
@@ -137,6 +140,7 @@ class TestAlignmentOffsetComposition:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is True
         assert view.candidate_workspace_time == pytest.approx(view.candidate_source_time + 0.401)
@@ -160,6 +164,7 @@ class TestAlignmentOffsetComposition:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(registry),
         )
         assert view.found is True
         assert view.candidate_source_time == pytest.approx(1.0, abs=0.02)
@@ -173,6 +178,7 @@ class TestNotFound:
                 workspace_id="ws-1", source_id="no-such-source", channel_name="VA", sensitivity="normal",
                 search_start_time=None, search_end_time=None,
                 source_registry=source_registry, synchronization_registry=sync_registry,
+                frequency_access=access_for(source_registry),
             )
 
     def test_missing_channel_raises(self, source_registry, sync_registry):
@@ -181,6 +187,7 @@ class TestNotFound:
                 workspace_id="ws-1", source_id="src-1", channel_name="NOPE", sensitivity="normal",
                 search_start_time=None, search_end_time=None,
                 source_registry=source_registry, synchronization_registry=sync_registry,
+                frequency_access=access_for(source_registry),
             )
 
     def test_digital_channel_raises_channel_not_analog(self, source_registry, sync_registry):
@@ -189,6 +196,7 @@ class TestNotFound:
                 workspace_id="ws-1", source_id="src-1", channel_name="52A", sensitivity="normal",
                 search_start_time=None, search_end_time=None,
                 source_registry=source_registry, synchronization_registry=sync_registry,
+                frequency_access=access_for(source_registry),
             )
 
     def test_invalid_sensitivity_raises(self, source_registry, sync_registry):
@@ -197,6 +205,7 @@ class TestNotFound:
                 workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="extreme",
                 search_start_time=None, search_end_time=None,
                 source_registry=source_registry, synchronization_registry=sync_registry,
+                frequency_access=access_for(source_registry),
             )
 
 
@@ -211,6 +220,7 @@ class TestSteadyChannelReturnsNoCandidate:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(registry),
         )
         assert view.found is False
         assert view.candidate_source_time is None
@@ -227,6 +237,7 @@ class TestSearchRangeNarrowing:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=0.0, search_end_time=0.5,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is False
 
@@ -235,6 +246,7 @@ class TestSearchRangeNarrowing:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is True
 
@@ -275,6 +287,7 @@ class TestMultiEventSearchRangeUAT:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=two_event_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(two_event_registry),
         )
         assert view.found is True
         assert abs(view.candidate_source_time - 1.0) < 0.05  # Event A, not Event B
@@ -287,6 +300,7 @@ class TestMultiEventSearchRangeUAT:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=1.7, search_end_time=2.5,
             source_registry=two_event_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(two_event_registry),
         )
         assert view.found is True
         assert abs(view.candidate_source_time - 2.0) < 0.05  # Event B, not Event A
@@ -302,6 +316,7 @@ class TestMultiEventSearchRangeUAT:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=1.6, search_end_time=1.95,  # calm stretch between A and B
             source_registry=two_event_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(two_event_registry),
         )
         assert view.found is False
         assert view.reason == "No clear disturbance onset detected."
@@ -319,6 +334,7 @@ class TestSourceBoundClipping:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=-5.0, search_end_time=50.0,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is True  # equivalent to the full-record result -- clipped to the real overlap, not rejected
 
@@ -335,6 +351,7 @@ class TestTooShortVisibleRange:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=1.000, search_end_time=1.001,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is False
         assert "too short" in view.reason.lower()
@@ -357,6 +374,7 @@ class TestInsufficientBaselineInVisibleRange:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=1.0, search_end_time=1.021,  # ~1 ms past the 1-cycle RMS warm-up -- too few valid RMS samples for a baseline
             source_registry=registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(registry),
         )
         assert view.found is False
         assert "baseline" in view.reason.lower()
@@ -372,6 +390,7 @@ class TestDoesNotMutateState:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         # src-1 is the sole member of its own time group -- group_id ==
         # source_id (see app.domain.time_grouping's own docstring).
@@ -383,5 +402,6 @@ class TestDoesNotMutateState:
             workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert sync_registry.get_offset("ws-1", "src-1") == 0.25

@@ -61,7 +61,10 @@ module.exports = {
       // layout so the BEN5K specs run instead of skipping or failing on the
       // "layout not currently supported" refusal. A reused server
       // (reuseExistingServer) must itself be started with this flag.
-      env: { STORAGE_PATH, BEN5K_EXPERIMENTAL_ENABLED: "1" },
+      // NF-3B (O-1): the backend's Manual nominal-frequency release gate is closed by default and in every deployed build.
+      // This is the isolated, throw-away TEST backend, so it is opened here explicitly (only nf2_recording_details_nominal_
+      // frequency.spec.js uses the Manual value). Nothing under compose, scripts, workflows or the container entrypoint sets it.
+      env: { STORAGE_PATH, BEN5K_EXPERIMENTAL_ENABLED: "1", NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED: "1" },
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },

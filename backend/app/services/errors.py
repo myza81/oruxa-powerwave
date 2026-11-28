@@ -222,6 +222,29 @@ class InvalidNominalFrequencyError(ImportServiceError):
     code = "invalid_nominal_frequency"
 
 
+class MixedNominalFrequencyError(ImportServiceError):
+    """NF-3F (O-2): a calculation that combines inputs from several recordings (power: voltage and current) was asked to use
+    recordings whose effective nominal frequencies do not agree. No frequency is chosen from them; nothing was written. The message
+    names each input and its frequency and what to do."""
+
+    code = "nominal_frequency_mixed"
+
+
+class StaleCalculatedInputError(ImportServiceError):
+    """NF-3E (Option B): a NEW calculation was asked to use a calculated channel that is stale -- computed with a nominal frequency its
+    recording no longer has, directly or through an input it depends on. Nothing was written; the message names the stale channel, why
+    it is stale and what to do. The stored channel itself is untouched and stays viewable."""
+
+    code = "stale_calculated_input"
+
+
+class ManualNominalFrequencyDisabledError(ImportServiceError):
+    """NF-3B (O-1): a Manual nominal-frequency value was offered while the server-side release gate is closed. Nothing was
+    stored. Returning to Auto is never refused."""
+
+    code = "manual_nominal_frequency_disabled"
+
+
 class RmsRecordingTooShortError(ImportServiceError):
     """The input recording does not span even one full RMS window, so no
     output sample could ever be non-NaN (owner section 40) -- rejected

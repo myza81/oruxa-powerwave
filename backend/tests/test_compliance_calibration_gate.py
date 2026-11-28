@@ -64,6 +64,7 @@ from app.domain.physical_calibration import (
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
 from app.domain.timing import SamplingInformation, TimingInformation
 from app.main import create_app
+from tests.nf3c_access_support import access_for
 from app.services.compliance_readiness_service import (
     STATE_CALIBRATION_UNAVAILABLE,
     _Context,
@@ -382,6 +383,7 @@ class TestPlanDirectChannelUnverified:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         ref = _source_ref("src-a", "VA")
         result = _plan_direct_channel(ctx, "A", ref, "Vₐ")
@@ -407,6 +409,7 @@ class TestPlanDirectChannelInvalid:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         ref = _source_ref("src-a", "VA")
         result = _plan_direct_channel(ctx, "A", ref, "Vₐ")
@@ -430,6 +433,7 @@ class TestPlanDirectChannelComtradePassesBackwardCompat:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         ref = _source_ref("src-a", "VA")
         result = _plan_direct_channel(ctx, "A", ref, "Vₐ")
@@ -453,6 +457,7 @@ class TestCheckComplianceCalibrationHelper:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         reason = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx)
         assert reason is not None, "Unverified BEN5K must yield a reason code"
@@ -466,6 +471,7 @@ class TestCheckComplianceCalibrationHelper:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         reason = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx)
         assert reason is not None
@@ -478,6 +484,7 @@ class TestCheckComplianceCalibrationHelper:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         reason = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx)
         assert reason is None, "COMTRADE not-assessed must return None (passes gate)"
@@ -490,6 +497,7 @@ class TestCheckComplianceCalibrationHelper:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         reason = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx)
         assert reason is None, "Verified BEN5K must return None (passes gate)"
@@ -725,6 +733,7 @@ class TestMixedMemberStatePrecedence:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         ref_a = _source_ref("src-a", "VA")
         # Member A: calibration_unavailable
@@ -792,6 +801,7 @@ class TestDistinctReasonCodes:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         reason = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx)
         assert reason == "physical_calibration_unverified", (
@@ -806,6 +816,7 @@ class TestDistinctReasonCodes:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         reason = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx)
         assert reason == "physical_calibration_invalid", (
@@ -848,6 +859,7 @@ class TestDistinctReasonCodes:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=_make_source_registry(active_u), calc_registry=_make_calc_registry(),
             context_registry=MagicMock(),
+            frequency_access=access_for(_make_source_registry),
         )
         reason_u = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx_u)
         # Invalid
@@ -856,6 +868,7 @@ class TestDistinctReasonCodes:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=_make_source_registry(active_i), calc_registry=_make_calc_registry(),
             context_registry=MagicMock(),
+            frequency_access=access_for(_make_source_registry),
         )
         reason_i = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx_i)
         # Missing provenance (None authority, BEN5K)
@@ -864,6 +877,7 @@ class TestDistinctReasonCodes:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=_make_source_registry(active_m), calc_registry=_make_calc_registry(),
             context_registry=MagicMock(),
+            frequency_access=access_for(_make_source_registry),
         )
         reason_m = _check_compliance_calibration(_source_ref("src-a", "VA"), ctx=ctx_m)
 
@@ -906,6 +920,7 @@ class TestFullReadinessRoundTrip:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         ref_a = _source_ref("src-a", "VA")
         # Phase A: calibration_unavailable; phases B/C not in catalogue → incompatible via _plan_phase_ground
@@ -987,6 +1002,7 @@ class TestOD10NoFalseVerdict:
             workspace_id=WS, group=MagicMock(), catalogue={}, display=MagicMock(),
             source_registry=source_reg, calc_registry=calc_reg,
             context_registry=MagicMock(),
+            frequency_access=access_for(source_reg),
         )
         ref = _source_ref("src-a", "VA")
         result = _plan_direct_channel(ctx, "A", ref, "VA")

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel
+from app.schemas.frequency_provenance import NominalFrequencyProvenanceOut
 
 from app.schemas.calculated_channel import ChannelRefOut
 
@@ -25,7 +26,7 @@ class PhasorRoleResultOut(BaseModel):
     angle_deg_relative: float | None
 
 
-class PhasorAnalysisResultOut(BaseModel):
+class PhasorAnalysisResultOut(NominalFrequencyProvenanceOut):
     status: PhasorAnalysisStatus
     analysis_kind: str
     mode: str
@@ -63,7 +64,7 @@ class PhasorDiagramRoleResultOut(BaseModel):
     reason_code: str | None
 
 
-class PhasorDiagramResultOut(BaseModel):
+class PhasorDiagramResultOut(NominalFrequencyProvenanceOut):
     status: PhasorDiagramStatus
     engineering_context_id: str
     analysis_time: float

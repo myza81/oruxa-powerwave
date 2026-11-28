@@ -72,6 +72,30 @@ class ChannelRefOut(BaseModel):
         )
 
 
+class FrequencyStalenessCauseOut(BaseModel):
+    """NF-3E: one stale root cause. `own` is True when it is the channel itself, False when the channel inherits it."""
+
+    channel_id: str
+    channel_name: str
+    own: bool
+    reason: str
+    stored_hz: float
+    effective_hz: float | None = None
+    stored_origin: str | None = None
+    stored_revision: int | None = None
+    effective_origin: str | None = None
+    effective_revision: int | None = None
+
+
+class FrequencyStalenessOut(BaseModel):
+    """NF-3E: whether the stored values still reflect the recording's nominal frequency. Derived on every request; values are never
+    recomputed. `assessment` is `frequency_aware` when the channel's own frequency is compared with its recording's, else `inherited_only`."""
+
+    state: str
+    assessment: str
+    causes: list[FrequencyStalenessCauseOut] = []
+
+
 class CalculatedChannelCreateRequest(BaseModel):
     """Request body for POST .../calculated-channels.
 
@@ -218,6 +242,7 @@ class CalculatedChannelOut(BaseModel):
     # Empty leaf set → blocked_structural (not all_verified per owner Refinement 1).
     calibration_provenance_status: str | None = None
     calibration_provenance_reason: str | None = None
+    frequency_staleness: FrequencyStalenessOut | None = None
 
     def _display_axis(self) -> DisplayAxis:
         # A calculated channel carries a broad engineering_type and a
@@ -275,6 +300,7 @@ class CalculatedChannelOut(BaseModel):
         timing: dict | None = None,
         calibration_provenance_status: str | None = None,
         calibration_provenance_reason: str | None = None,
+        frequency_staleness=None,
     ) -> "CalculatedChannelOut":
         return cls(
             **(timing or {}),
@@ -301,6 +327,11 @@ class CalculatedChannelOut(BaseModel):
             creation_batch_id=channel.creation_batch_id,
             calibration_provenance_status=calibration_provenance_status,
             calibration_provenance_reason=calibration_provenance_reason,
+            frequency_staleness=(
+                None if frequency_staleness is None else FrequencyStalenessOut(
+                    state=frequency_staleness.state, assessment=frequency_staleness.assessment,
+                    causes=[FrequencyStalenessCauseOut(own=c.channel_id == channel.id, **{k: getattr(c, k) for k in c.__slots__})
+                            for c in frequency_staleness.causes])),
         )
 
 

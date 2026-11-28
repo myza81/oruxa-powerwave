@@ -161,3 +161,57 @@ class TestBuildProvenance:
         content = config_js(tmp_path)
         assert "buildVersion" in content
         assert "environment" in content
+
+
+class TestNominalFrequencyOverrideFlag:
+    """NF-3I: the Manual nominal-frequency control is shown only for an explicit DEV variable; PROD (and any non-development environment) that
+    carries it fails the container start, exactly as the backend refuses it."""
+
+    VAR = "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED"
+    FLAG = "featureFlags: { nominalFrequencyOverride: true }"
+
+    def test_no_variable_emits_no_flag(self, tmp_path):
+        result = run(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "featureFlags" not in config_js(tmp_path)
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "enabled", "2", "on", "y"])
+    def test_anything_but_an_explicit_affirmative_emits_no_flag(self, tmp_path, value):
+        result = run(tmp_path, ENVIRONMENT="development", **{self.VAR: value})
+
+        assert result.returncode == 0, result.stderr
+        assert "featureFlags" not in config_js(tmp_path)
+
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", " Yes "])
+    def test_an_explicit_affirmative_in_development_emits_the_flag(self, tmp_path, value):
+        result = run(tmp_path, ENVIRONMENT="development", API_BASE_URL="http://localhost:9999", **{self.VAR: value})
+
+        assert result.returncode == 0, result.stderr
+        content = config_js(tmp_path)
+        assert self.FLAG in content
+        assert 'apiBaseUrl: "http://localhost:9999"' in content and 'environment: "development"' in content
+
+    def test_the_default_environment_is_development_so_the_variable_opens_it(self, tmp_path):
+        assert run(tmp_path, **{self.VAR: "1"}).returncode == 0
+        assert self.FLAG in config_js(tmp_path)
+
+    @pytest.mark.parametrize("environment", ["production", "staging", "test"])
+    def test_any_other_environment_that_carries_it_refuses_to_start(self, tmp_path, environment):
+        result = run(tmp_path, ENVIRONMENT=environment, API_BASE_URL=PROD_URL, **{self.VAR: "1"})
+
+        assert result.returncode != 0
+        assert "development only" in result.stderr
+        assert not (tmp_path / "config.js").exists()
+
+    def test_production_without_the_variable_is_unchanged(self, tmp_path):
+        result = run(tmp_path, ENVIRONMENT="production", API_BASE_URL=PROD_URL)
+
+        assert result.returncode == 0, result.stderr
+        assert "featureFlags" not in config_js(tmp_path) and PROD_URL in config_js(tmp_path)
+
+    def test_the_generated_file_is_valid_javascript_with_the_flag_a_strict_boolean(self, tmp_path):
+        run(tmp_path, ENVIRONMENT="development", **{self.VAR: "1"})
+        content = config_js(tmp_path)
+        assert content.startswith("window.POWERWAVE_CONFIG = {") and content.rstrip().endswith("};")
+        assert content.count("{") == content.count("}")

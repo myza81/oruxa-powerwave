@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.nf3c_access_support import access_for
 from app.domain import cross_signal_evidence as cs
 from app.domain import coherence as co
 from app.domain import mode_shape as ms
@@ -317,7 +318,7 @@ def env():
 def _interpret_service(env, entries, *, with_sync=True):
     return compute_interpretation(
         workspace_id=WS, entries=[{**e, "offset_s": 0.0} for e in entries], f_min_hz=0.1, f_max_hz=5.0, source_registry=env.sources,
-        calc_registry=env.calc, sync_registry=env.sync if with_sync else None)
+        frequency_access=access_for(env.sources), calc_registry=env.calc, sync_registry=env.sync if with_sync else None)
 
 
 class TestService:

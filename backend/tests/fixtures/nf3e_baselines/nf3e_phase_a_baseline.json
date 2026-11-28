@@ -1,0 +1,812 @@
+{
+ "baseline_git_sha": "65390d3233bace540928695e9471b57ad735480d",
+ "numpy": "2.4.6",
+ "outcomes": {
+  "dag": {
+   "accessor_for_top_of_dag": {
+    "hz": 60.0,
+    "origin": "manual",
+    "revision": 1,
+    "source_id_is_reference": true,
+    "usable": true
+   },
+   "created": {
+    "abs": 201,
+    "add": 201,
+    "rms": 201
+   },
+   "delete_of_an_input_is_blocked_while_a_dependent_exists": {
+    "code": {
+     "detail": {
+      "code": "calculated_channel_has_dependents",
+      "message": "Cannot delete 'rms_va' because the following calculated channels depend on it: 'add'."
+     }
+    },
+    "status": 400
+   },
+   "inventory_fields": [
+    "calibration_provenance_reason",
+    "calibration_provenance_status",
+    "created_at",
+    "creation_batch_id",
+    "dependency_ids",
+    "display_axis_key",
+    "display_axis_quantity",
+    "display_axis_unit",
+    "engineering_type",
+    "estimation_method",
+    "id",
+    "inputs",
+    "local_mean_radius",
+    "max_gap_unit",
+    "max_gap_value",
+    "name",
+    "null_policy",
+    "operation",
+    "parameters",
+    "per_unit_display_axis_key",
+    "per_unit_display_axis_quantity",
+    "per_unit_display_axis_unit",
+    "phase_member",
+    "reference_source_id",
+    "sample_count",
+    "timing_error",
+    "timing_fingerprint",
+    "timing_source_ids",
+    "timing_status",
+    "unit",
+    "voltage_representation",
+    "waveform_form",
+    "workspace_id"
+   ],
+   "inventory_identical_after_change": true,
+   "put_manual_60": {
+    "body": {
+     "effective_hz": 60.0,
+     "mode": "manual",
+     "origin": "manual",
+     "revision": 1,
+     "usable": true
+    },
+    "status": 200
+   },
+   "stored": {
+    "abs": {
+     "dependency_count": 1,
+     "operation": "absolute_value",
+     "parameters": {},
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    },
+    "add": {
+     "dependency_count": 2,
+     "operation": "addition",
+     "parameters": {},
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    },
+    "rms": {
+     "dependency_count": 0,
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    }
+   },
+   "waveforms_after": {
+    "abs": {
+     "last": 199.999999963,
+     "max": 199.999999963,
+     "mean": 199.999999963,
+     "min": 199.999999963,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    },
+    "add": {
+     "last": 199.999999963,
+     "max": 199.999999963,
+     "mean": 199.999999963,
+     "min": 199.999999963,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    },
+    "rms": {
+     "last": 99.9999999815,
+     "max": 99.9999999815,
+     "mean": 99.9999999815,
+     "min": 99.9999999815,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    }
+   }
+  },
+  "frequency_independent_operations": {
+   "absolute_value": {
+    "status": 201,
+    "stored_parameters": {}
+   },
+   "addition": {
+    "status": 201,
+    "stored_parameters": {}
+   },
+   "multiply_constant": {
+    "status": 201,
+    "stored_parameters": {
+     "constant": 2.0
+    }
+   },
+   "reverse_polarity": {
+    "status": 201,
+    "stored_parameters": {}
+   },
+   "rocof_override_not_given": {
+    "status": 400,
+    "stored_parameters": {
+     "detail": {
+      "code": "rocof_override_required",
+      "message": "This channel is classified as Voltage, not Frequency. ROCOF is only meaningful for a frequency measurement in Hz."
+     }
+    }
+   },
+   "rocof_with_override": {
+    "status": 201,
+    "stored_parameters": {
+     "alignment": "centered",
+     "edge_policy": "unavailable_when_window_incomplete",
+     "method": "rolling_frequency_difference",
+     "window_ms": 500
+    }
+   },
+   "subtraction": {
+    "status": 201,
+    "stored_parameters": {}
+   }
+  },
+  "power_channels": {
+   "r50": {
+    "accessor": {
+     "hz": 50.0,
+     "origin": "recording_metadata",
+     "revision": 0,
+     "source_id_is_reference": true,
+     "usable": true
+    },
+    "recording": {
+     "effective_hz": 50.0,
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "revision": 0,
+     "usable": true
+    },
+    "status": 201,
+    "stored": {
+     "dependency_count": 0,
+     "operation": "active_power",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "sign_convention": "passive",
+      "window_mode": "trailing"
+     },
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    }
+   },
+   "r60": {
+    "accessor": {
+     "hz": 60.0,
+     "origin": "recording_metadata",
+     "revision": 0,
+     "source_id_is_reference": true,
+     "usable": true
+    },
+    "recording": {
+     "effective_hz": 60.0,
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "revision": 0,
+     "usable": true
+    },
+    "status": 201,
+    "stored": {
+     "dependency_count": 0,
+     "operation": "active_power",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "sign_convention": "passive",
+      "window_mode": "trailing"
+     },
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    }
+   }
+  },
+  "remove_reference_recording": {
+   "inventory_names": [
+    "rms_b"
+   ],
+   "remove_reference_recording": {
+    "status": 204
+   },
+   "sum_still_present": false,
+   "waveform_of_rms_b": {
+    "last": 99.9999999815,
+    "max": 99.9999999815,
+    "mean": 99.9999999815,
+    "min": 99.9999999815,
+    "nan": 100,
+    "points": 5000,
+    "status": 200,
+    "unit": "V"
+   }
+  },
+  "rms_after_manual_change": {
+   "after_auto": {
+    "equivalent_at_50": "rms_va_50",
+    "equivalent_at_60": "rms_va_60",
+    "inventory_names": [
+     "rms_va_50",
+     "rms_va_60"
+    ],
+    "recording": {
+     "effective_hz": 50.0,
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "revision": 2,
+     "usable": true
+    },
+    "waveform_50": {
+     "last": 99.9999999815,
+     "max": 99.9999999815,
+     "mean": 99.9999999815,
+     "min": 99.9999999815,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    }
+   },
+   "after_manual_60": {
+    "accessor_for_channel": {
+     "hz": 60.0,
+     "origin": "manual",
+     "revision": 1,
+     "source_id_is_reference": true,
+     "usable": true
+    },
+    "equivalent_at_50": "rms_va_50",
+    "equivalent_at_60": null,
+    "inventory": {
+     "channels": {
+      "rms_va_50": {
+       "calibration_provenance_status": "not_assessed",
+       "dependency_count": 0,
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "sample_count": 5000,
+       "timing_status": "valid",
+       "unit": "V",
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      }
+     },
+     "fields": [
+      "calibration_provenance_reason",
+      "calibration_provenance_status",
+      "created_at",
+      "creation_batch_id",
+      "dependency_ids",
+      "display_axis_key",
+      "display_axis_quantity",
+      "display_axis_unit",
+      "engineering_type",
+      "estimation_method",
+      "id",
+      "inputs",
+      "local_mean_radius",
+      "max_gap_unit",
+      "max_gap_value",
+      "name",
+      "null_policy",
+      "operation",
+      "parameters",
+      "per_unit_display_axis_key",
+      "per_unit_display_axis_quantity",
+      "per_unit_display_axis_unit",
+      "phase_member",
+      "reference_source_id",
+      "sample_count",
+      "timing_error",
+      "timing_fingerprint",
+      "timing_source_ids",
+      "timing_status",
+      "unit",
+      "voltage_representation",
+      "waveform_form",
+      "workspace_id"
+     ],
+     "names": [
+      "rms_va_50"
+     ]
+    },
+    "recording": {
+     "effective_hz": 60.0,
+     "mode": "manual",
+     "origin": "manual",
+     "revision": 1,
+     "usable": true
+    },
+    "stored": {
+     "dependency_count": 0,
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    },
+    "waveform": {
+     "last": 99.9999999815,
+     "max": 99.9999999815,
+     "mean": 99.9999999815,
+     "min": 99.9999999815,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    }
+   },
+   "before": {
+    "accessor_for_channel": {
+     "hz": 50.0,
+     "origin": "recording_metadata",
+     "revision": 0,
+     "source_id_is_reference": true,
+     "usable": true
+    },
+    "equivalent_at_50": "rms_va_50",
+    "equivalent_at_60": null,
+    "inventory": {
+     "channels": {
+      "rms_va_50": {
+       "calibration_provenance_status": "not_assessed",
+       "dependency_count": 0,
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "sample_count": 5000,
+       "timing_status": "valid",
+       "unit": "V",
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      }
+     },
+     "fields": [
+      "calibration_provenance_reason",
+      "calibration_provenance_status",
+      "created_at",
+      "creation_batch_id",
+      "dependency_ids",
+      "display_axis_key",
+      "display_axis_quantity",
+      "display_axis_unit",
+      "engineering_type",
+      "estimation_method",
+      "id",
+      "inputs",
+      "local_mean_radius",
+      "max_gap_unit",
+      "max_gap_value",
+      "name",
+      "null_policy",
+      "operation",
+      "parameters",
+      "per_unit_display_axis_key",
+      "per_unit_display_axis_quantity",
+      "per_unit_display_axis_unit",
+      "phase_member",
+      "reference_source_id",
+      "sample_count",
+      "timing_error",
+      "timing_fingerprint",
+      "timing_source_ids",
+      "timing_status",
+      "unit",
+      "voltage_representation",
+      "waveform_form",
+      "workspace_id"
+     ],
+     "names": [
+      "rms_va_50"
+     ]
+    },
+    "stored": {
+     "dependency_count": 0,
+     "operation": "rms",
+     "parameters": {
+      "nominal_frequency_hz": 50.0,
+      "rms_kind": "true_rms",
+      "window_mode": "trailing"
+     },
+     "present": true,
+     "reference_source_id_is_first_input_recording": true
+    },
+    "waveform": {
+     "last": 99.9999999815,
+     "max": 99.9999999815,
+     "mean": 99.9999999815,
+     "min": 99.9999999815,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    }
+   },
+   "both_channels_afterwards": {
+    "equivalent_at_50": "rms_va_50",
+    "equivalent_at_60": "rms_va_60",
+    "inventory": {
+     "channels": {
+      "rms_va_50": {
+       "calibration_provenance_status": "not_assessed",
+       "dependency_count": 0,
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 50.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "sample_count": 5000,
+       "timing_status": "valid",
+       "unit": "V",
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      },
+      "rms_va_60": {
+       "calibration_provenance_status": "not_assessed",
+       "dependency_count": 0,
+       "null_policy": "propagate_null",
+       "operation": "rms",
+       "parameters": {
+        "nominal_frequency_hz": 60.0,
+        "rms_kind": "true_rms",
+        "window_mode": "trailing"
+       },
+       "phase_member": null,
+       "sample_count": 5000,
+       "timing_status": "valid",
+       "unit": "V",
+       "voltage_representation": null,
+       "waveform_form": "rms"
+      }
+     },
+     "fields": [
+      "calibration_provenance_reason",
+      "calibration_provenance_status",
+      "created_at",
+      "creation_batch_id",
+      "dependency_ids",
+      "display_axis_key",
+      "display_axis_quantity",
+      "display_axis_unit",
+      "engineering_type",
+      "estimation_method",
+      "id",
+      "inputs",
+      "local_mean_radius",
+      "max_gap_unit",
+      "max_gap_value",
+      "name",
+      "null_policy",
+      "operation",
+      "parameters",
+      "per_unit_display_axis_key",
+      "per_unit_display_axis_quantity",
+      "per_unit_display_axis_unit",
+      "phase_member",
+      "reference_source_id",
+      "sample_count",
+      "timing_error",
+      "timing_fingerprint",
+      "timing_source_ids",
+      "timing_status",
+      "unit",
+      "voltage_representation",
+      "waveform_form",
+      "workspace_id"
+     ],
+     "names": [
+      "rms_va_50",
+      "rms_va_60"
+     ]
+    },
+    "waveform_50": {
+     "last": 99.9999999815,
+     "max": 99.9999999815,
+     "mean": 99.9999999815,
+     "min": 99.9999999815,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    },
+    "waveform_60": {
+     "last": 95.3888570092,
+     "max": 108.080756746,
+     "mean": 99.7988367533,
+     "min": 91.2060854149,
+     "nan": 84,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    }
+   },
+   "created_50": {
+    "keys": [
+     "calibration_provenance_reason",
+     "calibration_provenance_status",
+     "created_at",
+     "creation_batch_id",
+     "dependency_ids",
+     "display_axis_key",
+     "display_axis_quantity",
+     "display_axis_unit",
+     "engineering_type",
+     "estimation_method",
+     "id",
+     "inputs",
+     "local_mean_radius",
+     "max_gap_unit",
+     "max_gap_value",
+     "name",
+     "null_policy",
+     "operation",
+     "parameters",
+     "per_unit_display_axis_key",
+     "per_unit_display_axis_quantity",
+     "per_unit_display_axis_unit",
+     "phase_member",
+     "reference_source_id",
+     "sample_count",
+     "timing_error",
+     "timing_fingerprint",
+     "timing_source_ids",
+     "timing_status",
+     "unit",
+     "voltage_representation",
+     "waveform_form",
+     "workspace_id"
+    ],
+    "parameters": {
+     "nominal_frequency_hz": 50.0,
+     "rms_kind": "true_rms",
+     "window_mode": "trailing"
+    },
+    "status": 201
+   },
+   "created_60_on_the_same_input": {
+    "parameters": {
+     "nominal_frequency_hz": 60.0,
+     "rms_kind": "true_rms",
+     "window_mode": "trailing"
+    },
+    "status": 201
+   },
+   "inventory_unchanged_by_the_change": true,
+   "put_auto": {
+    "body": {
+     "effective_hz": 50.0,
+     "mode": "auto",
+     "origin": "recording_metadata",
+     "revision": 2,
+     "usable": true
+    },
+    "status": 200
+   },
+   "put_manual_60": {
+    "body": {
+     "effective_hz": 60.0,
+     "mode": "manual",
+     "origin": "manual",
+     "revision": 1,
+     "usable": true
+    },
+    "status": 200
+   },
+   "recording_before": {
+    "effective_hz": 50.0,
+    "mode": "auto",
+    "origin": "recording_metadata",
+    "revision": 0,
+    "usable": true
+   }
+  },
+  "rms_frequency_parameter_validation": {
+   "above_range": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   },
+   "below_range": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   },
+   "bool": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   },
+   "missing": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   },
+   "negative": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   },
+   "string": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   },
+   "valid_60": {
+    "code": null,
+    "status": 201
+   },
+   "zero": {
+    "code": "invalid_nominal_frequency",
+    "status": 400
+   }
+  },
+  "two_recordings": {
+   "accessor_for_sum": {
+    "hz": 50.0,
+    "origin": "recording_metadata",
+    "revision": 0,
+    "source_id_is_reference": true,
+    "usable": true
+   },
+   "after_removal": {
+    "accessor_for_sum": {
+     "hz": 50.0,
+     "origin": "recording_metadata",
+     "revision": 0,
+     "source_id_is_reference": true,
+     "usable": true
+    },
+    "inventory_names": [
+     "rms_a",
+     "sum_ab"
+    ],
+    "waveform_of_rms_a": {
+     "last": 99.9999999815,
+     "max": 99.9999999815,
+     "mean": 99.9999999815,
+     "min": 99.9999999815,
+     "nan": 100,
+     "points": 5000,
+     "status": 200,
+     "unit": "V"
+    },
+    "waveform_of_sum": {
+     "body": {
+      "detail": {
+       "code": "incompatible_time_base",
+       "message": "A calculated input required by this channel is no longer available."
+      }
+     },
+     "status": 400
+    }
+   },
+   "created": {
+    "rms_a": 201,
+    "rms_b": 201,
+    "sum": 201
+   },
+   "inventory_after_change": [
+    "rms_a",
+    "rms_b",
+    "sum_ab"
+   ],
+   "put_manual_60_on_b_only": {
+    "body": {
+     "effective_hz": 60.0,
+     "mode": "manual",
+     "origin": "manual",
+     "revision": 1,
+     "usable": true
+    },
+    "status": 200
+   },
+   "recordings_combined": {
+    "common_hz": null,
+    "distinct_hz": [
+     50.0,
+     60.0
+    ],
+    "status": "mixed"
+   },
+   "reference_source_is_the_first_input_recording": true,
+   "remove_non_reference_recording": {
+    "status": 204
+   },
+   "waveform_after_change": {
+    "last": 199.999999963,
+    "max": 199.999999963,
+    "mean": 199.999999963,
+    "min": 199.999999963,
+    "nan": 100,
+    "points": 5000,
+    "status": 200,
+    "unit": "V"
+   }
+  },
+  "unusable_recording": {
+   "accessor_for_channel": {
+    "hz": null,
+    "origin": "unusable",
+    "revision": 0,
+    "source_id_is_reference": true,
+    "usable": false
+   },
+   "after_manual": {
+    "accessor_for_channel": {
+     "hz": 60.0,
+     "origin": "manual",
+     "revision": 1,
+     "source_id_is_reference": true,
+     "usable": true
+    },
+    "equivalent_rms_at_50": "rms_bad",
+    "equivalent_rms_at_60": null
+   },
+   "created_with_explicit_50": {
+    "status": 201
+   },
+   "equivalent_rms_at_50": "rms_bad",
+   "put_manual_60": {
+    "body": {
+     "effective_hz": 60.0,
+     "mode": "manual",
+     "origin": "manual",
+     "revision": 1,
+     "usable": true
+    },
+    "status": 200
+   },
+   "recording": {
+    "effective_hz": null,
+    "mode": "auto",
+    "origin": "unusable",
+    "revision": 0,
+    "usable": false
+   }
+  }
+ },
+ "platform": "Windows-11-10.0.26200-SP0",
+ "purpose": "Frozen pre-NF-3E stored-calculated-channel behaviour on the NF-3D tip (characterisation, gaps included)",
+ "python": "3.12.10",
+ "scenario_runner": "backend/tests/nf3e_baseline_scenarios.py",
+ "schema": 1
+}

@@ -53,6 +53,7 @@ from app.domain.side_conversion import (
     plan_echo,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.phasor_analysis_service import compute_phasor_diagram, evaluate_prepared_phasor_diagram, prepare_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
@@ -92,6 +93,7 @@ def compute_distance_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     side_plan: SidePlan | SideBlock,
 ) -> DistanceAnalysisResult:
     """Selected-time-only Recording-mode Distance Protection for ONE fault loop (`AB`/`BC`/`CA`).
@@ -118,7 +120,7 @@ def compute_distance_analysis(
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz_override=reference_frequency_hz_override,
-        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
     return _distance_analysis_from_diagram(
         diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
@@ -192,7 +194,7 @@ def _strict_distance_result(
         return refuse(REASON_UNSUPPORTED_CURRENT_UNIT, "A current unit cannot be normalized to amperes.", "current")
 
     common = dict(
-        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
+        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds, frequency_provenance=diagram.frequency_provenance,
         v1_channel_ref=v1_role.channel_ref, v2_channel_ref=v2_role.channel_ref,
         i1_channel_ref=i1_role.channel_ref, i2_channel_ref=i2_role.channel_ref,
         voltage_unit=v1_role.unit, current_unit=i1_role.unit, side_conversion=plan.info,
@@ -302,6 +304,7 @@ def compute_distance_locus(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     side_plan: SidePlan | SideBlock,
 ) -> list[DistanceLocusPoint]:
     """The static loop-impedance locus/trajectory -- deterministic,
@@ -341,7 +344,7 @@ def compute_distance_locus(
     prepared = prepare_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
         reference_frequency_hz_override=reference_frequency_hz_override,
-        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
 
     points: list[DistanceLocusPoint] = []

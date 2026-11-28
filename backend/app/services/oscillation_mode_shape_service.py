@@ -22,6 +22,7 @@ from app.domain import cross_signal_evidence as cs
 from app.domain import mode_shape as ms
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import UNDEFINED
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_cross_signal_service import analyse_signals, validate_entries
@@ -49,6 +50,7 @@ def derive_components(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     sync_registry: SynchronizationRegistry,
     include_damping: bool = False,
     minimum: int = 2,
@@ -66,7 +68,7 @@ def derive_components(
         prepared_entries.append({**entry, "offset_s": view.effective_alignment_offset_s if view else 0.0})
     signal_rows, analysed = analyse_signals(
         workspace_id=workspace_id, entries=prepared_entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz,
-        source_registry=source_registry, calc_registry=calc_registry, include_damping=include_damping, keep_activity=True)
+        source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access, include_damping=include_damping, keep_activity=True)
     analysed_at = _time.perf_counter()
     components = cs.group_components(analysed)
     grouped_at = _time.perf_counter()
@@ -79,7 +81,7 @@ def derive_components(
             windows[index] = prepare_analysis_window(
                 workspace_id=workspace_id, input_ref=entry["input_ref"], representation=entry["representation"],
                 window_start_s=signal["window_start_s"], window_end_s=signal["window_end_s"], f_max_hz=f_max_hz,
-                source_registry=source_registry, calc_registry=calc_registry)
+                source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access)
         return windows[index]
 
     return {"signal_rows": signal_rows, "analysed": analysed, "components": components, "alignments": alignments, "analysed_by_index": analysed_by_index,
@@ -107,13 +109,14 @@ def compute_mode_shape(
     component_frequency_hz: float | None = None,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     sync_registry: SynchronizationRegistry,
 ) -> dict:
     """`entries`: `{input_ref, representation, signal_revision, window_start_s, window_end_s, label}` (2-8 signals). Any `offset_s`
     is ignored: the effective alignment offset comes from the synchronization model."""
     ctx = derive_components(
         workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz, source_registry=source_registry,
-        calc_registry=calc_registry, sync_registry=sync_registry)
+        calc_registry=calc_registry, frequency_access=frequency_access, sync_registry=sync_registry)
     signal_rows, components, alignments, analysed_by_index, window_of = (
         ctx["signal_rows"], ctx["components"], ctx["alignments"], ctx["analysed_by_index"], ctx["window_of"])
     out_components = []

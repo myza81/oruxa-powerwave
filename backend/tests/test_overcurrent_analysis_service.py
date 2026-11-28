@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import CURRENT, WAVEFORM_FORM_INSTANTANEOUS, WAVEFORM_FORM_RMS
 from app.domain.disturbance_record import DisturbanceRecord
@@ -135,7 +136,8 @@ def _compute(registries, **overrides):
         recording_basis="secondary", ct_primary=None, ct_secondary=None,
         reference_frequency_hz_override=None,
         context_registry=registries["context"], source_registry=registries["source"],
-        calculated_channel_registry=registries["calc"], authority=_authority(registries),
+        calculated_channel_registry=registries["calc"], frequency_access=access_for(registries["source"]),
+        authority=_authority(registries),
     )
     kwargs.update(overrides)
     return compute_overcurrent_analysis(**kwargs)
@@ -338,6 +340,7 @@ def _check_readiness(registries, **overrides):
         reference_frequency_hz_override=None,
         context_registry=registries["context"], source_registry=registries["source"],
         calculated_channel_registry=registries["calc"],
+        frequency_access=access_for(registries["source"]),
     )
     kwargs.update(overrides)
     return check_overcurrent_readiness(**kwargs)

@@ -61,7 +61,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.domain.event_detection import VALID_SENSITIVITIES, EventDetectionResult, detect_event_onset
+from app.domain.event_detection import (
+    DETECTOR_METHOD_RMS_SUSTAINED_CHANGE,
+    VALID_SENSITIVITIES,
+    EventDetectionResult,
+    detect_event_onset,
+)
 from app.domain.source import SourceMetadata
 from app.domain.time_reference import effective_timing_reference, source_timestamp_utc
 from app.domain.synchronization import alignment_offset_valid, source_time_to_workspace_time
@@ -81,6 +86,7 @@ from app.services.errors import (
     ReferenceSourceAlignmentError,
     SourceNotFoundError,
 )
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -441,6 +447,11 @@ def _view_from_detection(
     )
 
 
+#: The detector's own sentence for an unusable nominal frequency (`app.domain.event_detection`); the service uses it so the response is
+#: identical whichever layer refuses (a test pins the equality).
+NO_USABLE_NOMINAL_FREQUENCY_REASON = "No usable nominal frequency is available for this source."
+
+
 def detect_event_candidate(
     *,
     workspace_id: str,
@@ -451,6 +462,7 @@ def detect_event_candidate(
     search_end_time: float | None,
     source_registry: WorkspaceRegistry,
     synchronization_registry: SynchronizationRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> DetectEventView:
     """Run Slice 3's assisted detector against ONE engineer-selected
     analog channel (task section 5: "the engineer should explicitly
@@ -518,15 +530,26 @@ def detect_event_candidate(
     time_slice = time_full[lo:hi]
     values_slice = values_full[lo:hi]
 
-    result = detect_event_onset(
-        time_slice, values_slice, nominal_frequency_hz=active.metadata.nominal_frequency, sensitivity=sensitivity
-    )
+    # NF-3C: the frequency comes from the central authority. An unusable declaration is refused HERE, before the detector, with the
+    # existing sentence; no invalid frequency reaches a numerical routine. The echoed `nominal_frequency_hz` keeps its type (owner decision
+    # O-7, option A, an interim compatibility rule): the effective value when usable, the declared value otherwise. (A declared NaN or
+    # infinity is still serialised as null although the schema says non-null: a documented pre-existing defect, not changed here.)
+    frequency = frequency_access.for_source(workspace_id, source_id)
+    if frequency.usable:
+        result = detect_event_onset(
+            time_slice, values_slice, nominal_frequency_hz=frequency.hz, sensitivity=sensitivity
+        )
+        echoed_frequency_hz = frequency.hz
+    else:
+        result = EventDetectionResult(
+            found=False, reason=NO_USABLE_NOMINAL_FREQUENCY_REASON, detector_method=DETECTOR_METHOD_RMS_SUSTAINED_CHANGE)
+        echoed_frequency_hz = active.metadata.nominal_frequency
     group_by_source_id, metadata_by_id = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
     view = _view_for_source(source_id=source_id, registry=synchronization_registry, workspace_id=workspace_id, group_by_source_id=group_by_source_id, metadata_by_id=metadata_by_id)
     return _view_from_detection(
         result,
         channel_unit=channel_unit,
-        nominal_frequency_hz=active.metadata.nominal_frequency,
+        nominal_frequency_hz=echoed_frequency_hz,
         effective_alignment_offset_s=view.effective_alignment_offset_s,
     )
 

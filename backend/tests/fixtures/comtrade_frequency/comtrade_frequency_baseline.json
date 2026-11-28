@@ -1,0 +1,2829 @@
+{
+ "baseline_git_sha": "9bb5f3816d58a35f71ac109014543b94f9241b92",
+ "numpy": "2.4.6",
+ "outcomes": {
+  "api": {
+   "declared_1000": {
+    "oscillation_frequency_and_origin": [
+     "1000.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "1000.0",
+    "status": 201,
+    "stored_nominal_frequency": "1000.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_16_7": {
+    "oscillation_frequency_and_origin": [
+     "16.7",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "16.7",
+    "status": 201,
+    "stored_nominal_frequency": "16.7",
+    "stored_preparation_provenance": null
+   },
+   "declared_25": {
+    "oscillation_frequency_and_origin": [
+     "25.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "25.0",
+    "status": 201,
+    "stored_nominal_frequency": "25.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_400": {
+    "oscillation_frequency_and_origin": [
+     "400.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "400.0",
+    "status": 201,
+    "stored_nominal_frequency": "400.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_50": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_50_0": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_50_padded": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_60": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_60_0": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_exponent_5e1": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_huge": {
+    "oscillation_frequency_and_origin": [
+     "1e+308",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "1e+308",
+    "status": 201,
+    "stored_nominal_frequency": "1e+308",
+    "stored_preparation_provenance": null
+   },
+   "declared_inf": {
+    "oscillation_frequency_and_origin": [
+     "inf",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": null,
+    "status": 201,
+    "stored_nominal_frequency": "inf",
+    "stored_preparation_provenance": null
+   },
+   "declared_infinity_word": {
+    "oscillation_frequency_and_origin": [
+     "inf",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": null,
+    "status": 201,
+    "stored_nominal_frequency": "inf",
+    "stored_preparation_provenance": null
+   },
+   "declared_nan": {
+    "oscillation_frequency_and_origin": [
+     "nan",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": null,
+    "status": 201,
+    "stored_nominal_frequency": "nan",
+    "stored_preparation_provenance": null
+   },
+   "declared_nan_upper": {
+    "oscillation_frequency_and_origin": [
+     "nan",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": null,
+    "status": 201,
+    "stored_nominal_frequency": "nan",
+    "stored_preparation_provenance": null
+   },
+   "declared_negative_50": {
+    "oscillation_frequency_and_origin": [
+     "-50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "-50.0",
+    "status": 201,
+    "stored_nominal_frequency": "-50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_negative_inf": {
+    "oscillation_frequency_and_origin": [
+     "-inf",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": null,
+    "status": 201,
+    "stored_nominal_frequency": "-inf",
+    "stored_preparation_provenance": null
+   },
+   "declared_negative_zero": {
+    "oscillation_frequency_and_origin": [
+     "-0.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "-0.0",
+    "status": 201,
+    "stored_nominal_frequency": "-0.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_out_of_range_0_5": {
+    "oscillation_frequency_and_origin": [
+     "0.5",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "0.5",
+    "status": 201,
+    "stored_nominal_frequency": "0.5",
+    "stored_preparation_provenance": null
+   },
+   "declared_out_of_range_1001": {
+    "oscillation_frequency_and_origin": [
+     "1001.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "1001.0",
+    "status": 201,
+    "stored_nominal_frequency": "1001.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_overflow_1e999": {
+    "oscillation_frequency_and_origin": [
+     "inf",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": null,
+    "status": 201,
+    "stored_nominal_frequency": "inf",
+    "stored_preparation_provenance": null
+   },
+   "declared_plus_50": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_tiny": {
+    "oscillation_frequency_and_origin": [
+     "1e-09",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "1e-09",
+    "status": 201,
+    "stored_nominal_frequency": "1e-09",
+    "stored_preparation_provenance": null
+   },
+   "declared_underscore_5_0": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_zero": {
+    "oscillation_frequency_and_origin": [
+     "0.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "0.0",
+    "status": 201,
+    "stored_nominal_frequency": "0.0",
+    "stored_preparation_provenance": null
+   },
+   "declared_zero_float": {
+    "oscillation_frequency_and_origin": [
+     "0.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "0.0",
+    "status": 201,
+    "stored_nominal_frequency": "0.0",
+    "stored_preparation_provenance": null
+   },
+   "missing_lf_file_truncated": {
+    "error": {
+     "code": "parse_error",
+     "message": "Could not parse the COMTRADE record: CFG '<FILE>' is truncated: missing field 'nominal frequency (lf)'"
+    },
+    "status": 400
+   },
+   "missing_lf_line_removed": {
+    "error": {
+     "code": "parse_error",
+     "message": "Could not parse the COMTRADE record: Cannot parse nrates '4000.0,4' in '<FILE>'"
+    },
+    "status": 400
+   },
+   "other_bad_nrates": {
+    "error": {
+     "code": "parse_error",
+     "message": "Could not parse the COMTRADE record: Cannot parse nrates 'x' in '<FILE>'"
+    },
+    "status": 400
+   },
+   "other_binary32_declared_60": {
+    "error": {
+     "code": "unsupported_comtrade_variant",
+     "message": "BINARY32 (COMTRADE 2013 float32) COMTRADE files are not supported yet."
+    },
+    "status": 400
+   },
+   "other_nonstandard_rev_yr_2005_declared_60": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "other_unparseable_timemult_declared_60": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "other_unrecognised_rev_yr_declared_60": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "other_unrecognised_rev_yr_unparseable_lf": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "rev1991_declared_60": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "rev1991_empty": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "rev1991_unparseable": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "rev2013_declared_60": {
+    "oscillation_frequency_and_origin": [
+     "60.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "60.0",
+    "status": 201,
+    "stored_nominal_frequency": "60.0",
+    "stored_preparation_provenance": null
+   },
+   "rev2013_empty": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "rev2013_unparseable": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_comma_decimal": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_dash_only": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_double_dot": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_empty": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_hex": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_none_word": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_only_comma": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_superscript_digit": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_text": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_trailing_comma": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_two_values_comma": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_two_values_space": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_unit_suffix": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_unit_suffix_spaced": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   },
+   "unparseable_whitespace_only": {
+    "oscillation_frequency_and_origin": [
+     "50.0",
+     "recording_metadata"
+    ],
+    "response_keys": [
+     "analog_channel_count",
+     "created_at",
+     "digital_channel_count",
+     "duration_seconds",
+     "effective_timing_reference",
+     "elapsed_end_seconds",
+     "elapsed_start_seconds",
+     "file_size_bytes",
+     "nominal_frequency",
+     "original_filenames",
+     "preparation_interpreter_id",
+     "provider_type",
+     "recorder_name",
+     "sample_count",
+     "sampling_rates",
+     "source_id",
+     "start_time",
+     "start_time_utc",
+     "station_name",
+     "status",
+     "time_basis",
+     "time_of_day_reference_seconds",
+     "time_reference_interpretation",
+     "time_reference_revision",
+     "timing_reference",
+     "trigger_time",
+     "trigger_time_utc",
+     "workspace_id"
+    ],
+    "response_nominal_frequency": "50.0",
+    "status": 201,
+    "stored_nominal_frequency": "50.0",
+    "stored_preparation_provenance": null
+   }
+  },
+  "fixtures": {
+   "compliance_smoke_multibay.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "12474c4883bddbdd0572f4030b88fee8f630282f7f0878bc8df52c8aa361e4d2",
+    "warnings": []
+   },
+   "compliance_smoke_review_required.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "104ece6495fe1d7b6b2399859176f930d17b7b87dccdbb5f5ed7a3ff1c7423df",
+    "warnings": []
+   },
+   "compliance_smoke_rms_phase_a.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "849d6171f3078c56a42e086293f7048c5da60ae0f1610d69dd375bbc3fdf4d94",
+    "warnings": []
+   },
+   "compliance_smoke_three_phase.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "939e7ee18fbfd30185721f0fd2c432ad7dd2770bc53b10c9eee131ec2963820b",
+    "warnings": []
+   },
+   "disturbance_record_multibay.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "3d62d41e6011ee92c24f44f3b49c6cbfd93b75e2135c6f8d36a1c9ee9be60136",
+    "warnings": []
+   },
+   "line_to_line_multibay.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "f312845b9cc5045b6c94e70d93392db79169bdbcd81e9cef01b38258773f1744",
+    "warnings": []
+   },
+   "mixed_capability_multibay.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "160ba165c8169ce940178895441c13ebe15f40e1770fa6db488404bb5f8217a4",
+    "warnings": []
+   },
+   "phase_convention_mixed.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "74453ec4c2dff450714abc36a5841e57e58e5a0263b01d6cb2e19b015a72a36b",
+    "warnings": []
+   },
+   "phase_convention_structured_ph.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "579e482053ce459d348ec48002d8f70658e3c7982e246e744428146bae8afaf5",
+    "warnings": []
+   },
+   "phasor_bare_three_phase.cfg": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "DAT file not found for '<CFG>': tried '<DIR>\\phasor_bare_three_phase.dat' and '<DIR>\\phasor_bare_three_phase.DAT'",
+    "warnings": []
+   },
+   "phasor_smoke_bravo_three_phase.cfg": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "DAT file not found for '<CFG>': tried '<DIR>\\phasor_smoke_bravo_three_phase.dat' and '<DIR>\\phasor_smoke_bravo_three_phase.DAT'",
+    "warnings": []
+   },
+   "phasor_smoke_charlie_earlier_overlap.cfg": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "DAT file not found for '<CFG>': tried '<DIR>\\phasor_smoke_charlie_earlier_overlap.dat' and '<DIR>\\phasor_smoke_charlie_earlier_overlap.DAT'",
+    "warnings": []
+   },
+   "phasor_smoke_three_phase.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "3346f9dd53aa261c81f33f27726727b9d99006c99dce060716c7879af7f196cb",
+    "warnings": []
+   },
+   "range_event_long.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "6d900fb53c0959595555b6c7d9021749de6ad77b0c83908e364589c50e18ccc0",
+    "warnings": []
+   },
+   "range_event_short.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "298f5a9e0ee70b304f04318bbe79bb37333d4d65f16d6fb723fddac09156a91b",
+    "warnings": []
+   },
+   "representation_eligibility_multibay.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5560bdca0f583602419843f0c5b4ecf5555860c8ee4db0ce5bee0fad780a0881",
+    "warnings": []
+   },
+   "representation_eligibility_none.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "ffb71fde8c0431a5aef7c7fbed1b3191f912eafe81ddff4f46a1ff0bf4d9d360",
+    "warnings": []
+   },
+   "synth_ascii.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "31bf5c47e05e0e518ce352c43c83d9b18f5bb97de54c418473ea1be2fa035366",
+    "warnings": []
+   },
+   "synth_binary.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "31bf5c47e05e0e518ce352c43c83d9b18f5bb97de54c418473ea1be2fa035366",
+    "warnings": []
+   },
+   "synth_measurement_groups.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "16d103f67d5733f4aa36a48c69db72ae5c4d4b243a0f22fd35f244c35a8e4e23",
+    "warnings": []
+   },
+   "synth_playback.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "c3820ad6832f875577beee65f562dcd08c4abfa50e0d49bed1a420affd6d5d09",
+    "warnings": []
+   },
+   "synth_playback_b.cfg": {
+    "accepted": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "1baded5067e655bdad8f57ae284fa2d58772432bb640d8728f783402a94897ee",
+    "warnings": []
+   }
+  },
+  "parser": {
+   "declared_1000": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "1000.0",
+    "provenance": null,
+    "record_sha256": "f132c9d171333222938c132b3fc9c2a84ef577334271a618db1c058badcb7cd5",
+    "sampling_nominal_frequency": "1000.0",
+    "warnings": []
+   },
+   "declared_16_7": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "16.7",
+    "provenance": null,
+    "record_sha256": "7d9718cdc0b3c8c1cb511d73a339a390620bfc0fd9281efed43348637c2edce1",
+    "sampling_nominal_frequency": "16.7",
+    "warnings": []
+   },
+   "declared_25": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "25.0",
+    "provenance": null,
+    "record_sha256": "41e5fd48c9d272c0d45b29350dcc18a97fcc2adae650f3214917c27b12022f86",
+    "sampling_nominal_frequency": "25.0",
+    "warnings": []
+   },
+   "declared_400": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "400.0",
+    "provenance": null,
+    "record_sha256": "0136716e88d4ec4d6e8b6ce64ce2376a07565fe7513aa292fddf99c3980fc4df",
+    "sampling_nominal_frequency": "400.0",
+    "warnings": []
+   },
+   "declared_50": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": []
+   },
+   "declared_50_0": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": []
+   },
+   "declared_50_padded": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": []
+   },
+   "declared_60": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "ab9a64f704d3d01213e46211e4f6fd2dd61db6c5c6b7ffbf82a0957573bcf20b",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": []
+   },
+   "declared_60_0": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "ab9a64f704d3d01213e46211e4f6fd2dd61db6c5c6b7ffbf82a0957573bcf20b",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": []
+   },
+   "declared_exponent_5e1": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": []
+   },
+   "declared_huge": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "1e+308",
+    "provenance": null,
+    "record_sha256": "8393a8dccb8a410c15d0d01747b4b8daca2ae308ced5c456093db4a8483ea280",
+    "sampling_nominal_frequency": "1e+308",
+    "warnings": []
+   },
+   "declared_inf": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "inf",
+    "provenance": null,
+    "record_sha256": "f6f009e530d44665ef433f80c51f18744e64e5b046d854ec971b5b43e34f3a81",
+    "sampling_nominal_frequency": "inf",
+    "warnings": []
+   },
+   "declared_infinity_word": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "inf",
+    "provenance": null,
+    "record_sha256": "f6f009e530d44665ef433f80c51f18744e64e5b046d854ec971b5b43e34f3a81",
+    "sampling_nominal_frequency": "inf",
+    "warnings": []
+   },
+   "declared_nan": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "nan",
+    "provenance": null,
+    "record_sha256": "b4cdf17fcfb7214adb36be75331b3361457622d001446832a1f2568cb5aae987",
+    "sampling_nominal_frequency": "nan",
+    "warnings": []
+   },
+   "declared_nan_upper": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "nan",
+    "provenance": null,
+    "record_sha256": "b4cdf17fcfb7214adb36be75331b3361457622d001446832a1f2568cb5aae987",
+    "sampling_nominal_frequency": "nan",
+    "warnings": []
+   },
+   "declared_negative_50": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "-50.0",
+    "provenance": null,
+    "record_sha256": "23a7d2a5b27c8abc6c933a7031a7102f3983561eacd292f8874e29b319cff707",
+    "sampling_nominal_frequency": "-50.0",
+    "warnings": []
+   },
+   "declared_negative_inf": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "-inf",
+    "provenance": null,
+    "record_sha256": "fb0f1e4e09ec8cc7bf130fe6b1320c2b3f272f8800d14365e3d1f447bf2e466d",
+    "sampling_nominal_frequency": "-inf",
+    "warnings": []
+   },
+   "declared_negative_zero": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "-0.0",
+    "provenance": null,
+    "record_sha256": "9a4ced15d401db3cbf4db40eb2e5ff821ed32463c40c44ed2d96e53f7a295016",
+    "sampling_nominal_frequency": "-0.0",
+    "warnings": []
+   },
+   "declared_out_of_range_0_5": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "0.5",
+    "provenance": null,
+    "record_sha256": "8b7a3fb3a5207fcc67803c3163af3f1bed1482f94fc2c8c687099017142b03cd",
+    "sampling_nominal_frequency": "0.5",
+    "warnings": []
+   },
+   "declared_out_of_range_1001": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "1001.0",
+    "provenance": null,
+    "record_sha256": "98e5fa25a109aa74adc703d0057d69dcbf3a619138ee415519112cf623a799db",
+    "sampling_nominal_frequency": "1001.0",
+    "warnings": []
+   },
+   "declared_overflow_1e999": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "inf",
+    "provenance": null,
+    "record_sha256": "f6f009e530d44665ef433f80c51f18744e64e5b046d854ec971b5b43e34f3a81",
+    "sampling_nominal_frequency": "inf",
+    "warnings": []
+   },
+   "declared_plus_50": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": []
+   },
+   "declared_tiny": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "1e-09",
+    "provenance": null,
+    "record_sha256": "5d7566205ccb360d6315d933d85e3223f0f40019a00251a5b6db97c9da627d6e",
+    "sampling_nominal_frequency": "1e-09",
+    "warnings": []
+   },
+   "declared_underscore_5_0": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": []
+   },
+   "declared_zero": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "0.0",
+    "provenance": null,
+    "record_sha256": "d6e147dcfe106a67c262544edca93debf42c1d2c26d5405d33f2441e4ba3da34",
+    "sampling_nominal_frequency": "0.0",
+    "warnings": []
+   },
+   "declared_zero_float": {
+    "accepted": true,
+    "frequency_valid_for_rms": false,
+    "metadata_nominal_frequency": "0.0",
+    "provenance": null,
+    "record_sha256": "d6e147dcfe106a67c262544edca93debf42c1d2c26d5405d33f2441e4ba3da34",
+    "sampling_nominal_frequency": "0.0",
+    "warnings": []
+   },
+   "missing_lf_file_truncated": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "CFG '<CFG>' is truncated: missing field 'nominal frequency (lf)'",
+    "warnings": []
+   },
+   "missing_lf_line_removed": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "Cannot parse nrates '4000.0,4' in '<CFG>'",
+    "warnings": []
+   },
+   "other_bad_nrates": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "Cannot parse nrates 'x' in '<CFG>'",
+    "warnings": []
+   },
+   "other_binary32_declared_60": {
+    "accepted": false,
+    "exception": "ProviderLoadError",
+    "message": "BINARY32 (COMTRADE 2013 float32) is not supported by this provider. Convert '<DIR>\\e.dat' to ASCII or BINARY format before loading.",
+    "warnings": []
+   },
+   "other_nonstandard_rev_yr_2005_declared_60": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "ab9a64f704d3d01213e46211e4f6fd2dd61db6c5c6b7ffbf82a0957573bcf20b",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": []
+   },
+   "other_unparseable_timemult_declared_60": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "ab9a64f704d3d01213e46211e4f6fd2dd61db6c5c6b7ffbf82a0957573bcf20b",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": []
+   },
+   "other_unrecognised_rev_yr_declared_60": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "ab9a64f704d3d01213e46211e4f6fd2dd61db6c5c6b7ffbf82a0957573bcf20b",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Unrecognized rev_yr 'ABCD' in '<CFG>', defaulting to '1999'"
+     }
+    ]
+   },
+   "other_unrecognised_rev_yr_unparseable_lf": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Unrecognized rev_yr 'ABCD' in '<CFG>', defaulting to '1999'"
+     },
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency 'abc' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "rev1991_declared_60": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "ab9a64f704d3d01213e46211e4f6fd2dd61db6c5c6b7ffbf82a0957573bcf20b",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": []
+   },
+   "rev1991_empty": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "rev1991_unparseable": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency 'abc' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "rev2013_declared_60": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "60.0",
+    "provenance": null,
+    "record_sha256": "98d0c10c700b33e3c9292b594c5235476b49c5e476d051d94007f0f0c3734644",
+    "sampling_nominal_frequency": "60.0",
+    "warnings": []
+   },
+   "rev2013_empty": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "e92f3ee8144edf63db97644e48c3ea8799ee30d248c1c71aecf57ccbdb920248",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "rev2013_unparseable": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "e92f3ee8144edf63db97644e48c3ea8799ee30d248c1c71aecf57ccbdb920248",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency 'abc' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_comma_decimal": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50,5' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_dash_only": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '-' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_double_dot": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50..0' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_empty": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_hex": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '0x32' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_none_word": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency 'None' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_only_comma": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency ',' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_superscript_digit": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '5\u00b2' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_text": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency 'abc' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_trailing_comma": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50,' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_two_values_comma": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50,60' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_two_values_space": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50 60' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_unit_suffix": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50Hz' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_unit_suffix_spaced": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '50 Hz' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   },
+   "unparseable_whitespace_only": {
+    "accepted": true,
+    "frequency_valid_for_rms": true,
+    "metadata_nominal_frequency": "50.0",
+    "provenance": null,
+    "record_sha256": "5b6ab5c52f2ed66a8375ba96c154ed7e76c290f566f4b2a2dde32a1f18c128c6",
+    "sampling_nominal_frequency": "50.0",
+    "warnings": [
+     {
+      "category": "UserWarning",
+      "message": "Cannot parse nominal frequency '' in '<CFG>', defaulting to 50.0"
+     }
+    ]
+   }
+  }
+ },
+ "platform": "Windows-11-10.0.26200-SP0",
+ "purpose": "Frozen pre-R1A COMTRADE nominal-frequency parser, provenance and import behaviour",
+ "python": "3.12.10",
+ "scenario_count": 132,
+ "scenario_runner": "backend/tests/comtrade_frequency_scenarios.py",
+ "schema": 1
+}

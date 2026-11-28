@@ -82,6 +82,8 @@ impedance or characteristic-geometry engines here.
 
 from __future__ import annotations
 
+from app.domain.frequency_provenance import FrequencyProvenance
+
 import cmath
 import math
 from collections.abc import Sequence
@@ -627,6 +629,8 @@ class DistanceAnalysisResult:
     reference_frequency_hz: float | None = None
     window_seconds: float | None = None
     algorithm_version: str = ALGORITHM_VERSION
+    #: NF-3D (O-6): which recording authority supplied `reference_frequency_hz`; None when an explicit override was used.
+    frequency_provenance: FrequencyProvenance | None = None
     v1_channel_ref: ChannelRef | None = None
     v2_channel_ref: ChannelRef | None = None
     i1_channel_ref: ChannelRef | None = None

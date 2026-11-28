@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import (
     CURRENT,
@@ -114,7 +115,7 @@ def _compute(registries, *, context_id="ec-1", workspace_id="ws-1", analysis_tim
     return compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=context_id, analysis_time=analysis_time,
         reference_frequency_hz_override=reference_frequency_hz,
-        context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+        context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
     )
 
 
@@ -243,7 +244,7 @@ def _check_readiness(registries, *, context_id="ec-1", workspace_id="ws-1", refe
     return check_phasor_diagram_readiness(
         workspace_id=workspace_id, engineering_context_id=context_id,
         reference_frequency_hz_override=reference_frequency_hz,
-        context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+        context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
     )
 
 

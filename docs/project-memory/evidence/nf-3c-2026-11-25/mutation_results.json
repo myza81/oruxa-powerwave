@@ -1,0 +1,98 @@
+[
+ {
+  "mutation": "N1 measurement classifier ignores usability and calls the detector",
+  "result": "KILLED",
+  "evidence": "1 failed, 19 passed in 18.29s"
+ },
+ {
+  "mutation": "N2 measurement classifier uses the imported value, not the effective one",
+  "result": "KILLED",
+  "evidence": "1 failed, 33 passed in 9.23s"
+ },
+ {
+  "mutation": "N3 readiness reports an unusable value as 'unknown' again",
+  "result": "KILLED",
+  "evidence": "1 failed, 38 passed in 9.81s"
+ },
+ {
+  "mutation": "N4 readiness always offers the Manual remedy",
+  "result": "KILLED",
+  "evidence": "1 failed, 38 passed in 9.45s"
+ },
+ {
+  "mutation": "N5 readiness step carries the imported value instead of the effective one",
+  "result": "KILLED",
+  "evidence": "1 failed, 45 passed in 9.69s"
+ },
+ {
+  "mutation": "N6 readiness ignores the Manual value of a calculated channel's grounding recording",
+  "result": "KILLED",
+  "evidence": "1 failed, 48 passed in 8.73s"
+ },
+ {
+  "mutation": "N7 event detection hands the detector the imported value",
+  "result": "KILLED",
+  "evidence": "1 failed, 12 passed in 7.65s"
+ },
+ {
+  "mutation": "N8 event detection calls the detector for an unusable frequency",
+  "result": "KILLED",
+  "evidence": "1 failed, 3 passed in 7.84s"
+ },
+ {
+  "mutation": "N9 event detection echoes the effective value as zero for an unusable recording",
+  "result": "KILLED",
+  "evidence": "1 failed, 4 passed in 8.17s"
+ },
+ {
+  "mutation": "N10 oscillation origin is always recording_metadata",
+  "result": "KILLED",
+  "evidence": "1 failed, 2 passed in 8.65s"
+ },
+ {
+  "mutation": "N11 oscillation revision is always zero",
+  "result": "KILLED",
+  "evidence": "1 failed, 11 passed in 7.60s"
+ },
+ {
+  "mutation": "N12 oscillation does not check usability before the numerics",
+  "result": "KILLED",
+  "evidence": "1 failed, 5 passed in 8.44s"
+ },
+ {
+  "mutation": "N13 oscillation derives the RMS with the imported value",
+  "result": "KILLED",
+  "evidence": "1 failed, 11 passed in 8.28s"
+ },
+ {
+  "mutation": "N14 the spectrum response drops the revision",
+  "result": "KILLED",
+  "evidence": "1 failed, 24 passed in 14.65s"
+ },
+ {
+  "mutation": "N15 an approved change is dropped from the overlay (the overlay is enforced)",
+  "result": "KILLED",
+  "evidence": "1 failed, 4 passed in 18.92s",
+  "note": "first attempt had a setup error (pattern); re-run with a corrected pattern"
+ },
+ {
+  "mutation": "N16 a migrated consumer reads the imported value directly again",
+  "result": "KILLED",
+  "evidence": "1 failed in 10.79s"
+ },
+ {
+  "mutation": "N17 an unmigrated consumer changes silently (power window default 60)",
+  "result": "KILLED",
+  "evidence": "1 failed, 3 passed in 17.02s"
+ },
+ {
+  "mutation": "N18 the shared label function gives an unknown origin a provenance ('From recording')",
+  "result": "KILLED",
+  "evidence": "2 failed / 5 passed (28.7s)"
+ },
+ {
+  "mutation": "N19 the facts card prints the raw imported number again (null Hz / NaN Hz)",
+  "result": "KILLED",
+  "evidence": "9 failed / 2 passed (52.9s)"
+ }
+]

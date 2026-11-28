@@ -71,6 +71,13 @@ class Settings:
     # Stage 7: legacy BEN5K experimental decoder. Off by default; enable with
     # BEN5K_EXPERIMENTAL_ENABLED=1 in the environment. Never frontend-controlled.
     ben5k_experimental_enabled: bool = False
+    # NF-3B (NF-001 / DEC-217, owner decision O-1): the SERVER-SIDE release gate for a Manual nominal-frequency override. Closed
+    # (False) by default; open only through NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED, which is accepted only when ENVIRONMENT=development
+    # (a local process, an isolated test process or the DEV deployment; NF-3I, owner 2026-11-28) and refused anywhere else, PROD included.
+    # While closed the backend refuses to store a Manual value (409), reports and uses the Auto value for
+    # every recording, and no engineering consumer can be influenced by a stored override. Never frontend-controlled: the UI
+    # flag only shows or hides a control, it is not enforcement.
+    nominal_frequency_manual_override_enabled: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -196,6 +203,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "1", "true", "yes"
     )
 
+    # NF-3B (O-1) / NF-3I (O-12): the Manual nominal-frequency override is closed by default and released for DEV only. The variable is
+    # accepted when ENVIRONMENT=development (a local process, an isolated test process, or the DEV deployment, whose overlay sets it
+    # deliberately) and refused outright for any other environment, so a production environment file that carries it can never open the
+    # gate unnoticed. Outside DEV the default stays closed.
+    nominal_frequency_manual_override_enabled = env.get(
+        "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    if nominal_frequency_manual_override_enabled and environment != "development":
+        raise ConfigurationError(
+            "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED is released for ENVIRONMENT=development only "
+            f"(got ENVIRONMENT={environment!r}); the Manual nominal-frequency override is not released there"
+        )
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
@@ -209,4 +228,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         relay_review_signing_key=signing_key,
         relay_review_token_ttl_hours=relay_review_token_ttl_hours,
         ben5k_experimental_enabled=ben5k_experimental_enabled,
+        nominal_frequency_manual_override_enabled=nominal_frequency_manual_override_enabled,
     )

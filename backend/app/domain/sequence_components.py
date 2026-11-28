@@ -70,6 +70,8 @@ reported unavailable (`None`), never `Infinity`/`NaN`.
 
 from __future__ import annotations
 
+from app.domain.frequency_provenance import FrequencyProvenance
+
 import cmath
 import math
 from dataclasses import dataclass, field
@@ -253,6 +255,8 @@ class SequenceAnalysisResult:
     reference_frequency_hz: float | None = None
     window_seconds: float | None = None
     algorithm_version: str = ALGORITHM_VERSION
+    #: NF-3D (O-6): which recording authority supplied `reference_frequency_hz`; None when an explicit override was used.
+    frequency_provenance: FrequencyProvenance | None = None
     voltage_sequences: SequenceFamilyResult = field(default_factory=_missing_family)
     current_sequences: SequenceFamilyResult = field(default_factory=_missing_family)
     warnings: list[str] = field(default_factory=list)

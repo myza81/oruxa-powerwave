@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import CalculatedChannel, ChannelRef
 from app.domain.channel_classification import (
     CURRENT,
@@ -118,7 +119,7 @@ class TestBasicSinglePhaseComputation:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
         assert result.algorithm_version == "phasor_estimator_v1"
@@ -134,7 +135,7 @@ class TestBasicSinglePhaseComputation:
             compute_phasor_analysis(
                 workspace_id="ws-1", engineering_context_id="ec-missing", analysis_kind="phasor", mode="voltage_phase_a",
                 analysis_time=1.5, reference_frequency_hz_override=None,
-                context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+                context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
             )
 
     def test_unknown_requirement_raises(self, registries):
@@ -143,7 +144,7 @@ class TestBasicSinglePhaseComputation:
             compute_phasor_analysis(
                 workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="distance", mode="phase_a",
                 analysis_time=1.5, reference_frequency_hz_override=None,
-                context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+                context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
             )
 
 
@@ -160,7 +161,7 @@ class TestThreePhaseComputation:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_three_phase",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
         assert result.roles["Va"].angle_deg_relative == pytest.approx(0.0, abs=1e-6)
@@ -177,7 +178,7 @@ class TestThreePhaseComputation:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_three_phase",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.role_reasons.get("Vc") == "role_missing"
@@ -195,7 +196,7 @@ class TestMultiSourceTimebaseAndFrequency:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_three_phase",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
         assert result.roles["Vb"].angle_deg_relative == pytest.approx(-120.0, abs=1e-3)
@@ -207,7 +208,7 @@ class TestMultiSourceTimebaseAndFrequency:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         # Single-phase requirement (only Va) -- no cross-source pairing
         # needed, so this actually resolves; the incompatible-timebase
@@ -223,7 +224,7 @@ class TestMultiSourceTimebaseAndFrequency:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_three_phase",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.reason_code == "timebase_incompatible"
@@ -238,7 +239,7 @@ class TestMultiSourceTimebaseAndFrequency:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_three_phase",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.reason_code == REASON_REFERENCE_FREQUENCY_CONFLICT
@@ -249,7 +250,7 @@ class TestMultiSourceTimebaseAndFrequency:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=50.0,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
         assert result.reference_frequency_hz == 50.0
@@ -260,7 +261,7 @@ class TestMultiSourceTimebaseAndFrequency:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=5000.0,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.reason_code == "invalid_reference_frequency"
@@ -273,7 +274,7 @@ class TestWaveformFormGuardrail:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.role_reasons.get("Va") == REASON_WAVEFORM_FORM_NOT_ELIGIBLE
@@ -284,7 +285,7 @@ class TestWaveformFormGuardrail:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
 
@@ -294,7 +295,7 @@ class TestWaveformFormGuardrail:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
 
@@ -304,7 +305,7 @@ class TestWaveformFormGuardrail:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
 
@@ -320,7 +321,7 @@ class TestWaveformFormGuardrail:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.role_reasons.get("Va") == REASON_WAVEFORM_FORM_NOT_ELIGIBLE
@@ -339,7 +340,7 @@ class TestCalculatedChannelCandidate:
         result = compute_phasor_analysis(
             workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
             analysis_time=1.5, reference_frequency_hz_override=None,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert result.status == PHASOR_STATUS_COMPUTED
         assert result.roles["Va"].magnitude_rms == pytest.approx(100.0 / np.sqrt(2), rel=1e-6)
@@ -355,7 +356,7 @@ class TestMovingAnalysisTimeServiceLevel:
             result = compute_phasor_analysis(
                 workspace_id="ws-1", engineering_context_id="ec-1", analysis_kind="phasor", mode="voltage_phase_a",
                 analysis_time=at, reference_frequency_hz_override=None,
-                context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+                context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
             )
             assert result.status == PHASOR_STATUS_COMPUTED
             angles.append(result.roles["Va"].angle_deg_absolute)

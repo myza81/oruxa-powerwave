@@ -24,8 +24,11 @@ class OscillationRepresentationOut(BaseModel):
     reason_code: str | None = None
     message: str | None = None
     nominal_frequency_hz: float | None = None
-    #: "recording_metadata" | "assumed_default"
+    #: NF-1 provenance of the effective frequency: "recording_metadata" | "import_supplied" | "assumed_default" | "manual" | "unusable"
+    #: (NF-3C, O-6: a documented widening of the earlier two-value set; "manual" only while the server-side release gate is open).
     nominal_frequency_origin: str | None = None
+    #: Revision of the engineer's nominal-frequency setting for the recording this result was computed with.
+    nominal_frequency_revision: int | None = None
     source_sample_count: int = 0
     source_sample_rate_hz: float | None = None
     source_start_s: float | None = None
@@ -77,6 +80,7 @@ class SpectrumRepresentationOut(BaseModel):
     analysis_sample_rate_hz: float
     nominal_frequency_hz: float | None = None
     nominal_frequency_origin: str | None = None
+    nominal_frequency_revision: int | None = None
     rms_window_s: float | None = None
     rms_group_delay_s: float | None = None
     bandwidth_half_power_hz: float | None = None

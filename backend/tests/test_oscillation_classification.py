@@ -12,6 +12,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.nf3c_access_support import access_for
 from app.domain import cross_signal_evidence as cs
 from app.domain import oscillation_classification as oc
 from app.main import create_app
@@ -399,7 +400,7 @@ class TestResultModel:
 def _interpret_run(registries, entries, f_min=0.1, f_max=10.0):  # noqa: F811
     from app.services.oscillation_interpretation_service import compute_interpretation
     return compute_interpretation(workspace_id=WS, entries=entries, f_min_hz=f_min, f_max_hz=f_max,
-                                  source_registry=registries[0], calc_registry=registries[1])
+                                  source_registry=registries[0], frequency_access=access_for(registries[0]), calc_registry=registries[1])
 
 
 class TestService:
@@ -464,7 +465,7 @@ class TestService:
         t, p = _event(7, [(3.2, 0.02, 0.8)])
         registries[0].add(_active("src", t, {"P": p}, types={"P": "Active Power"}))
         out = compute_cross_signal(workspace_id=WS, entries=[_entry("src", "P")], f_min_hz=0.1, f_max_hz=10.0,
-                                   source_registry=registries[0], calc_registry=registries[1])
+                                   source_registry=registries[0], frequency_access=access_for(registries[0]), calc_registry=registries[1])
         assert all("interpretation" not in c for c in out["components"])
 
 

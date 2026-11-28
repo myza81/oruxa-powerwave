@@ -92,6 +92,8 @@ from app.domain.calculated_channel import (
     would_create_cycle,
 )
 from app.domain.missing_data_estimation import apply_estimation
+from app.services.calculated_channel_staleness import BASIS_EXPLICIT, BASIS_RECORDING, KNOWN_BASES, assert_inputs_not_stale
+from app.services.nominal_frequency_access import AGREEMENT_MIXED, AGREEMENT_UNAVAILABLE, NominalFrequencyAccess
 from app.domain.channel_classification import (
     CURRENT,
     FREQUENCY,
@@ -99,9 +101,6 @@ from app.domain.channel_classification import (
     ROCOF as ROCOF_ENGINEERING_TYPE,
     UNDEFINED,
     VOLTAGE,
-    WAVEFORM_FORM_INSTANTANEOUS,
-    WAVEFORM_FORM_MAGNITUDE,
-    WAVEFORM_FORM_RMS,
     WAVEFORM_FORM_UNKNOWN,
     derive_waveform_form,
 )
@@ -132,17 +131,19 @@ from app.domain.per_unit import (
     resolve_per_unit,
     resolve_conversion_eligibility,
 )
-from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.metadata import DEFAULT_NOMINAL_FREQUENCY_HZ, FORMAT_VARIANT_BEN5K_LEGACY
 from app.domain.physical_calibration import (
     CALIBRATION_INVALID,
     evaluate_calibration_eligibility,
     PURPOSE_ENGINEERING_CALCULATION,
     PURPOSE_EXPLORATORY_ANALYSIS,
 )
-from app.domain.rms_detector import (
-    LIKELY_INSTANTANEOUS,
-    LIKELY_MAGNITUDE_OR_RMS,
-    classify_waveform_form,
+from app.domain.rms_prerequisites import (
+    FormBasis,
+    InputForm,
+    RmsPrerequisiteFailure,
+    check_rms_window_prerequisites,
+    classify_input_form,
 )
 from app.domain.source import ActiveSource
 from app.domain.time_reference import source_start_epoch
@@ -173,6 +174,7 @@ from app.services.errors import (
     InvalidMaxGapUnitError,
     InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
+    MixedNominalFrequencyError,
     InvalidNullPolicyError,
     InvalidOperationArityError,
     InvalidPowerInputTypeError,
@@ -773,31 +775,41 @@ def check_rms_eligibility(
     (section 23/24: block-by-default, override allowed), never whether an
     override was actually supplied -- that check happens in the caller.
     """
+    if not nominal_frequency_valid(nominal_frequency_hz):
+        # NF-3E / O-10: an invalid user-supplied frequency is a client error, as it is at creation (it used to divide by zero: HTTP 500).
+        raise InvalidNominalFrequencyError(
+            "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
+        )
     resolved = _resolve_input(
         input_ref, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry
     )
 
-    if resolved.waveform_form in (WAVEFORM_FORM_RMS, WAVEFORM_FORM_MAGNITUDE):
+    # The classification itself (declared form first, detector second) is shared with every RMS consumer
+    # (app.domain.rms_prerequisites). The policy below -- statuses, wording, `override_required` -- is this
+    # service's own and is deliberately NOT shared.
+    classification = classify_input_form(resolved.waveform_form, resolved.time, resolved.values, nominal_frequency_hz)
+    declared = classification.basis is FormBasis.DECLARED_WAVEFORM_FORM
+
+    if classification.outcome is InputForm.RMS_OR_MAGNITUDE and declared:
         return RmsEligibility(
             status=RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
             reason="This channel is already identified as RMS or magnitude data. Applying RMS again is not recommended.",
             override_required=True,
         )
-    if resolved.waveform_form == WAVEFORM_FORM_INSTANTANEOUS:
+    if classification.outcome is InputForm.INSTANTANEOUS and declared:
         return RmsEligibility(
             status=RMS_STATUS_SUITABLE,
             reason="Input is explicitly marked instantaneous. Input appears suitable for RMS.",
             override_required=False,
         )
 
-    detector_result = classify_waveform_form(resolved.time, resolved.values, nominal_frequency_hz)
-    if detector_result == LIKELY_INSTANTANEOUS:
+    if classification.outcome is InputForm.INSTANTANEOUS:
         return RmsEligibility(
             status=RMS_STATUS_SUITABLE,
             reason="Input appears suitable for RMS.",
             override_required=False,
         )
-    if detector_result == LIKELY_MAGNITUDE_OR_RMS:
+    if classification.outcome is InputForm.RMS_OR_MAGNITUDE:
         return RmsEligibility(
             status=RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
             reason=(
@@ -905,6 +917,68 @@ def _effective_input_values(
     return [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
 
 
+@dataclass(frozen=True, slots=True)
+class _PowerFrequency:
+    """The one nominal frequency a power calculation uses, and where it came from (NF-3F, O-2)."""
+
+    hz: float
+    origin: str | None
+    revision: int | None
+    #: True when the frequency came from the recording authority (so the channel is assessed for staleness); False only for a caller
+    #: that supplied no authority (no production caller does; the call-path guard pins that), which keeps the sanctioned default.
+    recording_following: bool
+
+
+def _power_input_label(ref: ChannelRef, *, workspace_id: str, calc_registry: CalculatedChannelRegistry) -> str:
+    if ref.kind == "source":
+        return ref.channel_name or ref.source_id
+    channel = calc_registry.get(workspace_id, ref.calculated_channel_id)
+    return channel.name if channel is not None else str(ref.calculated_channel_id)
+
+
+def _resolve_power_frequency(
+    *, workspace_id: str, inputs: list[ChannelRef], resolved: list[_ResolvedInput], calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess | None,
+) -> _PowerFrequency:
+    """NF-3F (O-2): the effective nominal frequency of the recording(s) a power calculation reads, through the shared authority.
+
+    The voltage and current inputs (all six for three-phase) must agree under the accessor's multi-recording contract (never a frequency
+    chosen from members): an unusable recording is refused with the existing `invalid_nominal_frequency`, disagreeing recordings with
+    `nominal_frequency_mixed`. Both are 400s raised before anything is evaluated or written."""
+    if frequency_access is None:
+        return _PowerFrequency(DEFAULT_NOMINAL_FREQUENCY_HZ, None, None, False)
+    outcome = frequency_access.for_sources(workspace_id, [r.reference_source_id for r in resolved])
+    if outcome.status == AGREEMENT_UNAVAILABLE:
+        raise InvalidNominalFrequencyError(
+            "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. "
+            "Set the nominal frequency in Recording Details and calculate again."
+        )
+    if outcome.status == AGREEMENT_MIXED:
+        by_source = {m.source_id: m.hz for m in outcome.members}
+        listing = ", ".join(
+            f"{_power_input_label(ref, workspace_id=workspace_id, calc_registry=calc_registry)}: {by_source[res.reference_source_id]:g} Hz"
+            for ref, res in zip(inputs, resolved))
+        raise MixedNominalFrequencyError(
+            f"The inputs come from recordings with different nominal frequencies ({listing}). A power channel uses one frequency for "
+            "voltage and current: set the recordings to the same nominal frequency in Recording Details, or choose inputs from "
+            "recordings that already share one."
+        )
+    first = outcome.members[0]
+    return _PowerFrequency(float(outcome.common_hz), first.origin, first.revision, True)
+
+
+def _power_frequency_provenance(power_frequency: _PowerFrequency) -> dict:
+    """NF-3E provenance for a NEW power channel: recording-following, with the recording's origin and revision at creation
+    (informational; staleness is derived). A no-authority caller records nothing, exactly as before."""
+    if not power_frequency.recording_following:
+        return {}
+    return {
+        "nominal_frequency_basis": BASIS_RECORDING,
+        "nominal_frequency_origin": power_frequency.origin,
+        "nominal_frequency_revision": power_frequency.revision,
+    }
+
+
 def create_calculated_channel(
     *,
     workspace_id: str,
@@ -923,8 +997,14 @@ def create_calculated_channel(
     local_mean_radius: int | None = None,
     voltage_reference_confirmed: bool = False,
     phase_pairing_confirmed: bool = False,
+    frequency_access: NominalFrequencyAccess | None = None,
 ) -> CalculatedChannel:
     """Validate, evaluate, and store one new calculated channel.
+
+    `frequency_access` (NF-3E) is the central nominal-frequency authority. With it, a NEW calculation on a STALE calculated input (direct
+    or transitive) is refused (`stale_calculated_input`, Option B), a recording-following RMS channel's frequency is verified against its
+    recording, and the recording's origin and revision are stamped into the channel's parameters (O-6). Every production caller passes it
+    (a static guard pins that); without it none of those checks can run.
 
     Order of validation (each an independent, clearly-attributable
     rejection reason -- section 44): operation known -> arity -> name ->
@@ -999,6 +1079,9 @@ def create_calculated_channel(
     if clean_name in existing_names:
         raise DuplicateCalculatedChannelNameError(f"A calculated channel named '{clean_name}' already exists.")
 
+    if frequency_access is not None:
+        assert_inputs_not_stale(inputs, workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
+
     # Stage 3B-2B-2 (DEC-213): pre-flight Invalid-calibration authority gate.
     # OD-5 (strict): fires for ALL engineering types, before _resolve_input().
     _check_creation_authority(
@@ -1029,6 +1112,7 @@ def create_calculated_channel(
     # to mirror the established operation-specific validation order.
     power_v_scale: float = 1.0
     power_i_scale: float = 1.0
+    power_frequency: _PowerFrequency | None = None   # NF-3F: set by whichever power branch below runs
     if operation in POWER_OPERATIONS:
         v_res = resolved[0]
         i_res = resolved[1]
@@ -1065,11 +1149,13 @@ def create_calculated_channel(
         power_i_scale = parsed_i.scale_to_canonical  # amperes per declared unit
         # Sampling density: same guard as RMS to ensure at least one valid
         # phasor window exists (DEC-201: PHASOR_MIN_SAMPLES_PER_CYCLE = 8).
-        if not rms_recording_long_enough(v_res.time, 50.0):
+        power_frequency = _resolve_power_frequency(
+            workspace_id=workspace_id, inputs=inputs, resolved=resolved, calc_registry=calc_registry, frequency_access=frequency_access)
+        if not rms_recording_long_enough(v_res.time, power_frequency.hz):
             raise RmsRecordingTooShortError(
                 "Recording is shorter than one complete phasor window (1 cycle at nominal frequency)."
             )
-        if not rms_sampling_dense_enough(v_res.time, 50.0):
+        if not rms_sampling_dense_enough(v_res.time, power_frequency.hz):
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the phasor window to produce a meaningful power estimate."
             )
@@ -1284,11 +1370,13 @@ def create_calculated_channel(
             )
 
         # 8. Sampling density: same guard as single-phase power.
-        if not rms_recording_long_enough(resolved[0].time, 50.0):
+        power_frequency = _resolve_power_frequency(
+            workspace_id=workspace_id, inputs=inputs, resolved=resolved, calc_registry=calc_registry, frequency_access=frequency_access)
+        if not rms_recording_long_enough(resolved[0].time, power_frequency.hz):
             raise RmsRecordingTooShortError(
                 "Recording is shorter than one complete phasor window (1 cycle at nominal frequency)."
             )
-        if not rms_sampling_dense_enough(resolved[0].time, 50.0):
+        if not rms_sampling_dense_enough(resolved[0].time, power_frequency.hz):
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the phasor window to produce a "
                 "meaningful three-phase power estimate."
@@ -1362,6 +1450,7 @@ def create_calculated_channel(
 
     constant: float | None = None
     nominal_frequency_hz: float | None = None
+    rms_basis = rms_origin = rms_revision = None
     if operation == OP_MULTIPLY_CONSTANT:
         raw_constant = parameters.get("constant") if parameters else None
         if isinstance(raw_constant, bool) or not isinstance(raw_constant, (int, float)) or not np.isfinite(raw_constant):
@@ -1374,6 +1463,26 @@ def create_calculated_channel(
                 "Nominal frequency must be a finite number in a sensible range (e.g. 50 or 60)."
             )
         nominal_frequency_hz = float(raw_frequency)
+
+        # NF-3E: the caller DECLARES whether this frequency follows the recording or was chosen explicitly. It is never inferred from the
+        # number being equal to the recording's. An omitted basis is explicit (the caller supplied the number).
+        raw_basis = parameters.get("nominal_frequency_basis") if parameters else None
+        rms_basis = BASIS_EXPLICIT if raw_basis is None else raw_basis
+        if isinstance(rms_basis, bool) or rms_basis not in KNOWN_BASES:
+            raise InvalidNominalFrequencyError(
+                f"nominal_frequency_basis must be one of {', '.join(KNOWN_BASES)} (got {raw_basis!r})."
+            )
+        if rms_basis == BASIS_RECORDING and frequency_access is None:
+            raise InvalidNominalFrequencyError("A recording-following frequency cannot be verified without the recording's authority.")
+        if frequency_access is not None:
+            grounding = frequency_access.for_source(workspace_id, first.reference_source_id)
+            rms_origin, rms_revision = grounding.origin, grounding.revision
+            if rms_basis == BASIS_RECORDING and not (grounding.usable and abs(grounding.hz - nominal_frequency_hz) <= 1e-9):
+                now = "not usable" if not grounding.usable else f"{grounding.hz:g} Hz"
+                raise InvalidNominalFrequencyError(
+                    f"The recording's nominal frequency is now {now}, not {nominal_frequency_hz:g} Hz. Reload the recording's frequency "
+                    "(or choose a frequency explicitly) and calculate again."
+                )
 
         eligibility = check_rms_eligibility(
             workspace_id=workspace_id,
@@ -1389,11 +1498,12 @@ def create_calculated_channel(
         # eligibility judgment above (owner section 40/41: these are not
         # a "may this signal be misinterpreted" judgment call, they are
         # "can a one-cycle RMS even be computed meaningfully at all").
-        if not rms_recording_long_enough(first.time, nominal_frequency_hz):
+        prerequisite_failure = check_rms_window_prerequisites(first.time, nominal_frequency_hz)
+        if prerequisite_failure is RmsPrerequisiteFailure.RECORDING_TOO_SHORT:
             raise RmsRecordingTooShortError(
                 "Recording is shorter than one complete RMS window."
             )
-        if not rms_sampling_dense_enough(first.time, nominal_frequency_hz):
+        if prerequisite_failure is RmsPrerequisiteFailure.SAMPLING_TOO_SPARSE:
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the RMS window to produce a meaningful result."
             )
@@ -1493,6 +1603,7 @@ def create_calculated_channel(
             v_scale_to_si=power_v_scale,
             i_values=effective_values[1],
             i_scale_to_si=power_i_scale,
+            nominal_frequency_hz=power_frequency.hz,
         )
     elif operation in THREE_PHASE_POWER_OPERATIONS:
         values = evaluate_three_phase_power_channel(
@@ -1510,6 +1621,7 @@ def create_calculated_channel(
             v3_scale_to_si=power_3ph_scales[4],
             i3_values=effective_values[5],
             i3_scale_to_si=power_3ph_scales[5],
+            nominal_frequency_hz=power_frequency.hz,
         )
     elif operation == OP_ADDITION:
         values = evaluate_addition(effective_values)
@@ -1528,6 +1640,13 @@ def create_calculated_channel(
             "window_mode": "trailing",
             "rms_kind": "true_rms",
         }
+        if frequency_access is not None:
+            # NF-3E / O-6: the declared intent and the recording's origin and revision at creation (informational; staleness is derived).
+            output_parameters |= {
+                "nominal_frequency_basis": rms_basis,
+                "nominal_frequency_origin": rms_origin,
+                "nominal_frequency_revision": rms_revision,
+            }
     elif operation == OP_ROCOF:
         # Retained explicitly (like RMS's window_mode/rms_kind): a stored
         # channel always states how it was differentiated and whether it
@@ -1540,14 +1659,15 @@ def create_calculated_channel(
         }
     elif operation in POWER_OPERATIONS:
         output_parameters = {
-            "nominal_frequency_hz": 50.0,
+            "nominal_frequency_hz": power_frequency.hz,
             "window_mode": "trailing",
             "sign_convention": "passive",
         }
+        output_parameters |= _power_frequency_provenance(power_frequency)
     elif operation in THREE_PHASE_POWER_OPERATIONS:
         assert _3ph_vref is not None  # always set when THREE_PHASE_POWER_OPERATIONS reaches here
         output_parameters = {
-            "nominal_frequency_hz": 50.0,
+            "nominal_frequency_hz": power_frequency.hz,
             "window_mode": "trailing",
             "sign_convention": "passive",
             "voltage_reference": _3ph_vref.reference,
@@ -1556,6 +1676,7 @@ def create_calculated_channel(
             "voltage_reference_evidence_names": list(_3ph_vref.evidence_names),
             "phase_pairing_confirmed": phase_pairing_confirmed,
         }
+        output_parameters |= _power_frequency_provenance(power_frequency)
     else:
         output_parameters = {}
 

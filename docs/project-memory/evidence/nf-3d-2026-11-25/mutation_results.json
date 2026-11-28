@@ -1,0 +1,96 @@
+{
+ "count": 17,
+ "killed": 17,
+ "results": [
+  {
+   "mutation": "M1 an unusable authority substitutes 50 Hz instead of refusing",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAnUnusableDeclarationIsATypedRefusal::test_every_surface_refuses_and_computes_nothing[declared_zero] | 1 failed, 14 passed in 41.42s"
+  },
+  {
+   "mutation": "M2 the unusable-authority refusal is skipped (the value reaches the kernel path)",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAnUnusableDeclarationIsATypedRefusal::test_no_surface_is_an_internal_server_error[declared_zero] | 1 failed, 8 passed in 28.64s"
+  },
+  {
+   "mutation": "M3 an invalid explicit override is accepted",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAnExplicitOverrideStillWinsAndHasNoProvenance::test_an_invalid_override_keeps_the_existing_message[0.0] | 1 failed, 38 passed in 36.17s"
+  },
+  {
+   "mutation": "M4 an unusable authority is reported under the conflict reason",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAnUnusableDeclarationIsATypedRefusal::test_the_reason_is_the_established_invalid_reference_frequency[declared_zero] | 1 failed, 20 passed in 28.64s"
+  },
+  {
+   "mutation": "M5 the decision drops the provenance of a computed frequency",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAUsableFrequencyIsComputedAndLabelled::test_phasor_and_overcurrent_report_the_declared_frequency_and_its_origin[r50-50.0] | 1 failed in 19.52s"
+  },
+  {
+   "mutation": "M6 an explicit override carries a recording provenance",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAnExplicitOverrideStillWinsAndHasNoProvenance::test_a_valid_override_wins_over_an_unusable_declaration | 1 failed, 37 passed in 38.69s"
+  },
+  {
+   "mutation": "M7 mixed origins are summarised as one origin",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestProvenanceIsPerRecordingAndIsolated::test_two_agreeing_recordings_with_different_origins_report_no_single_origin | 1 failed, 51 passed in 45.89s"
+  },
+  {
+   "mutation": "M8 a multi-recording revision is reported as the first recording's",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestProvenanceIsPerRecordingAndIsolated::test_two_agreeing_recordings_with_one_origin_report_that_origin_and_both_sources | 1 failed, 50 passed in 42.01s"
+  },
+  {
+   "mutation": "M9 the origin is hard-coded to recording_metadata",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAUsableFrequencyIsComputedAndLabelled::test_an_assumed_frequency_is_labelled_assumed_not_declared | 1 failed, 4 passed in 16.36s"
+  },
+  {
+   "mutation": "M10 the sampling pre-check is stricter than the estimator (floor instead of ceil)",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestThePreCheckIsNeverStricterThanTheEstimators::test_phasor_rule_equals_the_estimators_best_case[250.0-2000.0] | 1 failed, 90 passed in 51.40s"
+  },
+  {
+   "mutation": "M11 the sampling pre-check never refuses",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestASupportedFrequencyIsNotAnInvalidOne::test_a_valid_frequency_the_sampling_cannot_hold_is_a_sampling_reason_not_an_invalid_frequency | 1 failed, 57 passed in 48.17s"
+  },
+  {
+   "mutation": "M12 phasor: the sampling pre-check is skipped before the detector",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestASupportedFrequencyIsNotAnInvalidOne::test_a_valid_frequency_the_sampling_cannot_hold_is_a_sampling_reason_not_an_invalid_frequency | 1 failed, 57 passed in 48.23s"
+  },
+  {
+   "mutation": "M13 phasor: a sampling limit is reported as a waveform-form refusal",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestASupportedFrequencyIsNotAnInvalidOne::test_a_valid_frequency_the_sampling_cannot_hold_is_a_sampling_reason_not_an_invalid_frequency | 1 failed, 57 passed in 48.14s"
+  },
+  {
+   "mutation": "M14 overcurrent: a sampling limit is reported as a waveform-form refusal",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestASupportedFrequencyIsNotAnInvalidOne::test_overcurrent_names_its_own_sampling_limit | 1 failed, 59 passed in 52.37s",
+   "first_run": {
+    "result": "SURVIVED",
+    "evidence": "295 passed in 116.90s (0:01:56)"
+   },
+   "note": "Survived the first run: no test drove the overcurrent sampling limit. Two tests were added (test_overcurrent_names_its_own_sampling_limit, test_overcurrent_computes_where_its_own_minimum_is_met_although_the_phasor_minimum_is_not) and the mutation was rerun and killed."
+  },
+  {
+   "mutation": "M15 the router drops the provenance fields of the phasor result",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAUsableFrequencyIsComputedAndLabelled::test_phasor_and_overcurrent_report_the_declared_frequency_and_its_origin[r50-50.0] | 1 failed in 21.63s"
+  },
+  {
+   "mutation": "M16 the wire mixin always reports no provenance",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAUsableFrequencyIsComputedAndLabelled::test_phasor_and_overcurrent_report_the_declared_frequency_and_its_origin[r50-50.0] | 1 failed in 20.81s"
+  },
+  {
+   "mutation": "M17 the server gate is ignored (Manual honoured while the gate is closed)",
+   "result": "KILLED",
+   "evidence": "FAILED tests/test_nf3d_behaviour.py::TestAnUnusableDeclarationIsATypedRefusal::test_the_message_names_the_declared_value_and_offers_only_a_remedy_that_exists | 1 failed, 26 passed in 32.87s"
+  }
+ ]
+}

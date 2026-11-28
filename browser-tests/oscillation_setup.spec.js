@@ -758,7 +758,7 @@ test.describe("Oscillation Analysis setup -- raw V/I RMS magnitude representatio
     await expect(info(page, "wwOscInfoUsableDuration")).toHaveText("4.98 s (first 0.02 s lost to the RMS window)");
     await expect(info(page, "wwOscInfoSourceCount")).toHaveText("5001");
     await expect(info(page, "wwOscInfoDerivedCount")).toHaveText("4981");
-    await expect(info(page, "wwOscInfoNominal")).toHaveText("50 Hz (from the recording)");
+    await expect(info(page, "wwOscInfoNominal")).toHaveText("50 Hz (From recording)");
     await expect(info(page, "wwOscInfoTimeAlignment")).toHaveText("Source time; trailing 20 ms window, magnitude lags by 10 ms");
     await expect(info(page, "wwOscInfoBandwidth")).toContainText("0 to 22.15 Hz (−3 dB)");
     await expect(info(page, "wwOscInfoBandwidth")).toContainText("none at or above 50 Hz");
@@ -1170,7 +1170,7 @@ test.describe("Oscillation Analysis -- Frequency Spectrum (Welch PSD)", () => {
     expect(requests[0].representation).toBe("rms_magnitude");
     expect(requests[0].window_start_s).toBeCloseTo(0.02, 6); // the representation's usable range
     await expect(specDetail(page, "Analysis representation")).toHaveText("RMS magnitude");
-    await expect(specDetail(page, "Nominal frequency")).toHaveText("50 Hz (from the recording)");
+    await expect(specDetail(page, "Nominal frequency")).toHaveText("50 Hz (From recording)");
     expect(axisTitle((await plotData(page)).layout.yaxis)).toBe("PSD (V²/Hz)");
   });
 

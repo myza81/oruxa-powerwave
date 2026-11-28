@@ -1,0 +1,184 @@
+{
+ "variant_keys_sample": [
+  "declared_50",
+  "declared_50_0",
+  "declared_60",
+  "declared_60_0",
+  "declared_25",
+  "declared_16_7",
+  "declared_400",
+  "declared_1000",
+  "declared_50_padded",
+  "declared_plus_50",
+  "declared_exponent_5e1",
+  "declared_underscore_5_0",
+  "declared_out_of_range_1001",
+  "declared_out_of_range_0_5",
+  "declared_tiny",
+  "declared_huge",
+  "declared_zero",
+  "declared_zero_float",
+  "declared_negative_zero",
+  "declared_negative_50"
+ ],
+ "upload_declared_50": 201,
+ "upload_declared_60": 201,
+ "upload_declared_zero": 201,
+ "channel_used": "VA",
+ "source_summary_nominal_declared_50": 50.0,
+ "source_summary_nominal_declared_60": 60.0,
+ "source_summary_nominal_declared_zero": 0.0,
+ "rms_eligibility_declared_50": [
+  {
+   "request_nominal_hz": 50,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  },
+  {
+   "request_nominal_hz": 60,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  },
+  {
+   "request_nominal_hz": 0,
+   "http": 500,
+   "body": "Internal Server Error"
+  },
+  {
+   "request_nominal_hz": -50,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  }
+ ],
+ "rms_create_declared_50": [
+  {
+   "request_nominal_hz": 0,
+   "http": 400,
+   "code": "invalid_nominal_frequency"
+  },
+  {
+   "request_nominal_hz": -50,
+   "http": 400,
+   "code": "invalid_nominal_frequency"
+  },
+  {
+   "request_nominal_hz": 60,
+   "http": 400,
+   "code": "rms_override_required"
+  }
+ ],
+ "rms_eligibility_declared_60": [
+  {
+   "request_nominal_hz": 50,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  },
+  {
+   "request_nominal_hz": 60,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  },
+  {
+   "request_nominal_hz": 0,
+   "http": 500,
+   "body": "Internal Server Error"
+  },
+  {
+   "request_nominal_hz": -50,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  }
+ ],
+ "rms_create_declared_60": [
+  {
+   "request_nominal_hz": 0,
+   "http": 400,
+   "code": "invalid_nominal_frequency"
+  },
+  {
+   "request_nominal_hz": -50,
+   "http": 400,
+   "code": "invalid_nominal_frequency"
+  },
+  {
+   "request_nominal_hz": 60,
+   "http": 400,
+   "code": "rms_override_required"
+  }
+ ],
+ "rms_eligibility_declared_zero": [
+  {
+   "request_nominal_hz": 50,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  },
+  {
+   "request_nominal_hz": 60,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  },
+  {
+   "request_nominal_hz": 0,
+   "http": 500,
+   "body": "Internal Server Error"
+  },
+  {
+   "request_nominal_hz": -50,
+   "http": 200,
+   "body": {
+    "status": "uncertain",
+    "reason": "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.",
+    "override_required": true
+   }
+  }
+ ],
+ "rms_create_declared_zero": [
+  {
+   "request_nominal_hz": 0,
+   "http": 400,
+   "code": "invalid_nominal_frequency"
+  },
+  {
+   "request_nominal_hz": -50,
+   "http": 400,
+   "code": "invalid_nominal_frequency"
+  },
+  {
+   "request_nominal_hz": 60,
+   "http": 400,
+   "code": "rms_override_required"
+  }
+ ]
+}

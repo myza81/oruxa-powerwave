@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import OP_RMS, OP_REVERSE_POLARITY, ChannelRef
 from app.domain.channel_classification import WAVEFORM_FORM_INSTANTANEOUS, WAVEFORM_FORM_RMS, WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
@@ -92,7 +93,7 @@ def _ready(registries, channel_name="IA", representation=REPRESENTATION_RMS_MAGN
     source_registry, calc_registry = registries
     return derive_analysis_representation(
         workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src", channel_name=channel_name),
-        representation=representation, source_registry=source_registry, calc_registry=calc_registry,
+        representation=representation, source_registry=source_registry, frequency_access=access_for(source_registry), calc_registry=calc_registry,
     )
 
 
@@ -281,7 +282,7 @@ class TestService:
         )
         result = derive_analysis_representation(
             workspace_id=WS, input_ref=ChannelRef(kind="calculated", calculated_channel_id=neg.id),
-            representation=REPRESENTATION_RMS_MAGNITUDE, source_registry=source_registry, calc_registry=calc_registry,
+            representation=REPRESENTATION_RMS_MAGNITUDE, source_registry=source_registry, frequency_access=access_for(source_registry), calc_registry=calc_registry,
         )
         assert result.status == STATUS_READY
         assert len(calc_registry.list_for_workspace(WS)) == 1  # only the one the test made
@@ -297,7 +298,7 @@ class TestService:
         )
         result = derive_analysis_representation(
             workspace_id=WS, input_ref=ChannelRef(kind="calculated", calculated_channel_id=rms.id),
-            representation=REPRESENTATION_RMS_MAGNITUDE, source_registry=source_registry, calc_registry=calc_registry,
+            representation=REPRESENTATION_RMS_MAGNITUDE, source_registry=source_registry, frequency_access=access_for(source_registry), calc_registry=calc_registry,
         )
         assert result.reason_code == "already_magnitude"
 

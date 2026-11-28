@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.nf3c_access_support import access_for
 from app.domain.measurement_group import KIND_CURRENT
 from app.domain.analysis_input_resolution import STATUS_NEEDS_CONFIGURATION
 from app.domain.overcurrent import OVERCURRENT_STATUS_COMPUTED
@@ -326,7 +327,7 @@ def test_an_unsupported_unit_keeps_the_channel_identity(registries):
         workspace_id="ws-1", engineering_context_id="ec-1", phase="A", analysis_time=1.5,
         characteristic_id="iec_standard_inverse", tms=0.1, pickup_current_secondary=1.0,
         recording_basis="secondary", ct_primary=None, ct_secondary=None, reference_frequency_hz_override=None,
-        context_registry=registries["context"], source_registry=registries["source"],
+        context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"],
         calculated_channel_registry=registries["calc"], authority=_authority(registries),
     )
     assert (result.status, result.reason_code) == (STATUS_NEEDS_CONFIGURATION, "unsupported_current_unit")
