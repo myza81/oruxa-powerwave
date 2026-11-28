@@ -94,7 +94,11 @@ class TestActualCalculationSucceeds:
     pre-fault analysis_time where the measured current is well-defined."""
 
     def test_overcurrent_one_cycle_rms_succeeds(self, client, comtrade_fixtures_dir):
-        _upload(client, "ws-1", comtrade_fixtures_dir)
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        # D5A-2B2C-1A: the recording declares no Primary/Secondary side, and the side of a recorded current now comes only
+        # from Recording Details, so the engineer states it there (the request's own `recording_basis` is just an assertion).
+        side = client.put(f"/api/v1/workspaces/ws-1/sources/{source_id}/measurement-side", json={"side": "secondary", "note": None})
+        assert side.status_code == 200, side.text
         ctx_id = _context_id(client, "ws-1")
         resp = client.get(
             f"/api/v1/workspaces/ws-1/engineering-contexts/{ctx_id}/overcurrent",
@@ -109,24 +113,27 @@ class TestActualCalculationSucceeds:
         assert body["measured_rms_current"] == pytest.approx(40.0, rel=0.05)
 
     def test_impedance_phasor_and_point_succeed(self, client, comtrade_fixtures_dir):
-        _upload(client, "ws-1", comtrade_fixtures_dir)
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        # D5A-2B2C-1B: this recording declares no Primary/Secondary side and the side of a recorded impedance comes only from
+        # Recording Details, so the engineer states it there; the request carries only the requested output side.
+        side = client.put(f"/api/v1/workspaces/ws-1/sources/{source_id}/measurement-side", json={"side": "secondary", "note": None})
+        assert side.status_code == 200, side.text
         ctx_id = _context_id(client, "ws-1")
         resp = client.get(
             f"/api/v1/workspaces/ws-1/engineering-contexts/{ctx_id}/impedance",
-            params={"phase": "A", "analysis_time": 0.1, "recording_basis": "secondary", "impedance_basis": "secondary"},
+            params={"phase": "A", "analysis_time": 0.1, "impedance_basis": "secondary"},
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["status"] == "computed", resp.json()
 
     def test_distance_loop_calculation_succeeds(self, client, comtrade_fixtures_dir):
-        _upload(client, "ws-1", comtrade_fixtures_dir)
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        side = client.put(f"/api/v1/workspaces/ws-1/sources/{source_id}/measurement-side", json={"side": "secondary", "note": None})
+        assert side.status_code == 200, side.text
         ctx_id = _context_id(client, "ws-1")
         resp = client.get(
             f"/api/v1/workspaces/ws-1/engineering-contexts/{ctx_id}/distance-protection",
-            params={
-                "loop": "AB", "analysis_time": 0.1, "recording_basis": "secondary",
-                "impedance_basis": "secondary", "characteristic": "mho",
-            },
+            params={"loop": "AB", "analysis_time": 0.1, "impedance_basis": "secondary", "characteristic": "mho"},
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["status"] == "computed", resp.json()

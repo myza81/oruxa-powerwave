@@ -1,0 +1,57 @@
+VOLTAGE  (132 kV L-L, VT 138 kV/110 V, secondary_voltage_ll_v=110 V; truth=what the samples physically are)
+truth     declared  base side    denominator V  compat      status                  pu  reason
+primary   primary   primary           132000.0  compatible  configured        1.000000  
+primary   primary   secondary            110.0  incompatiblebase_required            -  voltage_reference_side_incompatible
+primary   primary   unknown           132000.0  unverified  configured        1.000000  
+primary   unknown   primary           132000.0  unverified  configured        1.000000  
+primary   unknown   secondary            110.0  unverified  configured     1200.000000  
+primary   unknown   unknown           132000.0  unverified  configured        1.000000  
+secondary secondary primary           132000.0  incompatiblebase_required            -  voltage_reference_side_incompatible
+secondary secondary secondary            110.0  compatible  configured        0.956522  
+secondary secondary unknown           132000.0  unverified  configured        0.000797  
+secondary unknown   primary           132000.0  unverified  configured        0.000797  
+secondary unknown   secondary            110.0  unverified  configured        0.956522  
+secondary unknown   unknown           132000.0  unverified  configured        0.000797  
+
+CURRENT  apply_current_reference (plain = raw/single-authority automatic; strict = Manual; strict+cross = cross-authority)
+declared=primary   base=primary   plain        compatible  configured    
+declared=primary   base=primary   strict       compatible  configured    
+declared=primary   base=primary   strict+cross compatible  configured    
+declared=primary   base=secondary plain        incompatiblebase_required current_reference_side_incompatible
+declared=primary   base=secondary strict       incompatiblebase_required current_reference_side_incompatible
+declared=primary   base=secondary strict+cross incompatiblebase_required current_reference_side_incompatible
+declared=primary   base=unknown   plain        unverified  configured    
+declared=primary   base=unknown   strict       unverified  base_required current_reference_side_unknown
+declared=primary   base=unknown   strict+cross unverified  base_required current_reference_side_unknown
+declared=secondary base=primary   plain        incompatiblebase_required current_reference_side_incompatible
+declared=secondary base=primary   strict       incompatiblebase_required current_reference_side_incompatible
+declared=secondary base=primary   strict+cross incompatiblebase_required current_reference_side_incompatible
+declared=secondary base=secondary plain        compatible  configured    
+declared=secondary base=secondary strict       compatible  configured    
+declared=secondary base=secondary strict+cross unverified  base_required current_secondary_reference_unestablished
+declared=secondary base=unknown   plain        unverified  configured    
+declared=secondary base=unknown   strict       unverified  base_required current_reference_side_unknown
+declared=secondary base=unknown   strict+cross unverified  base_required current_reference_side_unknown
+declared=unknown   base=primary   plain        unverified  configured    
+declared=unknown   base=primary   strict       unverified  base_required current_reference_side_unknown
+declared=unknown   base=primary   strict+cross unverified  base_required current_reference_side_unknown
+declared=unknown   base=secondary plain        unverified  configured    
+declared=unknown   base=secondary strict       unverified  base_required current_reference_side_unknown
+declared=unknown   base=secondary strict+cross unverified  base_required current_reference_side_unknown
+declared=unknown   base=unknown   plain        unverified  configured    
+declared=unknown   base=unknown   strict       unverified  base_required current_reference_side_unknown
+declared=unknown   base=unknown   strict+cross unverified  base_required current_reference_side_unknown
+
+GATE AGREEMENT (Voltage, declared secondary vs stored base side primary):
+{
+  "display": {
+    "status": "base_required",
+    "compat": "incompatible",
+    "reason": "voltage_reference_side_incompatible"
+  },
+  "coverage_or_calculated_provenance": {
+    "status": "configured",
+    "compat": "unverified",
+    "reason": null
+  }
+}

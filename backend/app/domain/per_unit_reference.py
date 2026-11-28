@@ -1,9 +1,81 @@
-"""Current and Voltage reference proof only: never scales samples or chooses a base."""
-from dataclasses import replace
-from typing import Literal
+"""Current and Voltage reference proof only: never scales samples or chooses a base.
+
+PU-MIG S2 (raw Voltage): when the caller supplies the consumed channel's Recording Details side authority
+(`RawVoltageSideInputs`) AND the base resolver handed on an established base (`PerUnitResolution.base_descriptor`), the
+denominator is placed on the sample's side by `side_denominator.resolve_side_denominator()` -- the one arithmetic authority.
+This module neither chooses a base (that stays with the base resolvers, D-4/D-5) nor decides a side or a ratio (those are
+read from Recording Details by the caller) nor scales samples. A sample side that is not strict-usable keeps the historical
+gate unchanged and is labelled `unverified_historical` (D-1, option R+).
+"""
+from dataclasses import dataclass, replace
+from typing import Callable, Literal
 
 from app.domain.per_unit import STATUS_CONFIGURED, STATUS_BASE_REQUIRED, PerUnitResolution
 from app.domain.reference_side import configured_base_side
+from app.domain.side_denominator import (
+    QUANTITY_CURRENT,
+    QUANTITY_VOLTAGE,
+    REASON_CT_AUTHORITY_UNAVAILABLE,
+    REASON_DENOMINATOR_NOT_REPRESENTABLE,
+    REASON_INVALID_BASE_VALUE,
+    REASON_VT_AUTHORITY_UNAVAILABLE,
+    SIDE_PRIMARY,
+    SIDE_SECONDARY,
+    SampleSide,
+    SideBase,
+    SideDenominator,
+    SideRatio,
+    resolve_side_denominator,
+)
+
+#: D-1 (R+): one explicit verification state, read by every PU surface. Values are fixed by the S0 reconciliation.
+VERIFIED_DIRECT = "verified_direct"
+VERIFIED_CONVERTED = "verified_converted"
+UNVERIFIED_HISTORICAL = "unverified_historical"
+BLOCKED = "blocked"
+VERIFICATION_STATES = (VERIFIED_DIRECT, VERIFIED_CONVERTED, UNVERIFIED_HISTORICAL, BLOCKED)
+
+#: N-2: the resolver's refusals reuse the existing production vocabulary -- a required VT that is not authoritative is the
+#: existing `voltage_reference_side_incompatible` PU reason (known Primary/Secondary mismatch with nothing to reconcile
+#: it), a non-representable denominator is the existing `effective_base_not_representable`. The resolver's own code and
+#: detail travel additively in `SideProvenance.refusal_*`.
+REASON_SIDE_INCOMPATIBLE = "voltage_reference_side_incompatible"
+REASON_BASE_NOT_REPRESENTABLE = "effective_base_not_representable"
+#: PU-MIG S4 (Current): the same mapping for a required CT that is not authoritative -- the existing Current reason for a known
+#: Primary/Secondary mismatch with nothing to reconcile it (`apply_current_reference`).
+REASON_CURRENT_SIDE_INCOMPATIBLE = "current_reference_side_incompatible"
+
+
+@dataclass(frozen=True, slots=True)
+class SideProvenance:
+    """Verification and conversion provenance of one raw Voltage result. Echoes what the resolver used; carries no number
+    of its own and never replaces `PerUnitResolution.base_amount`."""
+
+    verification_state: str
+    conversion: str | None = None
+    effective_side: str | None = None
+    side_authority: str | None = None
+    ratio_applied: float | None = None
+    ratio_authority: str | None = None
+    ratio_group_ids: tuple[str, ...] = ()
+    denominator_side: str | None = None
+    base_kind: str | None = None
+    base_side: str | None = None
+    refusal_reason: str | None = None
+    refusal_detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RawVoltageSideInputs:
+    """What Recording Details says about the consumed raw Voltage channel. `ratio_for` is called only when the base side
+    differs from the sample side (the ratio is never read for a same-side result) and returns the VT of the channel's own
+    Measurement Group, or None when the caller cannot establish one."""
+
+    sample: SampleSide
+    ratio_for: Callable[[], SideRatio | None]
+    #: PU-MIG S3 (calculated Voltage): set when the strict leaves of a calculated result disagree on their side
+    #: (`calculated_side_lineage.REASON_LEAF_SIDES_DIFFER`). The result is refused; no number, no ratio read.
+    refusal: str | None = None
 
 ReferenceCompatibility = Literal["compatible", "incompatible", "unverified"]
 
@@ -75,15 +147,113 @@ def apply_voltage_reference(
     return updated
 
 
+def apply_strict_voltage_reference(
+    resolution: PerUnitResolution, side_inputs: RawVoltageSideInputs, measurement_side: str, base_side: str,
+) -> PerUnitResolution:
+    """Raw Voltage with a strict-usable sample side: place the established base on that side (S2).
+
+    Preconditions are checked by the caller (`apply_source_reference`): the resolution is configured, carries a base
+    descriptor and a representation, and the sample side is strict-usable."""
+    return _apply_strict_reference(QUANTITY_VOLTAGE, resolution, side_inputs)
+
+
+def apply_strict_current_reference(resolution: PerUnitResolution, side_inputs: RawVoltageSideInputs) -> PerUnitResolution:
+    """PU-MIG S4: the Current twin of `apply_strict_voltage_reference` -- the established Ibase placed on the strict sample side by the
+    same resolver, the ratio being the CT of the Measurement Group that owns the base. A Current base has no L-G/L-L representation."""
+    return _apply_strict_reference(QUANTITY_CURRENT, resolution, side_inputs)
+
+
+def place_current_base(descriptor: SideBase, sample: SampleSide, ratio_for: Callable[[], SideRatio | None]) -> SideDenominator:
+    """PU-MIG S4: one Current base placed on the sample's side by the S1 resolver (the ratio is read only for a conversion). The calculated
+    Current common-base comparison (K-3) calls this, so `resolve_side_denominator()` keeps its single production call site (this module)."""
+    return resolve_side_denominator(
+        QUANTITY_CURRENT, descriptor, sample, ratio_for() if descriptor.declared_side != sample.side else None)
+
+
+def _apply_strict_reference(quantity: str, resolution: PerUnitResolution, side_inputs: RawVoltageSideInputs) -> PerUnitResolution:
+    descriptor, sample = resolution.base_descriptor, side_inputs.sample
+    if quantity == QUANTITY_CURRENT:
+        result = place_current_base(descriptor, sample, side_inputs.ratio_for)
+    else:
+        ratio = side_inputs.ratio_for() if descriptor.declared_side != sample.side else None
+        result = resolve_side_denominator(quantity, descriptor, sample, ratio, representation=resolution.representation)
+    provenance = SideProvenance(
+        verification_state=BLOCKED, effective_side=sample.side, side_authority=sample.authority,
+        base_kind=descriptor.kind, base_side=descriptor.declared_side,
+    )
+    if result.resolved:
+        direct = result.ratio_applied is None
+        return replace(
+            resolution, base_amount=result.denominator, reference_compatibility="compatible",
+            measurement_side=sample.side, base_reference_side=descriptor.declared_side,
+            side_provenance=replace(
+                provenance, verification_state=VERIFIED_DIRECT if direct else VERIFIED_CONVERTED,
+                conversion=result.conversion, ratio_applied=result.ratio_applied, ratio_authority=result.ratio_authority,
+                ratio_group_ids=result.ratio_group_ids, denominator_side=result.denominator_side,
+            ),
+        )
+    if result.reason in (REASON_VT_AUTHORITY_UNAVAILABLE, REASON_CT_AUTHORITY_UNAVAILABLE):
+        reason = REASON_SIDE_INCOMPATIBLE if quantity == QUANTITY_VOLTAGE else REASON_CURRENT_SIDE_INCOMPATIBLE
+        compatibility = "incompatible"
+    elif result.reason in (REASON_DENOMINATOR_NOT_REPRESENTABLE, REASON_INVALID_BASE_VALUE):
+        reason, compatibility = REASON_BASE_NOT_REPRESENTABLE, "compatible"
+    else:  # an invalid request is a defect of the caller, never a number
+        reason, compatibility = result.reason, "unverified"
+    return replace(
+        resolution, status=STATUS_BASE_REQUIRED, base_amount=None, reason=reason, reference_compatibility=compatibility,
+        measurement_side=sample.side, base_reference_side=descriptor.declared_side,
+        side_provenance=replace(provenance, refusal_reason=result.reason, refusal_detail=result.detail),
+    )
+
+
+def qualify_historical(historical: PerUnitResolution, side_inputs: RawVoltageSideInputs, *, base_side: str) -> PerUnitResolution:
+    """D-1 (R+): the historical result is kept bit-for-bit and explicitly qualified (shared by raw Voltage and raw / calculated Current).
+
+    A result of the historical gate is NEVER verified. A compatible or strict reference-side LABEL does not prove that the numerical
+    denominator is expressed on that side (a Source Default that stores `secondary` carries the nominal Primary voltage; a legacy manual
+    Current base is only as right as its declaration): `verified_direct` / `verified_converted` are produced only by the S1 resolver,
+    which places a base on the sample's side, and claim a denominator side, a conversion and a ratio. Here the state is
+    `unverified_historical`, or `blocked` when the gate refused; no denominator side, conversion or ratio is claimed."""
+    state = BLOCKED if historical.status != STATUS_CONFIGURED else UNVERIFIED_HISTORICAL
+    return replace(historical, side_provenance=SideProvenance(
+        verification_state=state, effective_side=side_inputs.sample.side,
+        side_authority=side_inputs.sample.authority, base_side=base_side,
+        refusal_reason=historical.reason if state == BLOCKED else None,
+    ))
+
+
+def _strict_sample(side_inputs: RawVoltageSideInputs | None) -> bool:
+    return (
+        side_inputs is not None and side_inputs.sample.problem is None
+        and side_inputs.sample.side in (SIDE_PRIMARY, SIDE_SECONDARY)
+    )
+
+
 def apply_source_reference(
     resolution, engineering_type, measurement_side="unknown", *,
-    group_config=None, profile=None, voltage_group_config=None,
+    group_config=None, profile=None, voltage_group_config=None, side_inputs: RawVoltageSideInputs | None = None,
 ):
     """Shared raw-channel gate after group/default authority has been selected."""
     if engineering_type == "Current":
         side = configured_base_side(group_config.method, group_config.base_reference_side) if group_config else (
             configured_base_side(profile.current_base_mode, profile.current_base_reference_side) if profile else "unknown")
-        return apply_current_reference(resolution, [measurement_side], [side])
+        strict = _strict_sample(side_inputs)
+        if (
+            strict and resolution.status == STATUS_CONFIGURED and resolution.base_descriptor is not None
+            and resolution.base_descriptor.declared_side in (SIDE_PRIMARY, SIDE_SECONDARY)
+        ):
+            return apply_strict_current_reference(resolution, side_inputs)
+        # Otherwise (a base whose side is not declared -- never assumed Primary -- or a sample side that is not strict) the historical gate
+        # decides, exactly as before, and its result is never verified. The raw declaration decides; Recording Details' strict effective side
+        # (DEC-216) may only ADD a block when it contradicts the base label -- it never turns a blocked result into an allowed one.
+        historical = apply_current_reference(resolution, [measurement_side], [side])
+        if strict and historical.status == STATUS_CONFIGURED:
+            by_effective = apply_current_reference(resolution, [side_inputs.sample.side], [side])
+            if by_effective.status != STATUS_CONFIGURED:
+                historical = by_effective
+        if side_inputs is not None and resolution.status == STATUS_CONFIGURED:
+            historical = qualify_historical(historical, side_inputs, base_side=side)
+        return historical
     if engineering_type == "Voltage":
         if voltage_group_config is not None:
             base_side = voltage_group_config.base_reference_side
@@ -91,5 +261,35 @@ def apply_source_reference(
             base_side = profile.voltage_base_reference_side
         else:
             base_side = "unknown"
-        return apply_voltage_reference(resolution, measurement_side, base_side)
+        if (
+            side_inputs is not None and side_inputs.refusal is not None and resolution.status == STATUS_CONFIGURED
+            and resolution.base_descriptor is not None
+        ):
+            return replace(
+                resolution, status=STATUS_BASE_REQUIRED, base_amount=None, reason=REASON_SIDE_INCOMPATIBLE,
+                reference_compatibility="incompatible", base_reference_side=resolution.base_descriptor.declared_side,
+                side_provenance=SideProvenance(
+                    verification_state=BLOCKED, base_kind=resolution.base_descriptor.kind,
+                    base_side=resolution.base_descriptor.declared_side, refusal_reason=side_inputs.refusal,
+                ),
+            )
+        if (
+            _strict_sample(side_inputs) and resolution.status == STATUS_CONFIGURED
+            and resolution.base_descriptor is not None and resolution.representation is not None
+        ):
+            return apply_strict_voltage_reference(resolution, side_inputs, measurement_side, base_side)
+        # The historical gate decides without the resolver: a base whose side is only a LABEL (a Source Default that stores `secondary`
+        # carries the nominal L-L voltage, never a Secondary denominator, D-5) or a side that is not strict. Its numbers are never altered
+        # and a result of this gate is never verified: the side of the DENOMINATOR is not established here, so neither `verified_direct`
+        # nor `verified_converted` (nor a denominator side or a conversion) can be claimed, whatever side Recording Details reports.
+        # Recording Details' effective side (DEC-216) may only ADD protection: when it is strict and contradicts the base label it is a known
+        # mismatch and blocks (DEC-211); it never turns a result the raw declaration blocked into an allowed one.
+        historical = apply_voltage_reference(resolution, measurement_side, base_side)
+        if _strict_sample(side_inputs):
+            by_effective = apply_voltage_reference(resolution, side_inputs.sample.side, base_side)
+            if by_effective.reference_compatibility == "incompatible":
+                historical = by_effective
+        if side_inputs is not None and resolution.status == STATUS_CONFIGURED:
+            historical = qualify_historical(historical, side_inputs, base_side=base_side)
+        return historical
     return resolution

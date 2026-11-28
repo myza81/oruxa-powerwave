@@ -47,7 +47,7 @@ class TestMainSidebarMenuUnaffected:
         body = _function_body(
             source,
             'document.getElementById("mainNavWaveformBtn").addEventListener("click"',
-            "document.getElementById(\"mainNavRecordingsBtn\")",
+            "document.getElementById(\"mainNavEventReconstructionBtn\")",
         )
         assert 'shellSetActiveView("waveform")' in body
 

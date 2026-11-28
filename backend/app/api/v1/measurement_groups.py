@@ -45,6 +45,8 @@ from app.services.current_group_config_service import (
     set_current_base_equipment_rating,
     set_current_base_manual,
     set_current_base_none,
+    update_current_ct_config,
+    update_equipment_rating_metadata,
 )
 from app.services.errors import ImportServiceError, SourceNotFoundError
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -54,8 +56,10 @@ from app.services.measurement_group_service import (
     generate_suggested_groups_for_source,
     update_group,
 )
+from app.services.measurement_side_registry import MeasurementSideRegistry
 from app.services.measurement_group_view_service import MeasurementGroupView, build_group_view, build_group_views_for_source
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
+from app.services.auto_base_service import reconfigure_auto_base_after_membership_change
 from app.services.voltage_group_config_service import (
     update_voltage_configuration,
 )
@@ -89,6 +93,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "ambiguous_current_voltage_source": status.HTTP_400_BAD_REQUEST,
     "missing_current_voltage_source": status.HTTP_400_BAD_REQUEST,
     "invalid_linked_voltage_group": status.HTTP_400_BAD_REQUEST,
+    "invalid_instrument_transformer_value": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -107,6 +112,10 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
     return request.app.state.current_group_config_registry
+
+
+def get_measurement_side_registry(request: Request) -> MeasurementSideRegistry:
+    return request.app.state.measurement_side_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -167,6 +176,17 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             detection_reason=view.voltage_config.detection_reason,
             base_reference_side=view.voltage_config.base_reference_side,
             secondary_voltage_ll_v=view.voltage_config.secondary_voltage_ll_v,
+            manual_conflict_detected=view.voltage_config.manual_conflict_detected,
+            manual_conflict_detail=view.voltage_config.manual_conflict_detail,
+            base_authority=view.voltage_config.base_authority,
+            vt_primary_v=view.voltage_config.vt_primary_v,
+            vt_secondary_v=view.voltage_config.vt_secondary_v,
+            vt_ratio=view.voltage_config.vt_ratio,
+            vt_authority=view.voltage_config.vt_authority,
+            vt_provenance_note=view.voltage_config.vt_provenance_note,
+            vt_effective_primary_v=view.voltage_config.vt_effective_primary_v,
+            vt_effective_secondary_v=view.voltage_config.vt_effective_secondary_v,
+            vt_effective_authority=view.voltage_config.vt_effective_authority,
         )
         if view.voltage_config is not None
         else None
@@ -181,6 +201,15 @@ def _view_to_out(view: MeasurementGroupView) -> MeasurementGroupOut:
             manual_ibase_ka=view.current_config.manual_ibase_ka,
             resolved_ibase_ka=view.current_config.resolved_ibase_ka,
             applicable_voltage_ll_kv=view.current_config.applicable_voltage_ll_kv,
+            base_authority=view.current_config.base_authority,
+            ct_primary_a=view.current_config.ct_primary_a,
+            ct_secondary_a=view.current_config.ct_secondary_a,
+            ct_ratio=view.current_config.ct_ratio,
+            ct_authority=view.current_config.ct_authority,
+            ct_provenance_note=view.current_config.ct_provenance_note,
+            equipment_mva=view.current_config.equipment_mva,
+            equipment_linked_voltage_group_id=view.current_config.equipment_linked_voltage_group_id,
+            equipment_rated_current_ka=view.current_config.equipment_rated_current_ka,
         )
         if view.current_config is not None
         else None
@@ -294,6 +323,10 @@ def get_measurement_group(
     return _view_to_out(view)
 
 
+# RD-1 acceptance criterion: changes to effective voltage-base values or authority
+# (including manual_conflict_detected transitions) must refresh or invalidate
+# affected PU displays and dependent analysis results on the frontend.
+# Unrelated results must remain unchanged.
 @router.patch("/{measurement_group_id}", response_model=MeasurementGroupOut)
 def update_measurement_group(
     workspace_id: str,
@@ -318,6 +351,7 @@ def update_measurement_group(
             display_name=body.display_name, status=body.status,
             channel_refs=_channel_refs_from_in(body.channel_refs) if body.channel_refs is not None else None,
             source_registry=source_registry,
+            voltage_config_registry=voltage_config_registry,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -337,6 +371,7 @@ def delete_measurement_group(
     group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
 ) -> None:
     """Idempotent. A group that exists but belongs to a DIFFERENT
     source is rejected with 404 (never silently deleted through the
@@ -357,6 +392,8 @@ def delete_measurement_group(
         workspace_id, measurement_group_id, registry=group_registry,
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
     )
+    # D5A-UI-002: the group's own measurement-side override is released with it.
+    measurement_side_registry.clear_group(workspace_id, source_id, measurement_group_id)
 
 
 @router.put("/{measurement_group_id}/voltage-config", response_model=MeasurementGroupOut)
@@ -365,6 +402,7 @@ def put_voltage_config(
     source_id: str,
     measurement_group_id: str,
     body: VoltageGroupConfigUpdateRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
@@ -372,6 +410,13 @@ def put_voltage_config(
     """Validate nominal voltage and reference together, then publish once.
     Omitted/null nominal voltage preserves the existing base; default auto
     reference mode clears the override. Voltage groups only.
+
+    RD-0B safety: when a nominal_voltage_ll_kv is supplied, the manual_conflict
+    flag is cleared by update_voltage_configuration() and then immediately
+    re-evaluated against the current channel evidence by
+    reconfigure_auto_base_after_membership_change().  This ensures that
+    setting an incompatible kV (e.g. 66 kV when channels indicate 275 kV)
+    re-flags the conflict rather than silently restoring PU eligibility.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
@@ -385,10 +430,25 @@ def put_voltage_config(
             reference_mode=body.reference_mode, reference_override=body.reference_override,
             base_reference_side=body.base_reference_side if "base_reference_side" in body.model_fields_set else None,
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            vt_primary_v=body.vt_primary_v,
+            vt_secondary_v=body.vt_secondary_v,
+            vt_provenance_note=body.vt_provenance_note,
+            clear_vt=body.clear_vt,
+            clear_nominal_voltage=body.clear_nominal_voltage,
             **kw,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
+    # RD-0B / D2: re-evaluate conflict after a nominal kV change or clear.
+    # update_voltage_configuration() cleared the flag; this call re-detects
+    # and re-flags if the new kV (or lack thereof) is still incompatible.
+    if body.nominal_voltage_ll_kv is not None or body.clear_nominal_voltage:
+        reconfigure_auto_base_after_membership_change(
+            workspace_id=workspace_id, source_id=source_id,
+            measurement_group_id=measurement_group_id,
+            source_registry=source_registry, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry,
+        )
     group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     view = build_group_view(
         group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
@@ -407,14 +467,57 @@ def put_current_config(
     voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> MeasurementGroupOut:
-    """Dispatches to exactly one of Slice 4's three method setters based
-    on `body.method` -- `KIND_CURRENT`-only. Cross-source/wrong-kind
-    linked-Voltage-group validation happens entirely inside
-    `set_current_base_equipment_rating()` (`InvalidLinkedVoltageGroupError`/
-    `MeasurementGroupNotFoundError`, translated below) -- never
-    re-validated at this layer."""
+    """Three dispatch paths:
+
+    1. ``update_equipment_metadata_only=True`` (D3): updates only the
+       independent equipment-rating metadata fields without touching the PU
+       current-base method.  ``method`` field is ignored in this path.
+    2. ``update_ct_only=True`` (D4): updates only CT instrument-transformer
+       fields without touching the PU current-base method.
+    3. ``update_equipment_metadata_only=False, update_ct_only=False`` (default):
+       dispatches to exactly one of Slice 4's three method setters based on
+       ``body.method`` -- existing behavior completely unchanged.
+    """
     workspace_id = _validate_workspace_id(workspace_id)
     _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+    if body.update_ct_only:
+        try:
+            update_current_ct_config(
+                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                group_registry=group_registry, current_config_registry=current_config_registry,
+                ct_primary_a=body.ct_primary_a,
+                ct_secondary_a=body.ct_secondary_a,
+                ct_provenance_note=body.ct_provenance_note,
+                clear_ct=body.clear_ct,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
+        group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+        view = build_group_view(
+            group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry,
+        )
+        return _view_to_out(view)
+    if body.update_equipment_metadata_only:
+        try:
+            update_equipment_rating_metadata(
+                workspace_id=workspace_id,
+                measurement_group_id=measurement_group_id,
+                equipment_mva=body.equipment_mva,
+                equipment_linked_voltage_group_id=body.equipment_linked_voltage_group_id,
+                clear_equipment_mva=body.clear_equipment_mva,
+                group_registry=group_registry,
+                current_config_registry=current_config_registry,
+                voltage_config_registry=voltage_config_registry,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
+        group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
+        view = build_group_view(
+            group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry,
+        )
+        return _view_to_out(view)
     try:
         if body.method == METHOD_EQUIPMENT_RATING:
             set_current_base_equipment_rating(
@@ -441,6 +544,20 @@ def put_current_config(
             )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
+    # D1: apply CT fields independently of the method setter.
+    ct_requested = body.ct_primary_a is not None or body.ct_secondary_a is not None or body.clear_ct
+    if ct_requested:
+        try:
+            update_current_ct_config(
+                workspace_id=workspace_id, measurement_group_id=measurement_group_id,
+                group_registry=group_registry, current_config_registry=current_config_registry,
+                ct_primary_a=body.ct_primary_a,
+                ct_secondary_a=body.ct_secondary_a,
+                ct_provenance_note=body.ct_provenance_note,
+                clear_ct=body.clear_ct,
+            )
+        except ImportServiceError as exc:
+            raise _http_error(exc) from exc
     group = _get_group_in_source_or_404(group_registry, workspace_id, source_id, measurement_group_id)
     view = build_group_view(
         group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,

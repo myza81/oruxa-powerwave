@@ -62,12 +62,16 @@ test("missing unit: coverage, provenance and Waveform fallback agree, including 
   expect(provenance).toMatchObject({ status: "base_required", source_kind: "source_default", nominal_base_kv: 132 });
   expect(provenance.reason).toContain("measured unit");
   expect(provenance.effective_base_amount).toBeCloseTo(132 / Math.sqrt(3), 10);
-  await page.evaluate(() => wwOpenPerUnitSettingsModal());
-  await expect(page.locator("#wwPuCoverageBody")).toContainText("Needs configuration");
+  // The Settings Hub's coverage table was retired (PU-UI-001, 1c60a1e); the same status is
+  // shown by the channel's own Per-unit configuration dialog.
+  await page.locator(`tr.channel-row--toggle[data-source-id="${sid}"][data-channel-name="VR"]`).click({ button: "right" });
+  await page.locator("#wwChannelMenuPerUnitBtn").click();
+  await expect(page.locator("#wwChannelPerUnitBody")).toContainText("Needs configuration");
+  await page.locator("#wwChannelPerUnitCloseBtn").click();
+  await expect(page.locator("#wwChannelPerUnitOverlay")).toBeHidden();
   const coverage = await json(await page.request.get(`${base}/per-unit/sources/${sid}/coverage`));
   expect(coverage).toEqual({ source_id: sid, applicable_channel_count: 1, measurement_group_count: 0,
     source_default_count: 0, needs_configuration_count: 1, unverified_reference_count: 0 });
-  await page.evaluate(() => wwClosePerUnitSettingsModal());
   // The real accepted save is followed by the same source-scoped display
   // refresh used by the editor. No unit or previous PU value is invented.
   await json(await page.request.put(`${base}/per-unit/sources/${sid}`, { data: { voltage_base_value: 275 } }));

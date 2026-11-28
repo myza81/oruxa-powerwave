@@ -74,7 +74,7 @@ test.describe("Event Reconstruction Slice 3C -- basic plotting", () => {
       wwSetChannelDisplayName(sid, "VA", "Bus VA again");
       wwSetChannelColorOverride(sid, "VA", "#654321");
     }, sourceA);
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openEventReconstruction(page);
     await expect.poll(async () => (await plotState(page)).panels[0].label).toBe("STN_A · Bus VA again");
     await waitForPlot(page, 3);
@@ -496,10 +496,10 @@ test.describe("Event Reconstruction Slice 3C -- empty, error and removed states"
 
     // Remove STN_C's recording: its member goes stale, its panel goes.
     const sourceC = await sourceIdFor(page, "STN_C");
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator(`button[data-action="remove"][data-source-id="${sourceC}"]`).click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceC}"] .ww-rd-recording-item-remove`).click();
     await page.locator("#confirmRemoveBtn").click();
-    await expect(page.locator(`#recordingsTableBody tr[data-source-id="${sourceC}"]`)).toHaveCount(0);
+    await expect(page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceC}"]`)).toHaveCount(0);
     await openEventReconstruction(page);
     await expect(page.locator('#wwErMembersPanel .ww-er-member-row[data-member-status="stale"]')).toHaveCount(1);
     await expect(page.locator("#wwErPanels .ww-er-panel")).toHaveCount(1); // both remaining VA channels share one panel
@@ -524,7 +524,8 @@ test.describe("Event Reconstruction Slice 3C -- Waveform isolation", () => {
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:00.500000", durationS: 2 });
     const sourceA = await sourceIdFor(page, "STN_A");
     // Waveform: one displayed channel, a zoomed viewport, a rename.
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();

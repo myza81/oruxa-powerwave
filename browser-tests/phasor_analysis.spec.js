@@ -60,7 +60,7 @@ const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", 
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
@@ -96,19 +96,19 @@ async function createFullBayContext(page, workspaceId, sourceId, displayName) {
 // created after the Analysis page's own one-shot fetch would not
 // appear in the selector.
 async function uploadSecondSource(page) {
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  return page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+  return page.locator("#wwRdRecordingList .ww-rd-recording-item").last().getAttribute("data-source-id");
 }
 
 async function uploadAndCreateContext(page) {
   await uploadFixture(page);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -456,7 +456,7 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     // the "a test deleted it after upload" fallback scenario DEC-104's
     // own design already anticipates.
     await uploadFixture(page);
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
     const sourceId = await row.getAttribute("data-source-id");
     const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -733,7 +733,8 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     // via the backend API, but never displays anything itself) -- this is
     // what the hidden-overlay assertion below checks against,
     // independent of which page actually drives the seek.
-    await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
     const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     await expect(channelRow).toBeVisible();
@@ -803,7 +804,7 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     // case), so it clears that auto-created context first to genuinely
     // reach that state, rather than the no-longer-reachable "upload alone
     // never creates a context" precondition this test originally relied on.
-    const sourceIdForClear = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    const sourceIdForClear = await page.locator("#wwRdRecordingList .ww-rd-recording-item").last().getAttribute("data-source-id");
     const workspaceIdForClear = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
     await clearContexts(page, workspaceIdForClear, sourceIdForClear);
     await openAnalysisPhasor(page);
@@ -855,14 +856,14 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     page.on("request", (request) => {
       if (request.url().includes("/engineering-contexts/suggest")) suggestUrls.push(request.url());
     });
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const bravoSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    const bravoSourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").last().getAttribute("data-source-id");
     // DEC-104 upload-time preparation already auto-covered BRAVO1 too, so
     // it is no longer genuinely "uncovered" at this point -- clear it to
     // reach the state this test's own name describes and exercise the
@@ -932,7 +933,7 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     //    (a solo absolute group, so group_id === ALPHA1's own source_id
     //    trivially).
     await uploadFixture(page);
-    const alphaSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    const alphaSourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").last().getAttribute("data-source-id");
     await openAnalysisPhasor(page);
     await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 });
     // A generous timeout, not 5000ms -- see the identical comment in "a
@@ -968,14 +969,14 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     //    source that overlaps ALPHA1's own absolute interval but starts
     //    one second earlier, DETERMINISTICALLY becoming the new
     //    Time Group origin (see comment above).
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_charlie_earlier_overlap.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const charlieSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    const charlieSourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").last().getAttribute("data-source-id");
     expect(charlieSourceId).not.toBe(alphaSourceId);
 
     // 4. The relabel genuinely happened (this test actually exercises
@@ -1219,8 +1220,8 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
 
     // 2. Upload B (BRAVO1) but do NOT visit Phasor again yet -- B stays
     //    genuinely uncovered and unattempted.
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
@@ -1231,13 +1232,13 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     //    `bootstrapAttempted` boolean would have permanently blocked ANY
     //    further discovery for the rest of the session; the new
     //    per-source `attemptedSourceIds` must not.
-    const alphaRow = page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const alphaRow = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     const alphaSourceId = await alphaRow.getAttribute("data-source-id");
-    await page.locator(`button[data-action="remove"][data-source-id="${alphaSourceId}"]`).click();
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${alphaSourceId}"] .ww-rd-recording-item-remove`).click();
     await expect(page.locator("#confirmOverlay")).toBeVisible();
     await page.locator("#confirmRemoveBtn").click();
     await expect(page.locator("#confirmOverlay")).toBeHidden();
-    await expect(page.locator(`#recordingsTableBody tr[data-source-id="${alphaSourceId}"]`)).toHaveCount(0);
+    await expect(page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${alphaSourceId}"]`)).toHaveCount(0);
 
     // 4. Re-enter Phasor -- BRAVO1 is still discoverable and gets
     //    suggested/selected normally.
@@ -1260,7 +1261,7 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     // their context happens to share a display name.
     await page.goto("/index.html");
     for (let i = 0; i < 2; i++) {
-      await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+      await page.locator("#wwRdUploadBtn").first().click();
       await expect(page.locator("#uploadModalOverlay")).toBeVisible();
       await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${BARE_STEM}.cfg`));
       await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));

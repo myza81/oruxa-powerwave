@@ -1,0 +1,494 @@
+[
+  {
+    "id": "V1",
+    "title": "Primary L-N at nominal",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "primary",
+      "sample_V": "275000/sqrt3"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "V2",
+    "title": "Secondary L-N at nominal",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "secondary",
+      "sample_V": "275000/sqrt3/2500"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_V": "63.508529610859"
+  },
+  {
+    "id": "V3",
+    "title": "Primary L-N at 0.87 pu",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "primary",
+      "sample_V": "0.87*275000/sqrt3"
+    },
+    "expected_pu": "0.870000000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "V4",
+    "title": "Secondary L-N at 0.87 pu",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "secondary",
+      "sample_V": "0.87*275000/sqrt3/2500"
+    },
+    "expected_pu": "0.870000000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "V5",
+    "title": "Secondary L-L at nominal",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "secondary",
+      "sample_V": "110"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_V": "110"
+  },
+  {
+    "id": "V6",
+    "title": "HAZARD (today, side unknown): secondary L-N sample / primary denominator",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "unknown",
+      "sample_V": "275000/sqrt3/2500"
+    },
+    "expected_pu": "0.000400000000000",
+    "expected_block": null,
+    "note": "Executed against the current gate: status=configured, reference_compatibility=unverified, 0.0004 pu."
+  },
+  {
+    "id": "VT1",
+    "title": "Secondary L-L; denominator = nominal / ratio (correct)",
+    "inputs": {
+      "nominal_ll_V": "132000",
+      "vt_primary_V": "138000",
+      "vt_secondary_V": "110",
+      "ratio": "138000/110",
+      "side": "secondary",
+      "sample_V": "132000*110/138000 (system at nominal, L-L)"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_V": "105.217391304348"
+  },
+  {
+    "id": "VT1x",
+    "title": "Same sample divided by vt_secondary_V (a transformer RATING used as the base) — WRONG",
+    "inputs": {
+      "nominal_ll_V": "132000",
+      "vt_primary_V": "138000",
+      "vt_secondary_V": "110",
+      "ratio": "138000/110",
+      "side": "secondary",
+      "sample_V": "132000*110/138000 (system at nominal, L-L)"
+    },
+    "expected_pu": "0.956521739130435",
+    "expected_block": null,
+    "note": "Shows the discrepancy only. error = 1 - 132/138 = 1/23 = 4.3478...%",
+    "error_vs_unity": "-0.043478260869565"
+  },
+  {
+    "id": "VL1",
+    "title": "Legacy secondary base, no nominal, L-N",
+    "inputs": {
+      "nominal_ll_V": null,
+      "secondary_voltage_ll_v": "110",
+      "side": "secondary",
+      "sample_V": "110/sqrt3"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": "Numerics identical to today's `base_reference_side=secondary` path.",
+    "denominator_V": "63.508529610859"
+  },
+  {
+    "id": "VL2",
+    "title": "Legacy secondary base, no nominal, L-L",
+    "inputs": {
+      "nominal_ll_V": null,
+      "secondary_voltage_ll_v": "110",
+      "side": "secondary",
+      "sample_V": "110"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "VL3",
+    "title": "Legacy secondary_voltage_ll_v wins over nominal/ratio (DECISION D-PREC option P1: preserve history)",
+    "inputs": {
+      "nominal_ll_V": "132000",
+      "vt_primary_V": "138000",
+      "vt_secondary_V": "110",
+      "ratio": "138000/110",
+      "side": "secondary",
+      "sample_V": "132000*110/138000 (system at nominal, L-L)",
+      "secondary_voltage_ll_v": "110"
+    },
+    "expected_pu": "0.956521739130435",
+    "expected_block": null,
+    "note": "Historical output preserved; the 4.35 % disagreement must at least be reported as a diagnostic.",
+    "denominator_V": "110"
+  },
+  {
+    "id": "VL3b",
+    "title": "Same inputs, nominal/ratio wins (D-PREC option P2)",
+    "inputs": {
+      "nominal_ll_V": "132000",
+      "vt_primary_V": "138000",
+      "vt_secondary_V": "110",
+      "ratio": "138000/110",
+      "side": "secondary",
+      "sample_V": "132000*110/138000 (system at nominal, L-L)",
+      "secondary_voltage_ll_v": "110"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_V": "105.217391304348"
+  },
+  {
+    "id": "VM1",
+    "title": "Primary sample against a secondary-only base converted by the VT ratio (conversion needed, ratio valid)",
+    "inputs": {
+      "secondary_voltage_ll_v": "110",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "side": "primary",
+      "sample_V": "275000"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_V": "275000.000000"
+  },
+  {
+    "id": "CV1",
+    "title": "Calculated L-L = |Va - Vb|, both legs Secondary, same group/ratio",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "legs": "Va,Vb secondary",
+      "sample_V": "a*sqrt3, a=275000/sqrt3/2500"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_V": "110"
+  },
+  {
+    "id": "CV2",
+    "title": "HAZARD (today): the same calculated channel with side unknown",
+    "inputs": {
+      "nominal_ll_V": "275000",
+      "vt_primary_V": "275000",
+      "vt_secondary_V": "110",
+      "ratio": "2500",
+      "side": "unknown"
+    },
+    "expected_pu": "0.000400000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "CV3",
+    "title": "Calculated Voltage, one leg Primary and one Secondary",
+    "inputs": {
+      "legs": "Va primary, Vb secondary"
+    },
+    "expected_pu": null,
+    "expected_block": "calculated_leaf_sides_differ",
+    "note": null
+  },
+  {
+    "id": "CV4",
+    "title": "Calculated Voltage across two groups with different VT ratios",
+    "inputs": {
+      "legs": "Va in G1 (2500), Vb in G2 (1250)"
+    },
+    "expected_pu": null,
+    "expected_block": "calculated_leaf_ratio_authority_differs",
+    "note": null
+  },
+  {
+    "id": "I1",
+    "title": "Primary current at Ibase",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "side": "primary",
+      "sample_A": "Ibase"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "ibase_A": "2099.455524326"
+  },
+  {
+    "id": "I2",
+    "title": "Secondary current at Ibase/CT",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "side": "secondary",
+      "sample_A": "Ibase/2000"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_A": "1.049727762"
+  },
+  {
+    "id": "I3",
+    "title": "Secondary 1.0 A",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "side": "secondary",
+      "sample_A": "1.0"
+    },
+    "expected_pu": "0.952627944162883",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "I4",
+    "title": "HAZARD: secondary 1.0 A / primary Ibase",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "side": "unknown",
+      "sample_A": "1.0"
+    },
+    "expected_pu": "0.000476313972081",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "IM1",
+    "title": "Mixed: primary V + secondary I -> current denominator uses CT only; voltage side never touches Ibase",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "V": "primary",
+      "I": "secondary",
+      "sample_A": "1.0"
+    },
+    "expected_pu": "0.952627944162883",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "IM2",
+    "title": "Mixed: secondary V + primary I",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "V": "secondary",
+      "I": "primary",
+      "sample_A": "2099.6"
+    },
+    "expected_pu": "1.000068815782194",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "F1",
+    "title": "Manual Ibase 2100 A declared Primary; secondary recording; CT 4000",
+    "inputs": {
+      "manual_A": "2100",
+      "base_side": "primary",
+      "side": "secondary",
+      "ct_ratio": "4000",
+      "sample_A": "0.525"
+    },
+    "expected_pu": "1.000000000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "F2",
+    "title": "Manual Ibase 1.0 A declared Secondary; secondary recording (direct, no ratio)",
+    "inputs": {
+      "manual_A": "1.0",
+      "base_side": "secondary",
+      "side": "secondary",
+      "sample_A": "0.5"
+    },
+    "expected_pu": "0.500000000000000",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "F3",
+    "title": "Manual Ibase 1.0 A declared Secondary; primary recording; CT 2000",
+    "inputs": {
+      "manual_A": "1.0",
+      "base_side": "secondary",
+      "side": "primary",
+      "ct_ratio": "2000",
+      "sample_A": "1000"
+    },
+    "expected_pu": "0.500000000000000",
+    "expected_block": null,
+    "note": null,
+    "denominator_A": "2000"
+  },
+  {
+    "id": "F4",
+    "title": "Manual Ibase, declared side UNKNOWN: never assumed Primary",
+    "inputs": {
+      "manual_A": "1000",
+      "base_side": "unknown",
+      "side": "primary"
+    },
+    "expected_pu": null,
+    "expected_block": "manual_base_side_unknown",
+    "note": "Strict resolver: no conversion. Historical Unverified numerics are the separate OD-2 question."
+  },
+  {
+    "id": "F5",
+    "title": "Manual Ibase declared Secondary; primary recording; CT missing",
+    "inputs": {
+      "manual_A": "1.0",
+      "base_side": "secondary",
+      "side": "primary",
+      "ct": null
+    },
+    "expected_pu": null,
+    "expected_block": "current_ratio_unavailable",
+    "note": null
+  },
+  {
+    "id": "CC1",
+    "title": "Calculated Current = I1 + I2, both Secondary, same group (CT 2000)",
+    "inputs": {
+      "sbase_VA": "1000000000",
+      "nominal_ll_V": "275000",
+      "ct_ratio": "2000",
+      "legs": "0.5 A + 0.25 A, secondary, same group"
+    },
+    "expected_pu": "0.714470958122162",
+    "expected_block": null,
+    "note": null
+  },
+  {
+    "id": "CC2",
+    "title": "Calculated Current, leaves Primary 1000 A + Secondary 0.5 A",
+    "inputs": {
+      "legs": "mixed"
+    },
+    "expected_pu": null,
+    "expected_block": "calculated_leaf_sides_differ",
+    "note": "Adding secondary amperes to primary amperes is arithmetically meaningless."
+  },
+  {
+    "id": "B1",
+    "title": "Secondary sample, VT ratio missing",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "voltage_ratio_unavailable",
+    "note": null
+  },
+  {
+    "id": "B2",
+    "title": "Secondary sample, ratio 0 / negative / NaN / inf",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "voltage_ratio_invalid",
+    "note": null
+  },
+  {
+    "id": "B3",
+    "title": "Secondary sample, ratio authority untrusted",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "voltage_ratio_untrusted",
+    "note": null
+  },
+  {
+    "id": "B4",
+    "title": "Secondary sample, groups with conflicting ratios",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "voltage_ratio_conflict",
+    "note": null
+  },
+  {
+    "id": "B5",
+    "title": "Secondary sample, channel in no Measurement Group",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "voltage_ratio_no_group",
+    "note": null
+  },
+  {
+    "id": "B6",
+    "title": "Side unresolved or inferred-only (strict resolver)",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "measurement_side_not_strict",
+    "note": null
+  },
+  {
+    "id": "B7",
+    "title": "Group declares mixed sides, no engineer choice",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "measurement_group_side_conflict",
+    "note": null
+  },
+  {
+    "id": "B8",
+    "title": "Secondary Current sample, CT missing",
+    "inputs": {},
+    "expected_pu": null,
+    "expected_block": "current_ratio_unavailable",
+    "note": null
+  }
+]

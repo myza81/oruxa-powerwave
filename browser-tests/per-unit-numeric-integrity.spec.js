@@ -4,11 +4,13 @@ const {
   BACKEND, uploadRecord, workspaceId, sourceIdFor, addRecords, selectChannel,
   channelRow, waitForPlot, plotState,
 } = require("./support/event_reconstruction_helpers");
+const { openRdVoltageEditor } = require("./support/recording_details_pu_helpers");
 
 async function json(response, status = 200) {
   expect(response.status(), await response.text()).toBe(status);
   return response.json();
 }
+
 
 async function setup(page) {
   await page.goto("/index.html");
@@ -48,26 +50,24 @@ for (const [label, value, status] of [["true", true, 422], ["false", false, 422]
     const provenance = await json(await page.request.get(provenanceUrl));
     const displayed = await entry(page, sid);
     expect(Math.max(...displayed.values.map(Math.abs))).toBeCloseTo(Math.sqrt(2), 10);
-    await page.locator("#wwOpenPerUnitSettingsBtn").click();
-    await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-    await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
-    await page.locator("#wwMgVoltageKvInput").fill("132");
+    await openRdVoltageEditor(page, sid, group.id);
+    await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("132");
     // Alter only the outbound type/value to exercise actual API validation
     // through the real UI error handler. No responses/state are mocked.
     await page.route("**/measurement-groups/*/voltage-config", async route => {
       await route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), nominal_voltage_ll_kv: value }) });
     }, { times: 1 });
     const rejected = page.waitForResponse(r => r.url() === url + "/voltage-config" && r.request().method() === "PUT");
-    await page.locator("#wwMgDrawerSaveBtn").click();
+    await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
     expect((await rejected).status()).toBe(status);
-    await expect(page.locator("#wwMgDrawerError")).toBeVisible();
-    await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-edit-error")).toBeVisible();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible();
     expect(await json(await page.request.get(url))).toEqual(before);
     expect(await json(await page.request.get(waveformUrl))).toEqual(waveform);
     expect(await json(await page.request.get(provenanceUrl))).toEqual(provenance);
     expect(await entry(page, sid)).toEqual(displayed);
-    await page.locator("#wwMgDrawerSaveBtn").click();
-    await expect(page.locator("#wwMgDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+    await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+    await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);
     await expect.poll(async () => Math.max(...(await entry(page, sid)).values.map(Math.abs))).toBeCloseTo(Math.sqrt(2) * 275 / 132, 10);
     expect((await json(await page.request.get(url))).voltage_config.nominal_voltage_ll_kv).toBe(132);
   });
@@ -99,17 +99,12 @@ test("valid tiny base reports numerical unavailability consistently in Waveform 
   await page.locator("#wwErUnitEngineeringBtn").click();
   await waitForPlot(page, 1);
   expect((await plotState(page)).panels[0].values).toEqual(erEngineering.panels[0].values);
-  // Configure in the actual editor, then return to ER. ER refreshes its
+  // Configure in the actual Recording Details editor, then return to ER. ER refreshes its
   // resolution cache on page entry, matching the supported user workflow.
-  await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
-  await page.locator("#wwMgVoltageKvInput").fill("275");
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  await expect(page.locator("#wwMgDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
-  await page.locator("#measurementGroupsCloseBtn").click();
-  await expect(page.locator("#measurementGroupsOverlay")).toBeHidden();
+  await openRdVoltageEditor(page, sid, group.id);
+  await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("275");
+  await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);
   await page.locator("#mainNavEventReconstructionBtn").click();
   await page.locator("#wwErUnitPerUnitBtn").click();
   await waitForPlot(page, 1);
@@ -117,3 +112,26 @@ test("valid tiny base reports numerical unavailability consistently in Waveform 
   expect(Math.max(...(await plotState(page)).panels[0].values.map(Math.abs))).toBeCloseTo(Math.sqrt(2), 10);
   expect(await json(await page.request.get(root + "/waveform?channel_name=VA"))).toEqual(engineering);
 });
+
+// Frontend validation (client side) is a distinct responsibility from the real
+// backend rejection tested above: the Recording Details editor must refuse a
+// non-positive base before any request is sent.
+for (const bad of ["0", "-5"]) {
+  test(`voltage editor blocks ${bad} in the browser; no request is sent and nothing changes`, async ({ page }) => {
+    const { sid, root, group, url } = await setup(page);
+    const waveformUrl = root + "/waveform?channel_name=VA&unit_mode=per_unit";
+    const before = await json(await page.request.get(url));
+    const waveform = await json(await page.request.get(waveformUrl));
+    const displayed = await entry(page, sid);
+    const puts = [];
+    page.on("request", r => { if (r.method() === "PUT" && r.url().endsWith("/voltage-config")) puts.push(r.url()); });
+    await openRdVoltageEditor(page, sid, group.id);
+    await page.locator("#wwRdDetailsBody #wwRdVltKv").fill(bad);
+    await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+    await expect(page.locator("#wwRdDetailsBody .ww-rd-edit-error")).toContainText("positive number");
+    expect(puts).toEqual([]);
+    expect(await json(await page.request.get(url))).toEqual(before);
+    expect(await json(await page.request.get(waveformUrl))).toEqual(waveform);
+    expect(await entry(page, sid)).toEqual(displayed);
+  });
+}

@@ -1,0 +1,1670 @@
+{
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared panel structure / panel exists once, below Playback, never duplicated inside an analyzer": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared panel structure / no active roles shows the compact empty state, never a blank plot": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared panel structure / no visible 'Related Waveforms' title row -- VOLTAGE/CURRENT group labels alone identify the groups (2026-09-16 owner UI refinement)": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared panel structure / Overcurrent current-only view: CURRENT group begins near the panel top, no empty title space above it": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared panel structure / resize handle still exists and the panel remains vertically resizable after the title removal": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared panel structure / the same shared panel (with its title-less markup) is reused verbatim by both Phasor and Overcurrent": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Phasor integration / all six roles visible -> Voltage shows Va/Vb/Vc, Current shows Ia/Ib/Ic": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Phasor integration / hiding Vb removes it from both the Phasor vector diagram and Related Waveforms": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Phasor integration / hiding Ib and Ic leaves only Ia in the Current waveform group": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Phasor integration / partial context (Va + Ia only) shows only those two traces": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Overcurrent integration / Phase A selected -> Current group shows Ia only, no Voltage group": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Overcurrent integration / switching Phase A -> Phase B updates the waveform from Ia to Ib": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Overcurrent integration / changing TMS does not refetch unrelated waveform data": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared Playback cursor / Play advances the cursor; Pause settles it; both analyzers share the same wwPlayback.currentTime": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared Playback cursor / Seek settles the cursor at the exact sought instant": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared Playback cursor / Restart returns the cursor to the beginning": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- shared Playback cursor / waveform-data network requests do not occur on every Playback tick": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- analyzer switch / Phasor (Va+Ia visible) -> Overcurrent (Ia) -> back to Phasor restores Va+Ia, cursor time unchanged throughout": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- analyzer switch / switching analyzers while Playback is running never fights over the shared waveform state (no re-fetch thrash)": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- Engineering Context change / switching context clears the old bay's traces and shows the new one's": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / dragging the handle upward reduces height, downward increases it": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / min and max height bounds are enforced": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / height survives an analyzer switch": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / Playback cursor remains correctly aligned after a resize": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / resize never triggers a waveform refetch": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / resize handle uses row-resize cursor styling and a grip affordance": {
+    "status": "passed",
+    "error": ""
+  },
+  "analysis_related_waveforms.spec.js / Related Waveforms -- resizable height (owner UAT addendum) / panel remains usable at narrow (small-screen) viewport width": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / max Peak cannot cover Per-unit dialog controls or intercept saves": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / min Peak cannot cover Per-unit dialog controls or intercept saves": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / manual lifecycle updates arrays, legends, cursors and annotations without changing input authorities": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / rejected manual configuration preserves accepted state and every PU sample {\"value\":\"0\",\"side\":\"primary\"}": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / rejected manual configuration preserves accepted state and every PU sample {\"value\":\"4\",\"side\":\"secondary\"}": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / rejected manual configuration preserves accepted state and every PU sample {\"value\":\"4\",\"side\":\"unknown\"}": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / manual and unassigned modes persist across page reload, with a manager entry and explicit Automatic reset": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / obsolete waveform, cursor, callout and peak responses cannot restore a previous base after manual": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / obsolete waveform, cursor, callout and peak responses cannot restore a previous base after unassigned": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / obsolete waveform, cursor, callout and peak responses cannot restore a previous base after automatic": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / a manual child owns its base independently of its parent, including Event Reconstruction": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculated-current-manual-pu.spec.js / a representable subnormal ampere base stays positive in provenance and the editor": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: tab navigation / V-I Phasors tab is the fourth tab and opens its own panel": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: tab navigation / switching away from V-I Phasors hides its panel": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: lagging load (default inputs) / shows P, Q, S, PF and angle on page load": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: lagging load (default inputs) / P is positive (absorbing active power)": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: lagging load (default inputs) / Q is positive (lagging / inductive)": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: lagging load (default inputs) / PF row shows lagging": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: lagging load (default inputs) / formula section is populated": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: leading load / current angle +30\u00b0 gives negative Q and leading PF": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: unity PF / V and I at same angle gives unity PF label": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: reverse power / current 180\u00b0 from voltage gives negative P and negative PF": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: zero current / I = 0 A gives PF undefined": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: zero current / I = 0 A gives S = 0": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: angle wrapping / V at 370\u00b0 and V at 10\u00b0 give identical results with I at 10\u00b0": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: engineering unit conversion / 11 kV and 11000 V give the same S": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: engineering unit conversion / changing output unit re-renders without a new API call (same result, new scale)": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: invalid and missing inputs / blank magnitude shows prompt, not an error": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: invalid and missing inputs / partial (half-typed) number shows an error message": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: regression on existing tabs / Current tab still shows 437.4 A after visiting V-I tab": {
+    "status": "passed",
+    "error": ""
+  },
+  "calculator-vi-phasors.spec.js / Calculator -- V-I Phasors: regression on existing tabs / P-Q-S tab still computes correctly after visiting V-I tab": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a Primary recording uses its group's CT, read-only; the request carries neither a basis nor a CT": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a Current-group Secondary setting overrides a Primary recording: no CT is applied and the override is disclosed": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a recording-wide Secondary correction is used when no group overrides it": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a missing CT blocks a Primary recording with the group's name and a Configure button, and keeps Related Waveforms": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a missing CT does not matter for a Secondary recording": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a recording that declares no side is blocked until an engineer defines it; Related Waveforms stay available": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / Configure in Recording Details opens the current group; a CT saved there is used immediately on return": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a side changed in Recording Details reaches the result on return, with no stale number": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a direct API client cannot override Recording Details with a legacy basis or CT": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / changing the phase re-reads the authority for that phase's own channel": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a workspace reset keeps no authority, report or CT from the previous workspace": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a response for a previous selection can never overwrite a newer one": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a calculated current channel is blocked with an explicit not-available-yet limitation, no configure link, and Related Waveforms still work": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / a Current group with mixed P/S declarations blocks until the engineer resolves it; the declarations and the discrepancy stay visible": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_2b2c_1a_overcurrent_side.spec.js / D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details / Manual mode keeps its own CT inputs and hides the recorded block; the typed Manual CT is never used for the recording": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Impedance / a nominal-only VT is a valid auto-derived VT: shown normally, no warning, the calculation runs": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Impedance / a missing CT blocks with the specific message, a Configure button and keeps Related Waveforms": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Impedance / Configure in Recording Details opens the voltage group; a saved manual VT then takes precedence over the auto-derived one": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Impedance / an undeclared measurement side needs an explicit Recording basis, then sends the authoritative ratios": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Impedance / voltage and current on different declared sides are never converted": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Impedance / Manual mode keeps its own inputs and hides the recorded CT/VT block": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Distance / a nominal-only VT is a valid auto-derived VT: shown normally, no warning, the calculation runs": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Distance / a missing CT blocks with the specific message, a Configure button and keeps Related Waveforms": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Distance / Configure in Recording Details opens the voltage group; a saved manual VT then takes precedence over the auto-derived one": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Distance / an undeclared measurement side needs an explicit Recording basis, then sends the authoritative ratios": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Distance / voltage and current on different declared sides are never converted": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ctvt_authority.spec.js / D5A authoritative CT/VT -- Distance / Manual mode keeps its own inputs and hides the recorded CT/VT block": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Level 1: one selector, shown from the recording, correctable, with the contradiction disclosed": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Level 1: mixed, undeclared and voltage/current-split recordings are shown honestly": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Level 1: a partially declared recording is inferred until the engineer confirms it": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / a Voltage group shows only the voltage sections, a Current group only the current sections": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / every Group Details section is a card with its icon; unconfigured engineering values are shown as they are": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / existing Edit buttons keep working inside the cards": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / the Voltage and the Current group of one bay keep independent settings, saved to their own groups and kept after reload": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Level 1 changes reach the groups that follow it, while a manually set group keeps its value": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / a group whose channels declare different sides is shown as unresolved, not guessed; choosing resolves only that group": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / a recording with no side evidence leaves every group unresolved until the engineer decides": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / two recordings keep separate group settings": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / a quick second choice wins and a slow save never lands on another group": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / a slow read for one recording cannot appear on another": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / lifecycle: deleting a group or a recording releases its setting, and a workspace reset leaves nothing behind": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Recording Info is unchanged by the Group Details work": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Group Details fits 1600px without clipping or horizontal overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Group Details fits 1280px without clipping or horizontal overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Group Details fits 900px without clipping or horizontal overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "d5a_ui_002_group_details.spec.js / Group Details fits 600px without clipping or horizontal overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- analyzer navigation / nav button activates the real panel, not the placeholder, and is a separate analyzer from Impedance Locus": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- empty workspace Manual mode (golden flow) / empty workspace: Manual auto-selected, Recording shown disabled with hint, analyzer fully usable with zero recordings": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- empty workspace Manual mode (golden flow) / golden AB loop flow: known phasors -> loop impedance |Z|=10 /_20deg, point shown, zone state shown": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- empty workspace Manual mode (golden flow) / BC and CA loops never require the unrelated third phase, and each produces the same golden |Z|": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Manual zone-state geometry / Mho: a point exactly along the characteristic axis operates once reach exceeds |Z|, not before": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Manual zone-state geometry / Quadrilateral: same loop, boundary derived from reactive/resistive reaches": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Manual zone-state geometry / characteristic switching never changes the measured impedance, only the zone geometry/state": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Manual zone-state geometry / multiple zones may operate simultaneously -- no priority suppression": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording mode / Related Waveforms: AB loop pushes Va/Vb/Ia/Ib before pressing Play, then updates on loop switch": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording mode / Engineering Context resolves loop phases from durable phase identity, never inferred from channel names": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording mode / chronological locus reveal: current point visible, full future locus not visible until Playback progresses": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording mode / Play advances the marker and grows the visible trail; zones stay static while it moves": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording mode / zone state updates live at the current Playback point when a zone setting changes -- never latched": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording mode / no full-locus or waveform refetch occurs during Playback ticks": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- R-X plot geometry / equal px-per-ohm scale and correct quadrant plotting at 1366px": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- R-X plot geometry / equal px-per-ohm scale and correct quadrant plotting at 1024px": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- R-X plot geometry / Mho zone boundary renders as a true <circle> (never an ellipse)": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- R-X plot geometry / Quadrilateral zone boundary renders as a 4-point <polygon> preserving the configured reaches": {
+    "status": "passed",
+    "error": ""
+  },
+  "distance_protection_analysis.spec.js / Distance Protection v1 -- Recording/Manual state isolation / entering Manual values never overwrites the Recording-derived result, and vice versa": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- Waveform's toolset / Annotate menu, guidance and Annotations manager are Waveform's; ER-specific Fit Record is an icon tool": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- each type / Text Note: placed in a panel, edited in place, moved, Grouped/Combined, Relative/Absolute, persisted, deleted": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- each type / Callout: on the clicked trace's real sample and its own Y axis (Grouped, Combined); box and anchor drags": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- each type / Maximum / Minimum Peak: the targeted channel only (native and calculated), over the visible range, live": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- timing model / Text Notes keep their instant through reference changes; Callouts/Peaks follow their record's corrections": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- manager and independence / the manager lists, focuses, edits and deletes Event Reconstruction annotations only; Waveform's are untouched": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#workspaceRow')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#workspaceRow')\n    23 \u00d7 locator resolved to <div hidden=\"\" id=\"workspaceRow\">\u2026</div>\n       - unexpected value \"hidden\"\n"
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- cursor rendering and interaction / A and B are drawn at one reconstruction time on every panel, drag globally, and give a precise \u0394t": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- cursor values / 5 kHz, 20 Hz and 1 Hz records each give their own nearest real sample; outside a record is 'No sample'": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- cursor values / a gap shows 'No sample' per record; a calculated channel answers through its timing parent": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- cursor rebasing / a reference switch and a reference correction keep the physical instant; a non-reference correction moves only its record": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- cursors through navigation, selection and removal / zoom, pan and reset never move a cursor; selection changes and record removal keep positions": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- cursors through navigation, selection and removal / two hours from the reference, cursors one 5 kHz sample apart stay distinct and exact": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- Waveform isolation / Event Reconstruction cursors never change Waveform cursors, values or state": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#workspaceRow')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#workspaceRow')\n    23 \u00d7 locator resolved to <div hidden=\"\" id=\"workspaceRow\">\u2026</div>\n       - unexpected value \"hidden\"\n"
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- ownership and selector / Units ENG|PU in Waveform's wording, Engineering by default; no per-unit configuration here; switching never writes a setting": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- values, grouping, unavailable / L-L/L-G regression: 275 kV L-L group base on an L-G channel -> 275/sqrt(3) kV, as Waveform's endpoints; quantity-aware axes in Grouped and Combined": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- values, grouping, unavailable / no per-unit basis: Voltage stays selected and PU unavailable; Current always engineering (DEC-212); Engineering restores Voltage": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- values, grouping, unavailable / calculated channels: an inheriting one shares the native pu axis; generic Voltage subtraction is PU unavailable": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- display only / ENG <-> PU changes no timing, cursor, annotation, viewport, reference, correction, active record, time display or view mode": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- display only / Y state is unit-mode-local: an Engineering manual range never reaches pu; Y drag works in pu; Autoscale / Reset act on the current unit only": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- cursors and annotations / cursor values: the same samples, pu values as Waveform's endpoint gives them, A/B/\u0394 all in pu": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-per-unit.spec.js / Event Reconstruction Per-Unit Display -- cursors and annotations / Callouts / Peaks: the same sample, the value in the current unit on the pu axis; PU unavailable says so; Text Notes unchanged": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- basic plotting / native and calculated analog channels plot in separate panels with Waveform-owned names and colours": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- basic plotting / panels follow the browser order, not the click order": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- record independence and time mapping / identical-timestamp records plot separately and a correction moves only its record": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- record independence and time mapping / absolute time enters once, a correction once, and a reference switch keeps pairwise alignment": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- record independence and time mapping / overlap, containment, separation and a large continuous gap keep physical time": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- mixed sampling and precision / 5 kHz, 20 Hz and 1 Hz records plot at their own sample spacing under Fit All": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- mixed sampling and precision / a 5 kHz record two hours from the reference keeps its 0.2 ms spacing through the local plotting origin": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- shared viewport and interaction / Fit All, staged zoom on the toolbar, pan clamped to Fit All, and double-click back to Fit All": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- shared viewport and interaction / selection changes recompute Fit All at Fit All and keep a manual zoom otherwise": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- fetch strategy / viewport maps to each source's native range; non-overlapping sources are skipped; budget and units pass through": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- fetch strategy / a long high-rate record arrives as an envelope and resolves to full samples when zoomed": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- fetch strategy / a superseded response never overwrites the newer view": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- empty, error and removed states / one failing channel shows its own error; a removed record's panel disappears": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- Waveform isolation / plotting, zooming and panning never change Waveform state": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#workspaceRow')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#workspaceRow')\n    23 \u00d7 locator resolved to <div hidden=\"\" id=\"workspaceRow\">\u2026</div>\n       - unexpected value \"hidden\"\n"
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 0 shell / menu entry sits immediately after Waveform and switches pages normally": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 0 shell / empty workspace shows the left panel, the workspace shell and the toolbar": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 0 shell / drag mode is fixed Pan, Event Reconstruction state only, and never changes Waveform": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 0 shell / responsive Sources drawer opens the Event Reconstruction panel only": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- shared signal catalogue (DEC-171) / calculated channels are read live from the catalogue: create, select, remove, navigate, no private copy": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- independent records (DEC-128) / records with identical timestamps stay separate members while Waveform still groups them": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2A channel browser / member tree mirrors the Waveform tree and inherits names and colours read-only": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2A channel browser / channel selection is Event Reconstruction state only and never changes Waveform": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2A channel browser / an overlapping upload never stales a member; a removed record loses its tree and its selections are not plotted": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- analog-only scope (DEC-127) / no digital channels in Event Reconstruction; Waveform digital browser and visibility unchanged": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2 selection workflow / records are listed chronologically; ineligible records show the backend reason and cannot be added": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2 selection workflow / create, update, change reference, correct, reset, re-enter and clear": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2 selection workflow / a removed record's member keeps its correction unapplied and is only removed explicitly": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2 selection workflow / a removed reference is never replaced automatically": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2 selection workflow / a large time gap between records is a warning, not a rejection": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 2 selection workflow / never changes Waveform, Time Groups, Synchronise Sources or source data, and plots nothing until channels are selected": {
+    "status": "passed",
+    "error": ""
+  },
+  "event-reconstruction.spec.js / Event Reconstruction -- Slice 3B time mapping / frontend mapping uses the backend total offset, resolves calculated parents and drops removed records": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- Related Waveforms / Recording mode, Phase A: Va and Ia traces render before pressing Play": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- Related Waveforms / switching Phase A -> Phase B updates the waveform traces from Va/Ia to Vb/Ib": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- Related Waveforms / responsive: waveform traces and cursor remain visible at 1366px and 1024px": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- chronological locus reveal / initial state: current point visible, full future locus not visible": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- chronological locus reveal / Play advances the marker and grows the visible trail; Pause stops it": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- chronological locus reveal / Seek forward immediately expands the trail to the sought position": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- chronological locus reveal / Restart collapses the trail back to the start portion": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- chronological locus reveal / At the end of the event, the entire cached locus becomes visible": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- chronological locus reveal / no full-locus or waveform refetch occurs during Playback ticks": {
+    "status": "passed",
+    "error": ""
+  },
+  "impedance_analysis.spec.js / Impedance Locus v1 -- Manual mode unaffected / Manual mode shows no Related Waveforms and no progressive trail": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- basic configuration / open Analysis -> choose Overcurrent -> choose context -> choose Phase A -> Standard Inverse -> pickup -> TMS -> curve displayed": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- basic configuration / primary basis applies the CT ratio of the Measurement Group (read-only, from Recording Details)": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / all settings controls stay within the panel and never overlap each other, at 1366px": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / all settings controls stay within the panel and never overlap each other, at 1024px": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / owner-mandated exact control CSS is applied (computed style, not just source)": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / selected text and numeric values remain fully visible, never clipped or overlapping the select arrow": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / Pickup current label is compact (no unit in the label text) with the unit shown inline next to the value": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / panel-width (container-query) responsive fallback stacks to one column when the card itself is forced narrow, independent of the browser viewport": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / chart viewport fields remain compact, functional, and unaffected by the settings-grid redesign": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) / Live Values section renders correctly below the redesigned settings grid, with unchanged calculations": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- secondary-current case / secondary basis needs no CT fields and produces a valid operating point": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Playback / Play advances the moving operating point and numeric values": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Seek / Pause, then seek converges exactly on the sought instant": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- below pickup / pickup above the measured current shows no fake finite operating time": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- chart axes, grid, and ticks / default viewport (0.1->100 x, 0.1->100 s): full axis frame, major grid lines, and the owner's curated default major-tick set render": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- chart axes, grid, and ticks / above-pickup operating point and both dashed guides still render, curve math unchanged": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- threshold observation / sustained above-pickup current can surface the qualified threshold alert, never a relay-tripped claim": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- analyzer switch / Phasor at time t -> switch Overcurrent -> same shared Playback time t": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / default range inputs show 0.1/100/0.1/100": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / zoom in narrows the viewport, zoom out widens it, reset returns exactly to default": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / zoom out is capped at the absolute bound (X 200, Y 1000)": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / custom range applies via inputs and shows the true selected minima, never a fake 0,0 origin": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / invalid range input is rejected and reverts to the last-known-good viewport": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / viewport changes never alter wwPlayback.currentTime or trigger a new curve fetch": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) / above-pickup point outside a zoomed-in X range shows an edge indicator, never a false boundary point": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- true log axis defaults / Relay Current default X range tracks 0.1x pickup to 100x pickup": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- true log axis defaults / a very small pickup still uses a positive Relay Current X min": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- true log axis defaults / pickup changes never mutate the ALREADY-DISPLAYED viewport, only what Reset targets -- a manually zoomed/custom range survives a pickup change": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- true log axis defaults / a manually customized Y range is preserved across a TMS/characteristic change -- Playback ticks never touch it either": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- true log axis defaults / the Y-axis default/reset value stays fixed while Playback runs": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- true log axis defaults / zero backend requests are caused solely by a viewport/axis-default recalculation -- Reset, zoom, and axis-mode switch after a pickup change": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) / curve's first visible point enters exactly at the current Y Max, and updates immediately when Y Max changes": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) / curve's last visible point exits exactly at the current Y Min": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) / curve exits exactly at the X Max right boundary when it is reached before Y Min": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) / custom zoomed viewport re-aligns the curve's entry point to the new boundary": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) / viewport-only changes never alter the live operating-point values": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) / SVG curve path visually starts near the plot's own top-left region when entering via Y Max": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / default axis mode is Pickup Multiple": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / both toggle buttons are genuinely visible (non-transparent color, visibly bordered group) in either state -- UAT root-cause regression (2026-09-16), carried forward through the chart-control-toolbar segmented-control redesign": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / full UAT round trip: click Relay Current transforms every chart element, click back restores Pickup Multiple exactly": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / switching to Relay Current changes the axis title and X range, never fetching a new curve or waveform": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / switching back to Pickup Multiple restores the range as the user left it": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / pickup boundary is fixed at M=1 in Pickup Multiple mode, unaffected by a pickup change": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / Relay Current default viewport at pickup 0.8 A is exactly 0.08 -> 80 A": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / Relay Current major tick values at pickup 0.8 A match the exact worked example": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / switching pickup while in Relay Current mode updates ticks, boundary, and curve immediately (within the current viewport); Reset then reflects the new pickup": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / relay-equivalent current stays constant across a pickup change while the multiple changes": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) / axis mode preference persists across Playback, phase change, and a Phasor round trip": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) / Minor X and Minor Y are OFF by default and major gridlines still render": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) / enabling Minor X shows the 1.2/1.4/1.6/1.8 subdivisions between 1 and 2, disabling removes them": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) / Minor X and Minor Y toggle independently": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) / toggling Minor X/Y causes zero backend requests": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) / grid toggle preferences persist across a Phasor round trip": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) / Analysis -> Overcurrent is reachable and usable with zero recordings in the workspace": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) / golden empty-workspace calculation: pickup 1.0 A secondary, CT 1200:1, manual 30000 A primary -> 25 A secondary, M=25x, zero recording-dependent requests": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) / Recording mode with zero recordings shows a clean neutral state, never a crash or stale Manual result relabeled as Recording": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) / no Engineering Context, no Time Group, no Playback: Manual result and chart point render with zero context-selection/time-group/playback dependency": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) / at 1366px: empty-workspace Manual calculator fits cleanly, Recording shown disabled (not hidden), no overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) / at 1024px: empty-workspace Manual calculator fits cleanly, Recording shown disabled (not hidden), no overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / defaults to Direct Current; the method toggle sits inside Manual Input and reuses the shared CT/relay controls": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / reference case: 141 MVA at 150 % on 132 kV through CT 800/1 -> 211.5 MVA, 925.1 A primary, 1.156 A secondary": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / changes to loading, rating, voltage and CT ratio update the currents automatically": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / loading above 100 % is supported; a low loading reports below pickup": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / invalid, empty, negative and zero inputs are rejected before any request, with a visible message": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / a missing CT ratio still shows the derived primary current and asks for the CT": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / switching methods preserves each method's values and never shows the other method's result": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / a slow Equipment Loading response that lands after switching back to Direct Current is discarded": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / Direct Current mode is unchanged: golden 30000 A primary through CT 1200/1 -> 25 A secondary": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / at 1366px: the Equipment Loading block fits without horizontal overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method / at 1024px: the Equipment Loading block fits without horizontal overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- the recorded side/CT block is shown only for the Recording input source / visible in Recording, hidden in both Manual methods, restored on return": {
+    "status": "passed",
+    "error": ""
+  },
+  "overcurrent_analysis.spec.js / Overcurrent Analysis v1 -- the recorded side/CT block is shown only for the Recording input source / CT inputs are Manual-only: hidden in Recording, and in the four Manual cases they follow the method and keep their values while hidden": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / cursor values follow repeated ENG/PU transitions without movement ({\"a\":true,\"b\":true})": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / cursor values follow repeated ENG/PU transitions without movement ({\"a\":true,\"b\":false})": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / cursor values follow repeated ENG/PU transitions without movement ({\"a\":false,\"b\":true})": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / latest Engineering selection wins over delayed PU metadata": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-display-synchronization.spec.js / real Voltage Group save refreshes fixed cursors and rejects an old cursor response": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-display-synchronization.spec.js / Source Default save and clear update fixed cursors through the real editor": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-display-synchronization.spec.js / fresh cursor values are unavailable while the new basis response is pending": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / an Engineering cursor response cannot overwrite the later PU values": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / delayed PU waveform cannot override a later Engineering selection": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / rapid ENG-PU-ENG-PU intent wins even when the oldest metadata finishes last": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-display-synchronization.spec.js / failed optional metadata cannot prevent the requested PU display": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / source removal cannot resurrect a delayed cursor result": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / workspace reset cannot resurrect a delayed cursor result": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / reset during delayed PU metadata cannot restore the old mode or arrays": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-display-synchronization.spec.js / a Voltage base edit refreshes linked Current while other groups keep their bases": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / calculated Voltage, Current and Power cursors retain eligibility and units": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / a base edit keeps another source's values and avoids requests for it": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-display-synchronization.spec.js / a changed cursor position rejects the earlier measurement response": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / disabled cursors cause no measurement requests during unit switches": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / unit round trips preserve all physical samples, cursor positions, t0 and viewport": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / source removal discards a pending waveform display response": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / workspace reset discards a pending waveform display response": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / callout and peak readouts follow the same basis while their anchors stay fixed": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / an old callout response cannot restore a previous display basis": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / an old peak response cannot restore a previous display basis": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / zoom remains responsive during a mode refresh and its latest arrays reach the plot": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-display-synchronization.spec.js / Voltage cursor follows ENG/PU mode; Current cursor stays in kA; rapid switch rejects stale response": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-numeric-integrity.spec.js / voltage editor rejects true atomically, then accepts a practical base": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-numeric-integrity.spec.js / voltage editor rejects false atomically, then accepts a practical base": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-numeric-integrity.spec.js / voltage editor rejects overflowing SI base atomically, then accepts a practical base": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-numeric-integrity.spec.js / valid tiny base reports numerical unavailability consistently in Waveform and ER and recovers": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-reference-safety.spec.js / known Secondary/Primary group retains ENG without CT scaling": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / known Secondary/Primary Source Default retains ENG without CT scaling": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / known Secondary/Secondary stays eligible under one established authority": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / historical Unknown is explicit beside arrays, cursors, legends and annotations across modes": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / accepted reference edits update all shared displays; rejected edit preserves state": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / an obsolete compatible waveform cannot restore PU after an incompatible accepted edit": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / ER uses its own mode and explicit Unknown-reference status without changing numerical arrays": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / Current MG drawer shows no PU controls for standard Current group (DEC-212)": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-reference-safety.spec.js / Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "per-unit-reference-safety.spec.js / raw Current callout and peak use engineering even when source channel is hidden (DEC-212)": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / legacy annotation without stored engineeringType falls back to ww.displayed lookup (DEC-212)": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-reference-safety.spec.js / calculated Current peak follows ww.unitMode not engineering pending Slice 6D (DEC-212)": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: voltage-config base_reference_side round-trips via API": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: source-default voltage_base_reference_side round-trips via API": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: incompatible PS=S/base=primary \u2192 PU unavailable badge, raw ENG waveform": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: unverified PS=C/base=primary \u2192 Unverified reference badge, PU waveform": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: compatible PS=P/base=primary \u2192 no badge, PU waveform": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: side switch primary\u2192secondary makes PS=S channel compatible": {
+    "status": "passed",
+    "error": ""
+  },
+  "per-unit-voltage-reference-safety.spec.js / VLT-REF-001: raw waveform unchanged for incompatible, unverified, and compatible": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-01: Reference Mode dropdown (Auto/Manual) is absent from the entire voltage edit form": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-02: auto-detected line_to_ground displays read-only text in edit mode": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-03: auto-detected line_to_line displays read-only text in edit mode": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-04: editing kV only sends reference_mode=auto in PUT when group has auto-detected reference": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-05: existing manual override auto-expands Correct voltage reference in Advanced": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-06: Correct voltage reference select contains only L-L and L-N options (no Auto)": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-07: selecting L-L in Correct voltage reference and Apply sends reference_mode=manual": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-08: existing manual reference override survives a kV-only edit": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-09: Advanced Reference Settings is collapsed by default for auto-detected group": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-10: Advanced Reference Settings auto-opens when group has manual reference_mode": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-11: Base reference side selector remains in Advanced Reference Settings": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d2-final.spec.js / FIN-12: Cancel closes edit mode and no PUT is sent": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-01: Equipment Rating section is visible for a current group": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-02: Edit button is present in the Equipment Rating section heading": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-03: clicking Edit enters edit mode with MVA input and voltage group selector": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-04: edit mode pre-fills equipment_mva from current group state": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-05: edit mode pre-selects equipment_linked_voltage_group_id in the voltage group selector": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-06: Cancel exits edit mode and returns to read mode": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-07: Apply sends PUT with update_equipment_metadata_only=true": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-08: Apply sends correct equipment_mva value in PUT body": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-09: Apply sends equipment_linked_voltage_group_id from the voltage group selector": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-10: after successful Apply, read mode shows updated equipment_mva from response": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-11: equipment_rated_current_ka is displayed in read mode when non-null": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d3.spec.js / D3-12: read mode shows 'Not specified' when equipment_mva is null": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-01: auto_nominal VT values are shown immediately when nominal kV is known": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-02: auto_nominal state shows 'Auto-derived from nominal voltage' note": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-03: auto_nominal state does NOT show a 'Suggested' label": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-04: auto_nominal state shows ratio as '275 kV / 110 V' (not colon notation)": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-05: Edit button prefills primary kV and secondary V from auto_nominal effective values": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-06: manual VT shows values and no 'Auto-derived from nominal voltage' note": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-07: Edit prefills from manual effective values (vt_effective_primary_v / secondary_v)": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-08: unresolved nominal (no effective values) shows 'Not configured'": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-09: applying VT saves as manual and 'Auto-derived from nominal voltage' note disappears": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-10: 'Remove VT configuration' button appears in edit mode only when vt_authority is manual": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-11: 'Remove VT configuration' button is absent in edit mode when authority is auto_nominal": {
+    "status": "passed",
+    "error": ""
+  },
+  "rd1-slice-d4-vt-effective.spec.js / VE-12: live ratio display shows 'X kV / Y V' format while editing": {
+    "status": "passed",
+    "error": ""
+  },
+  "recording-details-toolbar.spec.js / Recording Details toolbar: search input is full-width, not collapsed": {
+    "status": "passed",
+    "error": ""
+  },
+  "recording-details-toolbar.spec.js / Recording Details toolbar: search input is full-width in dark theme": {
+    "status": "passed",
+    "error": ""
+  },
+  "time-reference-interpretation.spec.js / UTC / interpret once: automatic Waveform alignment, shared consumers, raw reset and reload": {
+    "status": "passed",
+    "error": ""
+  },
+  "time-reference-interpretation.spec.js / America/New_York / interpret once: automatic Waveform alignment, shared consumers, raw reset and reload": {
+    "status": "passed",
+    "error": ""
+  },
+  "time-reference-interpretation.spec.js / Asia/Kuala_Lumpur / interpret once: automatic Waveform alignment, shared consumers, raw reset and reload": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / retained calculated result rejects raw reset and a new page session": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / timing invalidation clears Impedance and Sequence but retains unrelated results": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / Impedance ignores an in-flight result completed after timing invalidation": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / Sequence ignores an in-flight result completed after timing invalidation": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / transitive catalogue timing and related waveform caches follow every input": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / shared Waveform and reconstruction transport rejects old timing even without abort": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / obsolete Impedance locus response cannot refill its invalidated cache": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / reconstruction timing invalidates only affected per-unit resolutions": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / hidden recording results invalidate while independent manual results survive": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / calculated preview clears affected traces and keeps unrelated plotted arrays": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / Compliance rejects late readiness and clears calculated traces after a dependency reset": {
+    "status": "passed",
+    "error": ""
+  },
+  "timing-authority-invalidation.spec.js / obsolete transport releases its busy marker after the selected context moves away": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / metadata is one bordered two-column card with a divider, real values and no overflow": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / Measurement Side is the approved heading, description and pill control only": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / Level 1 selection, correction and its disclosure still work and are saved through the existing API": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / an undeclared recording still asks for a side (unresolved evidence is not hidden)": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / Per-unit Configuration card shows the real warning, and Review affected groups navigates": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / the Per-unit Configuration card is there on the first Recording Info load, with no loop and no request of its own": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / groups arriving late never pull the engineer out of Group Details or onto another recording": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / header and tabs keep their behaviour; Group Details keeps its own layout": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / no horizontal overflow or clipping at 1600px": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / no horizontal overflow or clipping at 1280px": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / no horizontal overflow or clipping at 1000px": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / no horizontal overflow or clipping at 900px": {
+    "status": "passed",
+    "error": ""
+  },
+  "ui_rec_001_recording_info.spec.js / no horizontal overflow or clipping at 640px": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- controls present and complete / Zoom X/Y, Autoscale X/Y and A/B Cursors all render in the page-level toolbar": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- controls present and complete / no recordings loaded: the complete toolbar still renders, these controls stay visible but disabled": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- controls present and complete / a recording exists but no channel is displayed yet: still disabled": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#workspaceRow')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#workspaceRow')\n    23 \u00d7 locator resolved to <div hidden=\"\" id=\"workspaceRow\">\u2026</div>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- controls present and complete / once a channel is displayed, all five enable together, targeting the same active Time Group": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"605546fa-bc1e-40a9-a6df-a4fd96f78c23\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"605546fa-bc1e-40a9-a6df-a4fd96f78c23\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"605546fa-bc1e-40a9-a6df-a4fd96f78c23\" data-expand-key=\"source:605546fa-bc1e-40a9-a6df-a4fd96f78c23\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- per-Time-Group duplicate controls removed / SUPERSEDED: the local canvas toolbar no longer shows Zoom/Autoscale/Cursor/t0/Sync controls at all -- a later Waveform toolbar refinement ticket moved t0 out the same way and removed Synchronize Sources outright; see waveform-toolbar-t0-sync-refinement.spec.js for that ticket's own full coverage": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"9dd5cc1d-2647-48f5-99a7-a8844936df41\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"9dd5cc1d-2647-48f5-99a7-a8844936df41\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"9dd5cc1d-2647-48f5-99a7-a8844936df41\" data-expand-key=\"source:9dd5cc1d-2647-48f5-99a7-a8844936df41\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) / Zoom X In/Out act on the active Time Group only; X range changes, Y stays": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"668471cf-844a-4ace-93ac-c9570d36c168\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"668471cf-844a-4ace-93ac-c9570d36c168\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"668471cf-844a-4ace-93ac-c9570d36c168\" data-expand-key=\"source:668471cf-844a-4ace-93ac-c9570d36c168\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) / Autoscale X restores the active Time Group's own full bounds, never another group's": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"60434ce6-fba3-492b-8169-4291977d8bbd\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"60434ce6-fba3-492b-8169-4291977d8bbd\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"60434ce6-fba3-492b-8169-4291977d8bbd\" data-expand-key=\"source:60434ce6-fba3-492b-8169-4291977d8bbd\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) / no explicit selection: Zoom X falls back to ww.panels[0]'s own Time Group, matching Zoom Y's own fallback": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"ab4db3f8-cef6-4537-a5c0-1345c7e35e29\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"ab4db3f8-cef6-4537-a5c0-1345c7e35e29\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"ab4db3f8-cef6-4537-a5c0-1345c7e35e29\" data-expand-key=\"source:ab4db3f8-cef6-4537-a5c0-1345c7e35e29\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- A/B Cursors targeting / toggling A/B Cursors affects only the active Time Group; never every group at once": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"b6fd74da-2fcd-4267-9048-6eff3d7d05dc\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"b6fd74da-2fcd-4267-9048-6eff3d7d05dc\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"b6fd74da-2fcd-4267-9048-6eff3d7d05dc\" data-expand-key=\"source:b6fd74da-2fcd-4267-9048-6eff3d7d05dc\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- A/B Cursors targeting / the button's own aria-pressed follows the active target when switched, no stale state": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"6a3254c1-8427-4f1a-b3f7-36d7a462de12\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"6a3254c1-8427-4f1a-b3f7-36d7a462de12\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"6a3254c1-8427-4f1a-b3f7-36d7a462de12\" data-expand-key=\"source:6a3254c1-8427-4f1a-b3f7-36d7a462de12\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / Autoscale Y resets only the selected Y-axis; the other two panels in the same Time Group are untouched": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"af9a0fd4-b817-4e35-9701-fd97264cca9f\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"af9a0fd4-b817-4e35-9701-fd97264cca9f\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"af9a0fd4-b817-4e35-9701-fd97264cca9f\" data-expand-key=\"source:af9a0fd4-b817-4e35-9701-fd97264cca9f\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / other Time Groups remain unaffected by Autoscale Y": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"8c9aeed5-9023-474b-88bf-36cfa9d72b9e\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"8c9aeed5-9023-474b-88bf-36cfa9d72b9e\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"8c9aeed5-9023-474b-88bf-36cfa9d72b9e\" data-expand-key=\"source:8c9aeed5-9023-474b-88bf-36cfa9d72b9e\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / no explicit selection: Autoscale Y falls back to ww.panels[0], the exact same panel Zoom Y falls back to": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"a3fefbfb-6bc9-45d2-8d23-9dc18bf57485\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"a3fefbfb-6bc9-45d2-8d23-9dc18bf57485\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"a3fefbfb-6bc9-45d2-8d23-9dc18bf57485\" data-expand-key=\"source:a3fefbfb-6bc9-45d2-8d23-9dc18bf57485\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / Zoom Y and Autoscale Y resolve exactly the same target when the active panel switches": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"db504dee-b17b-4b5f-b087-579a6875d1ac\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"db504dee-b17b-4b5f-b087-579a6875d1ac\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"db504dee-b17b-4b5f-b087-579a6875d1ac\" data-expand-key=\"source:db504dee-b17b-4b5f-b087-579a6875d1ac\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / no valid Y-axis: Autoscale Y stays visible but disabled, matching Zoom Y exactly": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no data: readout shows 'Y: Select axis'": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / the first valid Waveform axis becomes the fallback readout target": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"e3e13749-3011-4441-82b7-385b5f245dba\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"e3e13749-3011-4441-82b7-385b5f245dba\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"e3e13749-3011-4441-82b7-385b5f245dba\" data-expand-key=\"source:e3e13749-3011-4441-82b7-385b5f245dba\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / readout updates when another Y-axis becomes active": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"95efedc2-6309-49e1-bb16-9ad6f13065c0\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"95efedc2-6309-49e1-bb16-9ad6f13065c0\"]')\n    22 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"95efedc2-6309-49e1-bb16-9ad6f13065c0\" data-expand-key=\"source:95efedc2-6309-49e1-bb16-9ad6f13065c0\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Zoom Y affects exactly the axis shown in the readout": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"dbec9017-02a7-4f75-b191-ed1d9eab7c87\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"dbec9017-02a7-4f75-b191-ed1d9eab7c87\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"dbec9017-02a7-4f75-b191-ed1d9eab7c87\" data-expand-key=\"source:dbec9017-02a7-4f75-b191-ed1d9eab7c87\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Autoscale Y affects exactly the same axis shown in the readout": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"6b61ed45-6d92-4e7c-916c-65a451451185\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"6b61ed45-6d92-4e7c-916c-65a451451185\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"6b61ed45-6d92-4e7c-916c-65a451451185\" data-expand-key=\"source:6b61ed45-6d92-4e7c-916c-65a451451185\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / removing the active axis selects the correct fallback; no stale label remains": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"6cb43c07-d5f6-43e3-90d1-7af8373534dd\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"6cb43c07-d5f6-43e3-90d1-7af8373534dd\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"6cb43c07-d5f6-43e3-90d1-7af8373534dd\" data-expand-key=\"source:6cb43c07-d5f6-43e3-90d1-7af8373534dd\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / clearing the workspace resets the readout to the empty state": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"8e530800-2eb4-4518-a37e-83b1b2983272\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"8e530800-2eb4-4518-a37e-83b1b2983272\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"8e530800-2eb4-4518-a37e-83b1b2983272\" data-expand-key=\"source:8e530800-2eb4-4518-a37e-83b1b2983272\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no stale label remains after switching the active Time Group": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689\" data-expand-key=\"source:84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Event Reconstruction -- active axis readout no regression / wwErActiveAxisReadout keeps its own behaviour, untouched by Waveform's new readout": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- spacing fix (no empty group between Time and Unit Mode) / Time Display and Unit Mode sit with normal single-separator spacing, both when the hidden Detect Event button is absent and if it were present": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Per-Unit Settings icon / renders the new pu_settings.svg asset, no broken path, same handler/tooltip/position": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwOpenPerUnitSettingsBtn')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwOpenPerUnitSettingsBtn')\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Per-Unit Settings icon / renders correctly in dark theme too": {
+    "status": "timedOut",
+    "error": "Test timeout of 30000ms exceeded."
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Clear Waveforms restored to the left operational group / visible and disabled with no recordings; the complete toolbar stays stable": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Clear Waveforms restored to the left operational group / sits on the left, after Annotations and before the right-aligned view/layout group": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Clear Waveforms restored to the left operational group / enables once a waveform is displayed; clears only the displayed panel, never the source recording": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"cb8276d0-1abc-4967-a486-bd2bb78d687e\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"cb8276d0-1abc-4967-a486-bd2bb78d687e\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"cb8276d0-1abc-4967-a486-bd2bb78d687e\" data-expand-key=\"source:cb8276d0-1abc-4967-a486-bd2bb78d687e\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Clear Waveforms restored to the left operational group / no duplicate Clear control remains anywhere else in the toolbar": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Event Reconstruction -- spacing/icon/Clear Waveforms changes no regression / ER's own toolbar is unaffected": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- themes, layout, console / no duplicated controls document-wide; both themes; narrower viewport; no console errors": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"84b012f0-aa45-4fe6-89bd-7182d8e87bfc\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"84b012f0-aa45-4fe6-89bd-7182d8e87bfc\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"84b012f0-aa45-4fe6-89bd-7182d8e87bfc\" data-expand-key=\"source:84b012f0-aa45-4fe6-89bd-7182d8e87bfc\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-top-toolbar-migration.spec.js / Event Reconstruction -- no regression / its own global Zoom X/Autoscale X/A-B-Cursors controls still work as before": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y In targets only the selected (active) panel's axis": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"435357c9-c94d-4f1c-96d8-f1bd4de4aaa4\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"435357c9-c94d-4f1c-96d8-f1bd4de4aaa4\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"435357c9-c94d-4f1c-96d8-f1bd4de4aaa4\" data-expand-key=\"source:435357c9-c94d-4f1c-96d8-f1bd4de4aaa4\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y Out targets only the selected (active) panel's axis": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"c2333b3f-f643-4213-a219-629acb8386b2\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"c2333b3f-f643-4213-a219-629acb8386b2\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"c2333b3f-f643-4213-a219-629acb8386b2\" data-expand-key=\"source:c2333b3f-f643-4213-a219-629acb8386b2\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / switching the active panel via its header moves the Y Zoom target, never the other panel": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"1d228159-1d60-456d-afdd-70905bfdd345\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"1d228159-1d60-456d-afdd-70905bfdd345\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"1d228159-1d60-456d-afdd-70905bfdd345\" data-expand-key=\"source:1d228159-1d60-456d-afdd-70905bfdd345\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / zooming the active panel never touches another Time Group's own panel": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"30205bec-bb22-4800-a9b0-9aa9995623ae\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"30205bec-bb22-4800-a9b0-9aa9995623ae\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"30205bec-bb22-4800-a9b0-9aa9995623ae\" data-expand-key=\"source:30205bec-bb22-4800-a9b0-9aa9995623ae\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"081a9de8-2057-4574-8fbe-73356d769fe7\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"081a9de8-2057-4574-8fbe-73356d769fe7\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"081a9de8-2057-4574-8fbe-73356d769fe7\" data-expand-key=\"source:081a9de8-2057-4574-8fbe-73356d769fe7\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / no recordings at all: Y Zoom In/Out stay disabled": {
+    "status": "passed",
+    "error": ""
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / a recording exists but no channel is displayed yet: still disabled": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#workspaceRow')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#workspaceRow')\n    23 \u00d7 locator resolved to <div hidden=\"\" id=\"workspaceRow\">\u2026</div>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / the tooltip names the targeted panel's own label once a target exists": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"addd6a35-887d-4a8b-935a-e277aac3e938\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"addd6a35-887d-4a8b-935a-e277aac3e938\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"addd6a35-887d-4a8b-935a-e277aac3e938\" data-expand-key=\"source:addd6a35-887d-4a8b-935a-e277aac3e938\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Waveform global Y Zoom -- Autoscale Y interaction / Autoscale Y restores the correct automatic range for the same target axis after a manual zoom": {
+    "status": "failed",
+    "error": "Error: expect(locator).toBeVisible() failed\n\nLocator:  locator('#channelGroups details.source-recording[data-source-id=\"55ab7af5-b5d4-48e7-80b6-2e62133e5deb\"]')\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#channelGroups details.source-recording[data-source-id=\"55ab7af5-b5d4-48e7-80b6-2e62133e5deb\"]')\n    23 \u00d7 locator resolved to <details open=\"\" class=\"source-recording\" data-default-open=\"true\" data-source-id=\"55ab7af5-b5d4-48e7-80b6-2e62133e5deb\" data-expand-key=\"source:55ab7af5-b5d4-48e7-80b6-2e62133e5deb\">\u2026</details>\n       - unexpected value \"hidden\"\n"
+  },
+  "waveform-y-zoom.spec.js / Event Reconstruction Y-axis zoom -- no regression / wwErZoomYInBtn/wwErZoomYOutBtn still step the active axis as before": {
+    "status": "passed",
+    "error": ""
+  }
+}

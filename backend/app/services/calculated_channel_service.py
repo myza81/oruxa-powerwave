@@ -17,7 +17,8 @@ definition, this module validates and evaluates it.
 
 from __future__ import annotations
 from app.services.calculated_current_per_unit import resolve_calculated_current_per_unit
-from app.domain.per_unit_reference import apply_source_reference
+from app.services.per_unit_side_authority import apply_calculated_source_reference
+from app.services.recorded_side_authority import RecordedAuthority
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -1679,6 +1680,7 @@ def _resolve_effective_per_unit_for_calculated_channel(
     current_config_registry: CurrentGroupConfigRegistry | None = None,
     source_registry: WorkspaceRegistry | None = None,
     per_unit_registry: PerUnitRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ):
     """DEC-050 Slice 7: the ONE dispatch point every per-unit-aware
     calculated-channel function below calls, instead of
@@ -1734,6 +1736,7 @@ def _resolve_effective_per_unit_for_calculated_channel(
             workspace_id=workspace_id, channel=channel, source_registry=source_registry,
             per_unit_registry=per_unit_registry, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            side_authority=side_authority,
         )
         if inherited is not None:
             return inherited.resolution
@@ -1769,9 +1772,24 @@ def _resolve_effective_per_unit_for_calculated_channel(
             explicit_voltage_reference=channel.voltage_representation,
         )
     # Context-free historical service callers cannot certify recorded sides.
-    resolution = apply_source_reference(resolution, channel.engineering_type,
+    # Mirrors waveform_service._resolve_effective_per_unit(): for the group-aware
+    # Voltage path, use the Voltage group config's base_reference_side (not the
+    # Source Default profile's), identified by profile_id != per_unit_profile.source_id.
+    _voltage_group_config = None
+    if (
+        channel.engineering_type == VOLTAGE
+        and voltage_config_registry is not None
+        and workspace_id is not None
+        and resolution.profile_id is not None
+        and not (per_unit_profile is not None and resolution.profile_id == per_unit_profile.source_id)
+    ):
+        _voltage_group_config = voltage_config_registry.get(workspace_id, resolution.profile_id)
+    # PU-MIG S3: a calculated Voltage result takes the side of its leaves from Recording Details (and the VT of the group whose base it
+    # inherited) when the caller has the authority; otherwise, and for every other quantity, this is exactly the historical gate.
+    resolution = apply_calculated_source_reference(
+        resolution, channel, workspace_id=workspace_id, calc_registry=calc_registry,
         group_config=current_config_registry.get(workspace_id, resolution.profile_id) if current_config_registry and resolution.profile_id else None,
-        profile=per_unit_profile)
+        profile=per_unit_profile, voltage_group_config=_voltage_group_config, side_authority=side_authority)
     return resolve_conversion_eligibility(resolution, channel.unit, channel.engineering_type, channel.values)
 
 
@@ -1788,6 +1806,7 @@ class CalculatedWaveformRangeResult:
     values: np.ndarray
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def extract_calculated_waveform_range(
@@ -1806,6 +1825,7 @@ def extract_calculated_waveform_range(
     current_config_registry: CurrentGroupConfigRegistry | None = None,
     source_registry: WorkspaceRegistry | None = None,
     per_unit_registry: PerUnitRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> CalculatedWaveformRangeResult:
     """Display-range extraction for one calculated channel -- calls the
     SAME `_clip_and_reduce()` core the source-channel waveform endpoint
@@ -1840,14 +1860,16 @@ def extract_calculated_waveform_range(
     unit = channel.unit
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         resolution = _resolve_effective_per_unit_for_calculated_channel(
             channel, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
-            source_registry=source_registry, per_unit_registry=per_unit_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
+        per_unit_verification_state = resolution.verification_state
         out_values, unit, per_unit_status = apply_per_unit_to_array(
             out_values, channel.unit, channel.engineering_type, resolution
         )
@@ -1863,6 +1885,7 @@ def extract_calculated_waveform_range(
         values=out_values,
         per_unit_status=per_unit_status,
         per_unit_reference_compatibility=per_unit_reference_compatibility,
+        per_unit_verification_state=per_unit_verification_state,
     )
 
 
@@ -1875,6 +1898,7 @@ class CalculatedCursorValues:
     b_value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def extract_calculated_cursor_values(
@@ -1892,6 +1916,7 @@ def extract_calculated_cursor_values(
     current_config_registry: CurrentGroupConfigRegistry | None = None,
     source_registry: WorkspaceRegistry | None = None,
     per_unit_registry: PerUnitRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> list[CalculatedCursorValues]:
     """A/B cursor values for a batch of calculated channels (section 54) --
     each channel's own full-resolution `time` array is searched
@@ -1935,6 +1960,7 @@ def extract_calculated_cursor_values(
         unit = channel.unit
         per_unit_status: str | None = None
         per_unit_reference_compatibility: str | None = None
+        per_unit_verification_state: str | None = None
         if unit_mode == UNIT_MODE_PER_UNIT:
             profile = (per_unit_profiles or {}).get(channel.id)
             names = (voltage_channel_names_by_id or {}).get(channel.id)
@@ -1942,9 +1968,10 @@ def extract_calculated_cursor_values(
                 channel, profile, names,
                 workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
                 voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
-            source_registry=source_registry, per_unit_registry=per_unit_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
             )
             per_unit_reference_compatibility = resolution.reference_compatibility
+            per_unit_verification_state = resolution.verification_state
             a_value, unit, per_unit_status = apply_per_unit_to_value(a_value, channel.unit, channel.engineering_type, resolution)
             b_value, unit, per_unit_status = apply_per_unit_to_value(b_value, channel.unit, channel.engineering_type, resolution)
 
@@ -1957,6 +1984,7 @@ def extract_calculated_cursor_values(
                 b_value=b_value,
                 per_unit_status=per_unit_status,
                 per_unit_reference_compatibility=per_unit_reference_compatibility,
+                per_unit_verification_state=per_unit_verification_state,
             )
         )
     return results
@@ -1973,6 +2001,7 @@ class CalculatedPeakResult:
     unit: str | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def resolve_calculated_peak_value(
@@ -1991,6 +2020,7 @@ def resolve_calculated_peak_value(
     current_config_registry: CurrentGroupConfigRegistry | None = None,
     source_registry: WorkspaceRegistry | None = None,
     per_unit_registry: PerUnitRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> CalculatedPeakResult:
     """+Peak/-Peak for one calculated channel (section 55) -- calls the
     SAME `_peak_in_range()` core (earliest-tie argmax/argmin, non-finite
@@ -2024,14 +2054,16 @@ def resolve_calculated_peak_value(
     unit = channel.unit if available else None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
     if available and unit_mode == UNIT_MODE_PER_UNIT:
         resolution = _resolve_effective_per_unit_for_calculated_channel(
             channel, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
-            source_registry=source_registry, per_unit_registry=per_unit_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
+        per_unit_verification_state = resolution.verification_state
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedPeakResult(
         calculated_channel_id=channel.id,
@@ -2043,6 +2075,7 @@ def resolve_calculated_peak_value(
         unit=unit,
         per_unit_status=per_unit_status,
         per_unit_reference_compatibility=per_unit_reference_compatibility,
+        per_unit_verification_state=per_unit_verification_state,
     )
 
 
@@ -2060,6 +2093,7 @@ class CalculatedAnnotationAnchorResult:
     value: float | None
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
 
 
 def resolve_calculated_annotation_anchor(
@@ -2076,6 +2110,7 @@ def resolve_calculated_annotation_anchor(
     current_config_registry: CurrentGroupConfigRegistry | None = None,
     source_registry: WorkspaceRegistry | None = None,
     per_unit_registry: PerUnitRegistry | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> CalculatedAnnotationAnchorResult | None:
     """Callout anchor resolution for one calculated channel (section 56) --
     reuses `_nearest_sample_index()` directly, the exact same nearest-
@@ -2114,14 +2149,16 @@ def resolve_calculated_annotation_anchor(
     unit = channel.unit
     per_unit_status: str | None = None
     per_unit_reference_compatibility: str | None = None
+    per_unit_verification_state: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         resolution = _resolve_effective_per_unit_for_calculated_channel(
             channel, per_unit_profile, voltage_channel_names,
             workspace_id=workspace_id, calc_registry=calc_registry, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
-            source_registry=source_registry, per_unit_registry=per_unit_registry,
+            source_registry=source_registry, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
         per_unit_reference_compatibility = resolution.reference_compatibility
+        per_unit_verification_state = resolution.verification_state
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedAnnotationAnchorResult(
         calculated_channel_id=channel.id,
@@ -2131,4 +2168,5 @@ def resolve_calculated_annotation_anchor(
         value=value,
         per_unit_status=per_unit_status,
         per_unit_reference_compatibility=per_unit_reference_compatibility,
+        per_unit_verification_state=per_unit_verification_state,
     )

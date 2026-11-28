@@ -31,20 +31,20 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
   // ---- Smoke A: app loads ----
   await test.step("Smoke A - app loads, RECORDINGS area exists", async () => {
     await page.goto("/index.html");
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
   });
 
   // ---- Smoke B: upload one known COMTRADE fixture ----
   let sourceId;
   await test.step("Smoke B - upload synth_ascii fixture, source appears in RECORDINGS", async () => {
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     await expect(row).toBeVisible();
     sourceId = await row.getAttribute("data-source-id");
     expect(sourceId).toBeTruthy();
@@ -52,7 +52,8 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
 
   // ---- Smoke C: display one analog channel ----
   await test.step("Smoke C - toggle one analog channel, waveform trace renders", async () => {
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-source-id", sourceId);
@@ -68,7 +69,13 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
   await test.step("Smoke D - displayed channel belongs to a rendered Time Group canvas", async () => {
     const canvas = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas").first();
     await expect(canvas).toBeVisible();
-    await expect(canvas.locator(".ww-tg-toolbar-row")).toBeVisible();
+    // Every local control of the Time Group toolbar row moved to the page-level #wwToolbar
+    // (DEC-158), so the row itself is collapsed while its structure stays in the canvas.
+    // The canvas shows its own header, and the page toolbar's zoom control is enabled for it.
+    await expect(canvas.locator(".ww-tg-header")).toBeVisible();
+    await expect(canvas.locator(".ww-tg-toolbar-row")).toBeAttached();
+    await expect(page.locator("#wwToolbar")).toBeVisible();
+    await expect(page.locator("#wwZoomXInBtn")).toBeEnabled();
     await expect(canvas.locator(".ww-tg-panels .ww-chart").first()).toBeVisible();
   });
 
@@ -184,18 +191,19 @@ test("Powerwave smoke: toggling a channel display immediately after opening a ju
   });
 
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
 
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   const chRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
   await expect(chRow).toBeVisible();
   await expect(chRow).toHaveAttribute("data-source-id", sourceId);

@@ -1,0 +1,413 @@
+"""D5A-2B2A / D5A-UI-002: unified measurement-side configuration (pure domain).
+
+One authoritative interpretation of "is this recorded Voltage/Current channel on the Primary or the
+Secondary side of its instrument transformer", shared by every consumer. Two levels of configuration:
+
+* Level 1 -- the Recording (source): a recording-wide default, resolved automatically from the
+  recording's own per-channel P/S evidence when that evidence is consistent, and correctable by an
+  engineer. The engineer's value is stored SEPARATELY from the evidence; the evidence is never altered.
+* Level 2 -- the Measurement Group (a Voltage or a Current group of ONE recording): an optional engineer
+  override of Level 1, one value for the whole group (never per phase). A group with no override simply
+  follows Level 1; nothing is stored for it. The Voltage and the Current group of the same bay are two groups
+  and therefore two independent settings: Primary voltage with Secondary current is legitimate.
+
+Channel precedence (first match wins):
+
+    1. group override          (engineer, the channel's Measurement Group)  -> `engineer_group_override`
+    2. recording correction    (engineer)                                   -> `engineer_recording_correction`
+    3. the channel's own P/S   (original recording evidence)                -> `recording_channel_declared`
+    4. recording default       (consistent evidence of the OTHER channels)  -> `recording_default`
+    5. nothing                                                              -> `unresolved`
+
+Contradictory evidence is never hidden: a recording whose channels declare different sides has NO
+recording-derived default (so it cannot be used to conceal the mix), each channel keeps its own
+declaration, and a group that ends up with different effective sides is reported as a conflict instead of
+being given a single manufactured interpretation. An engineer value that disagrees with a channel's
+declaration wins, and the declaration it overrides stays visible (`declared_side`, diagnostics).
+
+Engineering Context membership plays no part in the side: the Measurement Group is the unit that owns both the
+CT/VT ratio and the side, so the two can never disagree about which channels they cover.
+
+No CT/VT ratio, no Per-Unit base and no conversion lives here, and nothing is inferred from channel
+names. Per-phase settings are intentionally not modelled.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Iterable, Mapping, Sequence
+
+SIDE_PRIMARY = "primary"
+SIDE_SECONDARY = "secondary"
+SIDE_UNKNOWN = "unknown"
+CONFIGURABLE_SIDES = (SIDE_PRIMARY, SIDE_SECONDARY)
+
+QUANTITY_VOLTAGE = "voltage"
+QUANTITY_CURRENT = "current"
+
+# --- Channel / recording-level authority (what decided the effective side) ---
+AUTH_GROUP_OVERRIDE = "engineer_group_override"
+AUTH_RECORDING_CORRECTION = "engineer_recording_correction"
+AUTH_CHANNEL_DECLARED = "recording_channel_declared"
+AUTH_RECORDING_DEFAULT = "recording_default"
+AUTH_UNRESOLVED = "unresolved"
+AUTH_NOT_APPLICABLE = "not_applicable"
+
+# --- Recording-derived evidence status ---
+EVIDENCE_CONSISTENT = "consistent"
+EVIDENCE_NONE = "none"
+EVIDENCE_MIXED = "mixed"
+# Voltage channels agree among themselves and so do current channels, but the two quantities declare different
+# sides. Legitimate (B2A-1): there is simply no single recording-wide side, so each channel keeps its own.
+EVIDENCE_QUANTITY_SPLIT = "voltage_current_differ"
+
+# --- Aggregate resolution status (group / consumed-channel set) ---
+STATUS_RESOLVED = "resolved"
+STATUS_CONFLICT = "conflict"
+STATUS_UNRESOLVED = "unresolved"
+STATUS_NOT_APPLICABLE = "not_applicable"
+
+SEVERITY_INFO = "info"
+SEVERITY_WARNING = "warning"
+SEVERITY_CONFLICT = "conflict"
+
+# Diagnostic codes (stable contract).
+DIAG_RECORDING_EVIDENCE_MISSING = "RECORDING_SIDE_EVIDENCE_MISSING"
+DIAG_RECORDING_EVIDENCE_MIXED = "RECORDING_MIXED_SIDE_EVIDENCE"
+DIAG_RECORDING_QUANTITY_SPLIT = "RECORDING_VOLTAGE_CURRENT_SIDES_DIFFER"
+DIAG_RECORDING_EVIDENCE_PARTIAL = "RECORDING_PARTIAL_SIDE_EVIDENCE"
+DIAG_RECORDING_CORRECTION_OVERRIDES = "ENGINEER_CORRECTION_OVERRIDES_DECLARATION"
+DIAG_GROUP_OVERRIDE_OVERRIDES = "GROUP_OVERRIDE_OVERRIDES_DECLARATION"
+DIAG_GROUP_MIXED_SIDES = "GROUP_MIXED_SIDES"
+DIAG_GROUP_UNRESOLVED = "GROUP_SIDE_UNRESOLVED"
+DIAG_GROUP_NO_MEMBERS = "GROUP_HAS_NO_VOLTAGE_CURRENT_MEMBERS"
+DIAG_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND"
+DIAG_CHANNEL_NOT_MEASUREMENT = "CHANNEL_NOT_VOLTAGE_OR_CURRENT"
+DIAG_CALCULATED_CHANNEL = "CALCULATED_CHANNEL_NOT_RESOLVED"
+DIAG_SOURCE_NOT_FOUND = "SOURCE_NOT_FOUND"
+DIAG_CONSUMED_MIXED = "CONSUMED_CHANNELS_SIDES_DIFFER"
+DIAG_CONSUMED_VI_DIFFER = "CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER"
+DIAG_CHANNEL_INFERRED = "CHANNEL_SIDE_INFERRED"
+DIAG_CONSUMED_UNRESOLVED = "CONSUMED_CHANNEL_SIDE_UNRESOLVED"
+
+
+def side_configurable(side: object) -> bool:
+    return isinstance(side, str) and side in CONFIGURABLE_SIDES
+
+
+def normalise_declared_side(side: str | None) -> str:
+    """A recording's own marker as `primary` / `secondary`; anything else is `unknown`."""
+    return side if side in CONFIGURABLE_SIDES else SIDE_UNKNOWN
+
+
+@dataclass(frozen=True, slots=True)
+class SideDiagnostic:
+    code: str
+    severity: str
+    message: str
+    detail: Mapping[str, str | int | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelSideEvidence:
+    """The recording's original declaration for one Voltage/Current channel. Never mutated."""
+
+    channel_name: str
+    quantity: str
+    declared_side: str
+    source_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecordingSideDerivation:
+    """What the recording's own channel evidence says, with no engineer input applied."""
+
+    status: str
+    side: str | None
+    primary_count: int = 0
+    secondary_count: int = 0
+    undeclared_count: int = 0
+    evidence_channel_count: int = 0
+    #: The side every DECLARING channel of that quantity agrees on (None when none declare, or they disagree).
+    voltage_side: str | None = None
+    current_side: str | None = None
+
+
+def _quantity_side(items: Sequence[ChannelSideEvidence], quantity: str) -> str | None:
+    declared = {e.declared_side for e in items if e.quantity == quantity and e.declared_side != SIDE_UNKNOWN}
+    return next(iter(declared)) if len(declared) == 1 else None
+
+
+def derive_recording_side(evidence: Iterable[ChannelSideEvidence]) -> RecordingSideDerivation:
+    """Consistent only when every DECLARING channel agrees; mixed declarations yield no default."""
+    items = list(evidence)
+    primary = sum(1 for e in items if e.declared_side == SIDE_PRIMARY)
+    secondary = sum(1 for e in items if e.declared_side == SIDE_SECONDARY)
+    undeclared = len(items) - primary - secondary
+    voltage_side, current_side = _quantity_side(items, QUANTITY_VOLTAGE), _quantity_side(items, QUANTITY_CURRENT)
+    if primary and secondary:
+        # Disagreement WITHIN a quantity is a genuine mix; one side per quantity, differing, is a legitimate split.
+        split = voltage_side is not None and current_side is not None and voltage_side != current_side
+        status, side = (EVIDENCE_QUANTITY_SPLIT if split else EVIDENCE_MIXED), None
+    elif primary or secondary:
+        status, side = EVIDENCE_CONSISTENT, SIDE_PRIMARY if primary else SIDE_SECONDARY
+    else:
+        status, side = EVIDENCE_NONE, None
+    return RecordingSideDerivation(status, side, primary, secondary, undeclared, len(items), voltage_side, current_side)
+
+
+@dataclass(frozen=True, slots=True)
+class RecordingSideState:
+    """Level 1 for one recording: derived evidence + the engineer's correction (if any) + the result."""
+
+    derivation: RecordingSideDerivation
+    engineer_side: str | None
+    effective_side: str | None
+    authority: str
+    diagnostics: tuple[SideDiagnostic, ...] = ()
+
+
+def resolve_recording_state(
+    derivation: RecordingSideDerivation, engineer_side: str | None,
+    evidence: Sequence[ChannelSideEvidence] = (),
+) -> RecordingSideState:
+    diags: list[SideDiagnostic] = []
+    if derivation.status == EVIDENCE_MIXED:
+        diags.append(SideDiagnostic(
+            DIAG_RECORDING_EVIDENCE_MIXED, SEVERITY_CONFLICT,
+            "The recording's voltage/current channels declare different measurement sides; no recording-wide "
+            "default is derived. Each channel keeps its own declaration until an engineer sets the recording side.",
+            {"primary_channels": derivation.primary_count, "secondary_channels": derivation.secondary_count},
+        ))
+    elif derivation.status == EVIDENCE_QUANTITY_SPLIT:
+        diags.append(SideDiagnostic(
+            DIAG_RECORDING_QUANTITY_SPLIT, SEVERITY_INFO,
+            "The recording declares voltage and current on different sides, so it has no single recording-wide "
+            "side; each channel is used as declared.",
+            {"voltage_side": derivation.voltage_side, "current_side": derivation.current_side},
+        ))
+    elif derivation.status == EVIDENCE_NONE:
+        diags.append(SideDiagnostic(
+            DIAG_RECORDING_EVIDENCE_MISSING, SEVERITY_WARNING,
+            "The recording declares no Primary/Secondary side for its voltage/current channels.",
+            {"evidence_channels": derivation.evidence_channel_count},
+        ))
+    elif derivation.undeclared_count:
+        diags.append(SideDiagnostic(
+            DIAG_RECORDING_EVIDENCE_PARTIAL, SEVERITY_INFO,
+            "Some voltage/current channels declare no side; they take the recording default of the channels "
+            "that do.", {"undeclared_channels": derivation.undeclared_count},
+        ))
+    if engineer_side is not None:
+        contradicted = sorted(e.channel_name for e in evidence
+                              if e.declared_side not in (SIDE_UNKNOWN, engineer_side))
+        if contradicted:
+            diags.append(SideDiagnostic(
+                DIAG_RECORDING_CORRECTION_OVERRIDES, SEVERITY_WARNING,
+                "The engineer's recording side overrides the side declared by these channels; the original "
+                "declarations are retained.", {"channels": ",".join(contradicted), "count": len(contradicted)},
+            ))
+        return RecordingSideState(derivation, engineer_side, engineer_side, AUTH_RECORDING_CORRECTION, tuple(diags))
+    if derivation.status == EVIDENCE_CONSISTENT:
+        return RecordingSideState(derivation, None, derivation.side, AUTH_CHANNEL_DECLARED, tuple(diags))
+    return RecordingSideState(derivation, None, None, AUTH_UNRESOLVED, tuple(diags))
+
+
+def recording_correction_to_store(selected: str | None, derivation: RecordingSideDerivation) -> str | None:
+    """The engineer's selection -> the correction to keep. `None` follows the recording. Selecting the value the
+    recording already declares for EVERY channel stores nothing (nothing is redundant). When some channels declare
+    nothing, the same selection is kept: it is the engineer's confirmation of what those channels would otherwise
+    only inherit as an inferred default."""
+    if selected is None:
+        return None
+    if not side_configurable(selected):
+        raise ValueError("Measurement side must be 'primary' or 'secondary'.")
+    if derivation.status == EVIDENCE_CONSISTENT and selected == derivation.side and not derivation.undeclared_count:
+        return None
+    return selected
+
+
+def group_override_is_redundant(selected: str, without_override: Sequence["ChannelSideResolution"]) -> bool:
+    """True when the group, with NO override, already resolves every channel to `selected` on RELIABLE evidence (a
+    channel's own declaration or an engineer's recording correction). Then the selection is the inherited side and
+    nothing is stored (the group follows Level 1 again). If any channel would instead be inferred, unresolved or
+    different, the selection is kept: dropping it would silently change the effective side or hide a contradiction."""
+    if not side_configurable(selected):
+        raise ValueError("Measurement side must be 'primary' or 'secondary'.")
+    return bool(without_override) and all(r.strict_usable and r.side == selected for r in without_override)
+
+
+@dataclass(frozen=True, slots=True)
+class GroupSideState:
+    """What applies to one channel from its Measurement Group (`override_side` is None when the group follows
+    Level 1, or the channel is in no group)."""
+
+    group_id: str | None = None
+    override_side: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelSideResolution:
+    channel_name: str | None
+    quantity: str | None
+    side: str
+    authority: str
+    declared_side: str
+    recording_side: str | None
+    recording_authority: str
+    group_id: str | None = None
+    group_override_side: str | None = None
+    diagnostics: tuple[SideDiagnostic, ...] = ()
+    source_id: str | None = None
+
+    @property
+    def usable(self) -> bool:
+        """True for any concrete Primary/Secondary side, including an inferred one (display / inheritance)."""
+        return self.side in CONFIGURABLE_SIDES
+
+    @property
+    def inferred(self) -> bool:
+        """The side comes only from the sibling-derived recording default, not from this channel's own evidence."""
+        return self.authority == AUTH_RECORDING_DEFAULT
+
+    @property
+    def strict_usable(self) -> bool:
+        """A side strict side-dependent calculations may act on: reliable evidence (the channel's own declaration)
+        or an engineer-confirmed Recording / Group setting. An inferred default is not enough."""
+        return self.usable and not self.inferred
+
+
+def resolve_channel_side(
+    evidence: ChannelSideEvidence, recording: RecordingSideState, group: GroupSideState | None = None,
+) -> ChannelSideResolution:
+    group = group or GroupSideState()
+    diags: list[SideDiagnostic] = []
+    declared = evidence.declared_side
+    override = group.override_side
+    if override is not None:
+        side, authority = override, AUTH_GROUP_OVERRIDE
+        if declared not in (SIDE_UNKNOWN, override):
+            diags.append(SideDiagnostic(
+                DIAG_GROUP_OVERRIDE_OVERRIDES, SEVERITY_WARNING,
+                "The group setting overrides the side this channel declares; the declaration is retained.",
+                {"declared_side": declared, "group_side": override},
+            ))
+    elif recording.engineer_side is not None:
+        side, authority = recording.engineer_side, AUTH_RECORDING_CORRECTION
+        if declared not in (SIDE_UNKNOWN, side):
+            diags.append(SideDiagnostic(
+                DIAG_RECORDING_CORRECTION_OVERRIDES, SEVERITY_WARNING,
+                "The engineer's recording side overrides the side this channel declares; the declaration is "
+                "retained.", {"declared_side": declared, "recording_side": side},
+            ))
+    elif declared != SIDE_UNKNOWN:
+        side, authority = declared, AUTH_CHANNEL_DECLARED
+    elif recording.effective_side is not None:
+        side, authority = recording.effective_side, AUTH_RECORDING_DEFAULT
+        diags.append(SideDiagnostic(
+            DIAG_CHANNEL_INFERRED, SEVERITY_INFO,
+            "This channel declares no side; the side shown is inferred from the recording's other channels. Strict "
+            "side-dependent calculations need reliable evidence or an engineer-confirmed recording/group setting.",
+            {"inferred_side": side},
+        ))
+    else:
+        side, authority = SIDE_UNKNOWN, AUTH_UNRESOLVED
+    return ChannelSideResolution(
+        channel_name=evidence.channel_name, quantity=evidence.quantity, side=side, authority=authority,
+        declared_side=declared, recording_side=recording.effective_side, recording_authority=recording.authority,
+        group_id=group.group_id, group_override_side=override,
+        diagnostics=tuple(diags), source_id=evidence.source_id,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class SideSetResolution:
+    """Aggregate of several channels' effective sides (a group, or the channels a calculation consumes)."""
+
+    status: str
+    side: str | None
+    voltage_side: str | None
+    current_side: str | None
+    authority: str
+    diagnostics: tuple[SideDiagnostic, ...] = ()
+    inferred_channels: tuple[str, ...] = ()
+
+    @property
+    def usable(self) -> bool:
+        """Every channel has a concrete side (possibly inferred, possibly Primary voltage with Secondary current)."""
+        return self.status == STATUS_RESOLVED
+
+    @property
+    def strict_usable(self) -> bool:
+        """`usable` and no side merely inferred: safe for a strict side-dependent calculation. (Whether a CT/VT
+        ratio may be applied is the consuming slice's own check of the consumed channel's Measurement Group.)"""
+        return self.usable and not self.inferred_channels
+
+    @property
+    def reference_sides(self) -> str | None:
+        """`uniform` when every channel shares one side; `voltage_current_differ` when each quantity is uniform
+        but voltage and current sit on different sides (legitimate: each is normalised independently)."""
+        if not self.usable:
+            return None
+        return "uniform" if self.side is not None else "voltage_current_differ"
+
+
+def _uniform(resolutions: Sequence[ChannelSideResolution]) -> str | None:
+    sides = {r.side for r in resolutions}
+    return next(iter(sides)) if len(sides) == 1 and next(iter(sides)) in CONFIGURABLE_SIDES else None
+
+
+def resolve_side_set(
+    resolutions: Sequence[ChannelSideResolution], *,
+    mixed_code: str = DIAG_GROUP_MIXED_SIDES, vi_code: str = DIAG_CONSUMED_VI_DIFFER,
+    unresolved_code: str = DIAG_GROUP_UNRESOLVED,
+) -> SideSetResolution:
+    """A single side only when EVERY channel agrees; different sides are a conflict (never merged) and any
+    unresolved channel keeps the set unresolved -- nothing is guessed."""
+    items = [r for r in resolutions if r.authority != AUTH_NOT_APPLICABLE]
+    if not items:
+        return SideSetResolution(STATUS_NOT_APPLICABLE, None, None, None, AUTH_NOT_APPLICABLE)
+    diags: list[SideDiagnostic] = []
+    by_quantity = {q: [r for r in items if r.quantity == q] for q in (QUANTITY_VOLTAGE, QUANTITY_CURRENT)}
+    voltage_side, current_side = (_uniform(by_quantity[q]) if by_quantity[q] else None
+                                  for q in (QUANTITY_VOLTAGE, QUANTITY_CURRENT))
+    conflict = False
+    for quantity, group in by_quantity.items():
+        concrete = {r.side for r in group if r.usable}
+        if len(concrete) > 1:
+            conflict = True
+            diags.append(SideDiagnostic(
+                mixed_code, SEVERITY_CONFLICT,
+                f"The {quantity} channels have different effective measurement sides; no single interpretation "
+                "is manufactured.", {"quantity": quantity, "channels": ",".join(
+                    f"{r.channel_name}={r.side}" for r in group)},
+            ))
+    concrete_all = {r.side for r in items if r.usable}
+    vi_differ = False
+    if not conflict and voltage_side and current_side and voltage_side != current_side:
+        # Not a conflict: each quantity is internally consistent, so each can be normalised independently. Only
+        # a quantity whose channels disagree among themselves is (above).
+        vi_differ = True
+        diags.append(SideDiagnostic(
+            vi_code, SEVERITY_INFO,
+            "Voltage and current are on different measurement sides; each is normalised independently when a "
+            "calculation needs it.", {"voltage_side": voltage_side, "current_side": current_side},
+        ))
+    unresolved = [r for r in items if not r.usable]
+    if unresolved:
+        diags.append(SideDiagnostic(
+            unresolved_code, SEVERITY_WARNING if not conflict else SEVERITY_INFO,
+            "These channels have no resolvable measurement side.",
+            {"channels": ",".join(r.channel_name or "?" for r in unresolved), "count": len(unresolved)},
+        ))
+    for r in items:
+        diags.extend(d for d in r.diagnostics if d not in diags)
+    if conflict:
+        return SideSetResolution(STATUS_CONFLICT, None, voltage_side, current_side, AUTH_UNRESOLVED, tuple(diags))
+    if unresolved:
+        return SideSetResolution(STATUS_UNRESOLVED, None, voltage_side, current_side, AUTH_UNRESOLVED, tuple(diags))
+    inferred = tuple(r.channel_name or "?" for r in items if r.inferred)
+    authorities = {r.authority for r in items}
+    authority = next(iter(authorities)) if len(authorities) == 1 else "mixed"
+    side = None if vi_differ else next(iter(concrete_all))
+    return SideSetResolution(STATUS_RESOLVED, side, voltage_side, current_side, authority, tuple(diags), inferred)

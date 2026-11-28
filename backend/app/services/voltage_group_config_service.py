@@ -35,7 +35,7 @@ combined operation).
 from __future__ import annotations
 
 from app.domain.measurement_group import KIND_VOLTAGE, MeasurementGroup
-from app.domain.base_authority import BASE_AUTHORITY_MANUAL
+from app.domain.base_authority import BASE_AUTHORITY_MANUAL, BASE_AUTHORITY_NEEDS_REVIEW
 from app.domain.voltage_primary_secondary import secondary_voltage_ll_v_valid
 from app.domain.voltage_group_config import (
     KNOWN_VOLTAGE_REFERENCE_MODES,
@@ -50,6 +50,7 @@ from app.domain.voltage_group_config import (
 )
 from app.domain.voltage_reference import VoltageReferenceDetection
 from app.services.errors import (
+    InvalidInstrumentTransformerValueError,
     InvalidVoltageBaseValueError,
     InvalidVoltageReferenceOverrideError,
     MeasurementGroupNotFoundError,
@@ -90,6 +91,11 @@ def update_voltage_configuration(
     reference_override: str | None = None,
     base_reference_side: str | None = None,
     secondary_voltage_ll_v: object = _SECONDARY_NOT_GIVEN,
+    vt_primary_v: float | None = None,
+    vt_secondary_v: float | None = None,
+    vt_provenance_note: str | None = None,
+    clear_vt: bool = False,
+    clear_nominal_voltage: bool = False,
 ) -> VoltageBaseConfiguration:
     """Validate the entire requested edit before one registry replacement.
 
@@ -115,9 +121,19 @@ def update_voltage_configuration(
     To explicitly clear secondary, pass secondary_voltage_ll_v=None with the
     sentinel sentinel distinguished from "not given" by using this function's
     own _SECONDARY_NOT_GIVEN default.
+
+    clear_nominal_voltage rule (D2): clear_nominal_voltage=True sets
+    nominal_voltage_ll_kv=None, base_authority=needs_review and clears
+    manual_conflict; reference_mode/reference_override/base_reference_side/
+    secondary_voltage_ll_v are all preserved. Mutually exclusive with
+    nominal_voltage_ll_kv (422 if both supplied).
     """
     from app.domain.reference_side import REFERENCE_SIDES
     _get_voltage_group(workspace_id, measurement_group_id, group_registry=group_registry)
+    if clear_nominal_voltage and nominal_voltage_ll_kv is not None:
+        raise InvalidVoltageBaseValueError(
+            "clear_nominal_voltage=True must not be combined with nominal_voltage_ll_kv."
+        )
     if nominal_voltage_ll_kv is not None and not voltage_base_valid(nominal_voltage_ll_kv):
         raise InvalidVoltageBaseValueError(
             f"nominal_voltage_ll_kv={nominal_voltage_ll_kv!r} must be a finite, positive number."
@@ -143,15 +159,76 @@ def update_voltage_configuration(
         sec_given = True
         sec_value = None
     # Derive authority from the content of the edit — never from caller-supplied value.
-    effective_authority = BASE_AUTHORITY_MANUAL if nominal_voltage_ll_kv is not None else None
+    # clear_nominal_voltage forces needs_review (reverts manual kV); setting a new kV forces manual.
+    if clear_nominal_voltage:
+        effective_authority = BASE_AUTHORITY_NEEDS_REVIEW
+    elif nominal_voltage_ll_kv is not None:
+        effective_authority = BASE_AUTHORITY_MANUAL
+    else:
+        effective_authority = None
+    # Validate and resolve VT update intent.
+    vt_pair_given = vt_primary_v is not None or vt_secondary_v is not None
+    vt_pair_complete = vt_primary_v is not None and vt_secondary_v is not None
+    if clear_vt and vt_pair_given:
+        raise InvalidInstrumentTransformerValueError(
+            "clear_vt=True must not be combined with vt_primary_v or vt_secondary_v."
+        )
+    if vt_pair_given and not vt_pair_complete:
+        raise InvalidInstrumentTransformerValueError(
+            "vt_primary_v and vt_secondary_v must both be supplied or both omitted."
+        )
+    if vt_pair_complete:
+        import math as _math
+        if not (vt_primary_v is not None and _math.isfinite(vt_primary_v) and vt_primary_v > 0):
+            raise InvalidInstrumentTransformerValueError(
+                f"vt_primary_v={vt_primary_v!r} must be a finite, positive number."
+            )
+        if not (vt_secondary_v is not None and _math.isfinite(vt_secondary_v) and vt_secondary_v > 0):
+            raise InvalidInstrumentTransformerValueError(
+                f"vt_secondary_v={vt_secondary_v!r} must be a finite, positive number."
+            )
+    update_vt = clear_vt or vt_pair_complete
+    if clear_vt:
+        vt_primary_to_store: float | None = None
+        vt_secondary_to_store: float | None = None
+        vt_note_to_store: str | None = None
+        vt_authority_to_store = "not_configured"
+    elif vt_pair_complete:
+        vt_primary_to_store = vt_primary_v
+        vt_secondary_to_store = vt_secondary_v
+        vt_note_to_store = vt_provenance_note
+        vt_authority_to_store = "manual"
+    else:
+        vt_primary_to_store = None
+        vt_secondary_to_store = None
+        vt_note_to_store = None
+        vt_authority_to_store = None
+    # RD-0B: when the engineer sets a nominal kV, clear the manual_conflict flag
+    # here as a first step.  The API layer (put_voltage_config) immediately calls
+    # reconfigure_auto_base_after_membership_change() to re-evaluate the new kV
+    # against current channel evidence and re-flag if still incompatible.
+    # Clearing here without that re-evaluation does NOT establish engineer confirmation.
+    # D2: clear_nominal_voltage also clears the conflict flag and re-runs auto-detection
+    # (via API layer) — same conflict-clear-then-redetect sequence.
+    clear_conflict = nominal_voltage_ll_kv is not None or clear_nominal_voltage
     return voltage_config_registry.update_fields(
-        workspace_id, measurement_group_id, nominal_voltage_ll_kv=nominal_voltage_ll_kv,
+        workspace_id, measurement_group_id,
+        nominal_voltage_ll_kv=nominal_voltage_ll_kv,
+        update_nominal=clear_nominal_voltage,
         reference_mode=reference_mode,
         reference_override=reference_override if reference_mode == VOLTAGE_REFERENCE_MODE_MANUAL else None,
         base_reference_side=base_reference_side,
         base_authority=effective_authority,
         secondary_voltage_ll_v=sec_value,
         update_secondary=sec_given,
+        update_conflict=clear_conflict,
+        manual_conflict_detected=False,
+        manual_conflict_detail=None,
+        vt_primary_v=vt_primary_to_store,
+        vt_secondary_v=vt_secondary_to_store,
+        vt_authority=vt_authority_to_store,
+        vt_provenance_note=vt_note_to_store,
+        update_vt=update_vt,
     )
 
 

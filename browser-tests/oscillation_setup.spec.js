@@ -32,14 +32,14 @@ async function uploadSynthetic(page, options = {}) {
     station: options.station || "OSC_STN", startClock: "10:00:00.000000", rateHz: options.rateHz || 1000, durationS: options.durationS || 5,
     channels: options.channels || DEFAULT_CHANNELS,
   });
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: (options.name || "osc") + ".cfg", mimeType: "text/plain", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: (options.name || "osc") + ".dat", mimeType: "text/plain", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
   await page.locator("#mainNavAnalysisBtn").click();
   await page.locator("#wwAnalysisTypeOscillationBtn").click();
   await expect(page.locator("#wwOscillationPanel")).toBeVisible();
@@ -116,7 +116,7 @@ test.describe("Oscillation Analysis setup -- navigation and empty state", () => 
     await expect(page.locator("#wwOscMinFreqInput")).toHaveValue("0.5");
     await expect(page.locator("#wwOscInfoSamplingRate")).toHaveText("1000 Hz");
     // Leaving Analysis entirely and coming back re-reads the live catalogue.
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await page.locator("#mainNavAnalysisBtn").click();
     await expect(page.locator("#wwOscSignalSelect")).toHaveValue(/raw:analog:/);
     await expect(page.locator("#wwOscInfoNyquist")).toHaveText("500 Hz");

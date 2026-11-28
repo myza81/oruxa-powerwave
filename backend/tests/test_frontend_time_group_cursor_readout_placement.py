@@ -19,6 +19,11 @@ Owner's own governing rule, verbatim: "Numerical A/B/ΔT values belong
 in the proven sticky top Time Group control area, while the small A/B
 position badges belong to the sticky ruler/time-axis layer."
 
+4. WUI-002 header refinement: the existing numerical readout is moved
+   into the header, beside a title/UTC-metadata column, before wiring.
+   It remains inside the same top sticky wrapper. Waveform-only CSS
+   compacts item padding; shared styles and value colors remain intact.
+
 This is a pure DOM-placement/CSS migration for the readout (same
 element/classes/`wwUpdateCursorOverlayForGroup()` read/write path, same
 cursor state/math) and a DOM-ownership + X-projection-formula change
@@ -76,13 +81,18 @@ class TestReadoutIsBackInTheTopStickyRegion:
         region = _sticky_top_region(body)
         assert 'class="ww-tg-cursor-readout"' in region
 
-    def test_readout_is_a_flex_item_of_the_toolbar_row_not_the_bottom_stack(self):
+    def test_existing_readout_moves_into_header_before_wiring_not_the_bottom_stack(self):
         source = _source()
         body = _canvas_template_body(source)
         toolbar_row_start = body.index('\'<div class="ww-tg-toolbar-row">\'')
         readout_idx = body.index('\'<div class="ww-tg-cursor-readout" hidden>\'')
         sticky_bottom_idx = body.index('\'<div class="ww-tg-sticky-bottom">\'')
         assert toolbar_row_start < readout_idx < sticky_bottom_idx
+        # The existing template node is relocated, not duplicated or re-created.
+        move_idx = body.index('header.append(section.querySelector(".ww-tg-cursor-readout"));')
+        assert move_idx < body.index('wwWireTimeGroupCursorOverlay(section, groupId);')
+        assert 'identity.append(header.querySelector(".ww-tg-header-title"), header.querySelector(".ww-tg-header-meta"));' in body
+        assert 'header.prepend(identity);' in body
 
     def test_readout_css_declares_no_independent_sticky_positioning(self):
         """It inherits `.ww-tg-sticky-top`'s own sticky behavior as a
@@ -294,10 +304,9 @@ class TestCursorMathAndStateUntouched:
         assert 'overlay.addEventListener("click", onClick);' in fn_body
         assert 'labelLayer.addEventListener("click", onClick);' in fn_body
 
-    def test_readout_inner_item_label_value_css_is_byte_for_byte_unchanged(self):
-        """The owner's own manually-set item padding, font-size, and
-        A-blue/B-red color convention are untouched throughout every
-        relocation."""
+    def test_shared_item_styles_and_value_colors_remain_unchanged(self):
+        """Waveform's compact padding override must not change shared
+        typography or the existing A-blue/B-red color convention."""
         source = _source()
         idx = source.index(".ww-tg-cursor-readout-item {")
         block = source[idx : source.index("}", idx) + 1]

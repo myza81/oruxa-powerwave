@@ -101,7 +101,7 @@ test.describe("Analyser recording detection", () => {
     await expect(phasorHint(page)).toContainText("No Engineering Context could be detected");
     // The recording itself is still visible in the sidebar -- state is
     // consistent, not lost.
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(1);
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(1);
   });
 
   test("3. No recording at all -> the true manual-mode notice still appears, verbatim", async ({ page }) => {
@@ -115,8 +115,9 @@ test.describe("Analyser recording detection", () => {
   test("4. Switching from Waveform/Event Reconstruction to Analyser preserves recording context", async ({ page }) => {
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:00.000000", durationS: 1, channels: VI_CHANNELS });
-    const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
-    await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+    const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
+    await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    await page.locator("#wwRdViewWaveformBtn").click();
     await expect(page.locator("#workspaceRow")).toBeVisible();
 
     await page.locator("#mainNavEventReconstructionBtn").click();
@@ -134,12 +135,12 @@ test.describe("Analyser recording detection", () => {
     await openAnalysis(page);
     await expectRecordingReady(page);
 
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator('button[data-action="remove"]').first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator('.ww-rd-recording-item-remove').first().click();
     await expect(page.locator("#confirmOverlay")).toBeVisible();
     await page.locator("#confirmRemoveBtn").click();
     await expect(page.locator("#confirmOverlay")).toBeHidden();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(0);
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0);
 
     await openAnalysis(page);
     await expect(phasorHint(page)).toBeVisible({ timeout: 10000 });
@@ -157,11 +158,11 @@ test.describe("Analyser recording detection", () => {
     // Second recording, same workspace, proper phase-named channels --
     // the hint must update to reflect the NOW-available context, never
     // stay stuck on the first recording's own stale state.
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await uploadRecord(page, { station: "STN_D2", startClock: "10:00:00.000000", durationS: 1, channels: VI_CHANNELS });
     await openAnalysis(page);
     await expectRecordingReady(page);
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(2);
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(2);
   });
 
   test("7. No console errors across upload, navigation, removal and re-navigation", async ({ page }) => {
@@ -188,10 +189,10 @@ test.describe("Analyser recording detection", () => {
     // trackApiRequests()).
     await waitForApiIdle();
 
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator('button[data-action="remove"]').first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator('.ww-rd-recording-item-remove').first().click();
     await page.locator("#confirmRemoveBtn").click();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(0);
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0);
 
     await openAnalysis(page);
     await expect(phasorHint(page)).toHaveText("No recording loaded. Manual mode is available.");
@@ -208,7 +209,7 @@ test.describe("Analyser recording detection", () => {
     });
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_SYNC", startClock: "10:00:00.000000", durationS: 1, channels: VI_CHANNELS });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     const sourceId = await row.getAttribute("data-source-id");
 
     let releaseGroupResponse;
@@ -227,9 +228,9 @@ test.describe("Analyser recording detection", () => {
     const staleRead = page.evaluate(() => wwFetchSynchronizationStateForWorkspace());
     await groupResponseFetched;
     try {
-      await row.locator('button[data-action="remove"]').click();
+      await row.locator('.ww-rd-recording-item-remove').click();
       await page.locator("#confirmRemoveBtn").click();
-      await expect(page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`)).toHaveCount(0);
+      await expect(page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`)).toHaveCount(0);
     } finally {
       releaseGroupResponse();
     }

@@ -17,21 +17,22 @@ const STEM = "line_to_line_multibay";
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
-  // Slice 6B may auto-configure the Voltage base and auto-switch to PU mode asynchronously
-  // after the table row becomes visible. Wait for the import-PU banner (the auto-switch
-  // indicator) to appear before navigating away, so the Engineering reset fires after the
-  // switch has completed rather than before it.
-  await page.locator("#wwImportPuStatusBanner").waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
+  // Slice 6B may auto-configure the Voltage base and auto-switch to PU mode asynchronously.
+  // Wait up to 8s for auto-switch to complete before navigating away.
+  await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 8000 })
+    .toBe("per_unit").catch(() => {});
   await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwUnitEngineeringBtn").click();
-  await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true");
+  // No pane is displayed yet, so there is no pane-level mode control: select the mode itself
+  // (the call the ENG button makes) and assert it.
+  await page.evaluate(() => wwApplyUnitMode("engineering"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("engineering");
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }

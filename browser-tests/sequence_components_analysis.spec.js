@@ -25,7 +25,7 @@ const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", 
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
@@ -43,7 +43,7 @@ async function createFullBayContext(page, workspaceId, sourceId, displayName) {
 
 async function uploadAndCreateContext(page) {
   await uploadFixture(page);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
@@ -962,19 +962,19 @@ test.describe("Sequence Components v1 -- context-switch leaves no stale/broken s
     // already established in this test suite family for exactly this
     // multi-source scenario) alongside the primary ALPHA1_* fixture.
     await uploadFixture(page); // ALPHA1_*
-    const rowA = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const rowA = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(rowA).toBeVisible();
     const sourceIdA = await rowA.getAttribute("data-source-id");
     const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
     const contextA = await createFullBayContext(page, workspaceId, sourceIdA, "Bay A");
 
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`)); // reuses the same sample data
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const rowB = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const rowB = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(rowB).toBeVisible();
     const sourceIdB = await rowB.getAttribute("data-source-id");
     // DEC-104 upload-time preparation already auto-created BRAVO1's own

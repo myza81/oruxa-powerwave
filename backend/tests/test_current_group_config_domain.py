@@ -109,14 +109,15 @@ class TestResolveCurrentBaseForGroup:
         resolution = resolve_current_base_for_group(_voltage_group(), None)
         assert resolution.status == STATUS_NOT_APPLICABLE
 
-    def test_suggested_group_never_resolves_as_authoritative(self):
+    def test_suggested_group_with_manual_config_resolves(self):
+        """DEC-UA-002: suggested + manual authority (legacy_manual default) → CONFIGURED.
+        Manual correction is not a separate confirmation workflow."""
         group = _current_group(status=STATUS_SUGGESTED)
         config = CurrentBaseConfiguration(
             measurement_group_id="mg-current", workspace_id="ws-1", method=METHOD_MANUAL, manual_ibase_ka=2.5,
         )
         resolution = resolve_current_base_for_group(group, config)
-        assert resolution.status == STATUS_BASE_REQUIRED
-        assert resolution.reason == "group_not_confirmed"
+        assert resolution.status == STATUS_CONFIGURED
 
     def test_no_configuration_is_base_required(self):
         resolution = resolve_current_base_for_group(_current_group(), None)

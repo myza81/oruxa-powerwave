@@ -4,8 +4,10 @@
 
   AT-1  Primary COMTRADE import → voltage groups have pu_status="configured"
         (the backend state that enables the frontend §2 auto-switch to PU).
-  AT-2  Secondary COMTRADE import → base_reference_side="secondary" and
-        secondary_voltage_ll_v set correctly (not silently using primary kV).
+  AT-2  Secondary COMTRADE import → (DEC-219 / W-1) NO legacy Secondary base is created because
+        the samples are Secondary: the nominal system voltage is always the Primary base, so the
+        group awaits the engineer's nominal (the CFG winding rating of a Secondary recording is
+        only a low-confidence candidate) and is then converted by the shared VT authority.
   AT-3  Voltage PU configured; Current PU groups remain base_required (§3
         independence: Voltage PU does not auto-configure Current PU).
   AT-4  COMTRADE with no PS markers → needs_review → pu_status="base_required"
@@ -198,54 +200,46 @@ class TestAT1PrimaryComtradeConfiguredPu:
 # ---------------------------------------------------------------------------
 
 class TestAT2SecondaryComtrade:
+    """DEC-219 / W-1 (supersedes the Slice 5D-3 automatic legacy Secondary base): Secondary samples never
+    create a Secondary base declaration or a stored secondary value."""
 
-    def test_secondary_channels_get_secondary_voltage_ll_v_set(self, client, comtrade_fixtures_dir):
-        cfg = _cfg_with_secondary_channels()
-        dat = (comtrade_fixtures_dir / "synth_measurement_groups.dat").read_bytes()
-        source_id = _upload_comtrade(client, cfg, dat)
+    def _n275_group(self, client, source_id):
+        return next(g for g in _voltage_groups(client, source_id)
+                    if any(ref["channel_name"] == "N275_VR" for ref in g.get("channel_refs", [])))
 
-        voltage_groups = _voltage_groups(client, source_id)
-        # Look for a group that contains N275_V channels (which we rewrote to PS=S)
-        secondary_groups = [
-            g for g in voltage_groups
-            if g["voltage_config"] is not None
-            and g["voltage_config"]["base_reference_side"] == "secondary"
-        ]
-        assert secondary_groups, (
-            "Expected at least one voltage group with base_reference_side='secondary' "
-            "after uploading a CFG with PS=S voltage channels"
-        )
-
-    def test_secondary_groups_have_secondary_voltage_ll_v(self, client, comtrade_fixtures_dir):
+    def test_secondary_channels_do_not_create_a_secondary_base(self, client, comtrade_fixtures_dir):
         cfg = _cfg_with_secondary_channels()
         dat = (comtrade_fixtures_dir / "synth_measurement_groups.dat").read_bytes()
         source_id = _upload_comtrade(client, cfg, dat)
 
         for g in _voltage_groups(client, source_id):
-            if (g["voltage_config"] is not None
-                    and g["voltage_config"]["base_reference_side"] == "secondary"):
-                sec_v = g["voltage_config"]["secondary_voltage_ll_v"]
-                assert sec_v is not None, (
-                    f"secondary group {g['id']} must have secondary_voltage_ll_v set"
-                )
-                # 63.5 V secondary (0.0635 kV) → ~63.5 V (line-to-ground) or ~110 V (line-to-line)
-                # depending on detected reference; either way, never 275,000 V (primary kV)
-                assert sec_v < 1000.0, (
-                    f"secondary_voltage_ll_v={sec_v} V looks like a primary kV value was used "
-                    "instead of the actual secondary voltage (C1 violation)"
-                )
+            vc = g["voltage_config"]
+            if vc is not None:
+                assert vc["base_reference_side"] != "secondary", (
+                    f"group {g['id']}: a recording with Secondary samples must not declare a Secondary BASE (DEC-219)")
 
-    def test_secondary_groups_have_configured_pu_status(self, client, comtrade_fixtures_dir):
+    def test_secondary_groups_store_no_secondary_voltage(self, client, comtrade_fixtures_dir):
         cfg = _cfg_with_secondary_channels()
         dat = (comtrade_fixtures_dir / "synth_measurement_groups.dat").read_bytes()
         source_id = _upload_comtrade(client, cfg, dat)
 
-        for g in _voltage_groups(client, source_id):
-            if (g["voltage_config"] is not None
-                    and g["voltage_config"]["base_reference_side"] == "secondary"):
-                assert g["pu_status"] == "configured", (
-                    f"secondary group {g['id']} with valid secondary_voltage_ll_v must be configured"
-                )
+        vc = self._n275_group(client, source_id)["voltage_config"]
+        assert vc["secondary_voltage_ll_v"] is None      # the CFG winding value is not copied in as a denominator
+        assert vc["nominal_voltage_ll_kv"] is None       # a low-confidence winding rating is not accepted as the nominal (C2)
+        assert vc["base_authority"] == "needs_review"
+
+    def test_secondary_group_awaits_the_nominal_then_is_configured(self, client, comtrade_fixtures_dir):
+        cfg = _cfg_with_secondary_channels()
+        dat = (comtrade_fixtures_dir / "synth_measurement_groups.dat").read_bytes()
+        source_id = _upload_comtrade(client, cfg, dat)
+
+        group = self._n275_group(client, source_id)
+        assert group["pu_status"] == "base_required"     # no nominal yet: engineering values are shown
+        resp = client.put(f"{ROOT}/sources/{source_id}/measurement-groups/{group['id']}/voltage-config",
+                          json={"reference_mode": "auto", "nominal_voltage_ll_kv": 275.0, "base_reference_side": "primary"})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["pu_status"] == "configured"
+        assert resp.json()["voltage_config"]["secondary_voltage_ll_v"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -465,9 +459,8 @@ class TestAT8AdditionalImportPreservesFirstSource:
 class TestAT9MixedPrimarySecondaryGroups:
 
     def test_primary_and_secondary_groups_get_correct_sides(self, client, comtrade_fixtures_dir):
-        """A source that has both P and S channels (after rewriting) should produce
-        at least one primary group and at least one secondary group, each with the
-        correct base_reference_side."""
+        """A source that has both P and S channels (after rewriting) produces primary-base groups for the
+        Primary channels; the Secondary-sample group declares no Secondary base (DEC-219 / W-1)."""
         # Build a CFG where N275_V* channels are PS=S (secondary) and
         # S132_V* and E275_V* stay PS=P (primary). Start from the original
         # and patch only the N275 lines.
@@ -493,10 +486,13 @@ class TestAT9MixedPrimarySecondaryGroups:
             for g in voltage_groups
             if g["voltage_config"] is not None
         ]
-        # We patched N275 to secondary → at least one "secondary" in sides
-        assert "secondary" in sides, "Expected at least one secondary-side group"
+        # DEC-219 / W-1: the N275 channels were patched to Secondary SAMPLES; that never declares a Secondary base
+        assert "secondary" not in sides, "A Secondary recording must not create a Secondary base declaration (DEC-219)"
         # S132 and E275 channels remain primary → at least one "primary"
         assert "primary" in sides, "Expected at least one primary-side group"
+        n275 = next(g for g in voltage_groups
+                    if any(ref["channel_name"] == "N275_VR" for ref in g.get("channel_refs", [])))
+        assert n275["voltage_config"]["base_authority"] == "needs_review"
 
 
 # ---------------------------------------------------------------------------
@@ -771,21 +767,23 @@ class TestAT15NumericalPuEquivalence:
                 f"denom={denominator_kv:.6f} kV = LL nominal directly)"
             )
 
-    def test_secondary_lg_channel_pu_uses_secondary_voltage_as_denominator(
+    def test_secondary_lg_channel_pu_uses_the_nominal_primary_base_and_the_vt_ratio(
             self, client, comtrade_fixtures_dir):
-        """Secondary L-G channel: PU = ENG_kV / (secondary_voltage_ll_v / 1000 / √3).
-        Verifies the strict secondary denominator: auto-resolved secondary base uses
-        secondary_voltage_ll_v (63.5 V = 0.0635 kV), NOT the primary nominal (275 kV).
-        This is the core AT-15 safety check for the VLT-REF-001 secondary path."""
+        """DEC-219 / W-1 (replaces the legacy secondary-base check): the nominal system voltage is the Primary
+        base and the denominator for Secondary samples is  D = (nominal_LL / sqrt(3)) / r,  r = VT primary / VT secondary
+        from the shared VT authority (DEC-215).  Numerical correctness is stated for the CONFIGURED ratio:
+
+            Auto VT    275 kV : 110 V   -> r = 2500   -> D = 275 / sqrt(3) / 2500 kV
+            Manual VT  275 kV : 1000 V  -> r = 275    -> D = 275 / sqrt(3) / 275  kV
+
+        (whether either equals the equipment's ACTUAL ratio is a separate, physical, question: see
+        test_pu_dec219_auto_base_w1.py.)"""
         import math
         SQRT_3 = math.sqrt(3)
 
-        # _cfg_with_secondary_channels() marks N275_V* as PS=S with secondary_ratio=0.0635 kV
-        # → auto-base sets secondary_voltage_ll_v=63.5 V, base_reference_side="secondary"
         cfg = _cfg_with_secondary_channels()
         dat = (comtrade_fixtures_dir / "synth_measurement_groups.dat").read_bytes()
         source_id = _upload_comtrade(client, cfg, dat)
-
         n275_group = next(
             (g for g in _groups(client, source_id)
              if g["kind"] == "voltage" and any(
@@ -795,41 +793,32 @@ class TestAT15NumericalPuEquivalence:
             None,
         )
         assert n275_group is not None, "N275 group not found in secondary fixture"
-        assert n275_group["pu_status"] == "configured", (
-            "Secondary N275 group must be configured; "
-            "voltage_config={}".format(n275_group.get("voltage_config"))
-        )
-
-        vc = n275_group["voltage_config"]
-        assert vc is not None
-        secondary_ll_v = vc["secondary_voltage_ll_v"]
-        assert secondary_ll_v is not None and secondary_ll_v > 0, (
-            "secondary_voltage_ll_v must be populated for secondary group"
-        )
-        # Denominator for secondary L-G: secondary_ll_v (V) / √3 → convert to kV: / 1000
-        denominator_kv = secondary_ll_v / (SQRT_3 * 1000.0)
-
+        url = f"{ROOT}/sources/{source_id}/measurement-groups/{n275_group['id']}/voltage-config"
         eng_values = client.get(
             f"{ROOT}/sources/{source_id}/waveform",
             params={"channel_name": "N275_VR", "unit_mode": "engineering"},
         ).json()["values"]
 
-        pu_resp = client.get(
-            f"{ROOT}/sources/{source_id}/waveform",
-            params={"channel_name": "N275_VR", "unit_mode": "per_unit"},
-        ).json()
-        assert pu_resp["per_unit_status"] == "configured"
-        pu_values = pu_resp["values"]
+        def check(ratio, label):
+            pu_resp = client.get(
+                f"{ROOT}/sources/{source_id}/waveform",
+                params={"channel_name": "N275_VR", "unit_mode": "per_unit"},
+            ).json()
+            assert pu_resp["per_unit_status"] == "configured", label
+            denominator_kv = 275.0 / SQRT_3 / ratio
+            pairs = [(e, p) for e, p in zip(eng_values, pu_resp["values"]) if e is not None and p is not None]
+            assert pairs, "Expected at least one finite (eng, pu) pair"
+            for eng_kv, pu_actual in pairs:
+                expected_pu = eng_kv / denominator_kv
+                tol = max(abs(expected_pu) * 1e-9, 1e-12)
+                assert abs(pu_actual - expected_pu) < tol, (
+                    f"AT-15 secondary L-G ({label}): pu={pu_actual:.10f}, expected={expected_pu:.10f}")
 
-        pairs = [(e, p) for e, p in zip(eng_values, pu_values)
-                 if e is not None and p is not None]
-        assert pairs, "Expected at least one finite (eng, pu) pair"
-        for eng_kv, pu_actual in pairs:
-            expected_pu = eng_kv / denominator_kv
-            tol = max(abs(expected_pu) * 1e-9, 1e-12)
-            assert abs(pu_actual - expected_pu) < tol, (
-                f"AT-15 secondary L-G: pu={pu_actual:.10f}, "
-                f"expected={expected_pu:.10f} "
-                f"(eng={eng_kv:.6f} kV, secondary_denom={secondary_ll_v:.2f}/√3 V "
-                f"= {denominator_kv*1000:.4f} V = {denominator_kv:.6f} kV)"
-            )
+        # the engineer enters the nominal (declared Primary); the VT is the DEC-215 auto VT, 275 kV : 110 V
+        assert client.put(url, json={"reference_mode": "auto", "nominal_voltage_ll_kv": 275.0,
+                                     "base_reference_side": "primary"}).status_code == 200
+        check(275000.0 / 110.0, "auto VT 275 kV / 110 V")
+        # the engineer overrides the VT through the existing Manual VT configuration: 275 kV : 1000 V
+        assert client.put(url, json={"reference_mode": "auto", "vt_primary_v": 275000.0,
+                                     "vt_secondary_v": 1000.0}).status_code == 200
+        check(275000.0 / 1000.0, "manual VT 275 kV / 1000 V")

@@ -38,6 +38,54 @@ classify an open issue as ready for analysis-based approval, needing
 side-by-side comparison, needing hands-on UAT, or simply deferred until a
 later phase.
 
+## Decision preservation and engineering governance — mandatory
+
+AGENTS.md is the **single governance authority for every agent** (Claude Code, Codex). Agent-specific files point here and do not
+restate these rules. Owner decision: [DEC-218](docs/project-memory/DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance).
+
+### Before a substantive task — consult, in proportion to the task
+
+Read only what the task touches; do not read every historical document. Then state in a line or two (no assessment exercise):
+
+1. the applicable **DEC records**, their amendments/corrections and any later owner decision (search
+   [DECISIONS.md](docs/project-memory/DECISIONS.md) and the documents it links for the feature area; the area's authoritative model, for
+   example `PER_UNIT_MEASUREMENT_MODEL.md`, comes first);
+2. [CURRENT_STATE.md](docs/project-memory/CURRENT_STATE.md) and [HANDOFF.md](docs/project-memory/HANDOFF.md) for where the work is;
+3. the applicable engineering specification and the latest implementation report for the slice;
+4. the **actual implementation and its regression coverage** (code and tests win over prose, per the README's source-of-truth hierarchy);
+5. concurrent development: `git worktree list`, the branches/worktrees that touch the same files — read-only; never edit another agent's
+   worktree;
+6. the approved scope, and any genuinely unresolved decision.
+
+Never state that a document was read unless it was actually opened in this session.
+
+### Established decisions are binding
+
+- An approved owner decision is a **requirement until the owner explicitly supersedes it**. Do not treat it as an open question, and do not
+  re-derive, reinterpret or "improve" it. A new application of an established policy does not by itself justify reconsidering it.
+- When a decision is hard to apply, classify the difficulty first: **implementation defect**, **legacy-compatibility problem**, **missing
+  input authority**, or **genuine policy conflict**. Fix the first three inside the policy (or report the missing input); only a genuine
+  conflict reaches the owner.
+- Do not create a separate engineering authority for one consumer where an approved shared authority exists (one resolver, one ratio authority,
+  one side authority).
+- Do not silently amend, reinterpret or supersede a decision. If a genuine conflict is found, report the exact decision and amendment, the
+  evidence and a proposed resolution (Change governance below). Reopen a decision only on credible **new** evidence of a material engineering
+  error, a safety concern or an architectural limitation. Any policy amendment needs explicit owner approval.
+- Avoid repeated investigations, reassessments and needlessly fragmented implementation: one coherent slice, one reference statement.
+
+### Engineering formulas
+
+A new or modified engineering calculation needs: credible engineering references; the derivation where one applies; explicit assumptions and
+limitations; **independent** numerical verification (an oracle that does not import the code under test); boundary and invalid-input tests;
+**one** mathematical authority (no per-consumer copy of the arithmetic); and traceability from reference to implementation, with regression
+protection. Passing software tests is not proof that a formula is theoretically correct. Preserve approved mathematics unless a change is
+separately authorised.
+
+### Handover — governance compliance statement
+
+A substantive implementation handover ends with a short statement: documents consulted; established decisions preserved; approved decision
+amendments (or "no existing policy has changed"); unresolved conflicts; any deviation from the authorised scope.
+
 ## Authoritative architecture reference
 
 **Read [docs/architecture/oruxa-architecture.md](docs/architecture/oruxa-architecture.md)
@@ -251,6 +299,90 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
      `PHASE_DISPLAY_SYMBOLS_BY_CONVENTION` plus the frontend mirror
      `WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION`. A parity test guards the
      two.
+
+## Frontend design principle — engineer-task-first
+
+**Mandatory.** Applies to all frontend features —
+waveform analysis, Measurement Groups, calculators, protection analysis, file
+management, and future modules.
+([DECISIONS.md — DEC-214](docs/project-memory/DECISIONS.md#dec-214--frontend-design-must-be-engineer-task-first-not-backend-schema-first))
+
+> **The frontend should be designed around what engineers need to accomplish,
+> not around every operation available in the backend.**
+
+**A. Task-oriented design.** Identify the engineering task first. Design the
+simplest effective workflow for that task. Do not translate backend data models,
+API parameters, service operations or database fields directly into visible
+controls.
+
+**B. Minimum necessary input.** Only request information the application
+genuinely needs from the user. If reliable information is already available from
+imported recordings, existing configuration or backend calculations, reuse it
+automatically. Do not ask users to repeat what the application already knows.
+
+**C. Automatic resolution with appropriate manual intervention.** Determine
+engineering properties automatically where sufficiently reliable evidence exists.
+When automatic resolution fails and the information is necessary, present the
+relevant manual input clearly. When an automatic determination is incorrect,
+provide an appropriate correction mechanism. Never silently invent values or
+bypass safety constraints to simplify the interface.
+
+**D. Do not expose backend implementation details unnecessarily.** Backend
+functionality does not automatically justify a frontend control. Internal
+authority modes, detection states, service parameters, reset operations and other
+technical mechanisms should remain internal unless they support a genuine user
+task. Advanced Settings must contain meaningful exception-handling controls, not
+surplus backend parameters.
+
+**E. Every visible control must justify its existence.** Before introducing a
+control, answer:
+1. What engineering task does this control help accomplish?
+2. Why does the user need to interact with it?
+3. Can the engine perform this operation automatically and reliably?
+4. What happens if the user does nothing?
+5. What are the consequences of using this control?
+6. Is it needed in the normal workflow, only during exceptional circumstances, or
+   not needed in the frontend at all?
+
+If the control has no clear user value, do not introduce it.
+
+**F. Clear and unambiguous terminology.** Use concise, technically accurate
+language familiar to power-system engineers. Avoid internal software terminology
+when a clearer engineering description is available. Avoid ambiguous labels
+(e.g. "Revert to Automatic" when reversion may simply return a value to
+unresolved). Attach provenance to the relevant individual property rather than
+displaying a misleading combined status.
+
+**G. Progressive disclosure.** Keep routine workflows simple. Show advanced
+configuration only for legitimate corrections or specialist tasks. When user
+input is genuinely required for an unresolved state, make the necessary input
+readily accessible rather than hiding it in advanced settings.
+
+**H. Engineering correctness remains mandatory.** Simplifying the frontend must
+never compromise engineering correctness. Preserve: authoritative backend
+validation, measurement and reference compatibility, physical calibration
+integrity, calculation correctness, configuration provenance, dependency
+invalidation, and clear unresolved and error states. A simple UI does not mean
+making unsafe assumptions.
+
+**I. UI/UX and performance are first-class requirements.** Design for efficient
+engineering workflows, responsive interactions, minimal unnecessary clicks, clear
+system feedback, consistent visual hierarchy, appropriate screen-space use
+(including 13-inch laptops), large-waveform performance, and existing application
+typography, theme and interaction conventions.
+
+### UX review gate for new frontend features
+
+Before implementing a new frontend feature, establish:
+
+- The user's actual engineering objective.
+- The minimum necessary inputs.
+- What the backend can determine automatically.
+- What genuinely requires user intervention.
+- The normal workflow, and exceptional/unresolved scenarios.
+- The purpose of every major control.
+
+This is a design discipline, not an approval gate for every minor UI change.
 
 ## Ground rules
 

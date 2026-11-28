@@ -39,7 +39,7 @@ function trackErrors(page) {
 // rejected the upload (BEN5K_EXPERIMENTAL_ENABLED not set in this environment).
 async function uploadBen5kFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(FIXTURE);
@@ -52,7 +52,7 @@ async function uploadBen5kFixture(page) {
   ]).catch(() => "timeout");
 
   if (outcome !== "hidden") return null;
-  const tableRow = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const tableRow = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(tableRow).toBeVisible({ timeout: 10_000 });
   return tableRow.getAttribute("data-source-id");
 }
@@ -142,7 +142,8 @@ test("BEN5K calc gate: Reverse Polarity of BEN5K VA → calibration_unavailable 
   // Navigate to Waveform, enable PU mode, then add CalcA.
   await page.locator("#mainNavWaveformBtn").click();
   await expect(page.locator("#calculatedChannelsSidebarBody tr[data-calculated-channel-id]").first()).toBeVisible();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
   await showCalcChannel(page, calcA.name);
   await expect(page.locator(".ww-chart .plotly").first()).toBeVisible({ timeout: 15_000 });
 
@@ -182,7 +183,8 @@ test("BEN5K calc gate: chain CalcB-from-CalcA-from-BEN5K → calibration_unavail
 
   await page.locator("#mainNavWaveformBtn").click();
   await expect(page.locator("#calculatedChannelsSidebarBody tr[data-calculated-channel-id]").first()).toBeVisible();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
 
   await showCalcChannel(page, calcA.name);
   await showCalcChannel(page, calcB.name);
@@ -229,7 +231,8 @@ test("BEN5K calc gate (original-risk): CalcA added while PU already active → g
 
   // Navigate to Waveform and enable PU BEFORE adding CalcA.
   await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
   expect(
     await page.evaluate(() => ww.unitMode),
     "unit mode must be per_unit before channel add"
@@ -330,19 +333,20 @@ test("BEN5K calc gate (baseline): COMTRADE-sourced Reverse Polarity is NOT block
   }
   const dat = rows.join("\r\n") + "\r\n";
 
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "baseline.cfg", mimeType: "application/octet-stream", buffer: Buffer.from(cfg, "latin1") });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "baseline.dat", mimeType: "application/octet-stream", buffer: Buffer.from(dat, "latin1") });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10_000 });
 
   await openCalcPage(page);
   const calcA = await createReversePolarity(page, "VA");
 
   await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwUnitPerUnitBtn").click();
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode)).toBe("per_unit");   // no pane yet, so no pane-level mode control
   await showCalcChannel(page, calcA.name);
   await expect(page.locator(".ww-chart .plotly").first()).toBeVisible({ timeout: 15_000 });
 

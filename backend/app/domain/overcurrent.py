@@ -585,6 +585,14 @@ REASON_INVALID_INPUT_CURRENT = "invalid_input_current"
 REASON_INVALID_EQUIPMENT_RATING = "invalid_equipment_rating"
 REASON_INVALID_LOADING_PERCENT = "invalid_loading_percent"
 REASON_INVALID_SYSTEM_VOLTAGE = "invalid_system_voltage"
+# D5A-2B2C-1A: the recorded side comes only from Recording Details; these block the recorded calculation.
+REASON_INVALID_RECORDING_BASIS = "invalid_recording_basis"
+REASON_SIDE_UNRESOLVED = "measurement_side_unresolved"
+REASON_SIDE_INFERRED = "measurement_side_inferred"
+REASON_SIDE_CONFLICT = "measurement_side_conflict"
+REASON_BASIS_CONTRADICTS_SIDE = "recording_basis_contradicts_measurement_side"
+REASON_REQUEST_CT_DIFFERS = "request_ct_differs_from_authority"
+REASON_CALCULATED_SIDE = "calculated_channel_side_unavailable"
 
 
 @dataclass(slots=True)
@@ -629,6 +637,14 @@ class OvercurrentAnalysisResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+    # D5A-2B2C-1A: the Recording Details authority this result consumed (set even on a configuration block
+    # where the channel resolved): the effective measurement side of the consumed Current channel, how it was
+    # decided, the Current Measurement Group that owns the channel, and the provenance of the CT applied.
+    # `recording_basis` above is that same effective side once the calculation ran.
+    measurement_side: str | None = None
+    measurement_side_authority: str | None = None
+    measurement_group_id: str | None = None
+    ct_authority: str | None = None
 
 
 # ---------------------------------------------------------------------------

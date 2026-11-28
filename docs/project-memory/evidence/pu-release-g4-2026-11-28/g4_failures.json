@@ -1,0 +1,84 @@
+{
+ "purpose": "Original G4 failure evidence for PR #14 (full browser regression of f51a631), preserved verbatim from the Playwright JSON report",
+ "candidate": "f51a631 (functional baseline 4885ca2)",
+ "configuration": "1 worker, ports 8000/8101, BEN5K_EXPERIMENTAL_ENABLED=1, retries 0",
+ "started_utc": "2026-11-27T12:36:10.497Z",
+ "duration_s": 7695,
+ "totals": {
+  "expected": 1812,
+  "unexpected": 7,
+  "skipped": 8,
+  "flaky": 0
+ },
+ "failures": [
+  {
+   "spec": "data-issues-estimate-fill.spec.js:32",
+   "title": "Data Issues: single-cell Estimate Missing Value + mixed-gap transparency + Time Axis guardrail",
+   "retries": 0,
+   "duration_s": 12.0,
+   "started_utc8": "2026-11-27 21:02:20",
+   "error_excerpt": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\n"
+  },
+  {
+   "spec": "data-issues-estimate-fill.spec.js:208",
+   "title": "Data Issues: bulk Fill / Estimate Missing Values -- Constant Value + responsive dialog",
+   "retries": 0,
+   "duration_s": 12.8,
+   "started_utc8": "2026-11-27 21:02:34",
+   "error_excerpt": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\n"
+  },
+  {
+   "spec": "data-issues-panel.spec.js:27",
+   "title": "Data Preparation: Data Quality summary + Data Issues panel",
+   "retries": 0,
+   "duration_s": 12.6,
+   "started_utc8": "2026-11-27 21:02:49",
+   "error_excerpt": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\n"
+  },
+  {
+   "spec": "data-issues-panel.spec.js:193",
+   "title": "Data Preparation: bulk explicit-null resolution (DEC-084 Slice 5)",
+   "retries": 0,
+   "duration_s": 12.5,
+   "started_utc8": "2026-11-27 21:03:04",
+   "error_excerpt": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\n"
+  },
+  {
+   "spec": "data-preparation-sticky-header.spec.js:50",
+   "title": "Data Preparation: Raw Data Preview sticky header stays fully opaque while scrolled",
+   "retries": 0,
+   "duration_s": 12.5,
+   "started_utc8": "2026-11-27 21:03:18",
+   "error_excerpt": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\n"
+  },
+  {
+   "spec": "sampling-rate-format.spec.js:24",
+   "title": "Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly, without a floating-point tail",
+   "retries": 0,
+   "duration_s": 12.2,
+   "started_utc8": "2026-11-27 22:22:11",
+   "error_excerpt": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 10000ms\n  - waiting for locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind=\"csv\"]').first()\n"
+  },
+  {
+   "spec": "waveform-legend-visibility.spec.js:87",
+   "title": "legend hide/show preserves physical samples and engineering metadata",
+   "retries": 0,
+   "duration_s": 2.6,
+   "started_utc8": "2026-11-27 22:31:57",
+   "error_excerpt": "Error: expect(received).toEqual(expected) // deep equality\n\n- Expected  - 203\n+ Received  +   1\n\n  Object {\n    \"inventoryUnchanged\": true,\n-   \"values\": Array [\n-     0,\n-     3399.3666666666663,\n-     6465.799999999999,\n-     8899.366666666667,\n-     10461.733333333332,\n-     11000,\n-     10461.733333333332,\n-     8899.366666666667,\n-     6465.799999999999,\n-     3399.3666666666663,\n-     0,\n-     -3399.3666666666663,\n-     -6465.799999999999,\n-     -8899.366666666667,\n-     -10461.733333333332,\n-     -11000,\n-     -10461.733333333332,\n-     -8899.366666666667,\n-     -6465.799999999999,\n-     -3399.3666666666663,\n-     0,\n-     3399.3666666666663,\n-     6465.799999999999,\n-     8899.366666666667,\n-     10461.733333333332,\n-     11000,\n-     10461.733333333332,\n-     8899.366666666667,\n-     6465.799999999999,\n-     3399.3666666666663,\n-     0,\n-     -3399.3666666666663,\n-     -6465.799999999999,\n-     -8899.366666666667,\n-     -10461.733333333332,\n-     -11000,\n-     -10461.733333333332,\n-     -8899.366666666667,\n-     -6465.799999999999,\n-     -3399.3666666666663,\n-     0,\n-     3399.3666666666663,\n-     6465.799999999999,\n-     8899.366666666667,\n-     10461.733333333332,\n-     11000,\n-     10461.733333333332,\n-     8899.366666666667,\n-     6465.799999999999,\n-     3399.3666666666663,\n-     0,\n-     -3399.3666666666663,\n-     -6465.799999999999,\n-     -8899.366666666667,\n-     -10461.733333333332,\n-     -11000,\n-     -10461.733333333332,\n-     -8899.366666666667,\n-     -6"
+  }
+ ],
+ "evidence_pngs_rewritten_by_the_run": {
+  "note": "regenerated by rd1-d2-screenshots.spec.js and recording-details-toolbar.spec.js on every run; restored to the committed versions, not committed",
+  "pixel_comparison_vs_committed": {
+   "rd1-d2-refine/1-readonly-auto-resolved-light.png": "213,844 of 457,678 pixels differ",
+   "rd1-d2-refine/2-readonly-needs-review-light.png": "199,960 of 457,678",
+   "rd1-d2-refine/3-edit-auto-detected-light.png": "242,595 of 457,678",
+   "rd1-d2-refine/4-edit-advanced-clear-light.png": "280,715 of 457,678",
+   "rd1-d2-refine/5-edit-dark-theme.png": "242,125 of 457,678",
+   "recording-details-toolbar/toolbar-dark.png": "1,156 of 1,049,088",
+   "recording-details-toolbar/toolbar-light.png": "1,143 of 1,049,088"
+  }
+ },
+ "legend_visibility_rerun": "waveform-legend-visibility.spec.js (whole file) passed 14 of 14 on each of three consecutive runs against a git-archive copy of f51a631"
+}

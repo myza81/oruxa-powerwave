@@ -25,11 +25,14 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
     return source[start:end]
 
 
-def test_ww_state_has_unit_mode_and_per_unit_source_configs():
+def test_ww_state_has_unit_mode_no_per_unit_source_configs():
+    """PU-UI-001 Step B: `perUnitSourceConfigs` state was removed with the
+    SD modal.  `unitMode` remains -- it is a waveform display toggle, not
+    a modal-scoped field."""
     source = _source()
     body = _function_body(source, "const ww = {", "function wwFiniteNumber(value)")
     assert 'unitMode: "engineering"' in body
-    assert "perUnitSourceConfigs: new Map()" in body
+    assert "perUnitSourceConfigs: new Map()" not in body
 
 
 def test_every_channel_waveform_fetch_requests_unit_mode():
@@ -53,29 +56,34 @@ def test_apply_unit_mode_refetches_and_regroups():
     channel using ITS OWN Time Group's current viewport
     (wwRefetchAllChannelsAcrossGroups()) rather than one shared range --
     in the common single-Time-Group workspace this is the exact same
-    request as before."""
+    request as before.
+
+    PU-UI-001 Step B: `void wwFetchPerUnitSourceConfigs()` was removed
+    with the SD modal; `wwApplyUnitMode` no longer calls it.
+    """
     source = _source()
     body = _function_body(source, "async function wwApplyUnitMode(mode)", "function wwSyncUnitModeControls()")
     assert "if (ww.unitMode === mode) return;" in body
     assert "ww.unitMode = mode;" in body
     assert "await wwRefreshWaveformDisplayBasis();" in body
-    refresh = _function_body(source, "async function wwRefreshWaveformDisplayBasis(", "// ------------------------------------------------------------------\n        // Slice 6")
+    refresh = _function_body(source, "async function wwRefreshWaveformDisplayBasis(", "\n        // RD-1 Slice B (D2 decision)")
     assert "await wwRefetchAllChannelsAcrossGroups(sourceIds);" in refresh
     assert "wwRebuildLayout();" in refresh
     assert "wwUpdateUnitModeWarningBadge();" in refresh
-    # PU-005: optional editor metadata cannot delay publication of the latest intent.
-    assert body.index("ww.unitMode = mode;") < body.index("void wwFetchPerUnitSourceConfigs()")
     assert "modeGeneration !== wwUnitModeGeneration" in refresh
+    # PU-UI-001 Step B: SD modal fetch no longer called on mode change.
+    assert "void wwFetchPerUnitSourceConfigs()" not in body
 
 
 def test_panel_group_key_never_mixes_configured_and_base_required():
     source = _source()
-    body = _function_body(source, "function wwPanelGroupKeyFor(channel)", "function wwPanelLabelFor(channel)")
+    body = _function_body(source, "function wwPanelGroupKeyFor(", "function wwPanelLabelFor(channel)")
     # Separate/Custom modes return early -- the per-unit branch below is
     # reached only in Grouped mode (one channel-per-panel already can't
     # mix anything in Separate; Custom groups are explicit, user-owned).
-    assert body.index('ww.layoutMode === "separate"') < body.index('ww.unitMode === "per_unit"')
-    assert body.index('ww.layoutMode === "custom"') < body.index('ww.unitMode === "per_unit"')
+    assert 'layoutMode = ww.layoutMode' in body
+    assert body.index('layoutMode === "separate"') < body.index('ww.unitMode === "per_unit"')
+    assert body.index('layoutMode === "custom"') < body.index('ww.unitMode === "per_unit"')
     assert 'return baseKey + ":pu";' in body
     assert 'return baseKey + ":base_required";' in body
 
@@ -87,16 +95,18 @@ def test_panel_label_matches_group_key_suffixes():
     assert 'return baseLabel + " (Base required)";' in body
 
 
-def test_start_new_workspace_resets_unit_mode_and_source_configs_plain_clear_does_not():
+def test_start_new_workspace_resets_unit_mode_plain_clear_does_not():
+    """PU-UI-001 Step B: `perUnitSourceConfigs.clear()` and
+    `wwClosePerUnitProfilesModal()` were removed with the SD modal.
+    `ww.unitMode = "engineering"` reset still fires on resetSourceBounds."""
     source = _source()
     body = _function_body(source, "function wwClearWorkspace(options)", "function wwStickyRulerElapsedUnit(spanSeconds)")
     reset_branch = body[body.index("if (options.resetSourceBounds)") : body.index("} else {")]
     else_branch = body[body.index("} else {") :]
     assert 'ww.unitMode = "engineering";' in reset_branch
-    assert "ww.perUnitSourceConfigs.clear();" in reset_branch
-    assert "wwClosePerUnitProfilesModal();" in reset_branch
+    assert "ww.perUnitSourceConfigs.clear();" not in reset_branch
+    assert "wwClosePerUnitProfilesModal();" not in reset_branch
     assert 'ww.unitMode = "engineering"' not in else_branch
-    assert "ww.perUnitSourceConfigs.clear()" not in else_branch
 
 
 def test_no_separate_profile_concept_remains_in_the_user_facing_workflow():
@@ -112,185 +122,34 @@ def test_no_separate_profile_concept_remains_in_the_user_facing_workflow():
     assert "perUnitNameInput" not in source
 
 
-def test_every_loaded_source_appears_automatically_via_the_existing_source_list():
-    """Section 1: reuses fetchSourcesList()/recordingDisplayName() --
-    the SAME source-listing/label convention as the Recordings page and
-    Workspace Sidebar -- never a second "what is this file called"
-    mechanism, and never the filename as any kind of persistent
-    identity (source_id is)."""
+def test_sd_modal_removed_in_pu_ui_001():
+    """PU-UI-001 Step B: the entire SD modal surface and its functions
+    were removed.  Recording Details is now the sole per-unit config
+    entry point.  These assertions form the new regression contract for
+    all the per-source-default tests that previously appeared here."""
     source = _source()
-    body = _function_body(source, "async function wwOpenPerUnitProfilesModal()", "function wwClosePerUnitProfilesModal()")
-    assert "await fetchSourcesList();" in body
-    assert "await wwFetchPerUnitSourceConfigs();" in body
-
-    select_body = _function_body(source, "function wwRenderPerUnitSourceSelect()", "function wwPerUnitSourceSelectChange(")
-    assert "recordingDisplayName(source)" in select_body
-    assert "source.source_id" in select_body
-
-
-def test_source_config_save_targets_the_source_scoped_endpoint():
-    source = _source()
-    body = _function_body(source, "async function wwApplyPerUnitProfileEditor()", "async function wwDeletePerUnitProfileEditor()")
-    assert '"/per-unit/sources/" + encodeURIComponent(state.sourceId)' in body
-    assert '"PUT"' in body
-    assert "voltage_reference_mode: state.voltageReferenceMode" in body
-    assert "voltage_reference_override: state.voltageReferenceMode === \"manual\" ? state.voltageReferenceOverride : null" in body
-
-
-def test_voltage_reference_block_covers_auto_manual_and_ambiguous_states():
-    """Section 4-6 (owner UAT2): three distinct renderings -- confident
-    auto-detection with a View-details/Override action pair, an active
-    manual override with a Return-to-Auto action, and an honest
-    "automatic detection unavailable" fallback -- never a silently
-    invented default."""
-    source = _source()
-    body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents()")
-    assert 'state.voltageReferenceMode === "manual"' in body
-    assert "Return to Auto" in body
-    assert "state.autoDetection.reference" in body
-    assert "Override" in body
-    assert "Automatic detection unavailable" in body
-    assert "perUnitVoltageReferenceFallback" in body
-
-
-def test_voltage_reference_evidence_is_collapsed_behind_view_details():
-    """Section 5 (owner UAT2's own explicit complaint): the full
-    evidence list must never print inline in the normal form -- it is
-    rendered only when `state.detectionDetailsExpanded` is true, behind
-    a dedicated toggle button, never unconditionally."""
-    source = _source()
-    body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents()")
-    assert "perUnitToggleDetectionDetailsBtn" in body
-    assert "state.detectionDetailsExpanded" in body
-    assert "ww-pu-detection-details" in body
-    assert "ww-pu-evidence-list" in body
-    # The unconditional inline text from the original design must be gone.
-    assert "Detected from ' + evidence" not in body
-
-
-def test_conflicting_or_unrecognized_reference_reasons_are_distinguished():
-    """Section 5's own worked example: "conflicting evidence" and "no
-    recognizable pattern" must be told apart, never collapsed into one
-    generic message."""
-    source = _source()
-    body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents()")
-    assert "conflicting_evidence" in body
-    assert "Conflicting voltage-channel naming was detected." in body
-    assert "No recognizable voltage-channel naming pattern was found." in body
-
-
-def test_detection_details_toggle_is_wired():
-    source = _source()
-    body = _function_body(source, "function wwWirePerUnitProfileFieldsEvents()", "function wwRenderPerUnitProfileEditor()")
-    toggle_section = body[body.index("perUnitToggleDetectionDetailsBtn") :]
-    assert "state.detectionDetailsExpanded = !state.detectionDetailsExpanded;" in toggle_section
-
-
-def test_detection_details_collapsed_by_default_on_a_fresh_editor_state():
-    source = _source()
-    body = _function_body(source, "function wwPerUnitConfigToEditorState(sourceId, config)", "function wwPerUnitEditorResolvedCurrentBaseText(state)")
-    assert "detectionDetailsExpanded: false," in body
-
-
-def test_return_to_auto_reruns_rather_than_keeps_the_stale_manual_choice():
-    source = _source()
-    body = _function_body(source, "function wwWirePerUnitProfileFieldsEvents()", "function wwRenderPerUnitProfileEditor()")
-    return_section = body[body.index("perUnitReturnToAutoBtn") :]
-    assert 'state.voltageReferenceMode = "auto";' in return_section
-    assert "state.voltageReferenceOverride = null;" in return_section
-
-
-def test_voltage_base_field_uses_a_fixed_suffix_not_a_unit_dropdown():
-    """Section 4: a wide numeric field plus a non-editable unit suffix
-    -- the domain always accepts one canonical unit (kV) for this field,
-    so no dropdown is offered."""
-    source = _source()
-    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
-    assert 'class="ww-pu-value-suffix-group"' in body
-    assert '<span class="ww-pu-suffix">kV</span>' in body
-    assert "perUnitVoltageBaseUnit" not in body  # no unit <select> any more
-
-
-def test_current_base_uses_three_labeled_radio_options():
-    """Section 7-8 (owner UAT2): fully-clickable rows, not bare radio
-    buttons -- and "Voltage only" is renamed to "No current base" per
-    the owner's own spec, though the underlying API value (`"none"`)
-    is untouched."""
-    source = _source()
-    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
-    assert "Calculate from apparent power" in body
-    assert "Enter current base manually" in body
-    assert "No current base" in body
-    assert "Voltage channels only." in body
-    assert 'name="perUnitCurrentBaseMode"' in body
-
-
-def test_current_base_rows_are_fully_clickable_labels_not_bare_radios():
-    """Section 7: the whole row (icon/title/description) must be
-    inside one <label> wrapping the radio -- never a radio floating
-    next to disconnected text."""
-    source = _source()
-    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
-    assert "ww-pu-mode-row" in body
-    assert "ww-pu-mode-row--selected" in body
-    assert '<label class="ww-pu-mode-row' in body
-
-
-def test_advanced_options_section_exists_as_an_empty_placeholder():
-    """Section 10: a collapsed, structurally-present Advanced Options
-    disclosure -- explicitly NOT populated with any speculative
-    capability (channel overrides, multiple voltage groups, transformer
-    mappings, alternative PU standards, frequency-base config)."""
-    source = _source()
-    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
-    assert "ww-pu-advanced" in body
-    assert "Advanced options" in body
-    forbidden = [
-        "channel-specific override",
-        "voltage group",
-        "transformer",
-        "alternative PU standard",
-        "frequency base",
-        "frequency-base",
-    ]
-    lowered = body.lower()
-    for phrase in forbidden:
-        assert phrase.lower() not in lowered
-
-
-def test_modal_uses_a_wider_compound_selector_not_the_shared_base_width():
-    """The modal-width fix: a compound `.group-editor-box.ww-pu-dialog`
-    selector (not a bare single-class override) so this dialog widens
-    without affecting the Custom Groups editor or Upload modal, which
-    also use `.group-editor-box`."""
-    source = _source()
-    assert ".group-editor-box.ww-pu-dialog" in source
-    assert 'class="group-editor-box ww-pu-dialog"' in source
-
-
-def test_recording_section_is_the_first_section_not_voltage_base():
-    """Recording is genuinely first in DOM order (in the modal's static
-    HTML shell, ahead of the dynamically-rendered fields) -- it must
-    carry the `--first` modifier, not Voltage Base."""
-    source = _source()
-    shell_start = source.index('id="perUnitProfilesOverlay"')
-    shell_end = source.index('id="perUnitProfileFields"', shell_start)
-    shell = source[shell_start:shell_end]
-    assert "ww-pu-section--first" in shell
-    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
-    assert "ww-pu-section--first" not in body
-
-
-def test_source_status_line_renders_separately_from_the_select_options():
-    """Section 2: source select options stay clean (just the recording
-    name) -- ownership/configuration status is a separate status line,
-    never baked into the option text."""
-    source = _source()
-    select_body = _function_body(source, "function wwRenderPerUnitSourceSelect()", "function wwPerUnitSourceSelectChange(")
-    assert "recordingDisplayName(source)" in select_body
-    status_body = _function_body(source, "function wwRenderPerUnitSourceStatusLine()", "function wwPerUnitSourceSelectChange(")
-    assert "Not configured" in status_body
-    assert "perUnitSourceStatus" in status_body
+    # Modal markup is gone.
+    assert 'id="perUnitProfilesOverlay"' not in source
+    assert 'id="perUnitSourceSelect"' not in source
+    # Open/close functions are gone.
+    assert 'async function wwOpenPerUnitProfilesModal(' not in source
+    assert 'function wwClosePerUnitProfilesModal()' not in source
+    # SD editor render/wire/apply/delete functions are gone.
+    assert 'function wwRenderPerUnitProfileEditor(' not in source
+    assert 'function wwRenderVoltageReferenceBlock(' not in source
+    assert 'function wwWirePerUnitProfileFieldsEvents()' not in source
+    assert 'async function wwApplyPerUnitProfileEditor()' not in source
+    assert 'async function wwDeletePerUnitProfileEditor()' not in source
+    # SD state functions are gone.
+    assert 'function wwPerUnitConfigToEditorState(' not in source
+    assert 'function wwFetchPerUnitSourceConfigs' not in source
+    assert 'function wwRenderPerUnitSourceSelect()' not in source
+    assert 'function wwRenderPerUnitSourceStatusLine()' not in source
+    # SD API path strings are gone.
+    assert '"/per-unit/sources"' not in source
+    assert '"/per-unit/sources/"' not in source
+    # RD navigation helpers have replaced the modal entry points.
+    assert 'function wwNavigateToRdForPuConfiguration(' in source
 
 
 def test_cursor_peak_and_annotation_anchor_requests_all_carry_unit_mode():
@@ -322,33 +181,34 @@ def test_calculated_channel_preview_uses_the_same_global_unit_mode():
 
 
 def test_manage_per_unit_bases_toolbar_control_exists_in_html():
+    """PU-UI-001 Step B: Hub and SD modal are both removed.  Only the
+    ENG/PU toggle buttons remain in Voltage pane headers for display switching;
+    all PU configuration goes through Recording Details."""
     source = _source()
-    # Waveform toolbar migration: two direct icon buttons, no dropdown.
-    assert 'id="wwUnitEngineeringBtn"' in source
-    assert 'id="wwUnitPerUnitBtn"' in source
-    # Slice 1 (Per-Unit Settings hierarchy): the toolbar now routes to a
-    # single "Per-Unit Settings..." entry point rather than opening the
-    # source-wide modal directly -- the modal itself, its own function,
-    # and its own form controls are all still fully present/unchanged.
-    assert 'id="wwOpenPerUnitSettingsBtn"' in source
-    assert 'id="perUnitProfilesOverlay"' in source
-    assert 'id="perUnitSourceSelect"' in source
+    # Pane-header relocation: native ENG/PU buttons, one workspace-wide state.
+    assert 'data-pane-unit-mode="engineering"' in source
+    assert 'data-pane-unit-mode="per_unit"' in source
+    # Hub and SD modal are gone.
+    assert 'id="wwOpenPerUnitSettingsBtn"' not in source
+    assert 'id="perUnitProfilesOverlay"' not in source
+    assert 'id="perUnitSourceSelect"' not in source
 
 
 def test_selecting_per_unit_never_auto_opens_any_configuration_surface():
     """Slice 1 UAT fix (Per-Unit Settings hierarchy): selecting Per Unit
-    used to auto-open the source-wide setup modal whenever no source had
-    a configured DEC-049 profile yet (the original "Section 68"
-    convenience, predating the Measurement Groups/Source Default
-    hierarchy). That side effect is now removed outright -- opening any
-    configuration surface must always be a separate, explicit action via
-    "Per-Unit Settings...", never a consequence of switching display
-    mode, regardless of whether any source has a configured base."""
+    used to auto-open the source-wide setup modal.  That side effect is
+    removed outright -- opening any configuration surface must always be
+    a separate, explicit action via Recording Details, never a consequence
+    of switching display mode.
+
+    PU-UI-001 Step B: SD modal and MG modal are both gone; this remains
+    a valid regression contract (the Per Unit click must ONLY change
+    display mode, nothing else)."""
     source = _source()
-    start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
-    end = source.index("});", start) + 3
+    start = source.index('async function wwApplyPaneUnitMode(panel, button)')
+    end = source.index("function wwWaveformPaneHeaderHtml", start)
     body = source[start:end]
-    assert "await wwApplyUnitMode(\"per_unit\");" in body
+    assert "wwApplyUnitMode(button.dataset.paneUnitMode)" in body
     assert "wwOpenPerUnitProfilesModal" not in body
     assert "wwOpenPerUnitSettingsModal" not in body
     assert "wwOpenMeasurementGroupsModal" not in body

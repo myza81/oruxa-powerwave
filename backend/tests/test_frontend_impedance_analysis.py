@@ -263,7 +263,11 @@ class TestImpedanceLocusChronologyRegression:
     def test_cutoff_helper_reads_the_already_fetched_exact_point(self):
         source = _source()
         fn = _function_body(source, "function wwImpedanceVisibleLocusCutoffTime", "function wwImpedanceRenderPlot")
-        assert "wwImpedanceState.latestResult" in fn
+        # D5A-2B2C-1B: through the accessor that withholds a result a Recording Details blocker rules out ...
+        assert "wwImpedanceRecordedResult()" in fn
+        accessor = _function_body(source, "function wwImpedanceRecordedResult", "function wwImpedanceRecordedLocusPoints")
+        # ... which otherwise is exactly the already-fetched exact point
+        assert "wwImpedanceState.latestResult" in accessor
         assert "result.analysis_time" in fn
 
     def test_locus_path_loop_applies_the_cutoff(self):

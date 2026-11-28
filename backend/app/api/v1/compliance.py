@@ -69,6 +69,7 @@ from app.services.compliance_alignment_service import (
     view_of,
 )
 from app.services.compliance_series import Registries
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.compliance_trace_service import build_measurement_traces
 from app.services.compliance_readiness_service import (
     PreparationOutcome,
@@ -271,6 +272,7 @@ def _readiness_deps(request: Request) -> dict:
         current_config_registry=state.current_group_config_registry, calc_registry=state.calculated_channel_registry,
         context_registry=state.engineering_context_registry, layer_registry=state.reference_layer_registry,
         profile_registry=state.reference_profile_registry, per_unit_registry=state.per_unit_registry,
+        side_authority=RecordedAuthority.from_app_state(state),
     )
 
 
@@ -336,6 +338,7 @@ def get_compliance_voltage_measurement_traces(
                 source=state.workspace_registry, calc=state.calculated_channel_registry,
                 per_unit=state.per_unit_registry, group=state.measurement_group_registry,
                 voltage_config=state.voltage_group_config_registry, current_config=state.current_group_config_registry,
+                side_authority=RecordedAuthority.from_app_state(state),
             ),
             alignment=alignment,
         )

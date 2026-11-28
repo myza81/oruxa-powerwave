@@ -38,9 +38,9 @@ test("Data Issues: single-cell Estimate Missing Value + mixed-gap transparency +
 
   await test.step("Setup - upload a CSV with an isolated gap and a mixed missing/invalid gap", async () => {
     await page.goto("/index.html");
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
 
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFormatSelect").selectOption("csv");
     await page.locator("#uploadModalFile_0").setInputFiles({
@@ -51,9 +51,10 @@ test("Data Issues: single-cell Estimate Missing Value + mixed-gap transparency +
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-    const row = page.locator('#recordingsTableBody tr[data-source-id][data-recording-kind="csv"]').first();
-    await expect(row).toBeVisible();
-    await row.click();
+    const item = page.locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind="csv"]').first();
+    await expect(item).toBeVisible();
+    const itemSourceId = await item.getAttribute("data-source-id");
+    await page.evaluate(async (sid) => { await openDataPreparationWorkspace(sid); }, itemSourceId);
     await expect(page.locator("#pageDataPreparation")).toBeVisible();
   });
 
@@ -213,9 +214,9 @@ test("Data Issues: bulk Fill / Estimate Missing Values -- Constant Value + respo
 
   await test.step("Setup - upload a CSV with an isolated 2-row missing gap", async () => {
     await page.goto("/index.html");
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
 
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFormatSelect").selectOption("csv");
     await page.locator("#uploadModalFile_0").setInputFiles({
@@ -226,9 +227,10 @@ test("Data Issues: bulk Fill / Estimate Missing Values -- Constant Value + respo
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-    const row = page.locator('#recordingsTableBody tr[data-source-id][data-recording-kind="csv"]').first();
-    await expect(row).toBeVisible();
-    await row.click();
+    const item2 = page.locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind="csv"]').first();
+    await expect(item2).toBeVisible();
+    const item2SourceId = await item2.getAttribute("data-source-id");
+    await page.evaluate(async (sid) => { await openDataPreparationWorkspace(sid); }, item2SourceId);
     await expect(page.locator("#pageDataPreparation")).toBeVisible();
 
     await page.evaluate(async () => {

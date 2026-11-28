@@ -1,6 +1,7 @@
 // Slice 1: real editor save/rejection against the real local API.
 const { test, expect } = require("./support/test");
 const { BACKEND, uploadRecord, workspaceId, sourceIdFor } = require("./support/event_reconstruction_helpers");
+const { openRdVoltageEditor } = require("./support/recording_details_pu_helpers");
 
 test("a rejected voltage editor save preserves the base and plotted PU; accepted save updates both", async ({ page }) => {
   await page.goto("/index.html");
@@ -24,10 +25,10 @@ test("a rejected voltage editor save preserves the base and plotted PU; accepted
   const before = await (await page.request.get(url)).json();
   const waveformUrl = root + "/waveform?channel_name=VA&unit_mode=per_unit";
   const waveformBefore = await (await page.request.get(waveformUrl)).json();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
-  await page.locator("#wwMgVoltageKvInput").fill("132");
+  // The retired Per-Unit Settings Hub / MG drawer is replaced by the Recording
+  // Details -> Group Details voltage editor (real backend, same save endpoint).
+  await openRdVoltageEditor(page, source, group.id);
+  await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("132");
   // Simulate an incomplete client request while retaining the real UI error
   // handling and real backend validation. No response or state is mocked.
   await page.route("**/measurement-groups/*/voltage-config", async route => {
@@ -37,17 +38,17 @@ test("a rejected voltage editor save preserves the base and plotted PU; accepted
     await route.continue({ postData: JSON.stringify(body) });
   }, { times: 1 });
   const rejected = page.waitForResponse(r => r.url() === url + "/voltage-config" && r.request().method() === "PUT");
-  await page.locator("#wwMgDrawerSaveBtn").click();
+  await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
   expect((await rejected).status()).toBe(400);
-  await expect(page.locator("#wwMgDrawerError")).toBeVisible();
-  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+  await expect(page.locator("#wwRdDetailsBody .ww-rd-edit-error")).toBeVisible();
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toBeVisible();   // form stays open
   expect(await (await page.request.get(url)).json()).toEqual(before);
   expect(await (await page.request.get(waveformUrl)).json()).toEqual(waveformBefore);
   expect(await peak()).toBeCloseTo(Math.sqrt(2), 10);
 
   // The same open form can then successfully save its actual auto-reference body.
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  await expect(page.locator("#wwMgDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+  await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);   // form closed
   await expect.poll(peak).toBeCloseTo(Math.sqrt(2) * 275 / 132, 10);
   const accepted = await (await page.request.get(url)).json();
   expect(accepted.voltage_config.nominal_voltage_ll_kv).toBe(132);

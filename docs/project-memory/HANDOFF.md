@@ -4,7 +4,262 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-11-17** — P3 DEV UAT accepted; local product-identity cleanup reconciled with merged main.
+Agent governance (2026-11-26, [DEC-218](DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)):
+approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
+[AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
+
+Last updated: **2026-11-27** — Per-Unit workstream accepted by the owner after DEV UAT (baseline `4885ca2`); integration readiness reviewed, awaiting owner review (below). Earlier engineering handoffs retain their original dates.
+
+---
+
+## Per-Unit workstream — final acceptance and release readiness (2026-11-27)
+
+[UAT] **Final release gates (2026-11-28):** G1 only `docs/` differ from `4885ca2`; G2 CI green (runs `46000032072`, `46000644031`; backend 15,244 passed / 410 skipped); G3 `main` `b743a67` clean fast-forward-equivalent merge; G4 browser **1,812 passed / 7 failed / 8 skipped**: six are the accepted CSV/Excel backlog and one, `waveform-legend-visibility.spec.js:87`, is a suspected timing-sensitive flake (passed 14/14 three times on the PR head; not a proven defect, root cause not established). Accepted with these qualifications, not as an unconditional pass; the original failure evidence is in `evidence/pu-release-g4-2026-11-28/`. Functional baseline `4885ca2` unchanged (non-docs tree identical). PR #14 authorised to merge with a merge commit after this documentation commit's CI; DEV deploys automatically, the owner accepts DEV, PROD is a separate decision (signing key, host `.env` and the rollback tag are outstanding). NF-3E is frozen separately (`00387aa`, docs `edf18b2`) and is not part of this release. See section 12 of the acceptance record.
+
+[UAT] Owner DEV UAT passed; PU-MIG S1–S6, DEC-219, W-1 and the Voltage-configuration UI simplification are accepted. Frozen functional baseline **`4885ca2`**
+(`feature/pu-mig-s5-verification-presentation`; DEV release branch `uat/dev-pu-mig-dec219-20261127`; CI `45986951629`; Deploy `45988779482`). No owner-reported PU defects.
+Do **not** add PU features: raw Current ENG/PU toggle, more Current PU reference types, creation-time Current PU configuration, Stage 6D, legacy Secondary base management (W-2), legacy API-field
+deprecation and a CFG transformer-ratio authority are deferred and unauthorised.
+
+Integration facts (measured 2026-11-27): `origin/main` `b743a67` is an ancestor of `4885ca2` (198 ahead / 0 behind; merge-tree clean; no NF/RMS; WUI-001–004 and D5A included because PR #13
+merged them into `uat/dev-d5a-20261121`, not `main`). PROD is a `/health`-only skeleton since `main` @ `947b72b` (run `31597729649`); `deploy-dev.yml` auto-deploys `main` to DEV after CI.
+Recommended: one merge-commit PR (no squash, no force-push), CI on the PR head, a full browser run before PROD, `RELAY_REVIEW_SIGNING_KEY` and a rollback tag before any PROD dispatch.
+Rollback of DEV: dispatch `target=dev` with `uat/dev-pu-mig-20261127` (`9ec49d9`) or `uat/dev-d5a-20261121` (`e9c621c`).
+
+**Next:** owner reviews [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md) (sections 5, 8 and 10 list the readiness findings, the gate and the open decisions). Do not merge to `main`, push, or deploy to PROD until the owner decides;
+do not resume NF, RMS or WUI work from this record.
+
+**Update 2026-11-27 (owner integration instruction):** one merge-commit PR to `main` is authorised (push as a new branch; PR **not** merged until owner approval); the full browser run (G4) is required before the merge. `docs/dec-217-governance` is superseded by DEC-218 and the per-feature WUI branches by the integrated lineage; none is merged, deleted or removed yet (cleanup after a successful production release). See section 11 of the acceptance record.
+
+---
+
+## Controlled WUI-001–004 consolidation
+
+[UAT] Owner accepted final UI `d513fba`. Current DEV advanced to **`f24f1d7`**;
+remote branch, frontend build and API health match. Its successful deployment is
+**45136061375**; it is the baseline/rollback checkpoint for this consolidation.
+Dedicated branch `integration/wui-001-004-dev-f24f1d7`, worktree
+`.local-data/wui-001-004-current-dev`, preserves the released Overcurrent changes
+and Recording Details refinements. Claude's newer unpublished `3e9cc5f` and active
+backend edits are excluded and untouched. All 562 protected frontend functions
+match DEV; no backend application/infrastructure change.
+
+Candidate **http://127.0.0.1:30441/** / API 30440; exact baseline 30431/30430,
+isolated storage. See [the consolidation report](WUI_001_004_DEV_CONSOLIDATION_REPORT.md)
+for final verification, source/manifest evidence, screenshots and deployment gates.
+Deployment/rollback recreates both containers and clears ephemeral workspace,
+Measurement Group, CT/VT and other registry state. Coordinate users and state
+recreation. The owner subsequently authorized publishing the dedicated verified
+branch and deploying its exact SHA to DEV independently: Claude's D5A-2B2C-1B
+work is isolated and has no scheduled deployment. Complete verification/CI, deploy
+DEV, validate and report the new exact checkpoint for Claude's later integration.
+Do not merge to `main`, change production or start WUI-005.
+
+---
+
+## D5A-2B2C-1B — Impedance Locus and Distance Protection unified measurement-side integration (2026-11-23)
+
+**Status (2026-11-24):** the seven 1B commits (`3e9cc5f`..`2144893`, authored on the DEV-UAT-approved `f24f1d7`) are integrated onto the accepted WUI-001–004 DEV baseline **`3ed200c`** on `integration/d5a-2b2c-1b-on-wui-3ed200c` by a three-way merge (owner-authorised DEV-only release; no `main` merge, no PROD). The only textual conflict was this file; `frontend/index.html` merged automatically and was then verified at source level (see the integration report). The bullet below describes the 1B slice itself.
+Recorded Impedance Locus and Distance Protection (selected-time and locus) now take the Primary/Secondary side of **each consumed Voltage and Current channel** from Recording Details
+(`resolve_effective_measurement_side` + the shared consumer policy in `recorded_side_authority.py`, which Overcurrent also uses) and the VT/CT of the Measurement Groups that **own** those channels,
+only where a conversion is needed. Voltage and Current are independent (V Primary / I Secondary calculates). The page has no Recording-basis input (the Impedance basis (output) selector stays) and
+sends only `impedance_basis`; the backend enforces the authority for every client — `recording_basis`, `voltage_side`, `current_side`, `vt_*`, `ct_*` are optional assertions that can only block on a
+contradiction, and the old bypass (omit `voltage_side`/`current_side` → the request decides) is closed. New read-only `GET .../protection-recorded-input`. The mathematics, guardrails, zone geometry,
+Manual mode, Overcurrent, PU and calculated channels are untouched. DEC-216 Amendment 6. Details, data flow, oracles, reason-code matrix, tests, verification, limitations and the DEV UAT checklist:
+[D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
+
+**Owner-review hardening (same branch):** a recorded Distance result without a valid impedance now reports no zone (`zone1`..`zone4` null, `zones` empty) and the page shows "Not evaluated", instead of a `not_operated` placeholder — no schema change, report §3a.
+
+**Owner decisions requested:** calculated V/I channels are blocked for now (same as Overcurrent); recordings with no P/S evidence need an engineer setting; a mixed-declaration Measurement Group blocks every channel it
+owns; the two legs of a loop must agree on a side (report §8).
+**Next action:** owner review. D5A-2B2D (retire the legacy parameters), calculated-channel integration and the PU migration start only after authorisation.
+
+---
+
+## D5A-2B2C-1A — Overcurrent unified measurement-side integration (2026-11-23)
+
+**Status:** committed locally on `feature/d5a-2b2c-1a-overcurrent-unified-side` (from the DEV-UAT-approved `ad1b6ed`). NOT pushed, merged or deployed. **Stopped for owner review.**
+Recorded Overcurrent now takes the Primary/Secondary side of its consumed Current channel from Recording Details (`resolve_effective_measurement_side`: Level 2 Current group > Level 1 recording
+correction > channel declaration > inferred (not strict) > unresolved) and the CT of that channel's OWN Measurement Group. The page has no Recording-basis input and sends no basis or CT; the backend
+enforces the authority for every client (legacy `recording_basis`/`ct_*` are optional assertions that block on contradiction). New read-only `GET .../overcurrent-recorded-input`. CT mathematics,
+Manual mode, Impedance, Distance, PU and calculated channels are untouched. DEC-216 Amendment 5. Details, enforcement table, tests, verification, limitations and the DEV UAT checklist:
+[D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md).
+
+**Owner decisions requested:** calculated current channels are blocked for now; recordings with no P/S evidence need an engineer setting; a mixed-declaration Current group blocks its phases (report §8).
+**Next action:** owner review. D5A-2B2C-1B, D5A-2B2D, calculated-channel integration and the PU migration start only after authorisation. The two approved tab-corner commits of `feature/d5a-ui-003-restore-typography-spacing` were cherry-picked into this branch (owner review, 2026-11-23). Owner-review hardening (calculated channels, Secondary without CT, mixed declarations, retired-test coverage) is recorded in §10 of the slice report; calculated-channel lineage remains a future enhancement.
+
+---
+
+## D5A-UI-003 — Restore original typography and spacing in Recording Details (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-ui-003-restore-typography-spacing` (from the deployed DEV build `d2ecc69`). NOT pushed, merged or deployed.
+**Stopped for owner visual review.** CSS only: the UI-REC-001 / D5A-UI-002 blocks no longer restate font size, weight, line height or enlarged spacing, so
+the application's own `.ww-rd-*` values apply again; the approved cards, icon tiles, pills and Voltage/Current layouts are unchanged. A static test guards it.
+Details and the original / deployed / corrected values: [D5A_UI_003_RESTORE_TYPOGRAPHY_SPACING_2026-11-22.md](D5A_UI_003_RESTORE_TYPOGRAPHY_SPACING_2026-11-22.md).
+
+**Next action:** owner review. D5A-2B2C, D5A-2B2D and the PU migration start only after authorisation.
+
+---
+
+## D5A-UI-002 — Group Details redesign and Measurement-Group-level side (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-ui-002-group-details-group-side` (after `feature/ui-rec-001-recording-info-redesign`, from the DEV-UAT baseline `a1e8d68`).
+NOT pushed, merged or deployed. **Stopped for owner UI/UAT review.** Level 2 measurement side is now **per Measurement Group** (Voltage and Current groups are
+independent; Engineering Context membership/status no longer gates or carries a side) — DEC-216 Amendment 4; the per-bay Level 2 of D5A-2B2A/2B2B is superseded.
+Group Details shows one selected group (voltage or current sections) in the approved card design; Recording Info was redesigned in UI-REC-001 (separate slice report).
+No calculation, PU, CT/VT, Overcurrent, Impedance or Distance change. Details: [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md).
+
+**Next action:** owner review. D5A-2B2C (consumer migration, with the CT/VT-authority safeguard above), D5A-2B2D and the PU migration start only after authorisation.
+
+---
+
+## D5A-2B2B — Recording Details measurement-side UI (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-2b2b-recording-details-side-ui` (stacked on `feature/d5a-2b2a-measurement-side-config`; worktree `.local-data/d5a-2b2a`).
+NOT pushed, merged or deployed. **Stopped for owner review / DEV UAT authorisation.** Owner review of 2026-11-22 applied (DEC-216 Amendment 3): Level 1 stays in Recording Info, **Level 2 moved to Group Details**
+(one setting per bay within the selected recording), Confirm bay is an explicit reviewed status-only action, bay settings are **scoped per recording** (a multi-recording Engineering Context never shares a value),
+and a CT/VT group spanning bays is diagnosed (ambiguous sides block conversion). Calculated-channel side resolution stays deferred to D5A-2B2C (open questions in the document below).
+PU, Overcurrent, Impedance and Distance numerics and their existing controls are untouched. Details, verification and decisions: [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
+
+**Owner decision (2026-11-22): APPROVED for DEV UAT** (backend 13,490 passed / 405 skipped / 0 failed; affected browser 280 passed / 0 failed). Confirmed: Level 1 in Recording Information; Level 2 in Group Details scoped to (bay, recording); Primary/Secondary only with automatic inheritance and preserved manual overrides; no Reset / per-phase / separate V-I settings; Confirm-bay review approved; one overview entry per (bay, recording); a group spanning bays on one shared side stays warning-only for now.
+
+**D5A-2B2C safeguard (owner, 2026-11-22):** matching measurement sides alone do not establish valid shared CT/VT conversion authority (two Primary-referenced bays may have different CT ratios). The consumer integration must verify the CT/VT authority of the *actual consumed channel* and its Measurement Group. Shared busbar VT arrangements remain supported; genuinely ambiguous transformer ownership must not produce an invented conversion. No production-code change is required for this in D5A-2B2B.
+
+**Next action:** owner DEV UAT of Recording Details (checklist in the owner report). D5A-2B2C, D5A-2B2D and the PU migration start only after that UAT is accepted. Open points from the owner review are in §5/§6 of the document below. Then (each only when authorised) the PU migration slice, D5A-2B2C (consumer
+migration and removal of recorded-mode side selectors) and D5A-2B2D. The shared `frontend/index.html` also carries Codex's Waveform Analysis work: this slice adds one
+marked block (`D5A-2B2B-BLOCK-START/END`), one CSS block and four one-line hooks, so a merge should be mechanical.
+
+---
+
+## D5A-2B2A — unified measurement-side configuration and shared resolver (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-2b2a-measurement-side-config` (worktree `.local-data/d5a-2b2a`, from the accepted D5A UAT baseline
+`a2b55eb`). NOT pushed, merged or deployed. Backend only; no PU, Overcurrent, Impedance or Distance result changes. Awaiting owner review.
+
+**The old D5A-2B2 proposal is SUPERSEDED** ([DEC-216](DECISIONS.md#dec-216--recording-details-is-the-single-authority-for-recorded-measurement-side-d5a-2b2-unified-model));
+do not implement `D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md`.
+
+**What exists:** Level 1 (per recording) and Level 2 (per bay = Engineering Context) Primary/Secondary configuration; the stateless
+`resolve_effective_measurement_side()` / `resolve_consumed_side()` authority (`app/services/measurement_side_service.py`); additive
+endpoints `GET/PUT …/sources/{id}/measurement-side`, `GET/PUT …/engineering-contexts/{id}/measurement-side`, `GET …/measurement-side[/channel]`;
+lifecycle clean-up with workspace/source/bay. Precedence, ownership, diagnostics, limitations: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+
+**Standing owner requirement for every later slice:** Recording Details is the single source of truth for recorded measurement side. Consumers call
+the shared resolver; recorded-mode side selectors are removed in D5A-2B2C (output-side settings and Manual mode stay); the backend must enforce the
+same authority and block on unresolved/contradictory sides; no analyzer may add its own side configuration.
+
+**Owner review of D5A-2B2A: ACCEPTED (2026-11-22)** with decisions B2A-1..B2A-5 (DEC-216 Amendment 1), applied as a small backend refinement
+(V/I on different sides = resolved + info; `inferred` / `strict_usable`; `overridden_declarations`). Open from the original nine: #3 (a bay spanning
+recordings has no single inherited value), #6 (calculated channels), #7 (a CT/VT group spanning two bays with different sides is not diagnosed).
+
+**Next action:** D5A-2B2B (Recording Details UI) is authorised; then the PU migration slice, D5A-2B2C (consumer migration), D5A-2B2D (legacy retirement)
+only when the owner authorises each.
+
+---
+
+## D5A-OC-001 — recorded Overcurrent CT authority (2026-11-22)
+
+**Status:** committed locally on `feature/d5a-oc-001-overcurrent-ct-authority` (branched from `uat/dev-d5a-20261121` @ `082b2a6`).
+NOT pushed, deployed or merged. Owner decisions OC-1..OC-3 APPROVED (2026-11-22). Full regression passed on the final tree
+(backend 13,386 passed / 405 skipped / 0 failed; affected browser specs 194 passed / 0 failed).
+
+**Next action:** owner authorisation to deploy to DEV, then owner DEV UAT using the checklist in
+[D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md) §7.
+Known inconsistency recorded for the future measurement-side integration phase: a side contradiction rejects for Overcurrent but only
+warns for Impedance/Distance (unchanged here). D5A-2B2 (engineer-confirmed measurement side) was redesigned as DEC-216 and its backend authority delivered in D5A-2B2A (above).
+
+---
+
+## RD-1 Slice B — Recording Details workspace skeleton (2026-11-18)
+
+**Status:** Committed locally on `feature/vlt-ref-001-voltage-reference-safety`. NOT pushed, deployed, or merged. Awaiting owner UAT.
+
+**What Slice B implements (frontend only):**
+- Nav button "Recording Details" (`mainNavRecordingDetailsBtn`) — ninth nav item, between Recordings and Waveform.
+- `<section id="pageRecordingDetails">` — three-panel layout: Recording Browser (260px) | Measurement Groups (300px) | Group Details (flex-fill).
+- `wwRdState` — scoped state; never shares `wwMgSelectedSourceId`/`wwMgEditState`.
+- Recording browser with client-side search + sort (name A–Z, name Z–A, newest/oldest first).
+- Group panel stub — shows group names and kind; no editing (Slice D).
+- "Upload New" button wired to `openUploadModal()`.
+- `refreshAllSourceViews()` invalidates `wwRdState.sources` on every source set change.
+- `PAGE_RECORDING_DETAILS` inline SVG icon placeholder.
+
+**Remaining work:**
+- Slice C: full read-only Group Details panel — `manual_conflict_detected` warning, voltage config, provenance, PU state.
+- Slice D: Edit/Apply/Cancel integration + PU cache invalidation (`wwErState.perUnit.generation++`).
+- Slice E: Playwright regression tests (11 acceptance criteria in `RD1_SLICE_B_PLAN_2026-11-18.md`).
+- D3 (waveform navigation from Recording Details): approved for RD-1 scope, deferred to Slice D scoping.
+
+**Next action:** Owner UAT for Slice B, then authorize Slice C.
+
+---
+
+## RD-0B + RD-1 Slice A — Voltage-reference safety + Recording Details audit (2026-11-18)
+
+### RD-0B — committed as `5e9113f` on `feature/vlt-ref-001-voltage-reference-safety`
+
+**Status:** Committed locally. NOT pushed, deployed, or merged. Awaiting owner push/merge authorization.
+
+**What RD-0B delivers (backend only — no frontend changes):**
+
+1. **Automatic membership-change recalculation** — `reconfigure_auto_base_after_membership_change()` in
+   `backend/app/services/auto_base_service.py`. Triggered by `update_group()` (membership change) and
+   `put_voltage_config()` (manual kV edit). Closes L-4 from the RD-0A architecture review.
+
+2. **Manual conflict detection (Option A)** — `manual_conflict_detected: bool` and
+   `manual_conflict_detail: str | None` on `VoltageBaseConfiguration` (domain) and
+   `VoltageGroupConfigOut` (Pydantic schema). Three-case branch:
+   - Conflict (>5% tolerance) → flag set, PU blocked via `resolve_voltage_base_for_group()`
+   - Compatible same voltage → flag cleared
+   - Insufficient evidence → flag cleared
+
+3. **Final safety fix** — `put_voltage_config()` now calls
+   `reconfigure_auto_base_after_membership_change()` AFTER `update_voltage_configuration()`,
+   preventing a manual kV edit from bypassing the conflict guard.
+
+**Files changed:**
+- `backend/app/services/auto_base_service.py` — new function + helpers
+- `backend/app/services/measurement_group_service.py` — `update_group()` wired
+- `backend/app/api/v1/measurement_groups.py` — both endpoints wired; RD-1 acceptance criterion comment
+- `backend/app/domain/voltage_group_config.py` — two new fields; PU gate
+- `backend/app/services/voltage_group_config_registry.py` — `update_fields()` extended
+- `backend/app/services/voltage_group_config_service.py` — clears flags on manual kV edit
+- `backend/app/services/measurement_group_view_service.py` — wires new fields through
+- `backend/app/schemas/measurement_group.py` — `VoltageGroupConfigOut` extended
+- `backend/tests/test_rd0b_auto_base_membership_reconfigure.py` (NEW — 20 tests)
+- `backend/tests/test_rd0b_manual_conflict.py` (NEW — 15 tests)
+
+**RD-1 handoff requirements (documented as code comments):**
+- Frontend must consume `manual_conflict_detected` / `manual_conflict_detail` to surface the warning
+- PU resolution cache (`wwErState.perUnit.generation`) must be invalidated on voltage-config save
+- Noted as acceptance criteria in `measurement_groups.py` above `update_measurement_group`
+
+### RD-1 Slice A — read-only preliminary audit
+
+**Status:** Audit complete. Full report at
+`docs/project-memory/RD1_SLICE_A_AUDIT_2026-11-18.md`. No production files modified.
+Awaiting owner approval before Slice B begins.
+
+**Key findings:**
+- Recording Details is currently an inline `<tr>` sibling row (`renderRecordingDetails()` at
+  `frontend/index.html:22209`), not a separate page.
+- Measurement Groups UI is a modal overlay (`#measurementGroupsOverlay` line 15036), opened only from
+  Per-Unit Settings — no entry point from Recording Details today.
+- **Confirmed gap:** `manual_conflict_detected` / `manual_conflict_detail` are not consumed anywhere
+  in the frontend. This is the highest-priority RD-1 safety-visibility gap.
+- PU resolution cache staleness: `wwErState.perUnit.generation++` needed after voltage-config save.
+- No new backend APIs needed for Slices B–D.
+
+**Decisions needed before Slice B:**
+- D1: Inline expansion (Option A, recommended) vs. separate page (Option B)?
+- D2: Scoped `wwRdEditState` for Recording Details editor (recommended to avoid modal conflicts)?
+- D3: "Configure" link from Waveform → Recording Details? (recommended: defer to RD-2)
+- D4: Auto-expand Recording Details row after upload? (recommended: defer to Slice D)
+
+**Proposed slice plan:** Slice B (layout skeleton) → Slice C (read-only group panel + conflict warning)
+→ Slice D (editing integration + PU cache invalidation) → Slice E (regression tests).
+
+---
 
 ## Independent product direction and cleanup handoff
 

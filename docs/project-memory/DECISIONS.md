@@ -29505,3 +29505,381 @@ Reconstruction. Preserve P3 export/binary parity, P1/P2, BEN32/BEN6K and DEC-213
 PR #11 must remain open/unmerged. DEV/PROD deployment, another BEN stage, unrelated
 UI/calibration work and product-identity cleanup are excluded. The next milestone
 is separately authorized owner DEV retesting after passing CI.
+
+## DEC-214 — Frontend design must be engineer-task-first, not backend-schema-first
+
+Date: 2026-11-19. Status: **Approved — standing requirement.**
+Authority: owner direction (RD-1 D2 UAT review, 2026-11-19).
+
+Decision:
+
+The overarching frontend design principle for all Oruxa-Powerwave features is:
+
+> **The frontend should be designed around what engineers need to accomplish,
+> not around every operation available in the backend.**
+
+Supporting requirements A–I and a UX review gate for new features are recorded
+in [AGENTS.md — Frontend design principle — engineer-task-first](../../AGENTS.md).
+
+This principle applies across all frontend features: waveform analysis,
+Measurement Groups, calculators, protection analysis, file management and future
+modules.
+
+It does not override:
+
+- Electrical notation convention (DEC-117/DEC-118).
+- Existing architectural constraints (oruxa-architecture.md).
+- Engineering safeguards, calculation correctness, and backend validation.
+- Physical calibration integrity and dependency invalidation.
+
+Reason:
+
+RD-1 Slice D2 Voltage Configuration required multiple UAT correction cycles
+because initial implementations exposed internal backend configuration parameters
+(reference-mode selects, base-reference-side selects, revert-to-automatic
+operations) without evaluating whether they served a genuine user task.
+Specific examples: a "Revert to Automatic" button that could return nominal
+voltage to unresolved when no reliable evidence existed; a "Reference Mode"
+dropdown exposed even when the engine had already detected L-L/L-N automatically;
+a standalone "Configuration source" field that combined provenance of independent
+properties into a misleading single label. This principle prevents this class of
+rework in future feature development.
+
+
+## DEC-215 — A nominal-derived VT is valid engineering configuration (supersedes the D5A "display-only" rule)
+
+Date: 2026-11-21. Owner decision.
+
+Decision:
+
+- When Recording Details derives a VT primary value from the accepted nominal voltage and defaults the secondary to 110 V,
+  both values are immediately valid for every consuming analysis module (consistent with the Per-Unit nominal-voltage policy).
+- No engineer confirmation or Edit → Save is required. The UI does not call a valid derived VT "assumed", "provisional",
+  "unverified" or "display-only"; an "Auto-derived" provenance label is optional and used.
+- Precedence is unchanged (manual > recording_metadata > auto_nominal > not_configured) and a change of nominal voltage or VT
+  refreshes the dependent analyzers.
+- Provenance stays `auto_nominal`; it is never relabelled `manual` or `recording_metadata`.
+- Existing checks are not bypassed: invalid values, genuine conflicts (`manual_conflict_detected`), a base that is `needs_review`
+  or `unavailable`, incompatible measurement sides and double conversion.
+- A CT is never derived from equipment rated current, MVA or capacity; it is configured independently.
+
+Supersedes: the D5A-1 "F5 / D4" position and the D5A-2A rule that `auto_nominal` is display-only and never consumable.
+
+Implementation and rationale: [D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md](D5A_AUTO_NOMINAL_VT_POLICY_2026-11-21.md).
+
+Governance note (2026-11-26): see [DEC-218](#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance)
+for how this decision applies alongside a selected Per-Unit base. It is a pointer, not an amendment.
+
+
+## DEC-216 — Recording Details is the single authority for recorded measurement side (D5A-2B2 unified model)
+
+Date: 2026-11-22. Owner decision. **Supersedes** the D5A-2B2 data-model proposal of 2026-11-21
+([D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md](D5A2B2_MEASUREMENT_SIDE_DATA_MODEL_PROPOSAL_2026-11-21.md)), which is not to be implemented.
+
+Decision:
+
+- **One authoritative interpretation** of whether a recorded Voltage/Current channel is Primary or Secondary, shared by every consumer
+  (Per-Unit, Overcurrent, Impedance Locus, Distance Protection, phasor/power).
+- **Level 1 — Recording:** one Primary/Secondary value per recording, resolved automatically from consistent trustworthy source metadata and
+  correctable by an engineer. Recording-derived evidence and engineer corrections keep separate provenance.
+- **Level 2 — Bay (Engineering Context):** one optional Primary/Secondary override per bay (never per phase). A bay follows Level 1 unless
+  manually overridden; a manual override survives Level 1 changes; selecting the value the bay already inherits clears the override
+  automatically; there is no Reset control; no per-bay default is stored.
+- **Conflict safety:** original per-channel COMTRADE evidence is preserved separately from engineer corrections and never silently discarded;
+  a file-wide value never conceals a genuinely mixed recording; irreconcilable evidence within a bay is reported as a conflict, not merged.
+  No per-phase setting is introduced.
+- **Single source of truth:** `resolve_effective_measurement_side()` returns the effective side, authority/provenance and diagnostics.
+  No analyzer may introduce its own measurement-side configuration or interpretation.
+- **Recording Details is the single source of truth for recorded measurement side**, for PU and also Overcurrent, Impedance Locus, Distance
+  Protection and other recording-based calculations (owner requirement, 2026-11-22):
+  1. recorded analysis modules obtain their side only through the shared resolver;
+  2. editable recorded-mode measurement-input-side selectors are removed in D5A-2B2C (Overcurrent "Recording current basis"; Impedance and
+     Distance recorded voltage/current-side selectors that duplicate Recording Details);
+  3. an analysis page may show the resolved side, bay, provenance and CT/VT ratio read-only;
+  4. calculation OUTPUT-side settings (e.g. Primary/Secondary impedance output) are legitimate and stay — they are not a declaration of the
+     recording's side;
+  5. Manual analysis mode and its independently entered CT/VT and other settings are unaffected;
+  6. the backend enforces the same authority — a recorded request cannot silently override Recording Details;
+  7. unresolved or contradictory side blocks the calculation that depends on it instead of guessing;
+  8. when conversion is required, the authoritative CT/VT ratio of the consumed channel's Measurement Group is used, once, and never when
+     unnecessary;
+  9. a Recording- or bay-level change reaches every consumer with no stale analyzer-level selection or cached result (the resolver is stateless);
+  10. the same recording is regression-tested across PU, Overcurrent, Impedance and Distance for identical side authority.
+- **PU (future behaviour, a later slice):** the separate PU Base Reference Side input is retired; a compatible denominator is selected or derived
+  from the effective side (primary measurement + primary base → direct; secondary measurement + primary base → the secondary denominator from the
+  authoritative CT/VT; conversion needed but CT/VT unavailable → block; a legitimately configured secondary base is never reinterpreted as primary).
+  Primary and secondary measurements of the same physical condition must give equivalent PU. Nominal L-L voltage, the L-L/L-N reference
+  distinction, derived Ibase, DEC-211, DEC-213, calculated-channel policy and DEC-215 are preserved; a manual Current base's reference side is
+  reviewed before any assumption. Raw waveforms are never modified and CT/VT conversion is never applied twice.
+- **Phasing:** D5A-2B2A (backend authority, delivered) → D5A-2B2B Recording Details UI → PU migration → D5A-2B2C consumer migration and selector
+  removal (including one consistent safety policy for today's Overcurrent strict-block vs Impedance/Distance warning-only inconsistency) →
+  D5A-2B2D legacy retirement. Manual mode and its CT/VT inputs stay untouched throughout.
+
+Implementation, API and open questions for the owner: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+
+### Amendment 1 (2026-11-22) — owner decisions B2A-1..B2A-5 after review of D5A-2B2A
+
+The D5A-2B2A report was accepted. The owner decided:
+
+- **B2A-1 — voltage and current on different sides is NOT a conflict.** Primary voltage with Secondary current is mathematically valid and is
+  normalised independently where a calculation needs it. `BAY_VOLTAGE_CURRENT_SIDES_DIFFER` is now an `info` diagnostic on a *resolved* bay
+  (`effective_side` is null, `voltage_side`/`current_side` are set, `reference_sides: "voltage_current_differ"`). Only channels that disagree
+  *within one quantity* are a `conflict`, per-channel evidence is preserved (never collapsed to a false single value), and a calculation stays
+  blocked wherever the conversion engine cannot safely handle the combination. `resolve_consumed_side()` mirrors this
+  (`CONSUMED_VOLTAGE_CURRENT_SIDES_DIFFER`, info). No numerical behaviour changed.
+- **B2A-2 — a sibling-derived recording default is inferred evidence.** It is displayed (`inferred: true`, diagnostic `CHANNEL_SIDE_INFERRED`)
+  but `strict_usable` is false; strict side-dependent calculations need the channel's own declaration or an engineer-confirmed Recording/Bay
+  setting. Confirming the same side the partial evidence implies is therefore kept as an engineer correction (it is not redundant when some channels
+  declare nothing).
+- **B2A-3 — confirm a bay before a manual bay override** (unchanged, approved). File-wide Level 1 and normal inheritance work without confirming any bay;
+  `BAY_MEMBERSHIP_UNCONFIRMED` is informational.
+- **B2A-4 — recordings without a trustworthy P/S declaration** (BEN, CSV/Excel, …) need an engineer's Level 1 value before strict conversions. The side is
+  never inferred from a CT/VT ratio or from magnitude (tested).
+- **B2A-5 — an explicit engineer correction supersedes an incorrect declaration** and is consumable by the future strict path. The original evidence,
+  effective side, authority, timestamp and a visible warning (`ENGINEER_CORRECTION_OVERRIDES_DECLARATION`, plus a structured
+  `overridden_declarations` list) are preserved; the warning alone never blocks. The UI must disclose the contradicted source evidence.
+
+D5A-OC-001 owner UAT: PASSED (2026-11-22).
+
+### Amendment 2 (2026-11-22) — D5A-2B2B Recording Details UI
+
+- The Level 1 and Level 2 selectors live in Recording Details → Recording Info → "Measurement side" and render only the D5A-2B2A API (no frontend authority model,
+  no per-phase control, no Reset). Details: [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
+- A recording that declares Primary voltage and Secondary current is `voltage_current_differ` (info), not `mixed`; only disagreement within one quantity is a conflict.
+- Contradicted declarations are always disclosed with the correction, even when a bay setting takes over the channel.
+- A small **Confirm bay** link (existing Engineering Context status `PATCH`) satisfies B2A-3 for bays created as `suggested` at upload. [PROPOSAL, awaiting owner review]
+
+### Amendment 3 (2026-11-22) — owner review of D5A-2B2B
+
+Owner decisions:
+
+- **UI placement:** Level 1 (recording-wide Primary/Secondary) lives in Recording Information; Level 2 (one Primary/Secondary for the selected bay) lives in **Group Details**, keeping the Engineering Context
+  authority. No separate Voltage and Current Measurement Group side settings, no per-phase settings, no Reset, segmented control retained.
+- **Confirm bay: APPROVED with safeguards.** It is an explicit, reviewed action (the engineer sees the bay's channels and phase evidence), changes the bay's status only through the existing Engineering Context lifecycle,
+  and never silently validates uncertain engineering evidence. Analysis bay availability and membership are unchanged (verified).
+- **Multi-recording Engineering Context (safety):** a bay-level setting is scoped to the bay **within one recording** (`context, source`). A change for one recording never reinterprets another; each Level 1 reaches only its own
+  non-overridden associations; no single value is inherited across recordings with different sides.
+- **CT/VT Measurement Group spanning bays:** explicit diagnostics (`GroupOwnership`). A transformer ratio or side interpretation is never borrowed from an unrelated bay; where bays sharing a group differ in side or are unresolved,
+  conversion authority is ambiguous and a future consumer must block. CT/VT numerical formulas are unchanged.
+- **Calculated channels** stay deferred to D5A-2B2C; the lineage / reference-side questions are recorded in [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md) §7, and no side is assigned to a calculated channel merely because its inputs share a recording.
+- **Owner acceptance (2026-11-22): D5A-2B2B APPROVED for DEV UAT.** Confirmed: one overview entry per (bay, recording); a group spanning bays with one shared side may remain warning-only at this stage.
+- **D5A-2B2C safeguard (owner, 2026-11-22):** matching measurement sides alone do not establish valid shared CT/VT conversion authority (two Primary-referenced bays may have different CT ratios). The consumer integration must verify the CT/VT authority of the *actual consumed channel* and its Measurement Group. Shared busbar VT arrangements remain supported; genuinely ambiguous transformer ownership must not produce an invented conversion. No production-code change is required for this in D5A-2B2B.
+
+### Amendment 4 (2026-11-22) — Level 2 belongs to the Measurement Group (D5A-UI-002)
+
+Owner decision (supersedes the per-(recording, bay) Level 2 of the original decision and Amendments 1–3 wherever they differ):
+
+- **Level 2 is the selected Measurement Group's own override**, keyed `(workspace_id, source_id, measurement_group_id)`; one value covers all phases of that group.
+  A bay's Voltage group and Current group are separate groups with independent settings; Primary voltage with Secondary current is legitimate and never a conflict.
+- Precedence: **group override > recording correction > channel's own declaration > recording default (inferred, not strict) > unresolved**. Original declarations,
+  engineer provenance and warnings are retained; nothing is inferred from CT/VT ratios or magnitudes.
+- **Engineering Context membership and status no longer gate or carry a side.** The bay-level API, the bay overlay, the Confirm-bay review inside Group Details and
+  the group-spans-bays side diagnostics are retired (the group owns both the side and the ratio). Engineering Context confirmation itself is unchanged.
+- Selecting the side a group already has on reliable evidence clears the override (no Reset); selections that would hide an inference or a contradiction are kept.
+- Group Details shows one selected group at a time (voltage or current sections only) with the approved card design; Recording Info is unchanged.
+- The D5A-2B2C safeguard stands: matching sides do not establish shared CT/VT conversion authority; the consumer verifies the consumed channel's own group.
+
+Details, API and verification: [D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md](D5A_UI_002_GROUP_DETAILS_GROUP_LEVEL_SIDE_2026-11-22.md).
+
+### Amendment 5 (2026-11-23) — recorded Overcurrent consumes the unified effective side (D5A-2B2C-1A)
+
+First consumer-integration slice under the owner's standing requirement (items 1, 2, 6, 7, 8, 9 above) and Amendment 4. Recorded Overcurrent obtains the Primary/Secondary side of its
+current from Recording Details only; PU, Impedance Locus, Distance Protection and calculated channels are NOT migrated here.
+
+- **One resolver.** For the selected phase the consumed Current channel's side is `resolve_effective_measurement_side()` (precedence: Current-group override > recording correction >
+  channel declaration > inferred default, which is not strict-usable > unresolved). Overcurrent has no side logic of its own and never infers a side from a magnitude or a CT ratio.
+- **CT of the consumed channel's own group.** A Primary current is converted once with the CT of the Measurement Group that owns THAT channel (never another group, phase or recording);
+  a Secondary current is never converted; Primary without a usable CT blocks the conversion; Secondary without a CT computes. `Irelay = Irec * CTs/CTp` (Primary) or `Irec` (Secondary) is unchanged.
+- **The page has no Recording-basis input.** The recorded request carries neither a basis nor a CT; the page shows the side (with provenance), the CT (with its group) and a link to Recording Details,
+  read-only. Manual input source and its CT inputs are unchanged.
+- **Backend enforcement (direct API clients included).** An unresolved side, a side only inferred from sibling channels, or a Current group whose own channels declare different sides blocks the
+  calculation (`needs_configuration`, with a reason and the channel identity kept so Related Waveforms stay available). The legacy request `recording_basis`, `ct_primary` and `ct_secondary`
+  are optional ASSERTIONS: validated against Recording Details, never applied, and a contradiction blocks (`recording_basis_contradicts_measurement_side`, `request_ct_differs_from_authority`).
+  An engineer's explicit correction of an incorrect declaration is authoritative and consumable, with provenance and the original evidence retained.
+- **Read-only report.** `GET .../engineering-contexts/{id}/overcurrent-recorded-input?phase=` reports what the calculation will consume and whether it is blocked, from the same evaluation the calculation
+  uses, so the page and the backend cannot disagree. A change at Level 1 or in the consumed channel's group reaches the next request (the resolver is stateless); an unrelated Voltage group changes nothing.
+- **Known limits, for owner decision.** (a) A calculated current channel is blocked (`calculated_channel_side_unavailable`) — owner-accepted safe blocking and a **temporary functional regression**: the legacy basis override is deliberately not restored, and a future lineage-aware enhancement (a calculated channel's side derived from its inputs) is required. The page states that the support is not available yet and offers nothing to configure. (b) A recording with no
+  P/S evidence (BEN, CSV, ...) needs an engineer's Level 1 or group setting before a recorded Overcurrent number is shown; the former "choose an unverified basis in the analyzer" path is gone.
+  (c) A Current group with mixed declarations blocks every phase it owns until the engineer chooses a side for the group.
+
+Details, data flow, tests and DEV UAT checklist: [D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1A_OVERCURRENT_UNIFIED_SIDE_2026-11-23.md).
+
+### Amendment 6 (2026-11-23) — recorded Impedance Locus and Distance Protection consume the unified effective side (D5A-2B2C-1B)
+
+Second consumer-integration slice under the owner's standing requirement and Amendments 4–5. Recorded Impedance Locus and Distance Protection (selected-time and locus) obtain the
+Primary/Secondary side of **each consumed Voltage and Current channel**, and the VT/CT of the Measurement Groups that own them, from Recording Details only. The impedance and
+distance mathematics, the low-current guardrails, the zone geometry, the Manual input source and calculated-channel behaviour are NOT changed; PU and D5A-2B2D are not touched.
+
+- **One authority, shared with Overcurrent.** `recorded_side_authority.evaluate_channel_side()` applies the single consumer policy to every consumed channel (calculated → blocked; unresolved →
+  blocked; inferred → blocked; a Measurement Group whose own channels declare different sides → blocked until the engineer chooses a side), on top of
+  `resolve_effective_measurement_side()` (group override > recording correction > channel declaration > inferred default, not strict-usable > unresolved). Overcurrent, Impedance and Distance
+  therefore block in exactly the same situations, with their own reason codes.
+- **Voltage and Current resolve independently.** Voltage Primary with Current Secondary (and every other combination) calculates; the two Voltage legs of a distance loop must agree with each other,
+  and so the two Current legs. Each quantity is converted DIRECTLY to the requested output side (`impedance_basis`: Secondary → Primary multiplies by the ratio, Primary → Secondary divides),
+  and the impedance — or the loop impedance `(V1 − V2) / (I1 − I2)` with full complex subtraction — is formed once.
+- **A ratio only where a conversion needs it.** A quantity already on the output side needs no VT/CT, even when none exists. Where a conversion is needed the ratio is the VT/CT of the group that owns
+  the consumed channel(s): a manual or recording-metadata value, or a VT derived from the accepted nominal voltage (`auto_nominal`, DEC-215); never another group's, another recording's, a request's
+  or one derived from equipment/nominal data for a CT. Missing / invalid / untrusted / conflicting → blocked with `vt_authority_unavailable` / `ct_authority_unavailable` and a specific message.
+- **The page has no Recording-basis input.** The recorded requests carry only `impedance_basis` (the requested OUTPUT side, which stays editable). The page shows, read-only, each quantity's side
+  with provenance, the VT/CT that converts (with its group) or "not needed", any blocker and a link to the owning group in Recording Details. Manual mode keeps all of its inputs.
+- **Backend enforcement for every client.** `recording_basis`, `voltage_side`, `current_side` and `vt_*`/`ct_*` are optional legacy ASSERTIONS, validated against Recording Details: a contradiction
+  blocks (`voltage_side_contradicts_recording`, `current_side_contradicts_recording`, `request_vt_conflicts_with_authority`, `request_ct_conflicts_with_authority`, `request_vt_invalid`,
+  `request_ct_invalid`), a match changes nothing, and none can select a side, supply a missing ratio or be required (`recording_basis` becomes optional; `impedance_basis` stays required).
+  The former bypass — omitting `voltage_side`/`current_side` made the request basis and ratios decide — is closed: there is no legacy path. A blocked result carries no impedance and no zone
+  classification but keeps the channel identities, so Related Waveforms stay available.
+- **Read-only report.** `GET .../engineering-contexts/{id}/protection-recorded-input?analysis=impedance|distance_protection&phase|loop=&impedance_basis=` reports what the calculation will consume and
+  whether it is blocked, from the same evaluation the calculation uses. A locus evaluates the authority ONCE per request, so every point shares one configuration snapshot; nothing is requested per
+  Playback tick or per locus point.
+- **Known limits, for owner decision.** (a) Calculated channels are blocked (`calculated_channel_side_unavailable`) — the same owner-accepted safe blocking and temporary regression as Overcurrent; a
+  lineage-aware enhancement is a future slice. (b) A recording with no P/S evidence needs an engineer's Level 1 or group setting before a recorded impedance/distance number is shown; the old
+  "choose an unverified basis in the analyzer" path is gone. (c) A Measurement Group with mixed declarations blocks every channel it owns until the engineer chooses a side. (d) The legacy request
+  parameters can be removed in D5A-2B2D.
+
+- **Owner-review hardening (2026-11-23): no valid impedance, no zone evaluation.** `not_operated` is the geometric result of a VALID impedance. A recorded Distance result whose `status` is not `computed` (blocked by Recording Details,
+  a missing/ambiguous phasor, a loop current below the floor, ...) now reports `zone1`..`zone4` = null and `zones` = [] instead of a `not_operated` placeholder, and the page shows "Not evaluated". No public schema change (the fields were already
+  nullable / empty by default); an intentional change to the blocked-result contract, which previously listed every requested zone. Valid results, the zone geometry, the Manual calculator and the locus are unchanged.
+
+Details, data flow, oracles, tests and DEV UAT checklist: [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md).
+
+### Amendment 7 (2026-11-24) - PU denominator reference-side normalisation; narrow amendment of DEC-210 and DEC-211 (PU-MIG-001, OD-1)
+
+> **Corrected 2026-11-24 (owner review of the S0 response).** Three statements below were not decisions and are struck through with a pointer to "Amendment 7 - Correction" at the end of this amendment; the full ledger and the complete decision register are in [PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md](PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md). The text as first committed (`55f3218`) remains in git history. Nothing else in this amendment changes.
+
+Owner review of the PU-MIG-001 assessment: **OD-1 confirmed in principle.** This amendment records that decision only. It authorises no implementation; S1-S6 need separate approval. Decision matrix, oracle and impacts: [PU_MIG_001_S0_DECISION_MATRIX_2026-11-24.md](PU_MIG_001_S0_DECISION_MATRIX_2026-11-24.md).
+
+- PU may **select or derive a compatible denominator** from the consumed channel's effective Recording Details measurement side and the authoritative CT/VT ratio of that channel's own Measurement Group (Primary sample + Primary base: direct; Secondary sample + Primary base: base divided by the ratio; ~~Secondary base on Primary samples: base multiplied by the ratio;~~ *[GC-1: not approved - pending integration policy D-6; see Correction 1]* a base declared on the sample's own side: direct).
+- **Narrowly supersedes** only: DEC-210's "no CT/VT ratio scaling" and "known mismatch blocks PU", and DEC-211's equivalent Voltage clauses - and only where the effective side is strict-usable and the ratio is authoritative. Where the conversion is not authoritative (ratio missing, invalid, untrusted, conflicting, channel in no group~~, or any contributing side not strict~~ *[GC-2: a non-strict side does not block today; see Correction 2]*) PU still blocks *[only where a known Primary/Secondary mismatch needs that conversion]*. An unknown or inferred-only side never establishes a conversion.
+- **Preserved:** original engineering samples (never scaled or modified); base meanings (equipment-derived bases Primary; manual/direct and result-owned bases keep their own declared side, never reinterpreted); DEC-213 calibration gates and their precedence; L-L/L-N representation; DEC-052/115/116; DEC-209/212; every numerical-representability safeguard; DEC-215 `auto_nominal` VT authority and its provenance. **A transformer rating is never an equipment PU base**; the ratio only moves a denominator between sides.
+- **Not decided here (open)** *[GC-3: the list below was incomplete; the complete register is Correction 3]*: retaining or blocking historical Unverified results (OD-2); the replacement contract for manual-base side metadata (OD-3); calculated-channel lineage per operation, and preservation of the `secondary_voltage_ll_v` Secondary Voltage denominator path including its no-nominal cases (OD-4, which the owner asks to preserve); precedence when that value disagrees with nominal/ratio; API deprecation.
+
+#### Amendment 7 - Correction (2026-11-24, owner review of the S0 response; PU-MIG S0 closure)
+
+Authority: the owner's direction "PU-MIG S0 Closure and S1" (2026-11-24). Ledger (GC-1 to GC-5), complete decision register and provenance statement: [PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md](PU_MIG_S0_GOVERNANCE_CORRECTION_2026-11-24.md). These corrections change no production behaviour; they remove statements that the owner has not decided.
+
+1. **A Secondary base on Primary samples is not approved (GC-1).** DEC-216 states that a legitimately configured secondary base is never reinterpreted as primary and that a conversion that is needed without an authoritative CT/VT blocks; it does not approve converting a Secondary-declared base onto Primary samples. That conversion is decision **D-6, pending**, and is an *integration policy*. The identity `denominator = base x ratio` is a property of the arithmetic and may be demonstrated by a pure resolver; it authorises no live PU behaviour. Today the combination is blocked when the sample side is known.
+2. **Historical Unverified behaviour is not prohibited by this amendment (GC-2).** DEC-210 and DEC-211 retain results whose sample or base side is Unknown (or only inferred) as computable and labelled **Unverified**. This amendment does not change, narrow or remove that behaviour. Only a **known** Primary/Secondary mismatch for which no authoritative ratio exists blocks, exactly as DEC-210/211 already state; the narrow supersession in the second bullet applies only where the effective side is strict-usable and the ratio is authoritative. An Unknown or inferred side still never establishes a conversion. Retaining, labelling or blocking historical Unverified results is decision **D-1, a pending production decision**, under the owner's constraint that such results are neither silently changed nor presented as verified engineering PU.
+3. **Open items, complete (GC-3).** **Pending production decisions:** D-1 (historical Unverified, per class) and D-4 (precedence between `secondary_voltage_ll_v` and nominal / ratio; no general rule that the legacy secondary denominator wins; distinguish an independently configured Secondary base from a value populated from a VT winding rating). **Pending:** D-5 (what activates the legacy secondary path), D-6 (Secondary base on Primary samples), D-7 (`auto_nominal` ratio for secondary PU), D-8 (API deprecation of `*_base_reference_side`), D-9 (refresh scope; placement of the independent oracle), N-2 (reason-code vocabulary). **Agreed in principle:** D-3 (shared, operation-aware calculated-channel lineage; operation rules still under review), N-1 (one authority and denominator policy for every PU consumer). **Decided:** D-2 (manual-base side semantics preserved through S4), N-3 (P0 browser-guardrail triage before S2).
+4. **Preserved, unchanged:** every other statement of this amendment, including the narrow supersession of DEC-210/DEC-211 where the effective side is strict-usable and the ratio is authoritative, and the safeguards it lists (samples never scaled; base meanings; DEC-213; L-L/L-N; DEC-052/115/116; DEC-209/212; numerical-representability safeguards; DEC-215; a transformer rating is never a base).
+
+---
+
+## DEC-218 — Approved decisions are binding; agents consult them before acting and preserve them (agent governance)
+
+Date: 2026-11-26. Owner decision (governance only; no engineering policy is created, changed or superseded by this entry).
+Numbering: DEC-217 is already assigned to NF-001 (nominal frequency) on the nominal-frequency branches, so this governance entry is DEC-218.
+Trigger: an S2 discussion reopened the already-approved `auto_nominal` VT authority (DEC-215) because a legacy secondary base
+differed from the 110 V default; similar occurrences are to be prevented.
+
+Decision:
+
+- Approved owner decisions (DEC records, their amendments and corrections, and later owner instructions) are **binding
+  requirements until the owner explicitly supersedes them**. A new *application* of an established policy is not, by itself, a
+  reason to reconsider it; agents do not treat settled decisions as open questions.
+- Before substantive work, agents consult the decisions that apply, in proportion to the task (procedure in
+  [AGENTS.md — Decision preservation and engineering governance](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory)).
+- A difficulty met while applying a decision is first classified as an **implementation defect**, a **legacy-compatibility problem**,
+  **missing input authority**, or a **genuine policy conflict**. Only the last reopens a decision, and only with credible new evidence of a
+  material engineering error, safety concern or architectural limitation; the report names the decision, its amendment, the evidence and a
+  proposed resolution, and waits for owner approval. No separate engineering authority is created for one consumer where an approved shared
+  authority exists.
+- New or modified engineering calculations carry engineering references, derivation, stated assumptions, independent numerical verification,
+  boundary and invalid-input tests, one mathematical authority and traceability from reference to code. Passing software tests is not proof
+  that a formula is right. Approved mathematics is preserved unless a change is separately authorised.
+- AGENTS.md is the common governance authority for Claude Code and Codex; agent-specific files point to it and do not restate rules.
+- Substantive handovers include a short governance compliance statement.
+
+Application record — `auto_nominal` and the Per-Unit base (a standing note, **not an amendment of DEC-215 or any PU-MIG decision**):
+the VT equipment ratio (DEC-215: primary = accepted nominal, secondary = 110 V default, provenance `auto_nominal`) and the selected Per-Unit
+base (a stored secondary base, a nominal-derived base, a manual base) are **independent engineering quantities**. The approved `auto_nominal`
+authority is not to be reopened merely because a legacy secondary PU base differs from the default VT secondary equipment rating. The open S2
+question about that combination is to be assessed against the existing approved VT-authority and base-selection policies (DEC-215, DEC-216
+Amendments 6–7, and the owner decisions D-4, D-5, D-6 and D-7 of 2026-11-25), not as a request to amend them.
+
+---
+
+## DEC-219 — The nominal system voltage is always the Primary Voltage PU base; the separate Voltage Base Reference Side input is retired
+
+Date: 2026-11-27. Status: **Owner decision.** Authority: the owner's direction "Voltage Base Reference Side Retirement" (PU-MIG UAT, 2026-11-27).
+Numbering: DEC-217 is NF-001 (nominal frequency, on the NF branches) and DEC-218 is the agent-governance decision; no branch, local or remote, holds a
+higher number, so this is DEC-219 (checked 2026-11-27 across every local and remote ref).
+
+Decision:
+
+1. **Nominal system voltage is always the Primary Voltage PU base** for new and normal Voltage configurations. The effective denominator is resolved
+   automatically from the authoritative measurement side (Recording Details), the voltage representation (L-L / L-G, existing engineering rules) and the
+   existing VT authority (DEC-215, manual > recording_metadata > auto_nominal), by the existing side-denominator authority (S1). It is never computed in
+   the frontend.
+2. **The separate Voltage Base Reference Side input is retired** from normal Recording Details configuration. This authorises the retirement that
+   DEC-216 deferred ("the separate PU Base Reference Side input is retired", a later slice) and establishes the replacement contract that D-2 / OD-3
+   required, for normal Voltage configurations. The nominal-voltage, Measurement Value and VT controls are preserved.
+3. **A new normal configuration declares the Primary base explicitly** through the existing configuration contract: a save that establishes a nominal base
+   (a new, a changed or a reviewed value) sends `base_reference_side: "primary"`; the page never hides the selector while allowing the field to be
+   defaulted to Unknown or inherited as Secondary.
+4. **Legacy declarations are preserved.** A legitimate existing Secondary base (a stored Secondary declaration with a valid stored secondary value, the
+   D-5 criterion) and a historical Unknown declaration are never silently reinterpreted, replaced by a derived value, rewritten in bulk, overwritten by
+   submitting Unknown, or changed by an unrelated save (the field is omitted and the backend preserves it). They stay identifiable (the stored base is
+   shown read-only) and manageable through a **legacy-only mechanism whose replacement contract and UI are a proposal awaiting owner approval** (it is not
+   implemented by this decision).
+5. **API and storage are unchanged.** The `*_base_reference_side` fields, their contracts and historical storage are preserved; D-8 is unchanged and no
+   deprecation is undertaken. Retiring a UI control does not remove an API field.
+6. **Preserved unchanged:** the Calculated Current manual base reference-side control (Stage 5B, D-2), DEC-212 raw Current ENG, calculated-Current PU and
+   Current base selection, the shared CT/VT authority, historical Unverified (D-1 R+), D-4 (P5, diagnostic only), D-5, D-6, D-7, RMS and power
+   mathematics, authoritative waveform samples.
+
+Relationship to earlier decisions: fulfils the DEC-216 PU bullet for Voltage and D-2 / OD-3 for normal Voltage configurations; changes no mathematics, no
+authority policy and no approved numerical behaviour. Implementation record, writer inventory, verification and the legacy replacement-contract proposal:
+[PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md).
+
+Open, for owner decision (reported, not decided here): the legacy management contract (finding W-2); the auto-base writer's Secondary path (finding W-1).
+
+
+### Amendment 1 (2026-11-27) — W-1: the automatic base service follows DEC-219
+
+Owner clarification (2026-11-27): the DEC-215 VT policy is retained unchanged — the auto VT primary follows the nominal system voltage, the auto VT
+secondary defaults to 110 V line-to-line, and the engineer overrides the VT equipment ratings through the existing Manual VT configuration. **No new VT
+authority and no new CFG authority semantics are required.** Under DEC-219 the nominal system voltage is the Primary PU base for new normal Voltage
+configurations, so the automatic base configuration service (`auto_base_service`) is aligned:
+
+1. A recording that contains **Secondary samples no longer receives a legacy Secondary PU base** (a stored Secondary declaration plus the CFG VT winding
+   value stored as the denominator). Its Secondary samples are divided by the Primary nominal base referred through the shared VT authority
+   (manual > recording_metadata > auto_nominal) by the accepted side-denominator resolver, exactly as for the engineer's own configuration.
+2. A nominal is written by the service, as the Primary base with no stored secondary base, only when the evidence supports it under the existing rules. The
+   CFG primary winding rating of a Secondary recording remains the low-confidence candidate it already was (C2), so such a group normally stays
+   `needs_review` until the engineer enters the nominal in Recording Details (which declares Primary, DEC-219).
+3. A Secondary **sample** side never writes a Secondary **base** side (also on the insufficient-evidence path).
+4. **Existing legitimate Secondary bases and historical configurations are preserved**: a group that already carries a stored Secondary declaration is skipped
+   by every automatic re-run and membership change; manual and legacy-manual authorities were already never overwritten (C4). Nothing is migrated, refreshed or
+   demoted silently.
+5. Numerical correctness is stated for the **configured** VT ratio; physical correctness requires the configured ratio to be the equipment's actual ratio.
+   On the reported fixture (nominal 275 kV, line-to-line, Secondary peak 0.577345 kV): Auto VT 275 kV : 110 V gives 5.2486 pu; Manual VT 275 kV : 1000 V
+   (the fixture's real VT, 275 : 1) gives 0.577345 pu, equal to the Primary recording of the same condition (158.77 kV / 275 kV = 0.57735).
+
+W-2 (the legacy management mechanism) remains a separate proposal awaiting owner approval. Record: [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md), section 9.
+
+
+### Amendment 2 (2026-11-27) — final UI simplification
+
+Owner direction (2026-11-27): the existing Recording Details UI is retained without redesigning its layout, styling or configuration workflow. The changes are limited to
+removing the Voltage Base Reference Side section and the **Advanced reference settings** container that held it, with the controls that lived in the container kept and
+integrated into the existing layout. W-1 is accepted; DEC-215, DEC-219 and Amendment 1 are preserved; the nominal-voltage requirement prompt, the 110 V default VT secondary
+and the Manual VT override are retained.
+
+1. The Voltage group editor has no Base Reference Side selector and no Advanced container. The Voltage reference select (L-N / L-L, selecting a value is a manual correction,
+   the detected value shown selected) and its *Clear reference override* link now sit in the **Voltage reference** field; *Clear manual nominal voltage* sits under the
+   **Nominal voltage** field. Nothing else in the page changed.
+2. **Not introduced** (deferred with W-2): a legacy management section, a legacy Secondary base editor, a Switch-to-nominal-base button, additional dialogs or explanatory panels.
+3. **Legacy limitation (reported, not solved here):** a legitimate legacy Secondary base (stored Secondary declaration with a valid stored secondary value, the D-5 criterion) keeps its
+   engineering meaning. It is identified by one read-only line, and its nominal voltage is **not editable in Recording Details**, because changing it would be a transition to the
+   Primary nominal base (the backend replaces the stored base) and no transition mechanism is approved. Reference and VT editing remain; unrelated saves send neither the side nor the
+   nominal. The transition awaits the deferred W-2 mechanism.
+4. Unchanged: the shared CT/VT authority, the denominator resolver, the `*_base_reference_side` API fields, the Calculated Current side control, DEC-212, the verification and
+   refusal safeguards, the samples.
+
+Record: [PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md](PU_VOLTAGE_BASE_SIDE_RETIREMENT_2026-11-27.md), section 11.
+
+
+### Acceptance (2026-11-27) — owner DEV UAT
+
+DEC-219, Amendment 1 (W-1) and Amendment 2 (UI simplification) were accepted by the owner after DEV UAT of `4885ca2`. This note records the acceptance only; it changes no rule.
+Numbering: DEC-217 remains reserved for NF-001 on the unpublished NF branches. Deferred, not authorised: the legacy Secondary base management mechanism (W-2) and the deprecation of the
+`*_base_reference_side` API fields. Record: [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md).

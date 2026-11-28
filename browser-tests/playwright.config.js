@@ -57,7 +57,11 @@ module.exports = {
         : `${PYTHON} -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port ${BACKEND_PORT} --timeout-keep-alive ${SERVER_KEEP_ALIVE_SECONDS}`,
       cwd: path.join(REPO_ROOT, "backend"),
       url: `http://127.0.0.1:${BACKEND_PORT}/health`,
-      env: { STORAGE_PATH },
+      // TEST backend only (never a production/DEV setting): enables the BEN5K
+      // layout so the BEN5K specs run instead of skipping or failing on the
+      // "layout not currently supported" refusal. A reused server
+      // (reuseExistingServer) must itself be started with this flag.
+      env: { STORAGE_PATH, BEN5K_EXPERIMENTAL_ENABLED: "1" },
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },

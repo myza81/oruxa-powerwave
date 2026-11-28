@@ -46,6 +46,7 @@ from app.domain.measurement_group import (
     group_status_valid,
 )
 from app.domain.measurement_group_detection import DetectedGroup, detect_measurement_groups
+from app.services.auto_base_service import reconfigure_auto_base_after_membership_change
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
     ChannelNotFoundError,
@@ -189,16 +190,21 @@ def update_group_membership(
     channel_refs: list[ChannelRef],
     registry: MeasurementGroupRegistry,
     source_registry: WorkspaceRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
 ) -> MeasurementGroup:
     """Full replace of a group's own `channel_refs` -- re-validates every
     invariant from scratch against the group's own (immutable)
     `source_id`/`kind`, exactly like `create_group`. A channel currently
     owned by THIS group is correctly treated as available (see
     `MeasurementGroupRegistry.update()`'s own docstring); a channel owned
-    by a different group is still rejected."""
+    by a different group is still rejected.
+
+    When ``voltage_config_registry`` is supplied, automatically re-evaluates
+    the voltage base for the group after membership replacement (RD-0B)."""
     return update_group(
         workspace_id=workspace_id, measurement_group_id=measurement_group_id, registry=registry,
         channel_refs=channel_refs, source_registry=source_registry,
+        voltage_config_registry=voltage_config_registry,
     )
 
 
@@ -207,12 +213,18 @@ def update_group(
     display_name: str | None = None, status: str | None = None,
     channel_refs: list[ChannelRef] | None = None,
     source_registry: WorkspaceRegistry | None = None,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
 ) -> MeasurementGroup:
     """Validate metadata and replacement membership before publishing either.
 
     Source and kind are immutable for this edit. The registry merges the fields
     into its latest stored group and rechecks channel claims under its lock.
     Type-specific base configurations stay associated with the unchanged id.
+
+    When ``channel_refs`` is supplied and ``voltage_config_registry`` is provided,
+    automatically re-evaluates the voltage base for the affected group
+    (RD-0B: stale ``auto_resolved`` base invalidation on membership change).
+    Engineer-approved bases (``manual``, ``legacy_manual``) are never touched.
     """
     group = get_group(workspace_id, measurement_group_id, registry=registry)
     if status is not None:
@@ -224,9 +236,23 @@ def update_group(
             workspace_id=workspace_id, source_id=group.source_id, kind=group.kind,
             channel_refs=channel_refs, source_registry=source_registry,
         )
-    return registry.update_fields(
+    updated = registry.update_fields(
         workspace_id, measurement_group_id, display_name=display_name, status=status, channel_refs=channel_refs,
     )
+    # RD-0B: re-evaluate auto_resolved base after membership change.
+    # Only triggered when channel_refs were actually replaced and a voltage config
+    # registry is available; never raises (reconfigure_auto_base_after_membership_change
+    # is itself C6-compliant).
+    if channel_refs is not None and voltage_config_registry is not None and source_registry is not None:
+        reconfigure_auto_base_after_membership_change(
+            workspace_id=workspace_id,
+            source_id=updated.source_id,
+            measurement_group_id=measurement_group_id,
+            source_registry=source_registry,
+            group_registry=registry,
+            voltage_config_registry=voltage_config_registry,
+        )
+    return updated
 
 
 def delete_group(

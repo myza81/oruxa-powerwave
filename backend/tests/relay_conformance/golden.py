@@ -25,7 +25,7 @@ from typing import Any
 
 from app.domain.distance_geometry import TOLERANCE_OHM, guard_distance
 from app.domain.distance_protection import (
-    ALGORITHM_VERSION,
+    ZONE_GEOMETRY_ENGINE_VERSION,
     CHARACTERISTIC_MHO,
     DIRECTION_REVERSE,
     GEOMETRY_EXPLICIT_RX,
@@ -176,7 +176,7 @@ def v1_golden(apply: dict[str, Any] | None) -> dict[str, Any]:
             zones.append(zone_golden(characteristic, z))
         else:
             not_drawn.append(z["id"])
-    return {"engine": ALGORITHM_VERSION, "tolerance_ohm": TOLERANCE_OHM, "zones": zones, "not_drawn": not_drawn}
+    return {"engine": ZONE_GEOMETRY_ENGINE_VERSION, "tolerance_ohm": TOLERANCE_OHM, "zones": zones, "not_drawn": not_drawn}
 
 
 def grid_points(grid: dict[str, Any]) -> list[tuple[float, float, str]]:

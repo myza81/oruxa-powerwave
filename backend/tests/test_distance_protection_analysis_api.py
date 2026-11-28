@@ -18,6 +18,9 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
+from tests.recorded_side_support import declare_sides  # noqa: E402
+
+
 @pytest.fixture
 def client(settings):
     app = create_app(settings)
@@ -120,11 +123,9 @@ def _mho_zone_params(n, *, enabled=True, reach_ohm=10.0, characteristic_angle_de
     }
 
 
-def _distance(client, workspace_id, context_id, *, loop="AB", analysis_time=1.5, recording_basis="secondary", impedance_basis="secondary", characteristic="mho", **extra):
-    params = {
-        "loop": loop, "analysis_time": analysis_time,
-        "recording_basis": recording_basis, "impedance_basis": impedance_basis, "characteristic": characteristic,
-    }
+def _distance(client, workspace_id, context_id, *, loop="AB", analysis_time=1.5, impedance_basis="secondary", characteristic="mho", **extra):
+    # D5A-2B2C-1B: the request carries only the requested OUTPUT side; the recorded sides come from Recording Details.
+    params = {"loop": loop, "analysis_time": analysis_time, "impedance_basis": impedance_basis, "characteristic": characteristic}
     params.update(_ZONE_DISABLED_PARAMS)
     params.update(extra)
     return client.get(f"{_contexts_url(workspace_id)}/{context_id}/distance-protection", params=params)
@@ -145,7 +146,7 @@ def _distance_manual(client, workspace_id, **params):
 
 
 class TestRecordingDistanceViaHttp:
-    def _bay_with_balanced_set(self, client, workspace_id="ws-dist-1"):
+    def _bay_with_balanced_set(self, client, workspace_id="ws-dist-1", side="secondary", ratios=None):
         # Balanced set with a deliberate current-angle offset so the loop
         # impedance golden value is 10 ohm /20 deg (see
         # test_distance_protection_domain.py's own identical golden case).
@@ -154,6 +155,7 @@ class TestRecordingDistanceViaHttp:
             ("DBAY_IA", "A", 10.0 * math.sqrt(2), -20.0), ("DBAY_IB", "A", 10.0 * math.sqrt(2), -140.0), ("DBAY_IC", "A", 10.0 * math.sqrt(2), 100.0),
         ])
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id, side, ratios=ratios)
         return workspace_id, context["id"]
 
     def test_golden_ab_loop_via_http(self, client):
@@ -236,6 +238,7 @@ class TestRecordingDistanceViaHttp:
             ("DBAY_IA", "A", 1e-6, -30.0), ("DBAY_IB", "A", 1e-6, -30.0), ("DBAY_IC", "A", 1e-6, 90.0),
         ])
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id)
         resp = _distance(client, workspace_id, context["id"], loop="AB", analysis_time=1.5)
         body = resp.json()
         assert body["status"] == "needs_configuration"
@@ -254,9 +257,10 @@ class TestDistanceLocusViaHttp:
             ("DBAY_IA", "A", 10.0, -20.0), ("DBAY_IB", "A", 10.0, -140.0), ("DBAY_IC", "A", 10.0, 100.0),
         ], duration_s=2.0)
         context = _create_full_bay(client, workspace_id, source_id)
+        declare_sides(client, workspace_id, source_id)
         resp = _distance_locus(
             client, workspace_id, context["id"], loop="AB", start_time=0.5, end_time=1.5, point_count=20,
-            recording_basis="secondary", impedance_basis="secondary", characteristic="mho",
+            impedance_basis="secondary", characteristic="mho",
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -282,9 +286,10 @@ class TestDistanceLocusViaHttp:
             ],
         })
         context = resp.json()
+        declare_sides(client, workspace_id, source_id)
         resp = _distance_locus(
             client, workspace_id, context["id"], loop="AB", start_time=0.0, end_time=1.0, point_count=10_000,
-            recording_basis="secondary", impedance_basis="secondary", characteristic="mho",
+            impedance_basis="secondary", characteristic="mho",
         )
         assert resp.status_code == 200, resp.text
         assert len(resp.json()["points"]) <= 300
@@ -304,7 +309,8 @@ class TestDistanceLocusViaHttp:
             ],
         })
         context_id = resp.json()["id"]
-        params = dict(loop="AB", start_time=0.5, end_time=1.5, point_count=15, recording_basis="secondary", impedance_basis="secondary", characteristic="mho")
+        declare_sides(client, workspace_id, source_id)
+        params = dict(loop="AB", start_time=0.5, end_time=1.5, point_count=15, impedance_basis="secondary", characteristic="mho")
         first = _distance_locus(client, workspace_id, context_id, **params).json()
         second = _distance_locus(client, workspace_id, context_id, **params).json()
         assert first == second

@@ -17,9 +17,11 @@ from app.api.v1.compliance import router as compliance_v1_router
 from app.api.v1.engineering_contexts import router as engineering_contexts_v1_router
 from app.api.v1.event_reconstruction import router as event_reconstruction_v1_router
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
+from app.api.v1.measurement_side import router as measurement_side_v1_router
 from app.api.v1.oscillation import router as oscillation_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.preparation_sources import router as preparation_sources_v1_router
+from app.api.v1.protection_instrument_context import router as protection_instrument_context_v1_router
 from app.api.v1.reference_profiles import router as reference_profiles_v1_router
 from app.api.v1.relay_import import RELAY_IMPORT_UPLOAD_PATH, router as relay_import_v1_router
 from app.api.v1.sources import router as sources_v1_router
@@ -33,6 +35,7 @@ from app.services.current_group_config_registry import CurrentGroupConfigRegistr
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.event_reconstruction_registry import EventReconstructionRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.measurement_side_registry import MeasurementSideRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.compliance_alignment_registry import ComplianceAlignmentRegistry
@@ -115,6 +118,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # app.services.engineering_context_registry's own module
         # docstring.
         app.state.engineering_context_registry = EngineeringContextRegistry()
+        # D5A-2B2A: in-memory, ephemeral engineer decisions for the unified
+        # measurement side (Level 1 per recording, Level 2 per bay). See
+        # app.services.measurement_side_registry's own module docstring.
+        app.state.measurement_side_registry = MeasurementSideRegistry()
         # Compliance Slice 3: a tenth/eleventh sibling in-memory registry
         # pair -- custom Reference Profiles and active Reference Layers.
         # Deliberately independent of every recording/Measurement
@@ -232,10 +239,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(calculated_channels_v1_router)
     app.include_router(per_unit_v1_router)
     app.include_router(measurement_groups_v1_router)
+    app.include_router(measurement_side_v1_router)
     app.include_router(synchronization_v1_router)
     app.include_router(event_reconstruction_v1_router)
     app.include_router(preparation_sources_v1_router)
     app.include_router(engineering_contexts_v1_router)
+    app.include_router(protection_instrument_context_v1_router)
     app.include_router(compliance_v1_router)
     app.include_router(reference_profiles_v1_router)
     app.include_router(oscillation_v1_router)

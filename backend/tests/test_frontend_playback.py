@@ -505,7 +505,7 @@ class TestPlaybackCursorIsAnalysisOwned:
 
     def test_every_page_change_hides_every_playback_overlay(self):
         source = _source()
-        fn = _function_body(source, "function shellSetCurrentPage(page)", 'if (page === "recordings")')
+        fn = _function_body(source, "function shellSetCurrentPage(page)", "function shellSetSidebarDrawerOpen(open)")
         assert "wwHideAllPlaybackCursorOverlays();" in fn
         # Unconditional -- not inside the Waveform-entry-only block.
         waveform_entry = _function_body(fn, 'if (page === "waveform" && !wasWaveform)', "}")

@@ -91,20 +91,34 @@ class VoltageGroupConfigRegistry:
     def update_fields(
         self, workspace_id: str, measurement_group_id: str, *,
         nominal_voltage_ll_kv: float | None = None,
+        update_nominal: bool = False,
         reference_mode: str | None = None,
         reference_override: str | None = None,
         base_reference_side: str | None = None,
         base_authority: str | None = None,
         secondary_voltage_ll_v: float | None = None,
         update_secondary: bool = False,
+        manual_conflict_detected: bool | None = None,
+        manual_conflict_detail: str | None = None,
+        update_conflict: bool = False,
+        vt_primary_v: float | None = None,
+        vt_secondary_v: float | None = None,
+        vt_authority: str | None = None,
+        vt_provenance_note: str | None = None,
+        update_vt: bool = False,
     ) -> VoltageBaseConfiguration:
         """Publish service-validated fields as one configuration replacement.
 
         Merge omitted fields under the existing lock, so concurrent reference
         and nominal-base edits cannot overwrite each other's accepted fields.
         A supplied reference mode replaces the mode/override pair together.
+        `update_nominal=True` applies `nominal_voltage_ll_kv` even when None
+        (clears the stored kV); False (default) only sets when non-None.
         `update_secondary=True` applies `secondary_voltage_ll_v` (None clears it);
         False (default) preserves the existing secondary_voltage_ll_v.
+        `update_conflict=True` applies `manual_conflict_detected` and
+        `manual_conflict_detail` (False/None clears the flag); False preserves them.
+        `update_vt=True` applies the four VT fields; False preserves existing VT.
         All copies (including the return value) are prepared before publication.
         """
         with self._lock:
@@ -114,7 +128,7 @@ class VoltageGroupConfigRegistry:
                 measurement_group_id=measurement_group_id, workspace_id=workspace_id,
                 nominal_voltage_ll_kv=None,
             )
-            if nominal_voltage_ll_kv is not None:
+            if nominal_voltage_ll_kv is not None or update_nominal:
                 candidate.nominal_voltage_ll_kv = nominal_voltage_ll_kv
             if reference_mode is not None:
                 candidate.reference_mode = reference_mode
@@ -125,6 +139,14 @@ class VoltageGroupConfigRegistry:
                 candidate.base_authority = base_authority
             if update_secondary:
                 candidate.secondary_voltage_ll_v = secondary_voltage_ll_v
+            if update_conflict:
+                candidate.manual_conflict_detected = bool(manual_conflict_detected)
+                candidate.manual_conflict_detail = manual_conflict_detail
+            if update_vt:
+                candidate.vt_primary_v = vt_primary_v
+                candidate.vt_secondary_v = vt_secondary_v
+                candidate.vt_authority = vt_authority if vt_authority is not None else "not_configured"
+                candidate.vt_provenance_note = vt_provenance_note
             result = _copy_config(candidate)
             self._configs[key] = candidate
             return result

@@ -239,9 +239,11 @@ class TestGroupedButIncomplete:
         assert summary.source_default_count == 0
         assert summary.needs_configuration_count == 3
 
-    def test_suggested_group_status_is_also_needs_configuration(
+    def test_suggested_group_with_base_set_is_measurement_group_authoritative(
         self, source_registry, per_unit_registry, group_registry, voltage_config_registry, current_config_registry
     ):
+        """DEC-UA-002: suggested + set_voltage_base (manual authority) → group is PU-authoritative.
+        Channels count as measurement_group_count, not needs_configuration_count."""
         channels = [_channel("VR", VOLTAGE), _channel("VY", VOLTAGE), _channel("VB", VOLTAGE)]
         source_registry.add(_active_source(channels))
         group_registry.add(_group("mg-v", KIND_VOLTAGE, ("VR", "VY", "VB"), status=STATUS_SUGGESTED))
@@ -252,11 +254,9 @@ class TestGroupedButIncomplete:
 
         summary = _build(source_registry, per_unit_registry, group_registry, voltage_config_registry, current_config_registry)
 
-        # A suggested (not yet confirmed) group is not authoritative for
-        # PU purposes even with a fully valid configuration attached.
-        assert summary.measurement_group_count == 0
+        assert summary.measurement_group_count == 3
         assert summary.source_default_count == 0
-        assert summary.needs_configuration_count == 3
+        assert summary.needs_configuration_count == 0
 
 
 class TestUngroupedWithoutDefault:

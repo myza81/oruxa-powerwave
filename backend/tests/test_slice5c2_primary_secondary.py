@@ -825,14 +825,16 @@ class TestNoChangeToExistingPUOutputs:
         expected = 275.0 / SQRT_3
         assert math.isclose(result.denominator_kv, expected, rel_tol=1e-9)
 
-    def test_suggested_group_still_base_required(self):
+    def test_suggested_group_with_engineer_approved_authority_resolves(self):
+        """DEC-UA-002: suggested + legacy_manual + valid nominal → CONFIGURED.
+        Manual correction is not a separate confirmation workflow."""
         group = _vgroup(STATUS_SUGGESTED, ("VRY",))
         cfg = VoltageBaseConfiguration(
             measurement_group_id="vg1", workspace_id="ws1",
             nominal_voltage_ll_kv=132.0, base_authority=BASE_AUTHORITY_LEGACY,
         )
         result = resolve_voltage_base_for_group(group, cfg)
-        assert result.status == V_STATUS_BASE_REQUIRED
+        assert result.status == V_STATUS_CONFIGURED
 
     def test_authoritative_group_statuses_unchanged(self):
         """AUTHORITATIVE_GROUP_STATUSES still contains exactly confirmed and manual."""

@@ -58,6 +58,7 @@ from app.domain.base_authority import (
     BaseAuthorityState,
     is_auto_resolved,
     is_base_eligible_for_pu,
+    is_engineer_approved,
 )
 from app.domain.measurement_group import (
     KIND_VOLTAGE,
@@ -68,6 +69,7 @@ from app.domain.measurement_group import (
 )
 from app.domain.per_unit_numerics import convert_scalar, scaled_base
 from app.domain.reference_side import ReferenceSide
+from app.domain.side_denominator import BASE_LEGACY_SECONDARY_VOLTAGE_LL, BASE_NOMINAL_LL_PRIMARY
 from app.domain.voltage_primary_secondary import secondary_voltage_ll_v_valid
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
@@ -159,6 +161,31 @@ class VoltageBaseConfiguration:
     # secondary configuration establishes a secondary equivalent. The live resolver
     # still uses nominal_voltage_ll_kv (primary path) until Slice 5D connects this.
     secondary_voltage_ll_v: float | None = None
+    # RD-0B Option A: manual-base compatibility tracking.
+    # True when membership-change detection resolved a DIFFERENT voltage than the
+    # engineer-entered nominal_voltage_ll_kv, indicating a confirmed incompatibility.
+    # Does NOT imply the engineer's value is wrong — only that current channel
+    # evidence contradicts it.  PU is blocked while True.  Never set for auto_resolved
+    # bases (they are reconfigured directly).  Cleared when the engineer sets a
+    # compatible kV or when detection is insufficient/ambiguous.
+    manual_conflict_detected: bool = False
+    manual_conflict_detail: str | None = None
+    # D1: Voltage Transformer (VT) instrument-transformer metadata.
+    # Owned by Voltage Measurement Groups; Current groups own CT (see CurrentBaseConfiguration).
+    # Both primary and secondary are L-L Volts (consistent with InstrumentTransformers convention).
+    # A complete pair requires both values to be set; a partial pair is never persisted.
+    # vt_ratio is derived on demand (primary / secondary), never stored.
+    # vt_authority: "not_configured" | "recording_metadata" | "manual"
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_authority: str = "not_configured"
+    vt_provenance_note: str | None = None
+
+    @property
+    def vt_ratio(self) -> float | None:
+        if self.vt_primary_v and self.vt_secondary_v and self.vt_secondary_v > 0:
+            return self.vt_primary_v / self.vt_secondary_v
+        return None
 
 
 def resolve_effective_voltage_reference_for_group(
@@ -215,6 +242,11 @@ class VoltageBaseResolution:
     # Internal SI denominator: scale before phase division to preserve
     # precision when the configured kV value is subnormal. No wire change.
     denominator_volts: float | None = None
+    # PU-MIG S2: the established base BEFORE the electrical representation is applied (L-L volts) and what it IS
+    # (`side_denominator.BASE_*`), so the strict resolver can place it on the consumed sample's side. Set only when
+    # configured; the denominator fields above are unchanged.
+    base_volts_ll: float | None = None
+    base_kind: str | None = None
 
 
 def resolve_voltage_base_for_group(
@@ -267,14 +299,25 @@ def resolve_voltage_base_for_group(
             status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None, reason="base_invalidated"
         )
 
-    # Group status gate: preserved for engineer-approved authority (legacy_manual / manual).
-    # auto_resolved authority bypasses the gate ONLY for suggested groups — a suggested group
-    # with valid auto_resolved evidence resolves to CONFIGURED without confirmed/manual status.
+    # RD-0B Option A: manual-base conflict gate.  A manual/legacy_manual base whose
+    # channel evidence now resolves to a DIFFERENT voltage blocks PU.  The engineer's
+    # value is preserved for review/correction; it must not silently produce wrong PU.
+    if config is not None and config.manual_conflict_detected:
+        return VoltageBaseResolution(
+            status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None,
+            reason="manual_conflict_detected",
+        )
+
+    # Group status gate: suggested groups bypass the gate when the base authority is
+    # trustworthy.  Two conditions qualify:
+    #   auto_resolved  — automatic evidence resolved a valid base (original Slice 5C-1 bypass).
+    #   manual / legacy_manual — engineer explicitly set the nominal kV in RD (DEC-UA-002:
+    #     "manual correction is not a separate confirmation workflow").
     # needs_review groups have conflicting identity evidence and must not become PU-authoritative
-    # even when base_authority is auto_resolved — identity conflict takes precedence over base.
+    # regardless of base_authority — identity conflict takes precedence over base.
     skip_status_gate = (
         config is not None
-        and is_auto_resolved(config.base_authority)
+        and (is_auto_resolved(config.base_authority) or is_engineer_approved(config.base_authority))
         and group.status == STATUS_SUGGESTED
     )
     if not skip_status_gate and group.status not in AUTHORITATIVE_GROUP_STATUSES:
@@ -310,6 +353,7 @@ def resolve_voltage_base_for_group(
         return VoltageBaseResolution(
             status=STATUS_CONFIGURED, denominator_kv=sec_denom_v / 1000.0,
             effective_reference=sec_ref, reason=None, denominator_volts=sec_denom_v,
+            base_volts_ll=sec_ll_v, base_kind=BASE_LEGACY_SECONDARY_VOLTAGE_LL,
         )
 
     if config is None or not voltage_base_valid(config.nominal_voltage_ll_kv):
@@ -334,6 +378,7 @@ def resolve_voltage_base_for_group(
     return VoltageBaseResolution(
         status=STATUS_CONFIGURED, denominator_kv=denominator_kv, effective_reference=reference, reason=None,
         denominator_volts=(config.nominal_voltage_ll_kv * 1000.0) / (SQRT_3 if reference == LINE_TO_GROUND else 1.0),
+        base_volts_ll=config.nominal_voltage_ll_kv * 1000.0, base_kind=BASE_NOMINAL_LL_PRIMARY,
     )
 
 

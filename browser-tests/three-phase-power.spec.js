@@ -114,13 +114,13 @@ async function uploadAndOpenCc(page, fixture) {
   await routeConfig(page);
   await page.goto("/index.html");
   const { cfg, dat } = fixture;
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "test.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "test.dat", mimeType: "application/octet-stream", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }
@@ -706,10 +706,10 @@ test.describe("Three-Phase Power: source-removal invalidation", () => {
 
     // 2. Close the drawer and navigate to Recordings.
     await page.locator("#wwCcDrawerCloseBtn").click();
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
 
     // 3. Remove the recording source.
-    await page.locator('#recordingsTableBody button[data-action="remove"]').first().click();
+    await page.locator('#wwRdRecordingList .ww-rd-recording-item-remove').first().click();
     await expect(page.locator("#confirmOverlay")).toBeVisible();
     await page.locator("#confirmRemoveBtn").click();
     await page.locator("#confirmOverlay").waitFor({ state: "hidden", timeout: 10000 });

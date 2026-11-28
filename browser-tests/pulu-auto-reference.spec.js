@@ -70,6 +70,7 @@
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 const { BACKEND, workspaceId, sourceIdFor } = require("./support/event_reconstruction_helpers");
+const { openRdVoltageEditor } = require("./support/recording_details_pu_helpers");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -186,7 +187,7 @@ async function uploadPulu(page, station = "PULU_SGT1") {
     puluCfgPostProcess(data.cfg.toString("latin1")),
     "latin1",
   );
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({
     name: `${station}.cfg`,
@@ -223,7 +224,7 @@ async function uploadPuluRealLv(page, station = "PULU_RLV") {
     puluRealLvCfgPostProcess(data.cfg.toString("latin1")),
     "latin1",
   );
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({
     name: `${station}.cfg`,
@@ -610,7 +611,8 @@ test("PULU-09: overlapping channel-add fetches in PU mode converge to correct pa
 
   // Navigate; auto-import already switched to PU
   await page.locator("#mainNavWaveformBtn").click();
-  await expect(page.locator("#wwUnitPerUnitBtn")).toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+  // No pane is displayed yet, so there is no pane-level mode control to read: assert the mode itself.
+  await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 5000 }).toBe("per_unit");
 
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
   if (!(await details.evaluate((el) => el.open)))
@@ -776,8 +778,8 @@ test("PULU-08: post-fetch regrouping fires when PU mode is already active at cha
   // auto-configured), so PU mode is already active — deliberately do NOT
   // click #wwUnitEngineeringBtn. This is the original failure scenario.
   await page.locator("#mainNavWaveformBtn").click();
-  await expect(page.locator("#wwUnitPerUnitBtn"))
-    .toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+  // No pane is displayed yet, so there is no pane-level mode control to read: assert the mode itself.
+  await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 5000 }).toBe("per_unit");
 
   // Add HV (configured) and LV (base_required) while PU mode is already active.
   // Both row-clicks start independent async wwAddSelectedChannels calls that
@@ -855,21 +857,14 @@ test("PULU-08: post-fetch regrouping fires when PU mode is already active at cha
 
   // === Steps 7–8: Configure LV while remaining in PU mode (no ENG→PU toggle) ===
 
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await expect(page.locator("#perUnitSettingsOverlay")).not.toBeHidden();
-
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await expect(page.locator("#measurementGroupsOverlay")).not.toBeHidden();
-  await expect(page.locator("#measurementGroupsBody")).not.toHaveText(/Loading groups/);
-
-  await page.locator(`[id="wwMgEditBtn-${lvGroup.id}"]`).click();
-  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "false");
-
-  await page.locator("#wwMgVoltageKvInput").fill("132");
-
-  // Save — triggers wwSaveMgDrawer → PUT → PATCH → wwRefreshDisplayedChannelsForPerUnitChange
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "true");
+  // The Per-Unit Settings Hub / MG drawer was replaced by the Recording Details voltage
+  // editor (PU-UI-001); the save is the same PUT /voltage-config followed by
+  // wwRefreshDisplayedChannelsForPerUnitChange while PU mode stays active.
+  await openRdVoltageEditor(page, sid, lvGroup.id);
+  await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("132");
+  await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);   // saved: form closed
+  await page.locator("#mainNavWaveformBtn").click();
 
   // LV must become configured/compatible WITHOUT any ENG→PU toggle
   await expect
@@ -956,8 +951,10 @@ test("PULU-07: LV channels join :pu panel after UI-based MG save (no ENG/PU togg
   // switched to PU (HV group is auto-configured). Clicking ENG guarantees
   // ww.unitMode === "engineering" so the subsequent explicit PU click properly
   // triggers wwRefreshWaveformDisplayBasis and assigns correct :pu/:base_required panels.
-  await page.locator("#wwUnitEngineeringBtn").click();
-  await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+  // No pane is displayed yet, so there is no pane-level mode control: select the mode itself
+  // (the call the ENG button makes) and assert it.
+  await page.evaluate(() => wwApplyUnitMode("engineering"));
+  await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 5000 }).toBe("engineering");
 
   // Add HV (configured) and LV (base_required) channels
   const details07 = page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
@@ -999,22 +996,14 @@ test("PULU-07: LV channels join :pu panel after UI-based MG save (no ENG/PU togg
 
   // === UAT sequence: Per-Unit Settings → Manage MGs → Edit LV group → Save 132 kV ===
 
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await expect(page.locator("#perUnitSettingsOverlay")).not.toBeHidden();
-
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await expect(page.locator("#measurementGroupsOverlay")).not.toBeHidden();
-  await expect(page.locator("#measurementGroupsBody")).not.toHaveText(/Loading groups/);
-
-  await page.locator(`[id="wwMgEditBtn-${lvGroup.id}"]`).click();
-  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "false");
-
-  await page.locator("#wwMgVoltageKvInput").fill("132");
-
-  // Save — triggers wwSaveMgDrawer → PUT /voltage-config → PATCH status=confirmed
-  //        → wwRefreshDisplayedChannelsForPerUnitChange(sourceId) → wwRebuildLayout
-  await page.locator("#wwMgDrawerSaveBtn").click();
-  await expect(page.locator("#wwMgDrawer")).toHaveAttribute("aria-hidden", "true");
+  // The Per-Unit Settings Hub / MG drawer was replaced by the Recording Details voltage
+  // editor (PU-UI-001): PUT /voltage-config, then wwRefreshDisplayedChannelsForPerUnitChange
+  // -> wwRebuildLayout while PU mode stays active.
+  await openRdVoltageEditor(page, sid, lvGroup.id);
+  await page.locator("#wwRdDetailsBody #wwRdVltKv").fill("132");
+  await page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn").click();
+  await expect(page.locator("#wwRdDetailsBody #wwRdVoltageApplyBtn")).toHaveCount(0);   // saved: form closed
+  await page.locator("#mainNavWaveformBtn").click();
 
   // --- Primary assertion: LV must resolve to configured WITHOUT ENG→PU toggle ---
   // If this poll times out (15 s), the UAT defect is reproduced.

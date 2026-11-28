@@ -30,7 +30,7 @@ const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "com
 
 async function uploadFixture(page, stem) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
@@ -39,7 +39,8 @@ async function uploadFixture(page, stem) {
 }
 
 async function displayChannel(page, sourceId, channelName) {
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
   await expect(details).toBeVisible();
@@ -81,7 +82,7 @@ const VI_CHANNELS = [
 async function setupOneGroup(page) {
   await page.goto("/index.html");
   await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4, channels: VI_CHANNELS });
-  const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
+  const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
   await displayChannel(page, sourceId, "VA");
   const groupId = await page.evaluate((sid) => wwTimeGroupIdForDisplaySourceId(sid), sourceId);
   return { sourceId, groupId };
@@ -90,12 +91,12 @@ async function setupOneGroup(page) {
 async function setupTwoTimeGroups(page) {
   await uploadFixture(page, "synth_playback");
   await uploadFixture(page, "synth_playback_b");
-  const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+  const rows = page.locator("#wwRdRecordingList .ww-rd-recording-item");
   await expect(rows).toHaveCount(2);
   const sourceIdA = await rows.nth(0).getAttribute("data-source-id");
   const sourceIdB = await rows.nth(1).getAttribute("data-source-id");
   for (const sourceId of [sourceIdA, sourceIdB]) {
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await displayChannel(page, sourceId, "V0_R");
   }
   await expect(page.locator(".ww-time-group-canvas")).toHaveCount(2);
@@ -127,9 +128,9 @@ test.describe("Waveform toolbar refinement -- Synchronize Sources removed", () =
     // AUTOMATIC fetch/apply/badge mechanism survives the removal intact.
     await uploadFixture(page, "synth_playback");
     await uploadFixture(page, "synth_playback_b");
-    const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+    const rows = page.locator("#wwRdRecordingList .ww-rd-recording-item");
     await expect(rows).toHaveCount(2);
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     // At least a "Reference" badge must render once two sources
     // coexist -- the sidebar's own badge rendering is unconditional on
     // there ever having been an editable sync modal. (Its containing

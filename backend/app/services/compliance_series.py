@@ -43,6 +43,7 @@ from app.services.current_group_config_registry import CurrentGroupConfigRegistr
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import voltage_channel_names_for_source
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.waveform_service import _analog_channel_engineering_type, _resolve_effective_per_unit
 from app.services.workspace_registry import WorkspaceRegistry
@@ -59,6 +60,9 @@ class Registries:
     group: MeasurementGroupRegistry
     voltage_config: VoltageGroupConfigRegistry
     current_config: CurrentGroupConfigRegistry
+    #: PU-MIG S2: Recording Details' side authority, so a source Voltage series is normalised by the same function as the
+    #: display. None keeps the historical gate.
+    side_authority: RecordedAuthority | None = None
 
 
 @dataclass(slots=True)
@@ -113,7 +117,7 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
                 channel, profile, names, workspace_id=workspace_id, calc_registry=reg.calc,
                 group_registry=reg.group, voltage_config_registry=reg.voltage_config,
                 current_config_registry=reg.current_config,
-                source_registry=reg.source, per_unit_registry=reg.per_unit,
+                source_registry=reg.source, per_unit_registry=reg.per_unit, side_authority=reg.side_authority,
             )
 
         return channel.time, channel.values, channel.unit, channel.engineering_type, channel.reference_source_id, channel.name, resolve
@@ -156,7 +160,7 @@ def _raw(ref: ChannelRef, *, workspace_id: str, reg: Registries):
             active, ref.channel_name, engineering_type, profile,
             voltage_channel_names_for_source(reg.source, workspace_id, ref.source_id),
             workspace_id=workspace_id, group_registry=reg.group, voltage_config_registry=reg.voltage_config,
-            current_config_registry=reg.current_config,
+            current_config_registry=reg.current_config, side_authority=reg.side_authority,
         )
 
     return (

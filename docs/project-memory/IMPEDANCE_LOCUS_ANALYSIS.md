@@ -1,5 +1,11 @@
 # Impedance Locus Analysis
 
+> **Recorded-mode input side superseded by D5A-2B2C-1B (2026-11-23, DEC-216 Amendment 6):** the recorded Impedance Locus no longer has a Recording-basis input and its
+> requests carry only the requested OUTPUT side (`impedance_basis`). The side of each consumed Voltage and Current channel, and the VT/CT of the Measurement Groups that own them, come from
+> Recording Details, enforced by the backend for every client; `recording_basis`, `voltage_side`, `current_side` and `vt_*`/`ct_*` are optional assertions that can only block on a contradiction.
+> The impedance mathematics, guardrails and Manual mode are unchanged. See [D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md](D5A_2B2C_1B_IMPEDANCE_DISTANCE_UNIFIED_SIDE_2026-11-23.md). Passages below about a user-chosen Recording basis or request-carried ratios describe the earlier
+> behaviour.
+
 **Status: v1 implemented and UAT-corrected** — the THIRD Analysis-menu
 analyzer (Phasor, Overcurrent, then Impedance Locus). Measurement/
 visualization only — this is explicitly **NOT Distance Protection**: no
@@ -582,3 +588,7 @@ its THIRD real implementation:
   the separate, fifth analyzer that reuses this feature's own
   `compute_impedance_point()`/`convert_impedance_basis()`/R-X-plot
   coordinate transform exactly as anticipated above.
+
+## D5A-UNIT-001 correction (recorded mode)
+
+Recorded `Z = V/I` is now computed from voltage in volts and current in amperes (shared unit layer), so kV/A and V/kA recordings give the same ohms as V/A and kV/kA. Previously raw channel magnitudes were divided, which was wrong by 10^±3 for mixed scales. Recorded results carry `algorithm_version` `impedance_locus_v2`; historical recorded results for mixed-scale recordings differed and are no longer valid. Unsupported units return `needs_configuration` (`unsupported_voltage_unit` / `unsupported_current_unit`). See [D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md](D5A_UNIT_001_RECORDED_IMPEDANCE_UNIT_NORMALISATION_2026-11-21.md).

@@ -1,0 +1,65 @@
+{
+  "source_file": "oruxa_waveform_mockup.html",
+  "source_sha256": "95fb2cac78a1eb058c485ce1c809be850f057031d9b40cef7a3334119ed6e010",
+  "implementation": "Original inline SVG geometry; 24x24 viewBox, 1.8 stroke, round caps and joins; local assets through existing CSS mask renderer.",
+  "authorization": "Owner supplied mockup and explicitly authorized exact SVG reuse; retain existing icons for gaps.",
+  "license_note": "No upstream attribution or license declaration identified in supplied HTML. No third-party library or license is asserted.",
+  "icons": [
+    {
+      "control": "wwZoomXInBtn",
+      "registry_key": "WUI002_ZOOM_X_IN",
+      "mock_key": "plus",
+      "asset": "assets/icons/waveform/wui-002/plus.svg",
+      "geometry_sha256": "7a837dffee9d23eb980a69d3387e6da935db61feefa457832313681822bf1792"
+    },
+    {
+      "control": "wwZoomXOutBtn",
+      "registry_key": "WUI002_ZOOM_X_OUT",
+      "mock_key": "minus",
+      "asset": "assets/icons/waveform/wui-002/minus.svg",
+      "geometry_sha256": "a18f374fff7e587c987021cb82f587498c7813238fde93cdf5ca2d6d2644f6cd"
+    },
+    {
+      "control": "wwAutoscaleXBtn",
+      "registry_key": "WUI002_AUTOSCALE_X",
+      "mock_key": "fit",
+      "asset": "assets/icons/waveform/wui-002/fit.svg",
+      "geometry_sha256": "ee991ba6cd9e4f861ac6c9d9ef6a16cc340ffa289166f973fe3b9e68573bbaf0"
+    },
+    {
+      "control": "wwCursorModeBtn",
+      "registry_key": "WUI002_CURSORS_AB",
+      "mock_key": "ruler",
+      "asset": "assets/icons/waveform/wui-002/ruler.svg",
+      "geometry_sha256": "ab5656b74cbbe6278905348024ba9426e9164fd622aff75c70c1c3034cf3e6b5"
+    },
+    {
+      "control": "wwAnnotateBtn",
+      "registry_key": "WUI002_ANNOTATE",
+      "mock_key": "tag",
+      "asset": "assets/icons/waveform/wui-002/tag.svg",
+      "geometry_sha256": "2532e6b455dc9705ec43310acd493466f2719c865f6f65aac83cb6ffa79c533c"
+    },
+    {
+      "control": "wwSplitViewBtn",
+      "registry_key": "WUI002_VIEW_SPLIT",
+      "mock_key": "columns",
+      "asset": "assets/icons/waveform/wui-002/columns.svg",
+      "geometry_sha256": "81e4114f28637ef38a1608e775512847bc35757972eb67e8fd1b25d405f71e2b"
+    },
+    {
+      "control": "editChannelGroupsBtn",
+      "registry_key": "WUI002_EDIT_GROUPS",
+      "mock_key": "settings",
+      "asset": "assets/icons/waveform/wui-002/settings.svg",
+      "geometry_sha256": "f7a7b365695a6366ba5d312d8ef3b1f37ac9badc5054cd8373c36c812836a9cb"
+    },
+    {
+      "control": "clearWorkspaceBtn",
+      "registry_key": "WUI002_CLEAR_WAVEFORMS",
+      "mock_key": "clear",
+      "asset": "assets/icons/waveform/wui-002/clear.svg",
+      "geometry_sha256": "0afdda12c067e8f0a32aa079130debb326a701ef42a2de03e5365363ead66b78"
+    }
+  ]
+}

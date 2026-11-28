@@ -45,7 +45,8 @@ from app.domain.source import AnalogChannelSummary
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import SourceNotFoundError
 from app.services.group_aware_per_unit import resolve_group_aware_per_unit
-from app.domain.per_unit_reference import apply_source_reference
+from app.services.per_unit_side_authority import apply_raw_source_reference
+from app.services.recorded_side_authority import RecordedAuthority
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -94,6 +95,7 @@ def _classify_channel(
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
     values: np.ndarray | None = None,
+    side_authority: RecordedAuthority | None = None,
 ) -> tuple[str | None, str | None]:
     """Returns coverage category and independent reference compatibility; None when
     this channel is not applicable to Per-Unit at all (not a Voltage/
@@ -116,8 +118,17 @@ def _classify_channel(
         current_config_registry=current_config_registry,
     )
     if group_resolution is not None:
-        group_resolution = apply_source_reference(group_resolution, channel.engineering_type, channel.measurement_side,
-            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id))
+        # S0 finding C-3: the coverage seam now passes the Voltage group's own configuration exactly like the display and
+        # provenance seams, so the three agree on the stored base side.
+        group_resolution = apply_raw_source_reference(
+            group_resolution, channel.engineering_type, channel.name, channel.measurement_side,
+            workspace_id=workspace_id, source_id=source_id,
+            group_config=current_config_registry.get(workspace_id, group_resolution.profile_id),
+            voltage_group_config=(
+                voltage_config_registry.get(workspace_id, group_resolution.profile_id)
+                if channel.engineering_type == VOLTAGE else None
+            ),
+            side_authority=side_authority)
         # DEC-051: a grouped channel's Measurement Group resolution is
         # final -- an incomplete group configuration is
         # `needs_configuration`, never a silent fall-through to Source
@@ -127,7 +138,9 @@ def _classify_channel(
         return (CATEGORY_MEASUREMENT_GROUP if eligible.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION), eligible.reference_compatibility
 
     legacy_resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
-    legacy_resolution = apply_source_reference(legacy_resolution, channel.engineering_type, channel.measurement_side, profile=per_unit_profile)
+    legacy_resolution = apply_raw_source_reference(
+        legacy_resolution, channel.engineering_type, channel.name, channel.measurement_side,
+        workspace_id=workspace_id, source_id=source_id, profile=per_unit_profile, side_authority=side_authority)
     eligible = resolve_conversion_eligibility(legacy_resolution, channel.unit, channel.engineering_type, values)
     return (CATEGORY_SOURCE_DEFAULT if eligible.status == STATUS_CONFIGURED else CATEGORY_NEEDS_CONFIGURATION), eligible.reference_compatibility
 
@@ -141,6 +154,7 @@ def build_per_unit_coverage_summary(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    side_authority: RecordedAuthority | None = None,
 ) -> PerUnitCoverageSummary:
     """The one entry point `app.api.v1.per_unit`'s coverage endpoint
     calls. Raises `SourceNotFoundError` for an unknown `source_id`,
@@ -169,6 +183,7 @@ def build_per_unit_coverage_summary(
             voltage_config_registry=voltage_config_registry,
             current_config_registry=current_config_registry,
             values=active.record.waveform_data[channel.name].to_numpy(),
+            side_authority=side_authority,
         )
         if category is None:
             continue

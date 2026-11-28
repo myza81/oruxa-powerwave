@@ -55,3 +55,25 @@ rule's own comment for why: the supplied files are not colour-uniform
 so a mask (which reads only each file's silhouette and paints it with
 the control's own `currentColor`) is the one technique that themes
 correctly for every file without touching any artwork.
+
+## WUI-002 owner-approved scoped artwork
+
+The owner explicitly authorized exact SVG reuse from `oruxa_waveform_mockup.html`
+for the Waveform Analysis **global toolbar only**, and selected: **"Reuse exact
+SVGs; retain existing icons for gaps."** This is a scoped exception to the
+same-function/same-file guidance above. Existing shared semantic keys, other
+pages, WUI-001 pane-local controls, and the renderer remain unchanged.
+
+Eight `WUI002_*` entries in the existing registry resolve to local assets under
+`waveform/wui-002/`. No second registry, copied inline geometry or external icon
+library is introduced. Time, unit, layout-mode, annotation-manager, t0 and
+annotation-menu gaps retain their existing artwork. Do not infer approval for
+redrawing those gaps.
+
+See [provenance](waveform/wui-002/provenance.json) and
+[artwork notice](waveform/wui-002/NOTICE.md) for source hashes and reuse notes.
+
+The later owner refinement (2026-11-22) moves Voltage Display into pane headers
+as text ENG/PU pills following the supplied pane reference. Shared unit SVGs stay
+unchanged for other pages. See the
+[relocation report](../../../docs/project-memory/WUI_002_VOLTAGE_DISPLAY_RELOCATION.md).

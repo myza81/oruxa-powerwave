@@ -15,14 +15,15 @@ for (const record of goldens.records) {
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await page.locator("#uploadModalFormatSelect").selectOption("ben");
     await page.locator("#uploadModalFile_0").setInputFiles(filename);
     await page.locator("#uploadModalSubmitBtn").click();
     await expect(page.locator("#uploadModalOverlay")).toBeHidden({ timeout: 30000 });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
     const sid = await row.getAttribute("data-source-id");
     await row.click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const names = record.id === "gpth" ? ["SDNK1 VR", "SDAI2 IB"] : ["KTBR2 VR", "KTBR2 IR"];
     for (const name of names) {
       const golden = record.channels.find(channel => channel.name === name);

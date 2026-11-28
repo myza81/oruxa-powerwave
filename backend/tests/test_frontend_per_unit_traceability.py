@@ -162,17 +162,23 @@ class TestNotApplicableStateDoesNotShowBogusBase:
 
 
 class TestSlice1And2NavigationRemainsIntact:
-    """Checklist items 8, 9: Slice 1's Per-Unit Settings hierarchy and
-    Slice 2's coverage section are unaffected by this addition."""
+    """Checklist items 8, 9: Per-unit navigation surfaces are unaffected
+    by this traceability addition.  PU-UI-001 Slice B retired the Hub
+    and its coverage section; the PU config banner (#wwPuConfigBanner)
+    replaces them."""
 
-    def test_per_unit_settings_entry_point_still_present(self):
+    def test_per_unit_settings_hub_retired_rd_is_the_config_entry_point(self):
+        """PU-UI-001 Slice B: the Hub is retired; RD is the new entry point."""
         source = _source()
-        assert 'id="wwOpenPerUnitSettingsBtn"' in source
+        assert 'id="wwOpenPerUnitSettingsBtn"' not in source
 
-    def test_coverage_section_still_present(self):
+    def test_coverage_hub_section_retired_banner_is_the_new_signal(self):
+        """PU-UI-001 Slice B: Hub coverage section retired; Slice C banner
+        is the new PU-blocked signal in Waveform Analysis."""
         source = _source()
-        assert 'id="wwPuCoverageSection"' in source
-        assert 'id="wwPuCoverageBody"' in source
+        assert 'id="wwPuCoverageSection"' not in source
+        assert 'id="wwPuCoverageBody"' not in source
+        assert 'id="wwPuConfigBanner"' in source
 
 
 class TestUnitModeSwitchingUnchanged:
@@ -184,10 +190,10 @@ class TestUnitModeSwitchingUnchanged:
         source = _source()
         wiring = _function_body(
             source,
-            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
-            'document.getElementById("wwOpenPerUnitSettingsBtn")',
+            'async function wwApplyPaneUnitMode(panel, button)',
+            'function wwWaveformPaneHeaderHtml',
         )
-        assert 'await wwApplyUnitMode("per_unit");' in wiring
+        assert 'wwApplyUnitMode(button.dataset.paneUnitMode)' in wiring
         assert "wwOpenChannelPerUnitModal" not in wiring
 
 

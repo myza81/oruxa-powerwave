@@ -56,9 +56,9 @@ test("Data Preparation: Raw Data Preview sticky header stays fully opaque while 
 
   await test.step("Setup - upload a CSV with enough rows to scroll, leave columns Not Assigned", async () => {
     await page.goto("/index.html");
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
 
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFormatSelect").selectOption("csv");
     await page.locator("#uploadModalFile_0").setInputFiles({
@@ -69,9 +69,10 @@ test("Data Preparation: Raw Data Preview sticky header stays fully opaque while 
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-    const row = page.locator('#recordingsTableBody tr[data-source-id][data-recording-kind="csv"]').first();
-    await expect(row).toBeVisible();
-    await row.click();
+    const item = page.locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind="csv"]').first();
+    await expect(item).toBeVisible();
+    const itemSourceId = await item.getAttribute("data-source-id");
+    await page.evaluate(async (sid) => { await openDataPreparationWorkspace(sid); }, itemSourceId);
     await expect(page.locator("#pageDataPreparation")).toBeVisible();
     await expect(page.locator("#wwDataPrepTable tbody tr").first()).toBeVisible();
   });

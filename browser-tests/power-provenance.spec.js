@@ -40,7 +40,7 @@ const BACKEND = `http://127.0.0.1:${PORT}`;
 
 /** Navigate to recordings page (or stay there if already on index). */
 async function ensureRecordingsPage(page) {
-  const btn = page.locator("#mainNavRecordingsBtn");
+  const btn = page.locator("#mainNavRecordingDetailsBtn");
   if (await btn.count() > 0) {
     await btn.click();
   } else {
@@ -50,26 +50,26 @@ async function ensureRecordingsPage(page) {
 
 async function uploadBen5k(page) {
   await ensureRecordingsPage(page);
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(BEN5K_PHASOR);
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden", timeout: 30000 });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
 
 async function uploadComtrade(page) {
   await ensureRecordingsPage(page);
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(COMTRADE_CFG);
   await page.locator("#uploadModalFile_1").setInputFiles(COMTRADE_DAT);
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
@@ -202,7 +202,7 @@ test.describe("Scenario A — BEN5K Unverified source → exploratory_unverified
     // Reload so the frontend re-fetches ww.calculatedChannels from the backend
     // (channels created via API are not in the in-memory map until the app restarts).
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toBeVisible({ timeout: 10000 });
     await navigateToCalcPage(page);
     const channelRow = page.locator(`.ww-cc-list-row[data-calculated-channel-id="${created.id}"]`);
     await expect(channelRow).toBeVisible({ timeout: 8000 });
@@ -336,7 +336,7 @@ test.describe("Scenario C — Mixed provenance: no cross-contamination", () => {
     // --- UI: BEN5K channel shows badge; COMTRADE channel does NOT ---
     // Reload so the frontend re-fetches ww.calculatedChannels from the backend.
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10000 });
     await navigateToCalcPage(page);
     const benRow = page.locator(`.ww-cc-list-row[data-calculated-channel-id="${benPower.id}"]`);
     const comRow = page.locator(`.ww-cc-list-row[data-calculated-channel-id="${comPower.id}"]`);
@@ -388,7 +388,7 @@ test.describe("Scenario D — COMTRADE Not-Assessed → not_assessed, no badge",
     // --- UI: no badge for not_assessed ---
     // Reload so the frontend re-fetches ww.calculatedChannels from the backend.
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toBeVisible({ timeout: 10000 });
     await navigateToCalcPage(page);
     const channelRow = page.locator(`.ww-cc-list-row[data-calculated-channel-id="${created.id}"]`);
     await expect(channelRow).toBeVisible({ timeout: 8000 });
@@ -441,7 +441,7 @@ test.describe("Scenario E — Waveform sidebar: exploratory badge in trace list"
 
     // Reload so ww.calculatedChannels is re-fetched from the backend.
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10000 });
 
     // Navigate to waveform — sidebar renders all calc channels.
     await page.locator("#mainNavWaveformBtn").click();
@@ -505,7 +505,7 @@ test.describe("Scenario F — Peak annotation: exploratory channels append ⚠ g
 
     // Reload so ww.calculatedChannels is populated.
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10000 });
 
     // Navigate to waveform (wwPeakValueLineText reads ww.calculatedChannels).
     await page.locator("#mainNavWaveformBtn").click();
@@ -584,7 +584,7 @@ test.describe("Scenario G — ENG→PU→ENG: no stale labels or JS errors", () 
     const calc = await resp.json();
 
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10000 });
 
     await page.locator("#mainNavWaveformBtn").click();
 
@@ -659,7 +659,7 @@ test.describe("Scenario H — Source removal: exploratory calc channel cascade-d
     // UI: reload → calc page shows no row for the deleted channel.
     await page.reload();
     // After deleting the only source, recordings table is empty.
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item")).toHaveCount(0, { timeout: 10000 });
     await page.locator("#mainNavCalculatedChannelsBtn").click();
     await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
     await expect(page.locator(`.ww-cc-list-row[data-calculated-channel-id="${calc.id}"]`)).toHaveCount(0);

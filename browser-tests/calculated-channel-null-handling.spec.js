@@ -24,13 +24,13 @@ const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "com
 
 async function uploadSynthAscii(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
 }
 
 // A minimal one-analog-channel ASCII COMTRADE pair with a real NaN
@@ -60,13 +60,13 @@ function synthNanComtradeFiles() {
 async function uploadNanFixture(page) {
   const { cfg, dat } = synthNanComtradeFiles();
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "nan.cfg", mimeType: "application/octet-stream", buffer: Buffer.from(cfg, "ascii") });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "nan.dat", mimeType: "application/octet-stream", buffer: Buffer.from(dat, "ascii") });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
 }
 
 async function openBuilder(page) {

@@ -17,6 +17,7 @@ from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import CURRENT, WAVEFORM_FORM_INSTANTANEOUS, WAVEFORM_FORM_RMS
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.engineering_context import EngineeringContext, EngineeringContextMember
+from app.domain.measurement_group import KIND_CURRENT, STATUS_CONFIRMED, MeasurementGroup
 from app.domain.metadata import RecordingMetadata
 from app.domain.phase_identity import PHASE_A, PHASE_B, PHASE_SOURCE_ENGINEER_CONFIRMED
 from app.domain.overcurrent import OVERCURRENT_STATUS_COMPUTED, REASON_WAVEFORM_FORM_NOT_ELIGIBLE
@@ -24,8 +25,14 @@ from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
 from app.domain.timing import SamplingInformation, TimingInformation
 from app.domain.analysis_input_resolution import STATUS_NEEDS_CONFIGURATION, STATUS_RESOLVED
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError
+from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.measurement_side_registry import MeasurementSideRegistry
+from app.services.measurement_side_service import SideAuthority
+from app.services.overcurrent_recorded_input import OvercurrentAuthority
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.domain.overcurrent import IEC_STANDARD_INVERSE, evaluate_idmt_operating_time
 from app.services.overcurrent_analysis_service import (
     check_overcurrent_readiness,
@@ -43,6 +50,7 @@ REF_START = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
 def _current_source(
     source_id: str, workspace_id: str, channel_name: str, rms_amps: float,
     *, nominal_frequency: float = 50.0, waveform_form: str = WAVEFORM_FORM_INSTANTANEOUS, unit: str = "A",
+    measurement_side: str = "secondary",
 ) -> ActiveSource:
     n = int(round(DURATION_S * SAMPLE_RATE_HZ))
     t = np.arange(n) / SAMPLE_RATE_HZ
@@ -50,6 +58,7 @@ def _current_source(
     analog_channels = [
         AnalogChannelSummary(
             name=channel_name, index=0, unit=unit, engineering_type=CURRENT, waveform_form=waveform_form,
+            measurement_side=measurement_side,
         )
     ]
     record = DisturbanceRecord(
@@ -90,7 +99,33 @@ def registries():
         "context": EngineeringContextRegistry(),
         "source": WorkspaceRegistry(),
         "calc": CalculatedChannelRegistry(),
+        "group": MeasurementGroupRegistry(),
+        "side": MeasurementSideRegistry(),
+        "current_config": CurrentGroupConfigRegistry(),
+        "voltage_config": VoltageGroupConfigRegistry(),
     }
+
+
+def _authority(registries) -> OvercurrentAuthority:
+    return OvercurrentAuthority(
+        side=SideAuthority(
+            source_registry=registries["source"], group_registry=registries["group"], side_registry=registries["side"],
+        ),
+        current_config_registry=registries["current_config"], voltage_config_registry=registries["voltage_config"],
+    )
+
+
+def _configure_ct(registries, source_id, channel_name, ct_primary, ct_secondary, *, workspace_id="ws-1"):
+    """The CT of the Current Measurement Group that owns the channel, as Recording Details stores it."""
+    group_id = f"ig-{source_id}"
+    registries["group"].add(MeasurementGroup(
+        id=group_id, workspace_id=workspace_id, source_id=source_id, kind=KIND_CURRENT, display_name=group_id,
+        status=STATUS_CONFIRMED, channel_refs=[ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)],
+    ))
+    registries["current_config"].update_fields(
+        workspace_id, group_id, ct_primary_a=ct_primary, ct_secondary_a=ct_secondary, ct_authority="manual",
+        ct_provenance_note=None, update_ct=True,
+    )
 
 
 def _compute(registries, **overrides):
@@ -100,7 +135,7 @@ def _compute(registries, **overrides):
         recording_basis="secondary", ct_primary=None, ct_secondary=None,
         reference_frequency_hz_override=None,
         context_registry=registries["context"], source_registry=registries["source"],
-        calculated_channel_registry=registries["calc"],
+        calculated_channel_registry=registries["calc"], authority=_authority(registries),
     )
     kwargs.update(overrides)
     return compute_overcurrent_analysis(**kwargs)
@@ -123,7 +158,8 @@ class TestBasicComputation:
 
     def test_primary_basis_applies_ct_conversion(self, registries):
         # 4200 A primary, CT 1000:1 -> 4.2 A secondary.
-        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4200.0))
+        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4200.0, measurement_side="primary"))
+        _configure_ct(registries, "src-1", "ALPHA1_IA", 1000.0, 1.0)
         _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
         result = _compute(
             registries, recording_basis="primary", ct_primary=1000.0, ct_secondary=1.0, pickup_current_secondary=1.0,
@@ -151,8 +187,9 @@ class TestUnitNormalizedCtConversion:
 
     def test_kA_primary_recording_normalizes_before_ct_conversion(self, registries):
         registries["source"].add(
-            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA"),
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA", measurement_side="primary"),
         )
+        _configure_ct(registries, "src-1", "ALPHA1_IA", 1200.0, 1.0)
         _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
         result = _compute(
             registries, recording_basis="primary", ct_primary=1200.0, ct_secondary=1.0,
@@ -170,8 +207,9 @@ class TestUnitNormalizedCtConversion:
         driving `continuous_duration_above_pickup()`, not only the
         single selected-time RMS sample."""
         registries["source"].add(
-            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA"),
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA", measurement_side="primary"),
         )
+        _configure_ct(registries, "src-1", "ALPHA1_IA", 1200.0, 1.0)
         _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
         result = _compute(
             registries, recording_basis="primary", ct_primary=1200.0, ct_secondary=1.0,
@@ -240,14 +278,18 @@ class TestGuardrails:
         assert result.reason_code == "invalid_pickup"
 
     def test_invalid_ct_values_missing_for_primary_basis(self, registries):
-        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2))
+        # A Primary recording whose Current group has NO CT: the conversion is blocked, the channel stays identified.
+        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2, measurement_side="primary"))
         _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
         result = _compute(registries, recording_basis="primary", ct_primary=None, ct_secondary=None)
         assert result.status == STATUS_NEEDS_CONFIGURATION
         assert result.reason_code == "invalid_ct_values"
+        assert result.channel_ref is not None and result.relay_secondary_current is None
 
     def test_invalid_ct_values_zero(self, registries):
-        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2))
+        # The request CT is an assertion that must itself be a valid pair, even when Recording Details has a CT.
+        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2, measurement_side="primary"))
+        _configure_ct(registries, "src-1", "ALPHA1_IA", 1000.0, 1.0)
         _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
         result = _compute(registries, recording_basis="primary", ct_primary=0.0, ct_secondary=1.0)
         assert result.status == STATUS_NEEDS_CONFIGURATION

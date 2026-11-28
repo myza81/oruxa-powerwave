@@ -22,6 +22,7 @@ from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.measurement_side_registry import MeasurementSideRegistry
 from app.services.event_reconstruction_registry import EventReconstructionRegistry
 from app.services.event_reconstruction_service import remove_workspace_event_reconstruction_state
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -78,6 +79,10 @@ def get_engineering_context_registry(request: Request) -> EngineeringContextRegi
     return request.app.state.engineering_context_registry
 
 
+def get_measurement_side_registry(request: Request) -> MeasurementSideRegistry:
+    return request.app.state.measurement_side_registry
+
+
 def get_reference_profile_registry(request: Request) -> ReferenceProfileRegistry:
     return request.app.state.reference_profile_registry
 
@@ -118,6 +123,7 @@ def delete_workspace(
     reference_layer_registry: ReferenceLayerRegistry = Depends(get_reference_layer_registry),
     compliance_alignment_registry: ComplianceAlignmentRegistry = Depends(get_compliance_alignment_registry),
     event_reconstruction_registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
+    measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -187,6 +193,7 @@ def delete_workspace(
     per_unit_registry.remove_workspace(workspace_id)
     measurement_group_registry.remove_workspace(workspace_id)
     engineering_context_registry.remove_workspace(workspace_id)
+    measurement_side_registry.remove_workspace(workspace_id)  # D5A-2B2A: recording corrections and bay overrides
     voltage_group_config_registry.remove_workspace(workspace_id)
     current_group_config_registry.remove_workspace(workspace_id)
     remove_workspace_synchronization_state(workspace_id=workspace_id, registry=synchronization_registry)

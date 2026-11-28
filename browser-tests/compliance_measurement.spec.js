@@ -49,13 +49,13 @@ async function openCompliance(page) {
 }
 
 async function uploadFixture(page, stem) {
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
@@ -335,7 +335,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       await openCompliance(page);
       await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(5); // placeholder + 4 bays
 
-      await page.locator("#mainNavRecordingsBtn").click();
+      await page.locator("#mainNavRecordingDetailsBtn").click();
       await openCompliance(page);
       await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(5);
     });
@@ -354,22 +354,26 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       await expect(page.locator("#wwComplianceManageGroupsBtn")).toHaveText("Review Measurement Groups");
 
       await page.locator("#wwComplianceManageGroupsBtn").click();
-      await expect(page.locator("#measurementGroupsOverlay")).toBeVisible();
-      await expect(page.locator("#measurementGroupsOverlay")).toContainText("MCRS");
+      // PU-UI-001 Step C (4161a63): the Measurement Groups overlay was retired; reviewing the
+      // groups now happens in Recording Details, which this action opens.
+      await expect(page.locator("#pageRecordingDetails")).toBeVisible();
+      await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+      await expect(page.locator("#wwRdGroupsBody")).toContainText("MCRS");
     });
 
-    test("Manage Measurement Groups action opens the existing modal and returns to Compliance intact", async ({ page }) => {
+    test("Manage Measurement Groups action opens Recording Details and returns to Compliance intact", async ({ page }) => {
       await page.goto("/index.html");
       await openCompliance(page);
       await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeVisible();
 
       await page.locator("#wwComplianceManageGroupsBtn").click();
-      await expect(page.locator("#measurementGroupsOverlay")).toBeVisible();
-      // Compliance itself is still the active page underneath -- an overlay, never a navigation.
-      await expect(page.locator("#pageCompliance")).toBeVisible();
+      // PU-UI-001 Step C (4161a63): the overlay was replaced by a redirect to Recording Details
+      // (the only place Measurement Groups are managed), so this is now a navigation.
+      await expect(page.locator("#pageRecordingDetails")).toBeVisible();
+      await expect(page.locator("#pageCompliance")).toBeHidden();
 
-      await page.locator("#measurementGroupsCloseBtn").click();
-      await expect(page.locator("#measurementGroupsOverlay")).toBeHidden();
+      await page.locator("#mainNavComplianceBtn").click();
+      await expect(page.locator("#pageRecordingDetails")).toBeHidden();
       await expect(page.locator("#pageCompliance")).toBeVisible();
       await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Voltage Measurement Group is available for this workspace.");
     });
@@ -396,7 +400,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       expect(patchResponse.ok()).toBeTruthy();
 
       // Return to Compliance (re-fetches the group list fresh).
-      await page.locator("#mainNavRecordingsBtn").click();
+      await page.locator("#mainNavRecordingDetailsBtn").click();
       await openCompliance(page);
       await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeHidden();
       await expect(page.locator("#wwComplianceGroupField")).toBeVisible();

@@ -118,9 +118,11 @@ def test_known_mismatch_all_consumers(client, comtrade_fixtures_dir, method, mar
     assert coverage["measurement_group_count"] == 0
     # Derived Source Default also enables nine unrelated Voltage channels.
     assert coverage["source_default_count"] == (9 if method == "default_derived" else 0)
-    # VLT-REF-001: derived Source Default sets no voltage_base_reference_side,
-    # so the 9 enabled Voltage channels become unverified (not incompatible).
-    assert coverage["unverified_reference_count"] == (9 if method == "default_derived" else 0)
+    # VLT-REF-001: derived Source Default sets no voltage_base_reference_side, so the 9 enabled Voltage channels were
+    # "unverified" (not incompatible) because NOTHING proved their side against that stored Unknown. PU-MIG S2 (S0 IC-3): their
+    # recording declares a strict Primary side, which is the proof, so they are verified (same numbers, label only) and the
+    # coverage counts them with the Source Default as before -- the count of enabled channels is unchanged.
+    assert coverage["unverified_reference_count"] == 0
 
 
 @pytest.mark.parametrize("marker,side,compatibility", [

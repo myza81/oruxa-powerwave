@@ -88,35 +88,30 @@ class TestSourceDefaultCurrentNeverGetsNominalFields:
         assert "Nominal voltage" not in body
 
 
-class TestEditorPreviewShowsThreeSeparateLines:
-    """Checklist item 3: the Source Default editor's own read-only
-    preview shows the three labels, each on its own line, matching the
-    popover's own presentation of the same three concepts."""
+class TestEditorPreviewFunctionsRemovedInPuUi001:
+    """PU-UI-001 Step B: the SD modal's voltage-reference preview helpers
+    (`wwPerUnitEffectiveVoltageBaseLines`, `wwRenderVoltageReferenceBlock`,
+    `wwWirePerUnitProfileFieldsEvents`) were removed with the modal.
+    The three-concept presentation now lives exclusively in the per-unit
+    details popover (`wwRenderChannelPerUnitResolution`), which is unchanged."""
 
-    def test_preview_lines_use_the_three_required_labels(self):
+    def test_sd_modal_preview_helpers_are_gone(self):
         source = _source()
-        body = _function_body(
-            source, "function wwPerUnitEffectiveVoltageBaseLines(state, reference)", "function wwRenderVoltageReferenceBlock"
-        )
-        assert '"Nominal voltage: "' in body
-        assert '"Channel interpretation: "' in body
-        assert '"Effective base: "' in body
+        assert 'function wwPerUnitEffectiveVoltageBaseLines(' not in source
+        assert 'function wwRenderVoltageReferenceBlock(' not in source
+        assert 'function wwWirePerUnitProfileFieldsEvents()' not in source
 
-    def test_preview_returns_three_distinct_lines_not_one_combined_sentence(self):
+    def test_popover_presentation_helpers_remain_for_the_same_concepts(self):
+        """The popover still renders Nominal voltage / Channel
+        interpretation / Effective base for every PU-configured channel
+        via `wwRenderChannelPerUnitResolution`.  The popover uses the
+        row-helper form (`wwPerUnitInfoRowHtml("Nominal voltage", ...)`)
+        rather than the SD modal's string-concatenation form."""
         source = _source()
-        body = _function_body(
-            source, "function wwPerUnitEffectiveVoltageBaseLines(state, reference)", "function wwRenderVoltageReferenceBlock"
-        )
-        # Three array elements, never string-concatenated into one.
-        assert body.count("Nominal voltage: \" + vbase") == 1
-        assert body.count("Channel interpretation: \" + interpretation") == 1
-        assert body.count("Effective base: \" + effective.toFixed(2)") == 1
-
-    def test_preview_renders_each_line_as_its_own_hint_div(self):
-        source = _source()
-        body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents")
-        assert "const previewLinesHtml = (lines) =>" in body
-        assert 'lines.map((line) => \'<div class="hint">\'' in body
+        assert 'function wwRenderChannelPerUnitResolution(' in source
+        assert 'wwPerUnitInfoRowHtml("Nominal voltage"' in source
+        assert 'wwPerUnitInfoRowHtml("Channel interpretation"' in source
+        assert '"Effective base"' in source
 
 
 class TestMeasurementGroupPresentationUnchanged:
@@ -144,28 +139,29 @@ class TestNoUnrelatedRegressions:
     navigation are all outside this presentation-only enhancement's
     scope -- confirm their own markup/entry points are untouched."""
 
-    def test_per_unit_settings_entry_point_still_present(self):
+    def test_per_unit_settings_hub_retired_rd_is_the_config_entry_point(self):
+        """PU-UI-001 Slice B: the Hub is retired; RD is the new entry point."""
         source = _source()
-        assert 'id="wwOpenPerUnitSettingsBtn"' in source
+        assert 'id="wwOpenPerUnitSettingsBtn"' not in source
 
-    def test_coverage_section_still_present(self):
+    def test_coverage_hub_section_retired_banner_is_the_new_signal(self):
+        """PU-UI-001 Slice B: Hub coverage section retired; Slice C banner
+        (#wwPuConfigBanner) replaces it in Waveform Analysis."""
         source = _source()
-        assert 'id="wwPuCoverageBody"' in source
+        assert 'id="wwPuCoverageBody"' not in source
+        assert 'id="wwPuConfigBanner"' in source
 
     def test_per_unit_details_popover_still_present(self):
         source = _source()
         assert 'id="wwChannelMenuPerUnitBtn"' in source
         assert 'id="wwChannelPerUnitOverlay"' in source
 
-    def test_current_base_preview_formula_still_uses_raw_vbase(self):
+    def test_sd_modal_current_base_functions_removed_in_pu_ui_001(self):
+        """PU-UI-001 Step B: the SD modal's own current-base arithmetic
+        helpers were removed with the modal.  The corrected formula
+        (Ibase = MVA / (sqrt(3) * Vbase_LL)) is now covered by the
+        backend's `per_unit.py` and the group-aware service layer."""
         source = _source()
-        preview = _function_body(
-            source, "function wwPerUnitEditorResolvedCurrentBaseText(", "async function wwOpenPerUnitProfilesModal("
-        )
-        helper = _function_body(
-            source, "function wwPerUnitDerivedCurrentBaseKa(", "function wwPerUnitEditorResolvedCurrentBaseText("
-        )
-        assert "wwPerUnitDerivedCurrentBaseKa(sbase, vbase)" in preview
-        assert "const denominator = PER_UNIT_SQRT_3 * nominalLlKv;" in helper
-        assert "let ka = ratingMva / denominator;" in helper
-        assert "PER_UNIT_LINE_TO_GROUND" not in helper
+        assert 'function wwPerUnitEditorResolvedCurrentBaseText(' not in source
+        assert 'function wwPerUnitDerivedCurrentBaseKa(' not in source
+        assert 'async function wwOpenPerUnitProfilesModal(' not in source

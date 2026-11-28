@@ -15,7 +15,7 @@ from app.domain.reference_side import ReferenceSide
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.domain.calculated_current_config import CalculatedCurrentMode
 
 from app.schemas.measurement_group import PerUnitBaseNumber, VoltageReferenceValue
@@ -165,10 +165,40 @@ class PerUnitResolutionOut(BaseModel):
     measurement_side: ReferenceSide = "unknown"
     base_reference_side: ReferenceSide = "unknown"
     reference_compatibility: Literal["compatible", "incompatible", "unverified"] | None = None
+    # PU-MIG S2 (raw Voltage; all null/empty elsewhere). Additive. D-1 (R+): the explicit verification state of the number
+    # shown, and how a base on one side was placed on the samples' side. `measurement_side` above is the EFFECTIVE side when
+    # Recording Details established one. The refusal fields carry the resolver's own code (N-2: existing vocabulary).
+    verification_state: Literal["verified_direct", "verified_converted", "unverified_historical", "blocked"] | None = None
+    side_conversion: Literal["direct", "base_divided_by_ratio", "base_multiplied_by_ratio"] | None = None
+    side_authority: str | None = None
+    ratio_applied: float | None = None
+    ratio_authority: str | None = None
+    ratio_group_ids: list[str] = Field(default_factory=list)
+    denominator_side: Literal["primary", "secondary"] | None = None
+    side_refusal_reason: str | None = None
+    side_refusal_detail: str | None = None
+    # D-4 (P5): non-blocking stored-versus-derived secondary base discrepancies. Never a replacement of the stored base.
+    base_diagnostics: list[dict] = Field(default_factory=list)
 
     @classmethod
     def from_provenance(cls, provenance: PerUnitChannelProvenance) -> "PerUnitResolutionOut":
+        side = provenance.side_provenance
         return cls(
+            verification_state=side.verification_state if side is not None else None,
+            side_conversion=side.conversion if side is not None else None,
+            side_authority=side.side_authority if side is not None else None,
+            ratio_applied=side.ratio_applied if side is not None else None,
+            ratio_authority=side.ratio_authority if side is not None else None,
+            ratio_group_ids=list(side.ratio_group_ids) if side is not None else [],
+            denominator_side=side.denominator_side if side is not None else None,
+            side_refusal_reason=side.refusal_reason if side is not None else None,
+            side_refusal_detail=side.refusal_detail if side is not None else None,
+            base_diagnostics=[
+                {"code": d.code, "stored_secondary_ll_v": d.stored_secondary_ll_v,
+                 "derived_secondary_ll_v": d.derived_secondary_ll_v, "relative_difference": d.relative_difference,
+                 "derivation": d.derivation}
+                for d in provenance.base_diagnostics
+            ],
             configuration_mode=provenance.configuration_mode,
             configured_current_base_amps=provenance.configured_current_base_amps,
             resolution_origin=provenance.resolution_origin,

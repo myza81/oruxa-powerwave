@@ -63,6 +63,26 @@ class VoltageGroupConfigOut(BaseModel):
     detection_reason: str
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # RD-0B Option A: manual-base conflict flag.  True when membership-change
+    # detection resolved a different voltage than the engineer's manual kV.
+    # PU is blocked while True.  False is the safe, no-conflict default.
+    manual_conflict_detected: bool = False
+    manual_conflict_detail: str | None = None
+    # Slice C-2: authoritative base authority state from the domain model.
+    # Exposed so the frontend can distinguish needs_review from unavailable
+    # without inferring authority from reference_mode / detection_reason.
+    # One of: "auto_resolved", "manual", "legacy_manual", "needs_review", "unavailable".
+    base_authority: str = "legacy_manual"
+    # D1: Voltage Transformer (VT) instrument-transformer metadata.
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_ratio: float | None = None
+    vt_authority: str = "not_configured"
+    vt_provenance_note: str | None = None
+    # D4-effective: computed effective VT values (authority hierarchy: manual > recording_metadata > auto_nominal > not_configured).
+    vt_effective_primary_v: float | None = None
+    vt_effective_secondary_v: float | None = None
+    vt_effective_authority: str = "not_configured"
 
 
 class CurrentGroupConfigOut(BaseModel):
@@ -79,6 +99,18 @@ class CurrentGroupConfigOut(BaseModel):
     manual_ibase_ka: float | None
     resolved_ibase_ka: float | None
     applicable_voltage_ll_kv: float | None
+    # Slice C-2: authoritative base authority for current groups.
+    base_authority: str = "legacy_manual"
+    # D1: Current Transformer (CT) instrument-transformer metadata.
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_ratio: float | None = None
+    ct_authority: str = "not_configured"
+    ct_provenance_note: str | None = None
+    # D3: Independent equipment-rating metadata (method-independent).
+    equipment_mva: float | None = None
+    equipment_linked_voltage_group_id: str | None = None
+    equipment_rated_current_ka: float | None = None
 
 
 class MeasurementGroupOut(BaseModel):
@@ -118,9 +150,10 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     """PUT body for a Voltage group's own configuration. `nominal_voltage_ll_kv`
     is the familiar nominal system LINE-TO-LINE voltage -- the engineer
     never enters a phase-derived number (Slice 3). Omitting it leaves
-    the group's existing base value untouched (there is no "clear"
-    operation, matching `set_voltage_base()`'s own always-required-value
-    contract). `reference_mode="manual"` requires `reference_override`;
+    the group's existing base value untouched. `clear_nominal_voltage=True`
+    clears the manual kV (sets base_authority to needs_review and re-runs
+    auto-detection); must not be combined with nominal_voltage_ll_kv.
+    `reference_mode="manual"` requires `reference_override`;
     `reference_mode="auto"` (default) always returns the group to
     live auto-detection, clearing any previous override.
     `base_reference_side` declares whether the configured nominal voltage
@@ -132,23 +165,60 @@ class VoltageGroupConfigUpdateRequest(BaseModel):
     reference_override: VoltageReferenceValue | None = None
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # D2: revert-to-auto flag. Clears nominal_voltage_ll_kv, sets
+    # base_authority=needs_review; must not be combined with nominal_voltage_ll_kv.
+    # secondary_voltage_ll_v is preserved (independent metadata, Gate 1).
+    clear_nominal_voltage: bool = False
+    # D1: Voltage Transformer instrument-transformer configuration.
+    # Partial pair (primary without secondary or vice versa) is 422.
+    # clear_vt=True removes any existing VT configuration; must not
+    # be combined with vt_primary_v or vt_secondary_v.
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_provenance_note: str | None = None
+    clear_vt: bool = False
 
 
 class CurrentGroupConfigUpdateRequest(BaseModel):
-    """PUT body for a Current group's own configuration. Exactly one
-    request shape per `method`, dispatched server-side to the matching
-    Slice 4 setter -- the API never partially applies a method's own
-    fields the way DEC-049's single flat PUT can; see
-    `app.services.current_group_config_service`'s own per-method setter
-    docstrings for the exact field requirements/mutual exclusivity this
-    endpoint enforces (never re-validated here, only passed through)."""
+    """PUT body for a Current group's own configuration.
 
+    Two dispatch paths:
+
+    1. ``update_equipment_metadata_only=True`` (D3): updates only the
+       independent ``equipment_mva`` / ``equipment_linked_voltage_group_id``
+       fields without touching the PU current-base method.  ``method`` must
+       not be supplied in this path; existing method/manual_ibase_ka/etc are
+       preserved exactly.
+
+    2. ``update_equipment_metadata_only=False`` (default): dispatches to
+       exactly one of Slice 4's three method setters based on ``body.method``
+       -- existing behavior completely unchanged.
+    """
+
+    # D3 independent equipment-metadata path (method-safe).
+    update_equipment_metadata_only: bool = False
+    equipment_mva: PerUnitBaseNumber | None = None
+    equipment_linked_voltage_group_id: str | None = None
+    clear_equipment_mva: bool = False
+
+    # Existing method-setter fields (used when update_equipment_metadata_only=False).
     base_reference_side: ReferenceSide = "unknown"
-    method: CurrentBaseMethod
+    method: CurrentBaseMethod = "none"
     equipment_rating_mva: PerUnitBaseNumber | None = None
     linked_voltage_group_id: str | None = None
     manual_voltage_base_kv: PerUnitBaseNumber | None = None
     manual_ibase_ka: PerUnitBaseNumber | None = None
+    # D1: Current Transformer instrument-transformer configuration.
+    # Partial pair (primary without secondary or vice versa) is 422.
+    # clear_ct=True removes any existing CT configuration; must not
+    # be combined with ct_primary_a or ct_secondary_a.
+    # D4: update_ct_only=True updates only CT fields without touching the
+    # PU current-base method (analogous to update_equipment_metadata_only).
+    update_ct_only: bool = False
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_provenance_note: str | None = None
+    clear_ct: bool = False
 
 
 class SuggestGroupsRequest(BaseModel):

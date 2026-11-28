@@ -36,12 +36,12 @@ test("retained calculated result rejects raw reset and a new page session", asyn
   expect(result.same).toBe(true);
   // Exercise the real interpretation control with an already plotted calculated result.
   await page.evaluate(async () => { await refreshAllSourceViews(); await wwFetchCalculatedChannels(); });
-  await page.locator(`#recordingsTableBody tr[data-source-id="${result.ids[0]}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${result.ids[0]}"]`).click();
   await page.evaluate(async id => { await wwAddSelectedChannels([wwCalculatedChannelMeta(ww.calculatedChannels.get(id))]); }, result.id);
   const plottedCount = () => page.evaluate(id => Array.from(ww.displayed.values()).find(e => e.channel.sourceId === id)?.channel.values.length || 0, result.id);
   await expect.poll(plottedCount).toBeGreaterThan(0);
-  await page.locator("#mainNavRecordingsBtn").click();
-  await page.locator(`#recordingsTableBody tr[data-source-id="${result.ids[1]}"] [data-action="details"]`).click();
+  await page.locator("#mainNavRecordingDetailsBtn").click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${result.ids[1]}"]`).click();
   const select = page.locator(`.recording-time-reference[data-source-id="${result.ids[1]}"]`);
   await select.selectOption("raw"); await expect(select).toBeEnabled();
   await expect.poll(plottedCount).toBe(0);

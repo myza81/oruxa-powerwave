@@ -46,7 +46,8 @@ test.describe("Waveform -- no recordings", () => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });
-    await page.locator('#recordingsTableBody tr[data-source-id]').first().click();
+    await page.locator('#wwRdRecordingList .ww-rd-recording-item').first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
 
     await expect(page.locator("#wwToolbar")).toBeVisible();
@@ -75,7 +76,8 @@ test.describe("Waveform -- recording loaded", () => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });
-    await page.locator('#recordingsTableBody tr[data-source-id]').first().click();
+    await page.locator('#wwRdRecordingList .ww-rd-recording-item').first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
 
     const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
@@ -103,7 +105,8 @@ test.describe("Waveform -- recording loaded", () => {
     await page.goto("/index.html");
     await page.locator("#mainNavWaveformBtn").click();
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });
-    await page.locator('#recordingsTableBody tr[data-source-id]').first().click();
+    await page.locator('#wwRdRecordingList .ww-rd-recording-item').first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     await expect(page.locator("#workspaceRow")).toBeVisible();
     const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await channelRow.getAttribute("aria-pressed")) !== "true") await channelRow.click();

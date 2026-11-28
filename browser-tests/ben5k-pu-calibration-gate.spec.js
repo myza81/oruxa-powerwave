@@ -41,7 +41,7 @@ function trackErrors(page) {
 // rejected the upload (BEN5K_EXPERIMENTAL_ENABLED not set in this environment).
 async function uploadBen5kFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(FIXTURE);
@@ -56,7 +56,7 @@ async function uploadBen5kFixture(page) {
   ]).catch(() => "timeout");
 
   if (outcome !== "hidden") return null;
-  const tableRow = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const tableRow = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(tableRow).toBeVisible({ timeout: 10_000 });
   return tableRow.getAttribute("data-source-id");
 }
@@ -102,7 +102,8 @@ test("BEN5K PU gate: VA has perUnitStatus=calibration_unavailable and unit=kV af
   test.skip(!sid, "BEN5K upload not supported in this environment (BEN5K_EXPERIMENTAL_ENABLED not set)");
 
   // Open workspace, navigate to Waveform.
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sid}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`).click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await page.locator("#mainNavWaveformBtn").click();
 
@@ -134,7 +135,8 @@ test("BEN5K PU gate: VA is not rendered on a :pu axis panel", async ({ page }) =
   const sid = await uploadBen5kFixture(page);
   test.skip(!sid, "BEN5K upload not supported in this environment (BEN5K_EXPERIMENTAL_ENABLED not set)");
 
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sid}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`).click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await page.locator("#mainNavWaveformBtn").click();
 
@@ -177,12 +179,14 @@ test("BEN5K PU gate (original-risk): channel added while PU mode is already acti
   test.skip(!sid, "BEN5K upload not supported in this environment (BEN5K_EXPERIMENTAL_ENABLED not set)");
 
   // Open workspace and navigate to Waveform.
-  await page.locator(`#recordingsTableBody tr[data-source-id="${sid}"]`).click();
+  await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sid}"]`).click();
+  await page.locator("#wwRdViewWaveformBtn").click();
   await expect.poll(() => page.evaluate(() => document.getElementById("workspaceRow").hidden)).toBe(false);
   await page.locator("#mainNavWaveformBtn").click();
 
   // ── Enable PU mode BEFORE adding any channel ────────────────────────────
-  await page.locator("#wwUnitPerUnitBtn").click();
+  // No pane is displayed yet, so there is no pane-level mode control: select the mode itself.
+  await page.evaluate(() => wwApplyUnitMode("per_unit"));
   expect(
     await page.evaluate(() => ww.unitMode),
     "unit mode must be per_unit before channel add"

@@ -46,44 +46,44 @@ const BACKEND = `http://127.0.0.1:${PORT}`;
 // ---------------------------------------------------------------------------
 
 async function uploadBen5k(page) {
-  const btn = page.locator("#mainNavRecordingsBtn");
+  const btn = page.locator("#mainNavRecordingDetailsBtn");
   if (await btn.count() > 0) await btn.click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await page.locator("#uploadModalFile_0").setInputFiles(BEN5K_PHASOR);
   await page.locator("#uploadModalSubmitBtn").click();
   // 90s: BEN5K processing is slower on a cold backend than a warmed one.
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden", timeout: 90000 });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
 
 async function uploadComtrade(page) {
-  const btn = page.locator("#mainNavRecordingsBtn");
+  const btn = page.locator("#mainNavRecordingDetailsBtn");
   if (await btn.count() > 0) await btn.click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(COMTRADE_CFG);
   await page.locator("#uploadModalFile_1").setInputFiles(COMTRADE_DAT);
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
 
 async function uploadPhasorComtrade(page) {
-  const btn = page.locator("#mainNavRecordingsBtn");
+  const btn = page.locator("#mainNavRecordingDetailsBtn");
   if (await btn.count() > 0) await btn.click();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(PHASOR_CFG);
   await page.locator("#uploadModalFile_1").setInputFiles(PHASOR_DAT);
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   return row.getAttribute("data-source-id");
 }
@@ -474,7 +474,7 @@ test.describe("Scenario VI — Cursor qualifier: exploratory ⚠ in wwCurValueTe
 
     // Reload so ww.calculatedChannels is populated from the backend.
     await page.reload();
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 10000 });
 
     // --- UI assertion: exploratory badge in calc-channels manager ---
     // The badge is rendered from ww.calculatedChannels.calibration_provenance_status —

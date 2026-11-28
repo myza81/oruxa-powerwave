@@ -9,6 +9,127 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## Per-Unit workstream — owner UAT passed; accepted and frozen (2026-11-27)
+
+[UAT] The owner accepted the Per-Unit migration (PU-MIG S1–S6), DEC-219, the W-1 auto-base alignment and the final Voltage-configuration UI simplification
+after DEV UAT. Accepted functional baseline: **`4885ca2`** on `feature/pu-mig-s5-verification-presentation`, deployed to DEV from
+`uat/dev-pu-mig-dec219-20261127` (CI `45986951629`, Deploy Powerwave `45988779482`). No outstanding owner-reported PU defects. No further PU feature work is authorised.
+
+[FACT] Current behaviour: one shared side-denominator resolver; verification states `verified_direct` / `verified_converted` / `unverified_historical` / `blocked`
+(additive API field `per_unit_verification_state`); the nominal system voltage is always the Primary Voltage PU base and the Voltage Base Reference Side input is
+retired ([DEC-219](DECISIONS.md#dec-219--the-nominal-system-voltage-is-always-the-primary-voltage-pu-base-the-separate-voltage-base-reference-side-input-is-retired));
+the auto-base service never creates a legacy Secondary base; the DEC-215 VT policy is unchanged. Accepted limitations: a legacy Secondary base is kept as stored and its
+nominal is not editable in Recording Details; a new Secondary recording stays `needs_review` until a nominal is entered.
+
+[DEFERRED] Raw Current ENG/PU display toggle; additional Current PU reference types; creation-time Current PU configuration; Stage 6D proposals; legacy Secondary base
+management UI (W-2); legacy `*_base_reference_side` API field deprecation; a new CFG transformer-ratio authority. These are enhancements, not incomplete release requirements.
+
+[UAT] Final release gates (2026-11-28): G1 only `docs/` differ from `4885ca2`; G2 CI green (backend 15,244 passed / 410 skipped / 0 failed); G3 clean merge against `b743a67`; G4 browser 1,812 passed / 7 failed / 8 skipped, accepted **with qualifications**: six failures are the accepted CSV/Excel backlog and one (`waveform-legend-visibility.spec.js:87`) is a suspected, non-reproduced timing flake (14/14 three times), not a proven defect. Evidence preserved in `evidence/pu-release-g4-2026-11-28/`. Merge into `main` authorised; DEV acceptance and the PROD decision follow separately.
+
+[FACT] Integration: `origin/main` = `b743a67` is a direct ancestor of the candidate (198 ahead, 0 behind); no merge conflict; no NF or RMS content; the WUI-001–004
+and D5A base are included because they were merged into the DEV base, not into `main`. PROD currently runs only a `/health` skeleton (last PROD deploy `31597729649`,
+`main` @ `947b72b`), so a PROD release of this line is the first production release of the application. Nothing is merged or deployed to PROD; the integration needs
+owner approval. See [PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md](PU_WORKSTREAM_FINAL_ACCEPTANCE_AND_RELEASE_READINESS_2026-11-27.md).
+
+## WUI-001–004 controlled DEV consolidation (2026-11-23)
+
+[UAT] The owner accepted WUI-001 through WUI-004, final UI commit `d513fba`.
+The isolated integration branch `integration/wui-001-004-dev-f24f1d7` starts at
+current remote/deployed DEV **`f24f1d7`**, preserving the released Overcurrent
+authority and Recording Details work. Earlier engineering paragraphs below are
+historical implementation snapshots; current runtime evidence is in
+[the consolidation report](WUI_001_004_DEV_CONSOLIDATION_REPORT.md).
+Claude's newer unpublished work and active files remain untouched and excluded.
+Candidate local frontend/API: **30441/30440**, independent baseline **30431/30430**.
+The owner subsequently authorized publishing the verified dedicated branch and
+deploying its exact SHA to DEV independently; Claude has no scheduled deployment.
+Require passing local verification/CI and runtime validation, then give Claude the
+deployed integration checkpoint. No shared-branch merge, production, `main` or WUI-005 work.
+
+## D5A-2B2B — Recording Details measurement-side UI (2026-11-22)
+
+[FACT] Implemented locally on `feature/d5a-2b2b-recording-details-side-ui`; NOT pushed, merged or deployed. Recording Info shows one Primary/Secondary selector for the recording (Level 1);
+Group Details shows one for the selected group's bay within the selected recording (Level 2; no Reset, no per-phase or per-group-kind control), rendered from the D5A-2B2A API, with discreet provenance and
+clear disclosure of mixed, undeclared, inferred and overridden evidence. A bay setting is scoped to the bay within one recording (a multi-recording Engineering Context never shares a value), a suggested bay
+is confirmed through an explicit reviewed status-only action, and a CT/VT group spanning bays on different/unresolved sides is flagged as ambiguous conversion authority.
+The analyzers still use their own recorded-mode side selectors until D5A-2B2C. See [D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md](D5A_2B2B_RECORDING_DETAILS_MEASUREMENT_SIDE_UI_2026-11-22.md).
+
+## D5A-2B2A — unified measurement-side configuration (2026-11-22)
+
+[FACT] Implemented locally on `feature/d5a-2b2a-measurement-side-config` (from `a2b55eb`); NOT pushed, merged or deployed; backend only.
+
+- [FACT] The backend has one shared resolver for a recorded channel's Primary/Secondary side (precedence: bay override > recording correction >
+  channel declaration > recording default > unresolved), Level 1 per recording and Level 2 per bay (Engineering Context), with engineer decisions held in an
+  in-memory registry separate from the recording's original P/S evidence, and additive API endpoints for the future Recording Details UI.
+- [FACT] No PU, Overcurrent, Impedance or Distance consumer reads it yet; their results are unchanged (snapshot-tested). The existing recorded-mode side
+  selectors still exist until D5A-2B2C.
+- [DECISION] DEC-216: Recording Details is the single authority for recorded measurement side; the old D5A-2B2 group-level proposal is superseded.
+
+Details and open owner questions: [D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md](D5A_2B2A_MEASUREMENT_SIDE_CONFIGURATION_2026-11-22.md).
+
+## D5A-OC-001 — recorded Overcurrent reads its CT from Recording Details (2026-11-22)
+
+[FACT] Implemented locally on `feature/d5a-oc-001-overcurrent-ct-authority` (from the accepted D5A UAT commit `082b2a6`).
+NOT pushed, merged or deployed; awaiting owner DEV UAT.
+
+- Recording input source: the CT of the Measurement Group owning the phase's own current channel is read through
+  `protection-instrument-context?analysis=overcurrent` and shown read-only with **Configure in Recording Details**. The recorded
+  CT inputs are gone; Manual mode keeps its own inputs. The relay-secondary mathematics is unchanged.
+- A Recording basis that contradicts the channel's declared side is rejected (Impedance/Distance still only warn); an undeclared
+  side stays an explicit, "unverified" engineer choice. D5A-2B2 was redesigned as DEC-216; its backend authority is delivered in D5A-2B2A (above).
+- A blocked recorded result keeps its channel identity, so Related Waveforms stay available.
+
+Details, mathematics, owner decisions OC-1..OC-4 and the DEV UAT checklist:
+[D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md](D5A_OC_001_OVERCURRENT_CT_AUTHORITY_2026-11-22.md).
+
+## RD-0B — Voltage-reference safety (2026-11-18)
+
+[FACT] RD-0B committed locally as `5e9113f` on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged.
+
+**What is implemented (backend only):**
+- `reconfigure_auto_base_after_membership_change()` — revalidates voltage bases whenever a Voltage
+  Measurement Group's membership or voltage config changes. Triggered by `update_group()` and
+  `put_voltage_config()`.
+- `manual_conflict_detected` / `manual_conflict_detail` fields on `VoltageBaseConfiguration` and
+  `VoltageGroupConfigOut` — surfaces manual vs detected voltage incompatibility without changing
+  the authority enum. Three-case branch: conflict flagged (PU blocked) / compatible / insufficient evidence.
+- PU gate in `resolve_voltage_base_for_group()` — returns `STATUS_BASE_REQUIRED` with
+  `reason="manual_conflict_detected"` when conflict is active.
+- 35 new regression tests (20 membership-change + 15 manual-conflict scenarios).
+
+**Frontend gap remaining (RD-1 scope):**
+- `manual_conflict_detected` / `manual_conflict_detail` are NOT yet consumed by the frontend.
+- PU resolution cache (`wwErState.perUnit.generation`) is not invalidated on voltage-config save.
+Both are documented as RD-1 acceptance criteria in `measurement_groups.py`.
+
+## RD-1 Slice B — Recording Details skeleton (2026-11-18)
+
+[FACT] Slice B committed locally on `feature/vlt-ref-001-voltage-reference-safety`.
+NOT pushed, deployed, or merged.
+
+**What Slice B delivers (frontend only — `frontend/index.html`):**
+- New ninth nav button "Recording Details" (`mainNavRecordingDetailsBtn`) between Recordings and Waveform.
+- `<section id="pageRecordingDetails">` — three-panel flex layout (Recording Browser 260px fixed,
+  Measurement Groups 300px fixed, Group Details flex-fill).
+- `wwRdState` — scoped state object; never shares `wwMgSelectedSourceId` or `wwMgEditState`.
+- `wwRdOnPageEntered()` / `wwRdRefreshSources()` / `wwRdRenderBrowser()` — recording browser with
+  client-side search and sort, powered by `fetchSourcesList()`.
+- `wwRdSelectSource()` / `wwRdRenderGroups()` / `wwRdRenderDetails()` — groups + placeholder details.
+- "Upload New" button wired to `openUploadModal()` (same as Recordings page).
+- `refreshAllSourceViews()` now invalidates `wwRdState.sources` on every source set change.
+- `PAGE_RECORDING_DETAILS` inline SVG in `WW_TOOL_ICONS`.
+
+**Remaining (Slice C/D):**
+- Slice C: full read-only Group Details panel — `manual_conflict_detected` warning, voltage config,
+  provenance, PU state.
+- Slice D: editing integration (Edit/Apply/Cancel) + PU cache invalidation.
+- Slice E: Playwright regression tests.
+- D3 (waveform navigation): approved for RD-1 scope; integrate in Slice D or its own sub-slice.
+
+Audit: [RD1_SLICE_A_AUDIT_2026-11-18.md](RD1_SLICE_A_AUDIT_2026-11-18.md)
+Plan: [RD1_SLICE_B_PLAN_2026-11-18.md](RD1_SLICE_B_PLAN_2026-11-18.md)
+
 ## Independent product direction (owner decision, 2026-11-17)
 
 Oruxa-Powerwave is an independent engineering waveform analysis platform. Product development is guided by owner-defined engineering requirements, numerical correctness, usability, performance, maintainability and professional software architecture.

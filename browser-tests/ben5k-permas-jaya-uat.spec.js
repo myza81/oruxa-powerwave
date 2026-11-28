@@ -36,7 +36,7 @@ function trackErrors(page) {
 
 async function openBenUpload(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFormatSelect").selectOption("ben");
   await expect(page.locator("#uploadModalFile_0")).toHaveAttribute("accept", ".ben,.BEN");
@@ -95,7 +95,7 @@ test("Permas Jaya source: 27 analog, 82 digital, relative_elapsed timing", async
 test("Permas Jaya uploads without error and appears in recordings table", async ({ page }) => {
   const errors = trackErrors(page);
   await uploadBen(page, PERMAS_BEN_PATH);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await expect(row).toBeVisible({ timeout: 10_000 });
   expect(errors, `Console errors on upload:\n${errors.join("\n")}`).toEqual([]);
 });
@@ -106,8 +106,9 @@ test("Permas Jaya workspace shows 27 analog and ≥1 digital channels", async ({
   const errors = trackErrors(page);
 
   await uploadBen(page, PERMAS_BEN_PATH);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -126,8 +127,9 @@ test("Permas Jaya workspace shows 27 analog and ≥1 digital channels", async ({
 
 test("Permas Jaya workspace shows expected analog channel names", async ({ page }) => {
   await uploadBen(page, PERMAS_BEN_PATH);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -152,8 +154,9 @@ test("Enabling PLTG1 VR renders a waveform plot", async ({ page }) => {
   const errors = trackErrors(page);
 
   await uploadBen(page, PERMAS_BEN_PATH);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }
@@ -176,8 +179,9 @@ test("Permas Jaya waveform uses relative elapsed time axis, not absolute wall-cl
   const errors = trackErrors(page);
 
   await uploadBen(page, PERMAS_BEN_PATH);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first();
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   await expect.poll(
     () => page.evaluate(() => document.getElementById("workspaceRow")?.hidden),
     { timeout: 15_000 }

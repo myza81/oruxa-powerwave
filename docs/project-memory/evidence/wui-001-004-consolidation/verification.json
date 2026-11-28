@@ -1,0 +1,938 @@
+{
+  "baseline": "f24f1d72f49cf694ac5f843d03fd102e7754320a",
+  "accepted_ui": "d513fba7b221373070a97186955c107190f19003",
+  "backend": {
+    "baseline": {
+      "tests": 13964,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 422,
+      "passed": 13542
+    },
+    "candidate": {
+      "tests": 13989,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 422,
+      "passed": 13567
+    }
+  },
+  "backend_new_failures": [],
+  "browser": {
+    "baseline-browser": {
+      "tests": 417,
+      "passed": 371,
+      "failed": 46
+    },
+    "candidate-browser": {
+      "tests": 417,
+      "passed": 400,
+      "failed": 17
+    },
+    "candidate-wui": {
+      "tests": 104,
+      "passed": 104,
+      "failed": 0
+    },
+    "baseline-projection": {
+      "tests": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "candidate-projection": {
+      "tests": 3,
+      "passed": 3,
+      "failed": 0
+    }
+  },
+  "new_browser_failures": [
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / no recordings at all: Y Zoom In/Out stay disabled"
+  ],
+  "persistent_baseline_failures": [
+    "event-reconstruction-annotations.spec.js / Event Reconstruction annotations -- manager and independence / the manager lists, focuses, edits and deletes Event Reconstruction annotations only; Waveform's are untouched",
+    "event-reconstruction-cursors.spec.js / Event Reconstruction Slice 3E -- Waveform isolation / Event Reconstruction cursors never change Waveform cursors, values or state",
+    "event-reconstruction-plot.spec.js / Event Reconstruction Slice 3C -- Waveform isolation / plotting, zooming and panning never change Waveform state",
+    "per-unit-display-synchronization.spec.js / latest Engineering selection wins over delayed PU metadata",
+    "per-unit-display-synchronization.spec.js / real Voltage Group save refreshes fixed cursors and rejects an old cursor response",
+    "per-unit-display-synchronization.spec.js / Source Default save and clear update fixed cursors through the real editor",
+    "per-unit-display-synchronization.spec.js / rapid ENG-PU-ENG-PU intent wins even when the oldest metadata finishes last",
+    "per-unit-display-synchronization.spec.js / reset during delayed PU metadata cannot restore the old mode or arrays",
+    "per-unit-display-synchronization.spec.js / a base edit keeps another source's values and avoids requests for it",
+    "per-unit-numeric-integrity.spec.js / voltage editor rejects true atomically, then accepts a practical base",
+    "per-unit-numeric-integrity.spec.js / voltage editor rejects false atomically, then accepts a practical base",
+    "per-unit-numeric-integrity.spec.js / voltage editor rejects overflowing SI base atomically, then accepts a practical base",
+    "per-unit-numeric-integrity.spec.js / valid tiny base reports numerical unavailability consistently in Waveform and ER and recovers",
+    "per-unit-reference-safety.spec.js / Current MG drawer shows no PU controls for standard Current group (DEC-212)",
+    "per-unit-reference-safety.spec.js / Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Per-Unit Settings icon / renders the new pu_settings.svg asset, no broken path, same handler/tooltip/position",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Per-Unit Settings icon / renders correctly in dark theme too",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y In targets only the selected (active) panel's axis",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y Out targets only the selected (active) panel's axis",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / switching the active panel via its header moves the Y Zoom target, never the other panel",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / zooming the active panel never touches another Time Group's own panel",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / a recording exists but no channel is displayed yet: still disabled",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / the tooltip names the targeted panel's own label once a target exists",
+    "waveform-y-zoom.spec.js / Waveform global Y Zoom -- Autoscale Y interaction / Autoscale Y restores the correct automatic range for the same target axis after a manual zoom"
+  ],
+  "baseline_failures_now_passing": [
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- controls present and complete / a recording exists but no channel is displayed yet: still disabled",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- controls present and complete / once a channel is displayed, all five enable together, targeting the same active Time Group",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- per-Time-Group duplicate controls removed / SUPERSEDED: the local canvas toolbar no longer shows Zoom/Autoscale/Cursor/t0/Sync controls at all -- a later Waveform toolbar refinement ticket moved t0 out the same way and removed Synchronize Sources outright; see waveform-toolbar-t0-sync-refinement.spec.js for that ticket's own full coverage",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) / Zoom X In/Out act on the active Time Group only; X range changes, Y stays",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) / Autoscale X restores the active Time Group's own full bounds, never another group's",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) / no explicit selection: Zoom X falls back to ww.panels[0]'s own Time Group, matching Zoom Y's own fallback",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- A/B Cursors targeting / toggling A/B Cursors affects only the active Time Group; never every group at once",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- A/B Cursors targeting / the button's own aria-pressed follows the active target when switched, no stale state",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / Autoscale Y resets only the selected Y-axis; the other two panels in the same Time Group are untouched",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / other Time Groups remain unaffected by Autoscale Y",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / no explicit selection: Autoscale Y falls back to ww.panels[0], the exact same panel Zoom Y falls back to",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Autoscale Y shares Zoom Y's own target / Zoom Y and Autoscale Y resolve exactly the same target when the active panel switches",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / the first valid Waveform axis becomes the fallback readout target",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / readout updates when another Y-axis becomes active",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Zoom Y affects exactly the axis shown in the readout",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Autoscale Y affects exactly the same axis shown in the readout",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / removing the active axis selects the correct fallback; no stale label remains",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / clearing the workspace resets the readout to the empty state",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no stale label remains after switching the active Time Group",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Clear Waveforms restored to the left operational group / enables once a waveform is displayed; clears only the displayed panel, never the source recording",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- themes, layout, console / no duplicated controls document-wide; both themes; narrower viewport; no console errors"
+  ],
+  "changed_test_identity": {
+    "baseline_only": [
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Autoscale Y affects exactly the same axis shown in the readout",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Zoom Y affects exactly the axis shown in the readout",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / clearing the workspace resets the readout to the empty state",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no data: readout shows 'Y: Select axis'",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no stale label remains after switching the active Time Group",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / readout updates when another Y-axis becomes active",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / removing the active axis selects the correct fallback; no stale label remains",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / the first valid Waveform axis becomes the fallback readout target",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- spacing fix (no empty group between Time and Unit Mode) / Time Display and Unit Mode sit with normal single-separator spacing, both when the hidden Detect Event button is absent and if it were present",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- Autoscale Y interaction / Autoscale Y restores the correct automatic range for the same target axis after a manual zoom",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / zooming the active panel never touches another Time Group's own panel",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / a recording exists but no channel is displayed yet: still disabled",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / no recordings at all: Y Zoom In/Out stay disabled",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / the tooltip names the targeted panel's own label once a target exists",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y In targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y Out targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / switching the active panel via its header moves the Y Zoom target, never the other panel"
+    ],
+    "candidate_only": [
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / Autoscale Y affects exactly the selected pane",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / Zoom Y affects exactly the selected pane",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / clearing the workspace clears the actual active pane",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / no data: no active pane and no obsolete readout",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / removing the active axis selects a valid remaining pane",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / selecting another Y-axis changes the actual active pane",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / switching panes targets the owning Time Group",
+      "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / the first valid Waveform axis remains the fallback target",
+      "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- spacing after Voltage Display relocation / Time and horizontal controls have no vacant Voltage Display family",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- Autoscale Y interaction / Autoscale Y restores the correct automatic range for the same target axis after a manual zoom",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- multiple Time Groups / no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- multiple Time Groups / zooming the active panel never touches another Time Group's own panel",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- no valid target / a recording exists but no channel is displayed yet: still disabled",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- no valid target / no recordings at all: Y Zoom In/Out stay disabled",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- no valid target / the local controls have accessible action tooltips",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- single Time Group, two panels / Zoom Y In targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- single Time Group, two panels / Zoom Y Out targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- single Time Group, two panels / switching the active panel via its header moves the Y Zoom target, never the other panel"
+    ]
+  },
+  "accepted_toolbar_contract_mapping": {
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / no data: no active pane and no obsolete readout": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no data: readout shows 'Y: Select axis'",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / the first valid Waveform axis remains the fallback target": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / the first valid Waveform axis becomes the fallback readout target",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / selecting another Y-axis changes the actual active pane": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / readout updates when another Y-axis becomes active",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / Zoom Y affects exactly the selected pane": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Zoom Y affects exactly the axis shown in the readout",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / Autoscale Y affects exactly the selected pane": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / Autoscale Y affects exactly the same axis shown in the readout",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / removing the active axis selects a valid remaining pane": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / removing the active axis selects the correct fallback; no stale label remains",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / clearing the workspace clears the actual active pane": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / clearing the workspace resets the readout to the empty state",
+    "waveform-top-toolbar-migration.spec.js / Waveform active-pane authority without a global Y readout / switching panes targets the owning Time Group": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- Y-axis target readout / no stale label remains after switching the active Time Group",
+    "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- spacing after Voltage Display relocation / Time and horizontal controls have no vacant Voltage Display family": "waveform-top-toolbar-migration.spec.js / Waveform top toolbar -- spacing fix (no empty group between Time and Unit Mode) / Time Display and Unit Mode sit with normal single-separator spacing, both when the hidden Detect Event button is absent and if it were present"
+  },
+  "unmatched_after_mapping": {
+    "baseline_only": [
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- Autoscale Y interaction / Autoscale Y restores the correct automatic range for the same target axis after a manual zoom",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- multiple Time Groups / zooming the active panel never touches another Time Group's own panel",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / a recording exists but no channel is displayed yet: still disabled",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / no recordings at all: Y Zoom In/Out stay disabled",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- no valid target / the tooltip names the targeted panel's own label once a target exists",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y In targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / Zoom Y Out targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform global Y Zoom -- single Time Group, two panels / switching the active panel via its header moves the Y Zoom target, never the other panel"
+    ],
+    "candidate_only": [
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- Autoscale Y interaction / Autoscale Y restores the correct automatic range for the same target axis after a manual zoom",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- multiple Time Groups / no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- multiple Time Groups / zooming the active panel never touches another Time Group's own panel",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- no valid target / a recording exists but no channel is displayed yet: still disabled",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- no valid target / no recordings at all: Y Zoom In/Out stay disabled",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- no valid target / the local controls have accessible action tooltips",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- single Time Group, two panels / Zoom Y In targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- single Time Group, two panels / Zoom Y Out targets only the selected (active) panel's axis",
+      "waveform-y-zoom.spec.js / Waveform pane-local Y Zoom -- single Time Group, two panels / switching the active panel via its header moves the Y Zoom target, never the other panel"
+    ]
+  },
+  "projections_equal": false,
+  "batch_completion": {
+    "baseline-browser": {
+      "state": "complete",
+      "exit_code": 1,
+      "seconds": 3192.1
+    },
+    "candidate-browser": {
+      "state": "complete",
+      "exit_code": 1,
+      "seconds": 2724.0
+    },
+    "candidate-wui": {
+      "state": "complete",
+      "exit_code": 0,
+      "seconds": 1039.5
+    },
+    "baseline-projection": {
+      "state": "complete",
+      "exit_code": 0,
+      "seconds": 30.1
+    },
+    "candidate-projection": {
+      "state": "complete",
+      "exit_code": 0,
+      "seconds": 29.5
+    },
+    "candidate-backend": {
+      "state": "complete",
+      "exit_code": 0,
+      "seconds": 3069.9
+    },
+    "baseline-backend": {
+      "state": "complete",
+      "exit_code": 0,
+      "seconds": 2383.2
+    }
+  },
+  "screenshots": [
+    {
+      "path": "waveform-axis-units-magnit-7c545--through-membership-changes-magnitude-angle.png",
+      "bytes": 74392,
+      "sha256": "7dc434ac14ffcd85d7015210bc77fe00180be89e18623a26355020e09e9e2bdb"
+    },
+    {
+      "path": "axis-Custom-dark-100.png",
+      "bytes": 88518,
+      "sha256": "73055e3d97db8cd6a1931170494bbfdc0279e407b18122f3f6cf0fedb6b1b4ba"
+    },
+    {
+      "path": "axis-Grouped-dark-100.png",
+      "bytes": 88143,
+      "sha256": "45dabdf4e5197e38e0e3b8cbc418ed0c9d6215be0bb2b5353ad1b74f78e15a61"
+    },
+    {
+      "path": "axis-Custom-dark-125.png",
+      "bytes": 99102,
+      "sha256": "a452828fba32318d1c2d98808a19a69560278d0b47c8ce5e260e2eb0cad3c157"
+    },
+    {
+      "path": "axis-Grouped-light-125.png",
+      "bytes": 91979,
+      "sha256": "e9f45d9a6bcee86b74830f16fb594e8b97df6af02cd1d9d95b6d952d5299f1e7"
+    },
+    {
+      "path": "axis-Grouped-light-100.png",
+      "bytes": 89051,
+      "sha256": "9474ed2fb2834bbea40832375e942ccf436841bcb818c4a8d6d2e5adea7edaa0"
+    },
+    {
+      "path": "axis-Separate-dark-125.png",
+      "bytes": 100794,
+      "sha256": "a9f695ce292e962b01497294472bd7e2378d9c2dae29665caca17f1d97a5146b"
+    },
+    {
+      "path": "axis-Grouped-dark-125.png",
+      "bytes": 90961,
+      "sha256": "7f70ceb7d4fa743af682b60db0aa4a75faa11ea0b4abf68032e18ebe07ecf091"
+    },
+    {
+      "path": "axis-Custom-light-125.png",
+      "bytes": 99943,
+      "sha256": "3b26f577d771087b8366ebb0aa738fe4ea6eeb80aa7d8a2fab24d005ccf8947d"
+    },
+    {
+      "path": "axis-Separate-light-100.png",
+      "bytes": 98148,
+      "sha256": "38670c036b72a7879142d1beb01741d0b2484fdd037e35d10f6e468e7734b584"
+    },
+    {
+      "path": "axis-Separate-dark-100.png",
+      "bytes": 97039,
+      "sha256": "f6d0c658bb8043d9dcf5e956f2960b53dfd531aecddaa859969f12472a785687"
+    },
+    {
+      "path": "axis-Custom-light-100.png",
+      "bytes": 89566,
+      "sha256": "53947dee52e68ff32f8b0f2753f0f449692bf556819cbdbe40cd791d03a4e85b"
+    },
+    {
+      "path": "axis-Separate-light-125.png",
+      "bytes": 101754,
+      "sha256": "ea6090daccdd0c1338caa3981d0583e28eece7c4cb6657cc81d4950aa249e944"
+    },
+    {
+      "path": "waveform-pane-drawer-clear-02a3b-eside-Annotations-in-Custom-annotations-custom.png",
+      "bytes": 63226,
+      "sha256": "0f5bd46b32beebf3a20d01abf8d195228bbc28fab2c0e430155b2c5d10e49cfe"
+    },
+    {
+      "path": "waveform-pane-drawer-clear-0fea6-side-Annotations-in-Grouped-annotations-grouped.png",
+      "bytes": 68981,
+      "sha256": "8a560bd2cc3f6c3f7c71960cde80288cbaf752e8d071d0af7b84d0df9fc2e07e"
+    },
+    {
+      "path": "waveform-pane-drawer-clear-404dc-ide-Annotations-in-Separate-annotations-separate.png",
+      "bytes": 69146,
+      "sha256": "3d4faf32da1a887753a0739858094eac48c6016e06f48a25082f7959f193cc4c"
+    },
+    {
+      "path": "Custom-dark-100-calculated.png",
+      "bytes": 16632,
+      "sha256": "df2c93e47551a4232a6320de625a194ce4dc5ed264209a0beac44cf58fc8ee9a"
+    },
+    {
+      "path": "Custom-dark-100-header.png",
+      "bytes": 6600,
+      "sha256": "d3abc216a13fcb56cade23076ce458ab7cbde75ad7dc96fd552d2354988735bb"
+    },
+    {
+      "path": "Custom-dark-100-legend.png",
+      "bytes": 4346,
+      "sha256": "a73a468dc65dcd9d73958b73c85f7267b27ca70a3b6339d7ec5edb412c4ef3ba"
+    },
+    {
+      "path": "Custom-dark-100-popover.png",
+      "bytes": 15933,
+      "sha256": "7307feff37bade70fabc4080e1458ab5de08ed06a6d207cec315ab73044ce570"
+    },
+    {
+      "path": "Custom-dark-100-workspace.png",
+      "bytes": 151092,
+      "sha256": "003d43c5b2c9351b6a32a44480faa86e1162c92d49d3bcdde94e685ba1b79145"
+    },
+    {
+      "path": "Custom-dark-125-calculated.png",
+      "bytes": 20550,
+      "sha256": "d533ad57c82df0f0562541590a40ccfb962ddcec0c9f73f2d91d43e94b87bf05"
+    },
+    {
+      "path": "Custom-dark-125-header.png",
+      "bytes": 8052,
+      "sha256": "63ff496a8855e558458846b34707ec3fe898d1b544d1b19d7bada0cf434cc133"
+    },
+    {
+      "path": "Custom-dark-125-legend.png",
+      "bytes": 7322,
+      "sha256": "e0f6178b9e0d1f961292bc976a4e6fafe4fb48269f1d525ca8896d3ac92074db"
+    },
+    {
+      "path": "Custom-dark-125-popover.png",
+      "bytes": 18537,
+      "sha256": "3e9948ac1e90f62fa76daec3303718fff3ec2536fe6bbddb6abb3063bcef458e"
+    },
+    {
+      "path": "Custom-dark-125-workspace.png",
+      "bytes": 116820,
+      "sha256": "781477c16dff51dfdb368f87252931b26d7626d54305e266a93c9e79f7fe09e9"
+    },
+    {
+      "path": "Custom-light-100-calculated.png",
+      "bytes": 16618,
+      "sha256": "9f015b6ea32054275d118aba24fc75183245a1eef0c2d70a433f1a3bbd0c768e"
+    },
+    {
+      "path": "Custom-light-100-header.png",
+      "bytes": 6513,
+      "sha256": "97d0abaca456b55c889fbe1afe83d86ccdfcf83af7585af0f3cde11ffd2e00fa"
+    },
+    {
+      "path": "Custom-light-100-legend.png",
+      "bytes": 4374,
+      "sha256": "88b0af1f68e575ffbf9c62f9be060fec36b8c9b15895a3b6083083519f11d690"
+    },
+    {
+      "path": "Custom-light-100-popover.png",
+      "bytes": 15845,
+      "sha256": "3474805e0057efac687bc506d61da160b1ed567a96ac4cdffa1193c02bbb6dfa"
+    },
+    {
+      "path": "Custom-light-100-workspace.png",
+      "bytes": 152629,
+      "sha256": "00099b148d5cbad70d3d51eb7cc5981a72df3444b02e4424ad134febc00ccb33"
+    },
+    {
+      "path": "Custom-light-125-calculated.png",
+      "bytes": 20542,
+      "sha256": "276a91d0a854cd39d5c0ef86990e51ad90157e2fbbe0b0872d80dc8a7cd38694"
+    },
+    {
+      "path": "Custom-light-125-header.png",
+      "bytes": 8077,
+      "sha256": "5b2197cfa85c3f5ebf8500f7cb16ecb3de97c386752fb22bf96ca83befda0c2f"
+    },
+    {
+      "path": "Custom-light-125-legend.png",
+      "bytes": 7320,
+      "sha256": "786b2d9fb02fcb6ee568ccf45d095a664b6a25adad27031d1f45cb8d93174661"
+    },
+    {
+      "path": "Custom-light-125-popover.png",
+      "bytes": 18538,
+      "sha256": "74b8b29036a2a85de77d1e80290a0addfdaae899b73b26e2257af25b9b56ec19"
+    },
+    {
+      "path": "Custom-light-125-workspace.png",
+      "bytes": 118753,
+      "sha256": "750db4ae7fc94e2d15165b9b76381d46da4a69319740b3c42c1115d31c10306d"
+    },
+    {
+      "path": "Grouped-dark-100-header.png",
+      "bytes": 4669,
+      "sha256": "9ac7c3c45419d63e81c39a6844ee864d816d8b89fca51d27968adff43096f371"
+    },
+    {
+      "path": "Grouped-dark-100-legend.png",
+      "bytes": 4323,
+      "sha256": "a0c162a3fbf2b818ac6854c58aa631aea764fcc71eca4bb80d762e05fdfff35e"
+    },
+    {
+      "path": "Grouped-dark-100-popover.png",
+      "bytes": 15909,
+      "sha256": "d02912c3e54bec75d2d7c106d8edb83b045b5b27498bdf049d4c8e7e728d7099"
+    },
+    {
+      "path": "Grouped-dark-100-workspace.png",
+      "bytes": 140023,
+      "sha256": "d7cef51e4f024b71ffd4a3d3ce71234d53841ff6931db224a11939830926e758"
+    },
+    {
+      "path": "Grouped-dark-125-header.png",
+      "bytes": 5710,
+      "sha256": "3358e58613857f82ff5f8791d47c300ba720be68484dcb2bcdb53337a795213d"
+    },
+    {
+      "path": "Grouped-dark-125-legend.png",
+      "bytes": 7335,
+      "sha256": "0b022d4e576b9150628e7d69d222b3dc25e862669cd2d61e93f0957cb3be719a"
+    },
+    {
+      "path": "Grouped-dark-125-popover.png",
+      "bytes": 18542,
+      "sha256": "7ab9d192f3f43ff1ad21341c0b253b180b948bf7ce8dcf714f7dafa600797cac"
+    },
+    {
+      "path": "Grouped-dark-125-workspace.png",
+      "bytes": 108972,
+      "sha256": "4f99ad375043ae891fb56dd4af1292e0d225a276a579f5830bab03dc4a48a092"
+    },
+    {
+      "path": "Grouped-light-100-header.png",
+      "bytes": 4500,
+      "sha256": "03f1a06f87054f31f6fe99e86325ccce81aabfe45fbf21d3683f69cdc64366f1"
+    },
+    {
+      "path": "Grouped-light-100-legend.png",
+      "bytes": 4354,
+      "sha256": "ae60b0852ac7e03d72cae8557b3af6abea44210ec558a005b90ce72f0884574b"
+    },
+    {
+      "path": "Grouped-light-100-popover.png",
+      "bytes": 15833,
+      "sha256": "1d3a665aebc0dbcd703ba54730c0d2e70bed2d8da54c2fa19ac7819600a02cb4"
+    },
+    {
+      "path": "Grouped-light-100-workspace.png",
+      "bytes": 141749,
+      "sha256": "c9f013ed6c23afb4d7783951763cc2beb2e59b7f380f78c9d773e5aedb11939f"
+    },
+    {
+      "path": "Grouped-light-125-header.png",
+      "bytes": 5814,
+      "sha256": "9d5503221b96ca61ce0757e0571550a1b61c6670ac9e5169580397a2c900caa4"
+    },
+    {
+      "path": "Grouped-light-125-legend.png",
+      "bytes": 7340,
+      "sha256": "d9c48bf585e2fad198a697740a544063e0496f05cd537344953ff1af909612f0"
+    },
+    {
+      "path": "Grouped-light-125-popover.png",
+      "bytes": 18544,
+      "sha256": "e031eaa47174fa8746569b8280dbe18c70874b94b5abd0eb1b0500d217ede1a0"
+    },
+    {
+      "path": "Grouped-light-125-workspace.png",
+      "bytes": 111886,
+      "sha256": "836e2f7719d59e8e9dc0ae866e464bbbd13388213f1ca11b5d35b8bb8be6a7bc"
+    },
+    {
+      "path": "Separate-dark-100-header.png",
+      "bytes": 4359,
+      "sha256": "c706a2233a62a061c2a086fce065172e3056174478c7fca5e1f40c94ee564640"
+    },
+    {
+      "path": "Separate-dark-100-legend.png",
+      "bytes": 888,
+      "sha256": "46ac1cc6dc2d727ef11cc28b286f64f4dcf0d2fc74a67b63d3edacb0c44e6bdc"
+    },
+    {
+      "path": "Separate-dark-100-workspace.png",
+      "bytes": 112342,
+      "sha256": "4a22054ab5d4d018d1e761d1b3f592eb93d4cceb627d1cf801a91788b6d3659f"
+    },
+    {
+      "path": "Separate-dark-125-header.png",
+      "bytes": 5762,
+      "sha256": "c2b976bded99ebf9e74f799f7c433137f346c71c290e19dc0de97b77f853ebc2"
+    },
+    {
+      "path": "Separate-dark-125-legend.png",
+      "bytes": 1112,
+      "sha256": "cc7bd8a660cbb8ce41d7691e70ff8fbabaa84dca535a5f30c59e65f1a597f3e5"
+    },
+    {
+      "path": "Separate-dark-125-workspace.png",
+      "bytes": 109840,
+      "sha256": "66b3ce5110b6f176b46515a107b9e4fd73c80a88f42faeeb02c99b827d91c9a6"
+    },
+    {
+      "path": "Separate-light-100-header.png",
+      "bytes": 4281,
+      "sha256": "16f9ecda7b136259410ff4efa1946a19e236d51cdf0f139c5e0d91777c823118"
+    },
+    {
+      "path": "Separate-light-100-legend.png",
+      "bytes": 898,
+      "sha256": "66557e369591827518702632053b56522d4ff4cb592804fbb9db3e6d16a77052"
+    },
+    {
+      "path": "Separate-light-100-workspace.png",
+      "bytes": 113903,
+      "sha256": "cafd3acb4aab6289de41d9db82b46dca539433e43a1e1e0268a086cda8f82f90"
+    },
+    {
+      "path": "Separate-light-125-header.png",
+      "bytes": 5724,
+      "sha256": "f45bde01d8443664deab863d372c3e34b3235eca1ad809b5574b6389cab7027c"
+    },
+    {
+      "path": "Separate-light-125-legend.png",
+      "bytes": 1127,
+      "sha256": "13f2a0f17f035557c0a40be10a13bea282f5c13ce938642a8586610dba688923"
+    },
+    {
+      "path": "Separate-light-125-workspace.png",
+      "bytes": 110575,
+      "sha256": "4326970370d9b0dee36e88691d231a0591c2e67f6163152673ef85287d906289"
+    },
+    {
+      "path": "waveform-pane-voltage-disp-5fa59-s-and-annotation-exclusions-synchronized-voltage-panes.png",
+      "bytes": 111337,
+      "sha256": "7a680018faeed2e98dfa18760c7d06078ecac5b282fc4b8db08d9eaf59bcb672"
+    },
+    {
+      "path": "waveform-pane-y-controls-l-959f7-ols-isolate-scale-in-custom-custom-dark.png",
+      "bytes": 77088,
+      "sha256": "2dc5486d5f33a51424969c09c05c3a1084e76a40664e260bc070119fb80213a0"
+    },
+    {
+      "path": "waveform-pane-y-controls-l-959f7-ols-isolate-scale-in-custom-custom-light.png",
+      "bytes": 77402,
+      "sha256": "f3e360d41cde2c9c3466bcc5494b4e5425bfaec22ac9cbfc51575bcdfa4d82fa"
+    },
+    {
+      "path": "waveform-pane-y-controls-l-b33de-s-isolate-scale-in-separate-separate-dark.png",
+      "bytes": 80102,
+      "sha256": "e663bd3eccaedb9bc68083d52bc4549b4738b913a23b07bc8f68304ac55d78f4"
+    },
+    {
+      "path": "waveform-pane-y-controls-l-b33de-s-isolate-scale-in-separate-separate-light.png",
+      "bytes": 79980,
+      "sha256": "71698a4d4e375a9430a779ef7b90292bfeafe009b08cf483891f2f7ea989f71f"
+    },
+    {
+      "path": "waveform-pane-y-controls-l-fba82-ls-isolate-scale-in-grouped-grouped-dark.png",
+      "bytes": 79897,
+      "sha256": "cf47af38bc17097d0bf4cdcd56b634f7a695517f545f21b073b45ba7031ee301"
+    },
+    {
+      "path": "waveform-pane-y-controls-l-fba82-ls-isolate-scale-in-grouped-grouped-light.png",
+      "bytes": 80421,
+      "sha256": "63652fa9c7b45c3fbc5530caa90ea55bcc0a46cbb76271556ea9a0b76f8dadbe"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-2fe67-ed-and-reachable-in-grouped-owner-grouped-dark.png",
+      "bytes": 201823,
+      "sha256": "6e51d6083264e88ed920fcb943fc4838222a90597a76a97e8938c9448cc950cd"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-2fe67-ed-and-reachable-in-grouped-owner-grouped-initial.png",
+      "bytes": 172518,
+      "sha256": "6412db3e6c1b9cd9d19afdd139104ab68b1e23e76cb192502878549cc42e9e25"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-2fe67-ed-and-reachable-in-grouped-owner-grouped-light.png",
+      "bytes": 172301,
+      "sha256": "187069dc578d4fd5fee6774d8c4b3ede5fb20e7eaaec76682846951027242fdf"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-40f16-d-and-reachable-in-separate-owner-separate-dark.png",
+      "bytes": 182296,
+      "sha256": "51cdce51de9737a39146a0e61693c0a3b35743e4527f537a59af0a31c38261e4"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-40f16-d-and-reachable-in-separate-owner-separate-initial.png",
+      "bytes": 161477,
+      "sha256": "494107615db245a584607d7b5ee76a1a64f9e54ea49e9696c586f55d988a2a1f"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-40f16-d-and-reachable-in-separate-owner-separate-light.png",
+      "bytes": 161188,
+      "sha256": "55173a465b537fcd9d0527ed48d1194aa889a8eee7786b0a3e5a2386ec07bf7a"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-42bf6-ted-and-reachable-in-custom-owner-custom-dark.png",
+      "bytes": 203701,
+      "sha256": "25b1cdf256f1d6acd2833528c2887e64b29f6bc72be3b27a26ae00d05a511f4d"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-42bf6-ted-and-reachable-in-custom-owner-custom-initial.png",
+      "bytes": 174952,
+      "sha256": "08bb83c878173d36b6d46e8725b4ce0bc36a008ec162d3521c678e29f5d28f5b"
+    },
+    {
+      "path": "waveform-pane-y-controls-o-42bf6-ted-and-reachable-in-custom-owner-custom-light.png",
+      "bytes": 174558,
+      "sha256": "74e013ec1f8072ae874576579812d2558e5064319825c09a80007ed427142aad"
+    },
+    {
+      "path": "header-1366-group-1-light-125.png",
+      "bytes": 6427,
+      "sha256": "7e4347c744a430676366ba88dbee5e4eb52f54758c84150c2d59a66be7a081a1"
+    },
+    {
+      "path": "header-1366-group-2-light-125.png",
+      "bytes": 6707,
+      "sha256": "2c8c853d7dc8a612f89b660c3d3f983b63e42f4ea2a6feace9ce65a5853ec28e"
+    },
+    {
+      "path": "header-1366-workspace-light-125.png",
+      "bytes": 102204,
+      "sha256": "4e468d56c42ea51cce607f7e17a58580c5ff95cca5cacb0a4371d07f00806484"
+    },
+    {
+      "path": "header-1280-group-1-light-125.png",
+      "bytes": 6365,
+      "sha256": "b55ff306f0fda1f03a9c66b8d113d645022b83ad20c1703c98e3d36550d67f13"
+    },
+    {
+      "path": "header-1280-group-2-light-125.png",
+      "bytes": 6666,
+      "sha256": "2a2d2bf1ad36b99b0d0627dc83671f89f9274e9fa18de94f3cb9fb5fc67b13a3"
+    },
+    {
+      "path": "header-1280-workspace-light-125.png",
+      "bytes": 107571,
+      "sha256": "d998739935dcf4ce5cbf91300a1b39579f3580ab3149895790bddc01d21b4520"
+    },
+    {
+      "path": "header-1366-group-1-dark-100.png",
+      "bytes": 5161,
+      "sha256": "43a058880c6afdfaa8fed34f6a8fac6e35396d2f705708cbd56abf32141fc31b"
+    },
+    {
+      "path": "header-1366-workspace-dark-100.png",
+      "bytes": 192617,
+      "sha256": "2388a5372a8952c6b3af8b1742b3d3aee9f9646671deae909dddd22490ea128a"
+    },
+    {
+      "path": "header-1280-group-1-dark-100.png",
+      "bytes": 5081,
+      "sha256": "11d154d7816d45e0876e4f3d1b22f0be73839630fac8dcca8c09ccd31b9a89f7"
+    },
+    {
+      "path": "header-1280-workspace-dark-100.png",
+      "bytes": 166766,
+      "sha256": "ce01b10f5b0ff0b5876f6db1fc1579b30ae0d86fd71971b4d4a6bb04638edf2b"
+    },
+    {
+      "path": "header-1280-sticky-second-time-group.png",
+      "bytes": 178875,
+      "sha256": "5050f2b1ed6373a27784c9cf45892bd6d2aab76bfc494c6b8d68bb88bd6894dd"
+    },
+    {
+      "path": "header-1280-group-1-dark-125.png",
+      "bytes": 6346,
+      "sha256": "d909052d5b2c7d34d815e08475b9c063c0dcce55586af1107314aa41f44ecadc"
+    },
+    {
+      "path": "header-1280-group-2-dark-125.png",
+      "bytes": 6700,
+      "sha256": "bb2da130a134df5ae2ae0ed8ff3e572d8904a34074b9189df89f3e42d3ba902f"
+    },
+    {
+      "path": "header-1280-workspace-dark-125.png",
+      "bytes": 106027,
+      "sha256": "8439c58590e16dfb7a841e44543d2a8db44a54f5340327f3507b88089143a478"
+    },
+    {
+      "path": "header-1280-wrapped-dark.png",
+      "bytes": 10048,
+      "sha256": "13e2d6646aedc69f3333524a7a58b46848d7c261b0c7df912e291d32757cc173"
+    },
+    {
+      "path": "header-1280-wrapped-light.png",
+      "bytes": 9949,
+      "sha256": "05051ce8b588220288d0c1dfde70f9c8a275cb3e64bcc6b5723509ea2f990a9f"
+    },
+    {
+      "path": "header-1366-group-1-light-100.png",
+      "bytes": 5096,
+      "sha256": "989b586ba346aa41a43004e99a71db46dbe497712c9a4798fbd257304f254c99"
+    },
+    {
+      "path": "header-1366-workspace-light-100.png",
+      "bytes": 189194,
+      "sha256": "d0defb8230719be1f42234a2eb4a4cebbd0432c92d2d44bc15261d9f1f92c9a7"
+    },
+    {
+      "path": "header-1366-group-1-dark-125.png",
+      "bytes": 6710,
+      "sha256": "adcd5a450b37f5aea93d39d573d98bff7c572f2ef19c327d4a00854d0715fe85"
+    },
+    {
+      "path": "header-1366-group-2-dark-125.png",
+      "bytes": 6481,
+      "sha256": "dd2e072121ab1e103bf5d004cafd55d19590239c85c500ace3aa7f6baf70e561"
+    },
+    {
+      "path": "header-1366-workspace-dark-125.png",
+      "bytes": 101704,
+      "sha256": "925e57e328f6fd13751f5be531d80f45ee3d11299e964cdc100814d7d7726c06"
+    },
+    {
+      "path": "header-1280-group-1-light-100.png",
+      "bytes": 5005,
+      "sha256": "23701e9a28c1532a50e2ffd45522dfd3d36141a34e8ad6b4d1ed73806fd296b6"
+    },
+    {
+      "path": "header-1280-workspace-light-100.png",
+      "bytes": 162702,
+      "sha256": "5d0b72dd352260c9b212d4cca77776a36e13729eb6b1900cbc1b2d837ba03f5e"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-1e3b6-r-icons-at-100-browser-zoom-after-toolbar-dark-100.png",
+      "bytes": 10699,
+      "sha256": "0a6da5e4e4e604792315943ef281bcc3eed31aed1c1ea03d8e1ae25cf71ca10d"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-1e3b6-r-icons-at-100-browser-zoom-integrated-custom-dark-100.png",
+      "bytes": 152609,
+      "sha256": "650f350d19b97a831310a909d3533da273332aefb0a1ed52b89c8c0ceabccfe5"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-1e3b6-r-icons-at-100-browser-zoom-voltage-header-dark-100.png",
+      "bytes": 4701,
+      "sha256": "88d5fa279944abc2c6bf44729445713cd9df4060c167edf7e8408d5323064664"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-3faf7-r-icons-at-125-browser-zoom-after-toolbar-light-125.png",
+      "bytes": 12029,
+      "sha256": "377219941fac0c7b0286ff554b621ad37c0c5336540423f184094a9dda7de645"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-3faf7-r-icons-at-125-browser-zoom-integrated-grouped-light-125.png",
+      "bytes": 164222,
+      "sha256": "b8d05f75ae509a2576d08cdc72c030f71a2c993b7016d2c6c3f690c2e12e1a14"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-3faf7-r-icons-at-125-browser-zoom-voltage-header-light-125.png",
+      "bytes": 5755,
+      "sha256": "64ba41638760b6fd2b15494a38c0546a3d1f276db160e3f415bb1d751eb2f549"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-40f91-r-icons-at-100-browser-zoom-after-toolbar-light-100.png",
+      "bytes": 9831,
+      "sha256": "710c46f6a9eaccf8959483b673197ab1c37a161ae47ce967c0d745530c10c788"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-40f91-r-icons-at-100-browser-zoom-integrated-grouped-light-100.png",
+      "bytes": 135126,
+      "sha256": "9b524a53c9123109fbab2e4e490fe5ebc0945eaed07fc324815d0b35f837379b"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-40f91-r-icons-at-100-browser-zoom-voltage-header-light-100.png",
+      "bytes": 4336,
+      "sha256": "d7e186b58be28b4be514afcbcf7fd58ebdd408b8ad72079fbc6b7150faeedbdc"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-55956-r-icons-at-125-browser-zoom-after-toolbar-light-125.png",
+      "bytes": 11921,
+      "sha256": "db5da47c9b36a8c273c0c5cd5caf201ff1d3e6ea78df50a23402883b84e9415e"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-55956-r-icons-at-125-browser-zoom-integrated-separate-light-125.png",
+      "bytes": 125559,
+      "sha256": "9317d1401aa5c107e60631a7c9f95e65b198ead4992e0d0f000be383b6705a8c"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-55956-r-icons-at-125-browser-zoom-voltage-header-light-125.png",
+      "bytes": 6088,
+      "sha256": "7d813def516c7ac360ae84879b3f4fe119769d3312d786bd3199a4ccbdadb8b5"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-70012-r-icons-at-125-browser-zoom-after-toolbar-dark-125.png",
+      "bytes": 14740,
+      "sha256": "e210a4555917d7e09f01d0fe7d89ec1aefdad82fa1de992452842a7df5820a4c"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-70012-r-icons-at-125-browser-zoom-integrated-custom-dark-125.png",
+      "bytes": 176174,
+      "sha256": "f27edad077ff810e7be26958d27fc747060066aa239c712825bf2ff7fcbac73c"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-70012-r-icons-at-125-browser-zoom-voltage-header-dark-125.png",
+      "bytes": 6130,
+      "sha256": "8cb14dba8ed389c99de9b1dd9ef71d3de27774dee422b7968ef3296cb5a60216"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-719f1-r-icons-at-100-browser-zoom-after-toolbar-light-100.png",
+      "bytes": 9729,
+      "sha256": "a70fb4fee85277731249972ae3bc37439ff9898cd73e093bf2f6b1f7e87de052"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-719f1-r-icons-at-100-browser-zoom-integrated-separate-light-100.png",
+      "bytes": 108394,
+      "sha256": "6fb7adefb4f958b92aa117e28510129344516a13c055ad32998e29d7416cb87c"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-719f1-r-icons-at-100-browser-zoom-voltage-header-light-100.png",
+      "bytes": 4718,
+      "sha256": "787186e0ba1c39be58df7bcaf6eab3f29bbe3a04a86188b0ca4aa7daa0013cb0"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-7a1d5-r-icons-at-125-browser-zoom-after-toolbar-light-125.png",
+      "bytes": 14960,
+      "sha256": "e08ccbe1205959ee334317ebcc03718a01e86e37383960a9c78a9aad021a442b"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-7a1d5-r-icons-at-125-browser-zoom-integrated-custom-light-125.png",
+      "bytes": 165647,
+      "sha256": "5e59fd9c1105eeb48863008d2f9e3aa0c72253e8cb2df6b3a7cba757e6f1a9cc"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-7a1d5-r-icons-at-125-browser-zoom-voltage-header-light-125.png",
+      "bytes": 6279,
+      "sha256": "10449b0fd523db5825675543c0427a363bbe92a698b5084bee9ba935767c8f05"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-7b8d1-r-icons-at-125-browser-zoom-after-toolbar-dark-125.png",
+      "bytes": 11742,
+      "sha256": "0c4925f6d15e3aa2bdfbe480aa30c7f0a830af1d325ebdeb81dd62c266c708f6"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-7b8d1-r-icons-at-125-browser-zoom-integrated-grouped-dark-125.png",
+      "bytes": 174072,
+      "sha256": "40842a9fd85828f9f2085b68fbe969ab01d4d9bb5059f84b26e42dba93b82dab"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-7b8d1-r-icons-at-125-browser-zoom-voltage-header-dark-125.png",
+      "bytes": 5539,
+      "sha256": "f3330b6ea270ed7927ebc4b8120cb5b0a27cfa3bb4abad322dc944d1fa50df1e"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-9c30f-r-icons-at-100-browser-zoom-after-toolbar-light-100.png",
+      "bytes": 10896,
+      "sha256": "148d403a6ea8319344e3917ee668be3ea118e17e5e6fb4ba6ee1b03f431f8666"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-9c30f-r-icons-at-100-browser-zoom-integrated-custom-light-100.png",
+      "bytes": 136582,
+      "sha256": "a9bebb303e10d02381755323c3e7f807373bea97bd2557f5d49da26a4af6b141"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-9c30f-r-icons-at-100-browser-zoom-voltage-header-light-100.png",
+      "bytes": 4718,
+      "sha256": "787186e0ba1c39be58df7bcaf6eab3f29bbe3a04a86188b0ca4aa7daa0013cb0"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-b5a89-r-icons-at-100-browser-zoom-after-toolbar-dark-100.png",
+      "bytes": 9585,
+      "sha256": "249b5ab97d0f259f0424d6d8af29fb1ddc93d5c15bb6c5cfb70821202372ed92"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-b5a89-r-icons-at-100-browser-zoom-integrated-separate-dark-100.png",
+      "bytes": 111401,
+      "sha256": "449fcc572fa0a797b5939cbb251a3052e19241f96fc3e62e6198fb0dbbbb62d7"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-b5a89-r-icons-at-100-browser-zoom-voltage-header-dark-100.png",
+      "bytes": 4701,
+      "sha256": "88d5fa279944abc2c6bf44729445713cd9df4060c167edf7e8408d5323064664"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-b77f1-r-icons-at-125-browser-zoom-after-toolbar-dark-125.png",
+      "bytes": 11665,
+      "sha256": "6c03e6218c772c6a52c22539db7b57192da8ba256520f37b2ecee6bbbd602608"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-b77f1-r-icons-at-125-browser-zoom-integrated-separate-dark-125.png",
+      "bytes": 130321,
+      "sha256": "d486d27614bff8fd611f7bf32566396124fc8cf6d582f55c47c61b70f7a6ec16"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-b77f1-r-icons-at-125-browser-zoom-voltage-header-dark-125.png",
+      "bytes": 6191,
+      "sha256": "7653c537078144f5c70a37b52bf934b1281fec698a115c75cf000e33e8458cb2"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-f96d3-r-icons-at-100-browser-zoom-after-toolbar-dark-100.png",
+      "bytes": 9642,
+      "sha256": "c4b12638138b6629f3666ec4b13ad85e88ac603d8dbbe9de192b17a7e9e11501"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-f96d3-r-icons-at-100-browser-zoom-integrated-grouped-dark-100.png",
+      "bytes": 151356,
+      "sha256": "8232577dcd4a1a2193ef3266ea4009bc381790e4aeb7ff14e55846f8a45edc1b"
+    },
+    {
+      "path": "waveform-toolbar-icons-aft-f96d3-r-icons-at-100-browser-zoom-voltage-header-dark-100.png",
+      "bytes": 4306,
+      "sha256": "5fccbcf2b5fa29be133dfa09b92589895a5ba1c52642002892c2ebd47a17adb0"
+    },
+    {
+      "path": "waveform-toolbar-visual-da-0c8a3-h-Custom-cursors-and-a-note-toolbar-dark-1366x768.png",
+      "bytes": 212716,
+      "sha256": "79e9c816e72e5f970e86dcba1511ec34b05d30ecce5f6cbfe7b8cd7bd63dd8b1"
+    },
+    {
+      "path": "waveform-toolbar-visual-da-c400c-h-Custom-cursors-and-a-note-toolbar-dark-1280x800.png",
+      "bytes": 211354,
+      "sha256": "6ac0e7e8a23a54d6cd9aa00f5d388ef30eb430c7d5c426821d051cb137b61a60"
+    },
+    {
+      "path": "waveform-toolbar-visual-li-4f810-h-Custom-cursors-and-a-note-toolbar-light-1280x800.png",
+      "bytes": 191761,
+      "sha256": "6acb8e33fdefd99a3036e2ce4e609757519d157c93ea99267da03f1b45a515be"
+    },
+    {
+      "path": "waveform-toolbar-visual-li-c866a-h-Custom-cursors-and-a-note-toolbar-light-1366x768.png",
+      "bytes": 191610,
+      "sha256": "0697604a3167ff5e6e8ef62a945e9290eb025a0c3e4855c1193a4c0669a9f424"
+    },
+    {
+      "path": "waveform-toolbar-visual-PU-84a0d-ection-entry-remain-visible-toolbar-pu-warning.png",
+      "bytes": 164475,
+      "sha256": "869765d67feada0c4837c01e57bc60c6eedd7a5387d8eeb83eff4bf11cdeb656"
+    }
+  ]
+}

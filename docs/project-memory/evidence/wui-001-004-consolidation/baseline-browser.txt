@@ -1,0 +1,1754 @@
+
+Running 417 tests using 1 worker
+
+(node:17464) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   1 browser-tests\analysis_related_waveforms.spec.js:105:3 › Related Waveforms -- shared panel structure › panel exists once, below Playback, never duplicated inside an analyzer (7.6s)
+  ok   2 browser-tests\analysis_related_waveforms.spec.js:120:3 › Related Waveforms -- shared panel structure › no active roles shows the compact empty state, never a blank plot (6.8s)
+  ok   3 browser-tests\analysis_related_waveforms.spec.js:134:3 › Related Waveforms -- shared panel structure › no visible 'Related Waveforms' title row -- VOLTAGE/CURRENT group labels alone identify the groups (2026-09-16 owner UI refinement) (6.7s)
+  ok   4 browser-tests\analysis_related_waveforms.spec.js:161:3 › Related Waveforms -- shared panel structure › Overcurrent current-only view: CURRENT group begins near the panel top, no empty title space above it (5.1s)
+  ok   5 browser-tests\analysis_related_waveforms.spec.js:173:3 › Related Waveforms -- shared panel structure › resize handle still exists and the panel remains vertically resizable after the title removal (6.8s)
+  ok   6 browser-tests\analysis_related_waveforms.spec.js:192:3 › Related Waveforms -- shared panel structure › the same shared panel (with its title-less markup) is reused verbatim by both Phasor and Overcurrent (6.6s)
+  ok   7 browser-tests\analysis_related_waveforms.spec.js:226:3 › Related Waveforms -- Phasor integration › all six roles visible -> Voltage shows Va/Vb/Vc, Current shows Ia/Ib/Ic (6.0s)
+  ok   8 browser-tests\analysis_related_waveforms.spec.js:241:3 › Related Waveforms -- Phasor integration › hiding Vb removes it from both the Phasor vector diagram and Related Waveforms (6.2s)
+  ok   9 browser-tests\analysis_related_waveforms.spec.js:266:3 › Related Waveforms -- Phasor integration › hiding Ib and Ic leaves only Ia in the Current waveform group (6.4s)
+  ok  10 browser-tests\analysis_related_waveforms.spec.js:282:3 › Related Waveforms -- Phasor integration › partial context (Va + Ia only) shows only those two traces (6.0s)
+  ok  11 browser-tests\analysis_related_waveforms.spec.js:315:3 › Related Waveforms -- Overcurrent integration › Phase A selected -> Current group shows Ia only, no Voltage group (4.8s)
+  ok  12 browser-tests\analysis_related_waveforms.spec.js:328:3 › Related Waveforms -- Overcurrent integration › switching Phase A -> Phase B updates the waveform from Ia to Ib (5.4s)
+  ok  13 browser-tests\analysis_related_waveforms.spec.js:347:3 › Related Waveforms -- Overcurrent integration › changing TMS does not refetch unrelated waveform data (5.5s)
+  ok  14 browser-tests\analysis_related_waveforms.spec.js:364:3 › Related Waveforms -- shared Playback cursor › Play advances the cursor; Pause settles it; both analyzers share the same wwPlayback.currentTime (7.8s)
+  ok  15 browser-tests\analysis_related_waveforms.spec.js:386:3 › Related Waveforms -- shared Playback cursor › Seek settles the cursor at the exact sought instant (6.3s)
+  ok  16 browser-tests\analysis_related_waveforms.spec.js:408:3 › Related Waveforms -- shared Playback cursor › Restart returns the cursor to the beginning (6.4s)
+  ok  17 browser-tests\analysis_related_waveforms.spec.js:430:3 › Related Waveforms -- shared Playback cursor › waveform-data network requests do not occur on every Playback tick (8.4s)
+  ok  18 browser-tests\analysis_related_waveforms.spec.js:448:3 › Related Waveforms -- analyzer switch › Phasor (Va+Ia visible) -> Overcurrent (Ia) -> back to Phasor restores Va+Ia, cursor time unchanged throughout (7.3s)
+  ok  19 browser-tests\analysis_related_waveforms.spec.js:508:3 › Related Waveforms -- analyzer switch › switching analyzers while Playback is running never fights over the shared waveform state (no re-fetch thrash) (8.0s)
+  ok  20 browser-tests\analysis_related_waveforms.spec.js:532:3 › Related Waveforms -- Engineering Context change › switching context clears the old bay's traces and shows the new one's (6.1s)
+  ok  21 browser-tests\analysis_related_waveforms.spec.js:580:3 › Related Waveforms -- resizable height (owner UAT addendum) › dragging the handle upward reduces height, downward increases it (6.7s)
+  ok  22 browser-tests\analysis_related_waveforms.spec.js:609:3 › Related Waveforms -- resizable height (owner UAT addendum) › min and max height bounds are enforced (7.2s)
+  ok  23 browser-tests\analysis_related_waveforms.spec.js:634:3 › Related Waveforms -- resizable height (owner UAT addendum) › height survives an analyzer switch (6.7s)
+  ok  24 browser-tests\analysis_related_waveforms.spec.js:660:3 › Related Waveforms -- resizable height (owner UAT addendum) › Playback cursor remains correctly aligned after a resize (6.5s)
+  ok  25 browser-tests\analysis_related_waveforms.spec.js:692:3 › Related Waveforms -- resizable height (owner UAT addendum) › resize never triggers a waveform refetch (6.6s)
+  ok  26 browser-tests\analysis_related_waveforms.spec.js:712:3 › Related Waveforms -- resizable height (owner UAT addendum) › resize handle uses row-resize cursor styling and a grip affordance (5.7s)
+  ok  27 browser-tests\analysis_related_waveforms.spec.js:723:3 › Related Waveforms -- resizable height (owner UAT addendum) › panel remains usable at narrow (small-screen) viewport width (5.6s)
+  ok  28 browser-tests\calculated-current-manual-pu.spec.js:119:3 › max Peak cannot cover Per-unit dialog controls or intercept saves (18.1s)
+  ok  29 browser-tests\calculated-current-manual-pu.spec.js:119:3 › min Peak cannot cover Per-unit dialog controls or intercept saves (16.9s)
+  ok  30 browser-tests\calculated-current-manual-pu.spec.js:205:1 › manual lifecycle updates arrays, legends, cursors and annotations without changing input authorities (12.7s)
+  ok  31 browser-tests\calculated-current-manual-pu.spec.js:230:3 › rejected manual configuration preserves accepted state and every PU sample {"value":"0","side":"primary"} (10.0s)
+  ok  32 browser-tests\calculated-current-manual-pu.spec.js:230:3 › rejected manual configuration preserves accepted state and every PU sample {"value":"4","side":"secondary"} (8.7s)
+  ok  33 browser-tests\calculated-current-manual-pu.spec.js:230:3 › rejected manual configuration preserves accepted state and every PU sample {"value":"4","side":"unknown"} (8.0s)
+  ok  34 browser-tests\calculated-current-manual-pu.spec.js:239:1 › manual and unassigned modes persist across page reload, with a manager entry and explicit Automatic reset (10.4s)
+  ok  35 browser-tests\calculated-current-manual-pu.spec.js:269:1 › obsolete waveform, cursor, callout and peak responses cannot restore a previous base after manual (11.4s)
+  ok  36 browser-tests\calculated-current-manual-pu.spec.js:269:1 › obsolete waveform, cursor, callout and peak responses cannot restore a previous base after unassigned (11.5s)
+  ok  37 browser-tests\calculated-current-manual-pu.spec.js:269:1 › obsolete waveform, cursor, callout and peak responses cannot restore a previous base after automatic (11.0s)
+  ok  38 browser-tests\calculated-current-manual-pu.spec.js:296:1 › a manual child owns its base independently of its parent, including Event Reconstruction (13.4s)
+  ok  39 browser-tests\calculated-current-manual-pu.spec.js:321:1 › a representable subnormal ampere base stays positive in provenance and the editor (8.7s)
+  ok  40 browser-tests\calculator-vi-phasors.spec.js:73:3 › Calculator -- V-I Phasors: tab navigation › V-I Phasors tab is the fourth tab and opens its own panel (3.5s)
+  ok  41 browser-tests\calculator-vi-phasors.spec.js:81:3 › Calculator -- V-I Phasors: tab navigation › switching away from V-I Phasors hides its panel (3.0s)
+  ok  42 browser-tests\calculator-vi-phasors.spec.js:98:3 › Calculator -- V-I Phasors: lagging load (default inputs) › shows P, Q, S, PF and angle on page load (3.1s)
+  ok  43 browser-tests\calculator-vi-phasors.spec.js:107:3 › Calculator -- V-I Phasors: lagging load (default inputs) › P is positive (absorbing active power) (3.1s)
+  ok  44 browser-tests\calculator-vi-phasors.spec.js:116:3 › Calculator -- V-I Phasors: lagging load (default inputs) › Q is positive (lagging / inductive) (3.3s)
+  ok  45 browser-tests\calculator-vi-phasors.spec.js:123:3 › Calculator -- V-I Phasors: lagging load (default inputs) › PF row shows lagging (3.1s)
+  ok  46 browser-tests\calculator-vi-phasors.spec.js:129:3 › Calculator -- V-I Phasors: lagging load (default inputs) › formula section is populated (3.1s)
+  ok  47 browser-tests\calculator-vi-phasors.spec.js:141:3 › Calculator -- V-I Phasors: leading load › current angle +30° gives negative Q and leading PF (3.5s)
+  ok  48 browser-tests\calculator-vi-phasors.spec.js:158:3 › Calculator -- V-I Phasors: unity PF › V and I at same angle gives unity PF label (3.4s)
+  ok  49 browser-tests\calculator-vi-phasors.spec.js:172:3 › Calculator -- V-I Phasors: reverse power › current 180° from voltage gives negative P and negative PF (3.3s)
+  ok  50 browser-tests\calculator-vi-phasors.spec.js:191:3 › Calculator -- V-I Phasors: zero current › I = 0 A gives PF undefined (3.5s)
+  ok  51 browser-tests\calculator-vi-phasors.spec.js:199:3 › Calculator -- V-I Phasors: zero current › I = 0 A gives S = 0 (3.5s)
+  ok  52 browser-tests\calculator-vi-phasors.spec.js:213:3 › Calculator -- V-I Phasors: angle wrapping › V at 370° and V at 10° give identical results with I at 10° (4.0s)
+  ok  53 browser-tests\calculator-vi-phasors.spec.js:236:3 › Calculator -- V-I Phasors: engineering unit conversion › 11 kV and 11000 V give the same S (1.6s)
+  ok  54 browser-tests\calculator-vi-phasors.spec.js:251:3 › Calculator -- V-I Phasors: engineering unit conversion › changing output unit re-renders without a new API call (same result, new scale) (2.1s)
+  ok  55 browser-tests\calculator-vi-phasors.spec.js:273:3 › Calculator -- V-I Phasors: invalid and missing inputs › blank magnitude shows prompt, not an error (3.7s)
+  ok  56 browser-tests\calculator-vi-phasors.spec.js:282:3 › Calculator -- V-I Phasors: invalid and missing inputs › partial (half-typed) number shows an error message (3.2s)
+  ok  57 browser-tests\calculator-vi-phasors.spec.js:296:3 › Calculator -- V-I Phasors: regression on existing tabs › Current tab still shows 437.4 A after visiting V-I tab (3.9s)
+  ok  58 browser-tests\calculator-vi-phasors.spec.js:304:3 › Calculator -- V-I Phasors: regression on existing tabs › P-Q-S tab still computes correctly after visiting V-I tab (3.6s)
+  ok  59 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:113:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a Primary recording uses its group's CT, read-only; the request carries neither a basis nor a CT (5.3s)
+  ok  60 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:148:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a Current-group Secondary setting overrides a Primary recording: no CT is applied and the override is disclosed (5.8s)
+  ok  61 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:167:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a recording-wide Secondary correction is used when no group overrides it (5.2s)
+  ok  62 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:181:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a missing CT blocks a Primary recording with the group's name and a Configure button, and keeps Related Waveforms (5.3s)
+  ok  63 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:203:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a missing CT does not matter for a Secondary recording (5.4s)
+  ok  64 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:217:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a recording that declares no side is blocked until an engineer defines it; Related Waveforms stay available (7.0s)
+  ok  65 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:244:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › Configure in Recording Details opens the current group; a CT saved there is used immediately on return (6.4s)
+  ok  66 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:267:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a side changed in Recording Details reaches the result on return, with no stale number (5.3s)
+  ok  67 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:290:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a direct API client cannot override Recording Details with a legacy basis or CT (3.5s)
+  ok  68 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:308:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › changing the phase re-reads the authority for that phase's own channel (4.6s)
+  ok  69 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:321:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a workspace reset keeps no authority, report or CT from the previous workspace (4.2s)
+  ok  70 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:338:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a response for a previous selection can never overwrite a newer one (4.9s)
+  ok  71 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:363:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a calculated current channel is blocked with an explicit not-available-yet limitation, no configure link, and Related Waveforms still work (5.9s)
+  ok  72 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:404:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › a Current group with mixed P/S declarations blocks until the engineer resolves it; the declarations and the discrepancy stay visible (8.1s)
+  ok  73 browser-tests\d5a_2b2c_1a_overcurrent_side.spec.js:445:3 › D5A-2B2C-1A recorded Overcurrent -- side and CT from Recording Details › Manual mode keeps its own CT inputs and hides the recorded block; the typed Manual CT is never used for the recording (5.2s)
+  ok  74 browser-tests\d5a_ctvt_authority.spec.js:87:5 › D5A authoritative CT/VT -- Impedance › a nominal-only VT is a valid auto-derived VT: shown normally, no warning, the calculation runs (4.3s)
+  ok  75 browser-tests\d5a_ctvt_authority.spec.js:106:5 › D5A authoritative CT/VT -- Impedance › a missing CT blocks with the specific message, a Configure button and keeps Related Waveforms (6.1s)
+  ok  76 browser-tests\d5a_ctvt_authority.spec.js:128:5 › D5A authoritative CT/VT -- Impedance › Configure in Recording Details opens the voltage group; a saved manual VT then takes precedence over the auto-derived one (6.9s)
+  ok  77 browser-tests\d5a_ctvt_authority.spec.js:149:5 › D5A authoritative CT/VT -- Impedance › an undeclared measurement side needs an explicit Recording basis, then sends the authoritative ratios (7.6s)
+  ok  78 browser-tests\d5a_ctvt_authority.spec.js:178:5 › D5A authoritative CT/VT -- Impedance › voltage and current on different declared sides are never converted (8.9s)
+  ok  79 browser-tests\d5a_ctvt_authority.spec.js:204:5 › D5A authoritative CT/VT -- Impedance › Manual mode keeps its own inputs and hides the recorded CT/VT block (5.6s)
+  ok  80 browser-tests\d5a_ctvt_authority.spec.js:87:5 › D5A authoritative CT/VT -- Distance › a nominal-only VT is a valid auto-derived VT: shown normally, no warning, the calculation runs (5.2s)
+  ok  81 browser-tests\d5a_ctvt_authority.spec.js:106:5 › D5A authoritative CT/VT -- Distance › a missing CT blocks with the specific message, a Configure button and keeps Related Waveforms (7.5s)
+  ok  82 browser-tests\d5a_ctvt_authority.spec.js:128:5 › D5A authoritative CT/VT -- Distance › Configure in Recording Details opens the voltage group; a saved manual VT then takes precedence over the auto-derived one (7.3s)
+  ok  83 browser-tests\d5a_ctvt_authority.spec.js:149:5 › D5A authoritative CT/VT -- Distance › an undeclared measurement side needs an explicit Recording basis, then sends the authoritative ratios (6.8s)
+  ok  84 browser-tests\d5a_ctvt_authority.spec.js:178:5 › D5A authoritative CT/VT -- Distance › voltage and current on different declared sides are never converted (6.6s)
+  ok  85 browser-tests\d5a_ctvt_authority.spec.js:204:5 › D5A authoritative CT/VT -- Distance › Manual mode keeps its own inputs and hides the recorded CT/VT block (5.9s)
+  ok  86 browser-tests\d5a_ui_002_group_details.spec.js:99:1 › Level 1: one selector, shown from the recording, correctable, with the contradiction disclosed (4.1s)
+  ok  87 browser-tests\d5a_ui_002_group_details.spec.js:126:1 › Level 1: mixed, undeclared and voltage/current-split recordings are shown honestly (4.8s)
+  ok  88 browser-tests\d5a_ui_002_group_details.spec.js:147:1 › Level 1: a partially declared recording is inferred until the engineer confirms it (3.3s)
+  ok  89 browser-tests\d5a_ui_002_group_details.spec.js:158:1 › a Voltage group shows only the voltage sections, a Current group only the current sections (3.8s)
+  ok  90 browser-tests\d5a_ui_002_group_details.spec.js:185:1 › every Group Details section is a card with its icon; unconfigured engineering values are shown as they are (3.9s)
+  ok  91 browser-tests\d5a_ui_002_group_details.spec.js:208:1 › existing Edit buttons keep working inside the cards (4.3s)
+  ok  92 browser-tests\d5a_ui_002_group_details.spec.js:231:1 › the Voltage and the Current group of one bay keep independent settings, saved to their own groups and kept after reload (5.5s)
+  ok  93 browser-tests\d5a_ui_002_group_details.spec.js:274:1 › Level 1 changes reach the groups that follow it, while a manually set group keeps its value (4.5s)
+  ok  94 browser-tests\d5a_ui_002_group_details.spec.js:297:1 › a group whose channels declare different sides is shown as unresolved, not guessed; choosing resolves only that group (3.8s)
+  ok  95 browser-tests\d5a_ui_002_group_details.spec.js:316:1 › a recording with no side evidence leaves every group unresolved until the engineer decides (4.0s)
+  ok  96 browser-tests\d5a_ui_002_group_details.spec.js:333:1 › two recordings keep separate group settings (4.9s)
+  ok  97 browser-tests\d5a_ui_002_group_details.spec.js:348:1 › a quick second choice wins and a slow save never lands on another group (6.4s)
+  ok  98 browser-tests\d5a_ui_002_group_details.spec.js:371:1 › a slow read for one recording cannot appear on another (6.9s)
+  ok  99 browser-tests\d5a_ui_002_group_details.spec.js:397:1 › lifecycle: deleting a group or a recording releases its setting, and a workspace reset leaves nothing behind (6.2s)
+  ok 100 browser-tests\d5a_ui_002_group_details.spec.js:433:1 › Recording Info is unchanged by the Group Details work (3.9s)
+  ok 101 browser-tests\d5a_ui_002_group_details.spec.js:451:3 › Group Details fits 1600px without clipping or horizontal overflow (3.4s)
+  ok 102 browser-tests\d5a_ui_002_group_details.spec.js:451:3 › Group Details fits 1280px without clipping or horizontal overflow (3.6s)
+  ok 103 browser-tests\d5a_ui_002_group_details.spec.js:451:3 › Group Details fits 900px without clipping or horizontal overflow (3.5s)
+  ok 104 browser-tests\d5a_ui_002_group_details.spec.js:451:3 › Group Details fits 600px without clipping or horizontal overflow (3.4s)
+  ok 105 browser-tests\distance_protection_analysis.spec.js:192:3 › Distance Protection v1 -- analyzer navigation › nav button activates the real panel, not the placeholder, and is a separate analyzer from Impedance Locus (2.7s)
+  ok 106 browser-tests\distance_protection_analysis.spec.js:204:3 › Distance Protection v1 -- empty workspace Manual mode (golden flow) › empty workspace: Manual auto-selected, Recording shown disabled with hint, analyzer fully usable with zero recordings (2.5s)
+  ok 107 browser-tests\distance_protection_analysis.spec.js:215:3 › Distance Protection v1 -- empty workspace Manual mode (golden flow) › golden AB loop flow: known phasors -> loop impedance |Z|=10 /_20deg, point shown, zone state shown (1.5s)
+  ok 108 browser-tests\distance_protection_analysis.spec.js:240:3 › Distance Protection v1 -- empty workspace Manual mode (golden flow) › BC and CA loops never require the unrelated third phase, and each produces the same golden |Z| (4.5s)
+  ok 109 browser-tests\distance_protection_analysis.spec.js:286:3 › Distance Protection v1 -- Manual zone-state geometry › Mho: a point exactly along the characteristic axis operates once reach exceeds |Z|, not before (5.6s)
+  ok 110 browser-tests\distance_protection_analysis.spec.js:321:3 › Distance Protection v1 -- Manual zone-state geometry › Quadrilateral: same loop, boundary derived from reactive/resistive reaches (5.3s)
+  ok 111 browser-tests\distance_protection_analysis.spec.js:351:3 › Distance Protection v1 -- Manual zone-state geometry › characteristic switching never changes the measured impedance, only the zone geometry/state (4.9s)
+  ok 112 browser-tests\distance_protection_analysis.spec.js:371:3 › Distance Protection v1 -- Manual zone-state geometry › multiple zones may operate simultaneously -- no priority suppression (4.9s)
+  ok 113 browser-tests\distance_protection_analysis.spec.js:391:3 › Distance Protection v1 -- Recording mode › Related Waveforms: AB loop pushes Va/Vb/Ia/Ib before pressing Play, then updates on loop switch (9.6s)
+  ok 114 browser-tests\distance_protection_analysis.spec.js:418:3 › Distance Protection v1 -- Recording mode › Engineering Context resolves loop phases from durable phase identity, never inferred from channel names (8.0s)
+  ok 115 browser-tests\distance_protection_analysis.spec.js:426:3 › Distance Protection v1 -- Recording mode › chronological locus reveal: current point visible, full future locus not visible until Playback progresses (9.2s)
+  ok 116 browser-tests\distance_protection_analysis.spec.js:439:3 › Distance Protection v1 -- Recording mode › Play advances the marker and grows the visible trail; zones stay static while it moves (10.4s)
+  ok 117 browser-tests\distance_protection_analysis.spec.js:481:3 › Distance Protection v1 -- Recording mode › zone state updates live at the current Playback point when a zone setting changes -- never latched (8.6s)
+  ok 118 browser-tests\distance_protection_analysis.spec.js:510:3 › Distance Protection v1 -- Recording mode › no full-locus or waveform refetch occurs during Playback ticks (10.9s)
+  ok 119 browser-tests\distance_protection_analysis.spec.js:535:5 › Distance Protection v1 -- R-X plot geometry › equal px-per-ohm scale and correct quadrant plotting at 1366px (3.6s)
+  ok 120 browser-tests\distance_protection_analysis.spec.js:535:5 › Distance Protection v1 -- R-X plot geometry › equal px-per-ohm scale and correct quadrant plotting at 1024px (3.7s)
+  ok 121 browser-tests\distance_protection_analysis.spec.js:574:3 › Distance Protection v1 -- R-X plot geometry › Mho zone boundary renders as a true <circle> (never an ellipse) (3.0s)
+  ok 122 browser-tests\distance_protection_analysis.spec.js:586:3 › Distance Protection v1 -- R-X plot geometry › Quadrilateral zone boundary renders as a 4-point <polygon> preserving the configured reaches (3.3s)
+  ok 123 browser-tests\distance_protection_analysis.spec.js:617:3 › Distance Protection v1 -- Recording/Manual state isolation › entering Manual values never overwrites the Recording-derived result, and vice versa (9.9s)
+  ok 124 browser-tests\event-reconstruction-annotations.spec.js:185:3 › Event Reconstruction annotations -- Waveform's toolset › Annotate menu, guidance and Annotations manager are Waveform's; ER-specific Fit Record is an icon tool (7.5s)
+  ok 125 browser-tests\event-reconstruction-annotations.spec.js:231:3 › Event Reconstruction annotations -- each type › Text Note: placed in a panel, edited in place, moved, Grouped/Combined, Relative/Absolute, persisted, deleted (14.2s)
+  ok 126 browser-tests\event-reconstruction-annotations.spec.js:329:3 › Event Reconstruction annotations -- each type › Callout: on the clicked trace's real sample and its own Y axis (Grouped, Combined); box and anchor drags (10.1s)
+  ok 127 browser-tests\event-reconstruction-annotations.spec.js:407:3 › Event Reconstruction annotations -- each type › Maximum / Minimum Peak: the targeted channel only (native and calculated), over the visible range, live (12.1s)
+  ok 128 browser-tests\event-reconstruction-annotations.spec.js:483:3 › Event Reconstruction annotations -- timing model › Text Notes keep their instant through reference changes; Callouts/Peaks follow their record's corrections (12.0s)
+  x  129 browser-tests\event-reconstruction-annotations.spec.js:552:3 › Event Reconstruction annotations -- manager and independence › the manager lists, focuses, edits and deletes Event Reconstruction annotations only; Waveform's are untouched (13.7s)
+(node:13192) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 130 browser-tests\event-reconstruction-cursors.spec.js:117:3 › Event Reconstruction Slice 3E -- cursor rendering and interaction › A and B are drawn at one reconstruction time on every panel, drag globally, and give a precise Δt (8.5s)
+  ok 131 browser-tests\event-reconstruction-cursors.spec.js:199:3 › Event Reconstruction Slice 3E -- cursor values › 5 kHz, 20 Hz and 1 Hz records each give their own nearest real sample; outside a record is 'No sample' (6.9s)
+  ok 132 browser-tests\event-reconstruction-cursors.spec.js:241:3 › Event Reconstruction Slice 3E -- cursor values › a gap shows 'No sample' per record; a calculated channel answers through its timing parent (6.4s)
+  ok 133 browser-tests\event-reconstruction-cursors.spec.js:277:3 › Event Reconstruction Slice 3E -- cursor rebasing › a reference switch and a reference correction keep the physical instant; a non-reference correction moves only its record (8.9s)
+  ok 134 browser-tests\event-reconstruction-cursors.spec.js:322:3 › Event Reconstruction Slice 3E -- cursors through navigation, selection and removal › zoom, pan and reset never move a cursor; selection changes and record removal keep positions (8.8s)
+  ok 135 browser-tests\event-reconstruction-cursors.spec.js:373:3 › Event Reconstruction Slice 3E -- cursors through navigation, selection and removal › two hours from the reference, cursors one 5 kHz sample apart stay distinct and exact (6.4s)
+  x  136 browser-tests\event-reconstruction-cursors.spec.js:404:3 › Event Reconstruction Slice 3E -- Waveform isolation › Event Reconstruction cursors never change Waveform cursors, values or state (13.7s)
+(node:3596) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 137 browser-tests\event-reconstruction-per-unit.spec.js:123:3 › Event Reconstruction Per-Unit Display -- ownership and selector › Units ENG|PU in Waveform's wording, Engineering by default; no per-unit configuration here; switching never writes a setting (7.6s)
+  ok 138 browser-tests\event-reconstruction-per-unit.spec.js:167:3 › Event Reconstruction Per-Unit Display -- values, grouping, unavailable › L-L/L-G regression: 275 kV L-L group base on an L-G channel -> 275/sqrt(3) kV, as Waveform's endpoints; quantity-aware axes in Grouped and Combined (11.8s)
+  ok 139 browser-tests\event-reconstruction-per-unit.spec.js:220:3 › Event Reconstruction Per-Unit Display -- values, grouping, unavailable › no per-unit basis: Voltage stays selected and PU unavailable; Current always engineering (DEC-212); Engineering restores Voltage (9.9s)
+  ok 140 browser-tests\event-reconstruction-per-unit.spec.js:278:3 › Event Reconstruction Per-Unit Display -- values, grouping, unavailable › calculated channels: an inheriting one shares the native pu axis; generic Voltage subtraction is PU unavailable (8.2s)
+  ok 141 browser-tests\event-reconstruction-per-unit.spec.js:305:3 › Event Reconstruction Per-Unit Display -- display only › ENG <-> PU changes no timing, cursor, annotation, viewport, reference, correction, active record, time display or view mode (11.2s)
+  ok 142 browser-tests\event-reconstruction-per-unit.spec.js:344:3 › Event Reconstruction Per-Unit Display -- display only › Y state is unit-mode-local: an Engineering manual range never reaches pu; Y drag works in pu; Autoscale / Reset act on the current unit only (11.3s)
+  ok 143 browser-tests\event-reconstruction-per-unit.spec.js:403:3 › Event Reconstruction Per-Unit Display -- cursors and annotations › cursor values: the same samples, pu values as Waveform's endpoint gives them, A/B/Δ all in pu (7.0s)
+  ok 144 browser-tests\event-reconstruction-per-unit.spec.js:433:3 › Event Reconstruction Per-Unit Display -- cursors and annotations › Callouts / Peaks: the same sample, the value in the current unit on the pu axis; PU unavailable says so; Text Notes unchanged (6.4s)
+  ok 145 browser-tests\event-reconstruction-plot.spec.js:20:3 › Event Reconstruction Slice 3C -- basic plotting › native and calculated analog channels plot in separate panels with Waveform-owned names and colours (6.3s)
+  ok 146 browser-tests\event-reconstruction-plot.spec.js:88:3 › Event Reconstruction Slice 3C -- basic plotting › panels follow the browser order, not the click order (5.7s)
+  ok 147 browser-tests\event-reconstruction-plot.spec.js:108:3 › Event Reconstruction Slice 3C -- record independence and time mapping › identical-timestamp records plot separately and a correction moves only its record (6.8s)
+  ok 148 browser-tests\event-reconstruction-plot.spec.js:140:3 › Event Reconstruction Slice 3C -- record independence and time mapping › absolute time enters once, a correction once, and a reference switch keeps pairwise alignment (9.6s)
+  ok 149 browser-tests\event-reconstruction-plot.spec.js:177:3 › Event Reconstruction Slice 3C -- record independence and time mapping › overlap, containment, separation and a large continuous gap keep physical time (9.9s)
+  ok 150 browser-tests\event-reconstruction-plot.spec.js:209:3 › Event Reconstruction Slice 3C -- mixed sampling and precision › 5 kHz, 20 Hz and 1 Hz records plot at their own sample spacing under Fit All (9.0s)
+  ok 151 browser-tests\event-reconstruction-plot.spec.js:234:3 › Event Reconstruction Slice 3C -- mixed sampling and precision › a 5 kHz record two hours from the reference keeps its 0.2 ms spacing through the local plotting origin (6.0s)
+  ok 152 browser-tests\event-reconstruction-plot.spec.js:296:3 › Event Reconstruction Slice 3C -- shared viewport and interaction › Fit All, staged zoom on the toolbar, pan clamped to Fit All, and double-click back to Fit All (10.7s)
+  ok 153 browser-tests\event-reconstruction-plot.spec.js:356:3 › Event Reconstruction Slice 3C -- shared viewport and interaction › selection changes recompute Fit All at Fit All and keep a manual zoom otherwise (6.2s)
+  ok 154 browser-tests\event-reconstruction-plot.spec.js:392:3 › Event Reconstruction Slice 3C -- fetch strategy › viewport maps to each source's native range; non-overlapping sources are skipped; budget and units pass through (6.9s)
+  ok 155 browser-tests\event-reconstruction-plot.spec.js:432:3 › Event Reconstruction Slice 3C -- fetch strategy › a long high-rate record arrives as an envelope and resolves to full samples when zoomed (4.6s)
+  ok 156 browser-tests\event-reconstruction-plot.spec.js:449:3 › Event Reconstruction Slice 3C -- fetch strategy › a superseded response never overwrites the newer view (6.8s)
+  ok 157 browser-tests\event-reconstruction-plot.spec.js:477:3 › Event Reconstruction Slice 3C -- empty, error and removed states › one failing channel shows its own error; a removed record's panel disappears (7.3s)
+  x  158 browser-tests\event-reconstruction-plot.spec.js:520:3 › Event Reconstruction Slice 3C -- Waveform isolation › plotting, zooming and panning never change Waveform state (14.0s)
+(node:28068) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 159 browser-tests\event-reconstruction.spec.js:113:3 › Event Reconstruction -- Slice 0 shell › menu entry sits immediately after Waveform and switches pages normally (5.5s)
+  ok 160 browser-tests\event-reconstruction.spec.js:160:3 › Event Reconstruction -- Slice 0 shell › empty workspace shows the left panel, the workspace shell and the toolbar (2.7s)
+  ok 161 browser-tests\event-reconstruction.spec.js:203:3 › Event Reconstruction -- Slice 0 shell › drag mode is fixed Pan, Event Reconstruction state only, and never changes Waveform (2.4s)
+  ok 162 browser-tests\event-reconstruction.spec.js:213:3 › Event Reconstruction -- Slice 0 shell › responsive Sources drawer opens the Event Reconstruction panel only (1.3s)
+  ok 163 browser-tests\event-reconstruction.spec.js:251:3 › Event Reconstruction -- shared signal catalogue (DEC-171) › calculated channels are read live from the catalogue: create, select, remove, navigate, no private copy (1.8s)
+  ok 164 browser-tests\event-reconstruction.spec.js:292:3 › Event Reconstruction -- independent records (DEC-128) › records with identical timestamps stay separate members while Waveform still groups them (8.1s)
+  ok 165 browser-tests\event-reconstruction.spec.js:350:3 › Event Reconstruction -- Slice 2A channel browser › member tree mirrors the Waveform tree and inherits names and colours read-only (6.8s)
+  ok 166 browser-tests\event-reconstruction.spec.js:415:3 › Event Reconstruction -- Slice 2A channel browser › channel selection is Event Reconstruction state only and never changes Waveform (8.6s)
+  ok 167 browser-tests\event-reconstruction.spec.js:484:3 › Event Reconstruction -- Slice 2A channel browser › an overlapping upload never stales a member; a removed record loses its tree and its selections are not plotted (8.0s)
+  ok 168 browser-tests\event-reconstruction.spec.js:525:3 › Event Reconstruction -- analog-only scope (DEC-127) › no digital channels in Event Reconstruction; Waveform digital browser and visibility unchanged (6.9s)
+  ok 169 browser-tests\event-reconstruction.spec.js:591:3 › Event Reconstruction -- Slice 2 selection workflow › records are listed chronologically; ineligible records show the backend reason and cannot be added (4.5s)
+  ok 170 browser-tests\event-reconstruction.spec.js:629:3 › Event Reconstruction -- Slice 2 selection workflow › create, update, change reference, correct, reset, re-enter and clear (7.3s)
+  ok 171 browser-tests\event-reconstruction.spec.js:692:3 › Event Reconstruction -- Slice 2 selection workflow › a removed record's member keeps its correction unapplied and is only removed explicitly (6.8s)
+  ok 172 browser-tests\event-reconstruction.spec.js:730:3 › Event Reconstruction -- Slice 2 selection workflow › a removed reference is never replaced automatically (6.1s)
+  ok 173 browser-tests\event-reconstruction.spec.js:754:3 › Event Reconstruction -- Slice 2 selection workflow › a large time gap between records is a warning, not a rejection (5.0s)
+  ok 174 browser-tests\event-reconstruction.spec.js:772:3 › Event Reconstruction -- Slice 2 selection workflow › never changes Waveform, Time Groups, Synchronise Sources or source data, and plots nothing until channels are selected (7.6s)
+  ok 175 browser-tests\event-reconstruction.spec.js:819:3 › Event Reconstruction -- Slice 3B time mapping › frontend mapping uses the backend total offset, resolves calculated parents and drops removed records (7.3s)
+  ok 176 browser-tests\impedance_analysis.spec.js:195:3 › Impedance Locus v1 -- Related Waveforms › Recording mode, Phase A: Va and Ia traces render before pressing Play (7.8s)
+  ok 177 browser-tests\impedance_analysis.spec.js:233:3 › Impedance Locus v1 -- Related Waveforms › switching Phase A -> Phase B updates the waveform traces from Va/Ia to Vb/Ib (10.0s)
+  ok 178 browser-tests\impedance_analysis.spec.js:254:3 › Impedance Locus v1 -- Related Waveforms › responsive: waveform traces and cursor remain visible at 1366px and 1024px (8.1s)
+  ok 179 browser-tests\impedance_analysis.spec.js:273:3 › Impedance Locus v1 -- chronological locus reveal › initial state: current point visible, full future locus not visible (7.6s)
+  ok 180 browser-tests\impedance_analysis.spec.js:292:3 › Impedance Locus v1 -- chronological locus reveal › Play advances the marker and grows the visible trail; Pause stops it (10.1s)
+  ok 181 browser-tests\impedance_analysis.spec.js:333:3 › Impedance Locus v1 -- chronological locus reveal › Seek forward immediately expands the trail to the sought position (8.8s)
+  ok 182 browser-tests\impedance_analysis.spec.js:360:3 › Impedance Locus v1 -- chronological locus reveal › Restart collapses the trail back to the start portion (9.9s)
+  ok 183 browser-tests\impedance_analysis.spec.js:388:3 › Impedance Locus v1 -- chronological locus reveal › At the end of the event, the entire cached locus becomes visible (10.0s)
+  ok 184 browser-tests\impedance_analysis.spec.js:405:3 › Impedance Locus v1 -- chronological locus reveal › no full-locus or waveform refetch occurs during Playback ticks (11.7s)
+  ok 185 browser-tests\impedance_analysis.spec.js:429:3 › Impedance Locus v1 -- Manual mode unaffected › Manual mode shows no Related Waveforms and no progressive trail (3.3s)
+  ok 186 browser-tests\overcurrent_analysis.spec.js:119:3 › Overcurrent Analysis v1 -- basic configuration › open Analysis -> choose Overcurrent -> choose context -> choose Phase A -> Standard Inverse -> pickup -> TMS -> curve displayed (4.5s)
+  ok 187 browser-tests\overcurrent_analysis.spec.js:144:3 › Overcurrent Analysis v1 -- basic configuration › primary basis applies the CT ratio of the Measurement Group (read-only, from Recording Details) (4.4s)
+  ok 188 browser-tests\overcurrent_analysis.spec.js:217:5 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › all settings controls stay within the panel and never overlap each other, at 1366px (5.2s)
+  ok 189 browser-tests\overcurrent_analysis.spec.js:217:5 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › all settings controls stay within the panel and never overlap each other, at 1024px (5.6s)
+  ok 190 browser-tests\overcurrent_analysis.spec.js:260:3 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › owner-mandated exact control CSS is applied (computed style, not just source) (4.4s)
+  ok 191 browser-tests\overcurrent_analysis.spec.js:276:3 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › selected text and numeric values remain fully visible, never clipped or overlapping the select arrow (5.0s)
+  ok 192 browser-tests\overcurrent_analysis.spec.js:317:3 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › Pickup current label is compact (no unit in the label text) with the unit shown inline next to the value (4.5s)
+  ok 193 browser-tests\overcurrent_analysis.spec.js:332:3 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › panel-width (container-query) responsive fallback stacks to one column when the card itself is forced narrow, independent of the browser viewport (4.6s)
+  ok 194 browser-tests\overcurrent_analysis.spec.js:355:3 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › chart viewport fields remain compact, functional, and unaffected by the settings-grid redesign (4.4s)
+  ok 195 browser-tests\overcurrent_analysis.spec.js:372:3 › Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT) › Live Values section renders correctly below the redesigned settings grid, with unchanged calculations (4.6s)
+  ok 196 browser-tests\overcurrent_analysis.spec.js:396:3 › Overcurrent Analysis v1 -- secondary-current case › secondary basis needs no CT fields and produces a valid operating point (4.4s)
+  ok 197 browser-tests\overcurrent_analysis.spec.js:409:3 › Overcurrent Analysis v1 -- Playback › Play advances the moving operating point and numeric values (5.5s)
+  ok 198 browser-tests\overcurrent_analysis.spec.js:432:3 › Overcurrent Analysis v1 -- Seek › Pause, then seek converges exactly on the sought instant (4.6s)
+  ok 199 browser-tests\overcurrent_analysis.spec.js:454:3 › Overcurrent Analysis v1 -- below pickup › pickup above the measured current shows no fake finite operating time (4.6s)
+  ok 200 browser-tests\overcurrent_analysis.spec.js:483:3 › Overcurrent Analysis v1 -- chart axes, grid, and ticks › default viewport (0.1->100 x, 0.1->100 s): full axis frame, major grid lines, and the owner's curated default major-tick set render (4.9s)
+  ok 201 browser-tests\overcurrent_analysis.spec.js:509:3 › Overcurrent Analysis v1 -- chart axes, grid, and ticks › above-pickup operating point and both dashed guides still render, curve math unchanged (4.5s)
+  ok 202 browser-tests\overcurrent_analysis.spec.js:536:3 › Overcurrent Analysis v1 -- threshold observation › sustained above-pickup current can surface the qualified threshold alert, never a relay-tripped claim (4.7s)
+  ok 203 browser-tests\overcurrent_analysis.spec.js:575:3 › Overcurrent Analysis v1 -- analyzer switch › Phasor at time t -> switch Overcurrent -> same shared Playback time t (4.2s)
+  ok 204 browser-tests\overcurrent_analysis.spec.js:602:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › default range inputs show 0.1/100/0.1/100 (4.5s)
+  ok 205 browser-tests\overcurrent_analysis.spec.js:613:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › zoom in narrows the viewport, zoom out widens it, reset returns exactly to default (4.6s)
+  ok 206 browser-tests\overcurrent_analysis.spec.js:635:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › zoom out is capped at the absolute bound (X 200, Y 1000) (5.6s)
+  ok 207 browser-tests\overcurrent_analysis.spec.js:653:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › custom range applies via inputs and shows the true selected minima, never a fake 0,0 origin (4.5s)
+  ok 208 browser-tests\overcurrent_analysis.spec.js:674:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › invalid range input is rejected and reverts to the last-known-good viewport (4.2s)
+  ok 209 browser-tests\overcurrent_analysis.spec.js:686:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › viewport changes never alter wwPlayback.currentTime or trigger a new curve fetch (5.0s)
+  ok 210 browser-tests\overcurrent_analysis.spec.js:714:3 › Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT) › above-pickup point outside a zoomed-in X range shows an edge indicator, never a false boundary point (4.4s)
+  ok 211 browser-tests\overcurrent_analysis.spec.js:741:3 › Overcurrent Analysis v1 -- true log axis defaults › Relay Current default X range tracks 0.1x pickup to 100x pickup (4.9s)
+  ok 212 browser-tests\overcurrent_analysis.spec.js:765:3 › Overcurrent Analysis v1 -- true log axis defaults › a very small pickup still uses a positive Relay Current X min (4.4s)
+  ok 213 browser-tests\overcurrent_analysis.spec.js:779:3 › Overcurrent Analysis v1 -- true log axis defaults › pickup changes never mutate the ALREADY-DISPLAYED viewport, only what Reset targets -- a manually zoomed/custom range survives a pickup change (4.7s)
+  ok 214 browser-tests\overcurrent_analysis.spec.js:809:3 › Overcurrent Analysis v1 -- true log axis defaults › a manually customized Y range is preserved across a TMS/characteristic change -- Playback ticks never touch it either (6.1s)
+  ok 215 browser-tests\overcurrent_analysis.spec.js:834:3 › Overcurrent Analysis v1 -- true log axis defaults › the Y-axis default/reset value stays fixed while Playback runs (5.9s)
+  ok 216 browser-tests\overcurrent_analysis.spec.js:848:3 › Overcurrent Analysis v1 -- true log axis defaults › zero backend requests are caused solely by a viewport/axis-default recalculation -- Reset, zoom, and axis-mode switch after a pickup change (5.0s)
+  ok 217 browser-tests\overcurrent_analysis.spec.js:919:3 › Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) › curve's first visible point enters exactly at the current Y Max, and updates immediately when Y Max changes (4.6s)
+  ok 218 browser-tests\overcurrent_analysis.spec.js:949:3 › Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) › curve's last visible point exits exactly at the current Y Min (4.6s)
+  ok 219 browser-tests\overcurrent_analysis.spec.js:974:3 › Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) › curve exits exactly at the X Max right boundary when it is reached before Y Min (4.3s)
+  ok 220 browser-tests\overcurrent_analysis.spec.js:989:3 › Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) › custom zoomed viewport re-aligns the curve's entry point to the new boundary (4.6s)
+  ok 221 browser-tests\overcurrent_analysis.spec.js:1012:3 › Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) › viewport-only changes never alter the live operating-point values (4.4s)
+  ok 222 browser-tests\overcurrent_analysis.spec.js:1026:3 › Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT) › SVG curve path visually starts near the plot's own top-left region when entering via Y Max (4.1s)
+  ok 223 browser-tests\overcurrent_analysis.spec.js:1048:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › default axis mode is Pickup Multiple (4.6s)
+  ok 224 browser-tests\overcurrent_analysis.spec.js:1058:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › both toggle buttons are genuinely visible (non-transparent color, visibly bordered group) in either state -- UAT root-cause regression (2026-09-16), carried forward through the chart-control-toolbar segmented-control redesign (4.6s)
+  ok 225 browser-tests\overcurrent_analysis.spec.js:1098:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › full UAT round trip: click Relay Current transforms every chart element, click back restores Pickup Multiple exactly (5.3s)
+  ok 226 browser-tests\overcurrent_analysis.spec.js:1163:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › switching to Relay Current changes the axis title and X range, never fetching a new curve or waveform (4.6s)
+  ok 227 browser-tests\overcurrent_analysis.spec.js:1188:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › switching back to Pickup Multiple restores the range as the user left it (4.1s)
+  ok 228 browser-tests\overcurrent_analysis.spec.js:1202:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › pickup boundary is fixed at M=1 in Pickup Multiple mode, unaffected by a pickup change (5.4s)
+  ok 229 browser-tests\overcurrent_analysis.spec.js:1227:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › Relay Current default viewport at pickup 0.8 A is exactly 0.08 -> 80 A (5.4s)
+  ok 230 browser-tests\overcurrent_analysis.spec.js:1248:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › Relay Current major tick values at pickup 0.8 A match the exact worked example (5.0s)
+  ok 231 browser-tests\overcurrent_analysis.spec.js:1275:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › switching pickup while in Relay Current mode updates ticks, boundary, and curve immediately (within the current viewport); Reset then reflects the new pickup (5.6s)
+  ok 232 browser-tests\overcurrent_analysis.spec.js:1330:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › relay-equivalent current stays constant across a pickup change while the multiple changes (5.7s)
+  ok 233 browser-tests\overcurrent_analysis.spec.js:1352:3 › Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement) › axis mode preference persists across Playback, phase change, and a Phasor round trip (5.4s)
+  ok 234 browser-tests\overcurrent_analysis.spec.js:1375:3 › Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) › Minor X and Minor Y are OFF by default and major gridlines still render (4.4s)
+  ok 235 browser-tests\overcurrent_analysis.spec.js:1386:3 › Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) › enabling Minor X shows the 1.2/1.4/1.6/1.8 subdivisions between 1 and 2, disabling removes them (4.6s)
+  ok 236 browser-tests\overcurrent_analysis.spec.js:1407:3 › Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) › Minor X and Minor Y toggle independently (4.9s)
+  ok 237 browser-tests\overcurrent_analysis.spec.js:1426:3 › Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) › toggling Minor X/Y causes zero backend requests (5.4s)
+  ok 238 browser-tests\overcurrent_analysis.spec.js:1444:3 › Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement) › grid toggle preferences persist across a Phasor round trip (5.3s)
+  ok 239 browser-tests\overcurrent_analysis.spec.js:1473:3 › Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) › Analysis -> Overcurrent is reachable and usable with zero recordings in the workspace (2.8s)
+  ok 240 browser-tests\overcurrent_analysis.spec.js:1484:3 › Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) › golden empty-workspace calculation: pickup 1.0 A secondary, CT 1200:1, manual 30000 A primary -> 25 A secondary, M=25x, zero recording-dependent requests (3.1s)
+  ok 241 browser-tests\overcurrent_analysis.spec.js:1543:3 › Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) › Recording mode with zero recordings shows a clean neutral state, never a crash or stale Manual result relabeled as Recording (3.2s)
+  ok 242 browser-tests\overcurrent_analysis.spec.js:1570:3 › Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) › no Engineering Context, no Time Group, no Playback: Manual result and chart point render with zero context-selection/time-group/playback dependency (3.3s)
+  ok 243 browser-tests\overcurrent_analysis.spec.js:1586:5 › Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) › at 1366px: empty-workspace Manual calculator fits cleanly, Recording shown disabled (not hidden), no overflow (2.9s)
+  ok 244 browser-tests\overcurrent_analysis.spec.js:1586:5 › Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction) › at 1024px: empty-workspace Manual calculator fits cleanly, Recording shown disabled (not hidden), no overflow (3.0s)
+  ok 245 browser-tests\overcurrent_analysis.spec.js:1651:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › defaults to Direct Current; the method toggle sits inside Manual Input and reuses the shared CT/relay controls (2.8s)
+  ok 246 browser-tests\overcurrent_analysis.spec.js:1661:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › reference case: 141 MVA at 150 % on 132 kV through CT 800/1 -> 211.5 MVA, 925.1 A primary, 1.156 A secondary (3.8s)
+  ok 247 browser-tests\overcurrent_analysis.spec.js:1691:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › changes to loading, rating, voltage and CT ratio update the currents automatically (4.5s)
+  ok 248 browser-tests\overcurrent_analysis.spec.js:1712:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › loading above 100 % is supported; a low loading reports below pickup (3.7s)
+  ok 249 browser-tests\overcurrent_analysis.spec.js:1725:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › invalid, empty, negative and zero inputs are rejected before any request, with a visible message (4.5s)
+  ok 250 browser-tests\overcurrent_analysis.spec.js:1762:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › a missing CT ratio still shows the derived primary current and asks for the CT (3.4s)
+  ok 251 browser-tests\overcurrent_analysis.spec.js:1773:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › switching methods preserves each method's values and never shows the other method's result (4.0s)
+  ok 252 browser-tests\overcurrent_analysis.spec.js:1801:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › a slow Equipment Loading response that lands after switching back to Direct Current is discarded (5.5s)
+  ok 253 browser-tests\overcurrent_analysis.spec.js:1823:3 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › Direct Current mode is unchanged: golden 30000 A primary through CT 1200/1 -> 25 A secondary (3.1s)
+  ok 254 browser-tests\overcurrent_analysis.spec.js:1835:5 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › at 1366px: the Equipment Loading block fits without horizontal overflow (3.5s)
+  ok 255 browser-tests\overcurrent_analysis.spec.js:1835:5 › Overcurrent Analysis v1 -- Manual Input: Equipment Loading input method › at 1024px: the Equipment Loading block fits without horizontal overflow (3.8s)
+  ok 256 browser-tests\overcurrent_analysis.spec.js:1868:3 › Overcurrent Analysis v1 -- the recorded side/CT block is shown only for the Recording input source › visible in Recording, hidden in both Manual methods, restored on return (5.8s)
+  ok 257 browser-tests\overcurrent_analysis.spec.js:1905:3 › Overcurrent Analysis v1 -- the recorded side/CT block is shown only for the Recording input source › CT inputs are Manual-only: hidden in Recording, and in the four Manual cases they follow the method and keep their values while hidden (6.6s)
+  ok 258 browser-tests\per-unit-display-synchronization.spec.js:127:3 › cursor values follow repeated ENG/PU transitions without movement ({"a":true,"b":true}) (5.8s)
+  ok 259 browser-tests\per-unit-display-synchronization.spec.js:127:3 › cursor values follow repeated ENG/PU transitions without movement ({"a":true,"b":false}) (6.3s)
+  ok 260 browser-tests\per-unit-display-synchronization.spec.js:127:3 › cursor values follow repeated ENG/PU transitions without movement ({"a":false,"b":true}) (6.2s)
+  x  261 browser-tests\per-unit-display-synchronization.spec.js:139:1 › latest Engineering selection wins over delayed PU metadata (30.5s)
+(node:22648) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  262 browser-tests\per-unit-display-synchronization.spec.js:153:1 › real Voltage Group save refreshes fixed cursors and rejects an old cursor response (30.5s)
+(node:26336) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  263 browser-tests\per-unit-display-synchronization.spec.js:177:1 › Source Default save and clear update fixed cursors through the real editor (30.5s)
+(node:28280) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 264 browser-tests\per-unit-display-synchronization.spec.js:199:1 › fresh cursor values are unavailable while the new basis response is pending (5.5s)
+  ok 265 browser-tests\per-unit-display-synchronization.spec.js:213:1 › an Engineering cursor response cannot overwrite the later PU values (4.6s)
+  ok 266 browser-tests\per-unit-display-synchronization.spec.js:226:1 › delayed PU waveform cannot override a later Engineering selection (4.3s)
+  x  267 browser-tests\per-unit-display-synchronization.spec.js:240:1 › rapid ENG-PU-ENG-PU intent wins even when the oldest metadata finishes last (30.5s)
+(node:9668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 268 browser-tests\per-unit-display-synchronization.spec.js:255:1 › failed optional metadata cannot prevent the requested PU display (5.3s)
+  ok 269 browser-tests\per-unit-display-synchronization.spec.js:266:3 › source removal cannot resurrect a delayed cursor result (4.4s)
+  ok 270 browser-tests\per-unit-display-synchronization.spec.js:266:3 › workspace reset cannot resurrect a delayed cursor result (3.7s)
+  x  271 browser-tests\per-unit-display-synchronization.spec.js:281:1 › reset during delayed PU metadata cannot restore the old mode or arrays (30.5s)
+(node:5368) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 272 browser-tests\per-unit-display-synchronization.spec.js:305:1 › a Voltage base edit refreshes linked Current while other groups keep their bases (7.5s)
+  ok 273 browser-tests\per-unit-display-synchronization.spec.js:330:1 › calculated Voltage, Current and Power cursors retain eligibility and units (7.2s)
+  x  274 browser-tests\per-unit-display-synchronization.spec.js:362:1 › a base edit keeps another source's values and avoids requests for it (30.5s)
+(node:15628) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 275 browser-tests\per-unit-display-synchronization.spec.js:386:1 › a changed cursor position rejects the earlier measurement response (4.8s)
+  ok 276 browser-tests\per-unit-display-synchronization.spec.js:407:1 › disabled cursors cause no measurement requests during unit switches (4.7s)
+  ok 277 browser-tests\per-unit-display-synchronization.spec.js:417:1 › unit round trips preserve all physical samples, cursor positions, t0 and viewport (5.1s)
+  ok 278 browser-tests\per-unit-display-synchronization.spec.js:439:3 › source removal discards a pending waveform display response (4.5s)
+  ok 279 browser-tests\per-unit-display-synchronization.spec.js:439:3 › workspace reset discards a pending waveform display response (4.2s)
+  ok 280 browser-tests\per-unit-display-synchronization.spec.js:453:1 › callout and peak readouts follow the same basis while their anchors stay fixed (5.0s)
+  ok 281 browser-tests\per-unit-display-synchronization.spec.js:490:3 › an old callout response cannot restore a previous display basis (4.8s)
+  ok 282 browser-tests\per-unit-display-synchronization.spec.js:490:3 › an old peak response cannot restore a previous display basis (4.7s)
+  ok 283 browser-tests\per-unit-display-synchronization.spec.js:526:1 › zoom remains responsive during a mode refresh and its latest arrays reach the plot (4.8s)
+  ok 284 browser-tests\per-unit-display-synchronization.spec.js:549:1 › Voltage cursor follows ENG/PU mode; Current cursor stays in kA; rapid switch rejects stale response (6.4s)
+  x  285 browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects true atomically, then accepts a practical base (30.5s)
+(node:28648) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  286 browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects false atomically, then accepts a practical base (30.5s)
+(node:28184) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  287 browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects overflowing SI base atomically, then accepts a practical base (30.5s)
+(node:27800) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  288 browser-tests\per-unit-numeric-integrity.spec.js:76:1 › valid tiny base reports numerical unavailability consistently in Waveform and ER and recovers (30.5s)
+(node:10316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 289 browser-tests\per-unit-reference-safety.spec.js:104:3 › known Secondary/Primary group retains ENG without CT scaling (8.3s)
+  ok 290 browser-tests\per-unit-reference-safety.spec.js:104:3 › known Secondary/Primary Source Default retains ENG without CT scaling (7.0s)
+  ok 291 browser-tests\per-unit-reference-safety.spec.js:117:1 › known Secondary/Secondary stays eligible under one established authority (6.9s)
+  ok 292 browser-tests\per-unit-reference-safety.spec.js:122:1 › historical Unknown is explicit beside arrays, cursors, legends and annotations across modes (8.7s)
+  ok 293 browser-tests\per-unit-reference-safety.spec.js:161:1 › accepted reference edits update all shared displays; rejected edit preserves state (10.1s)
+  ok 294 browser-tests\per-unit-reference-safety.spec.js:193:1 › an obsolete compatible waveform cannot restore PU after an incompatible accepted edit (7.5s)
+  ok 295 browser-tests\per-unit-reference-safety.spec.js:212:1 › ER uses its own mode and explicit Unknown-reference status without changing numerical arrays (8.1s)
+  x  296 browser-tests\per-unit-reference-safety.spec.js:231:1 › Current MG drawer shows no PU controls for standard Current group (DEC-212) (30.5s)
+(node:7544) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  297 browser-tests\per-unit-reference-safety.spec.js:265:1 › Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212) (30.6s)
+(node:21356) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 298 browser-tests\per-unit-reference-safety.spec.js:287:1 › raw Current callout and peak use engineering even when source channel is hidden (DEC-212) (6.5s)
+  ok 299 browser-tests\per-unit-reference-safety.spec.js:332:1 › legacy annotation without stored engineeringType falls back to ww.displayed lookup (DEC-212) (6.5s)
+  ok 300 browser-tests\per-unit-reference-safety.spec.js:374:1 › calculated Current peak follows ww.unitMode not engineering pending Slice 6D (DEC-212) (6.2s)
+  ok 301 browser-tests\per-unit-voltage-reference-safety.spec.js:104:1 › VLT-REF-001: voltage-config base_reference_side round-trips via API (4.2s)
+  ok 302 browser-tests\per-unit-voltage-reference-safety.spec.js:125:1 › VLT-REF-001: source-default voltage_base_reference_side round-trips via API (4.1s)
+  ok 303 browser-tests\per-unit-voltage-reference-safety.spec.js:139:1 › VLT-REF-001: incompatible PS=S/base=primary → PU unavailable badge, raw ENG waveform (4.2s)
+  ok 304 browser-tests\per-unit-voltage-reference-safety.spec.js:155:1 › VLT-REF-001: unverified PS=C/base=primary → Unverified reference badge, PU waveform (4.3s)
+  ok 305 browser-tests\per-unit-voltage-reference-safety.spec.js:167:1 › VLT-REF-001: compatible PS=P/base=primary → no badge, PU waveform (4.0s)
+  ok 306 browser-tests\per-unit-voltage-reference-safety.spec.js:178:1 › VLT-REF-001: side switch primary→secondary makes PS=S channel compatible (4.2s)
+  ok 307 browser-tests\per-unit-voltage-reference-safety.spec.js:195:1 › VLT-REF-001: raw waveform unchanged for incompatible, unverified, and compatible (8.5s)
+  ok 308 browser-tests\rd1-slice-d2-final.spec.js:86:1 › FIN-01: Reference Mode dropdown (Auto/Manual) is absent from the entire voltage edit form (3.6s)
+  ok 309 browser-tests\rd1-slice-d2-final.spec.js:101:1 › FIN-02: auto-detected line_to_ground displays read-only text in edit mode (3.4s)
+  ok 310 browser-tests\rd1-slice-d2-final.spec.js:116:1 › FIN-03: auto-detected line_to_line displays read-only text in edit mode (3.5s)
+  ok 311 browser-tests\rd1-slice-d2-final.spec.js:131:1 › FIN-04: editing kV only sends reference_mode=auto in PUT when group has auto-detected reference (5.3s)
+  ok 312 browser-tests\rd1-slice-d2-final.spec.js:170:1 › FIN-05: existing manual override auto-expands Correct voltage reference in Advanced (3.4s)
+  ok 313 browser-tests\rd1-slice-d2-final.spec.js:192:1 › FIN-06: Correct voltage reference select contains only L-L and L-N options (no Auto) (3.6s)
+  ok 314 browser-tests\rd1-slice-d2-final.spec.js:209:1 › FIN-07: selecting L-L in Correct voltage reference and Apply sends reference_mode=manual (5.3s)
+  ok 315 browser-tests\rd1-slice-d2-final.spec.js:254:1 › FIN-08: existing manual reference override survives a kV-only edit (5.1s)
+  ok 316 browser-tests\rd1-slice-d2-final.spec.js:299:1 › FIN-09: Advanced Reference Settings is collapsed by default for auto-detected group (3.5s)
+  ok 317 browser-tests\rd1-slice-d2-final.spec.js:311:1 › FIN-10: Advanced Reference Settings auto-opens when group has manual reference_mode (3.6s)
+  ok 318 browser-tests\rd1-slice-d2-final.spec.js:328:1 › FIN-11: Base reference side selector remains in Advanced Reference Settings (3.8s)
+  ok 319 browser-tests\rd1-slice-d2-final.spec.js:343:1 › FIN-12: Cancel closes edit mode and no PUT is sent (3.8s)
+  ok 320 browser-tests\rd1-slice-d3.spec.js:118:1 › D3-01: Equipment Rating section is visible for a current group (3.5s)
+  ok 321 browser-tests\rd1-slice-d3.spec.js:129:1 › D3-02: Edit button is present in the Equipment Rating section heading (4.1s)
+  ok 322 browser-tests\rd1-slice-d3.spec.js:141:1 › D3-03: clicking Edit enters edit mode with MVA input and voltage group selector (3.5s)
+  ok 323 browser-tests\rd1-slice-d3.spec.js:153:1 › D3-04: edit mode pre-fills equipment_mva from current group state (3.2s)
+  ok 324 browser-tests\rd1-slice-d3.spec.js:166:1 › D3-05: edit mode pre-selects equipment_linked_voltage_group_id in the voltage group selector (3.4s)
+  ok 325 browser-tests\rd1-slice-d3.spec.js:182:1 › D3-06: Cancel exits edit mode and returns to read mode (3.5s)
+  ok 326 browser-tests\rd1-slice-d3.spec.js:200:1 › D3-07: Apply sends PUT with update_equipment_metadata_only=true (5.0s)
+  ok 327 browser-tests\rd1-slice-d3.spec.js:235:1 › D3-08: Apply sends correct equipment_mva value in PUT body (4.9s)
+  ok 328 browser-tests\rd1-slice-d3.spec.js:266:1 › D3-09: Apply sends equipment_linked_voltage_group_id from the voltage group selector (5.2s)
+  ok 329 browser-tests\rd1-slice-d3.spec.js:301:1 › D3-10: after successful Apply, read mode shows updated equipment_mva from response (3.6s)
+  ok 330 browser-tests\rd1-slice-d3.spec.js:331:1 › D3-11: equipment_rated_current_ka is displayed in read mode when non-null (2.8s)
+  ok 331 browser-tests\rd1-slice-d3.spec.js:347:1 › D3-12: read mode shows 'Not specified' when equipment_mva is null (3.3s)
+  ok 332 browser-tests\rd1-slice-d4-vt-effective.spec.js:89:1 › VE-01: auto_nominal VT values are shown immediately when nominal kV is known (3.1s)
+  ok 333 browser-tests\rd1-slice-d4-vt-effective.spec.js:102:1 › VE-02: auto_nominal state shows 'Auto-derived from nominal voltage' note (3.4s)
+  ok 334 browser-tests\rd1-slice-d4-vt-effective.spec.js:113:1 › VE-03: auto_nominal state does NOT show a 'Suggested' label (3.2s)
+  ok 335 browser-tests\rd1-slice-d4-vt-effective.spec.js:124:1 › VE-04: auto_nominal state shows ratio as '275 kV / 110 V' (not colon notation) (3.3s)
+  ok 336 browser-tests\rd1-slice-d4-vt-effective.spec.js:137:1 › VE-05: Edit button prefills primary kV and secondary V from auto_nominal effective values (3.5s)
+  ok 337 browser-tests\rd1-slice-d4-vt-effective.spec.js:152:1 › VE-06: manual VT shows values and no 'Auto-derived from nominal voltage' note (3.5s)
+  ok 338 browser-tests\rd1-slice-d4-vt-effective.spec.js:173:1 › VE-07: Edit prefills from manual effective values (vt_effective_primary_v / secondary_v) (3.8s)
+  ok 339 browser-tests\rd1-slice-d4-vt-effective.spec.js:196:1 › VE-08: unresolved nominal (no effective values) shows 'Not configured' (4.1s)
+  ok 340 browser-tests\rd1-slice-d4-vt-effective.spec.js:214:1 › VE-09: applying VT saves as manual and 'Auto-derived from nominal voltage' note disappears (4.1s)
+  ok 341 browser-tests\rd1-slice-d4-vt-effective.spec.js:253:1 › VE-10: 'Remove VT configuration' button appears in edit mode only when vt_authority is manual (3.6s)
+  ok 342 browser-tests\rd1-slice-d4-vt-effective.spec.js:272:1 › VE-11: 'Remove VT configuration' button is absent in edit mode when authority is auto_nominal (3.3s)
+  ok 343 browser-tests\rd1-slice-d4-vt-effective.spec.js:283:1 › VE-12: live ratio display shows 'X kV / Y V' format while editing (3.7s)
+  ok 344 browser-tests\recording-details-toolbar.spec.js:18:1 › Recording Details toolbar: search input is full-width, not collapsed (3.1s)
+  ok 345 browser-tests\recording-details-toolbar.spec.js:56:1 › Recording Details toolbar: search input is full-width in dark theme (2.6s)
+  ok 346 browser-tests\time-reference-interpretation.spec.js:25:3 › UTC › interpret once: automatic Waveform alignment, shared consumers, raw reset and reload (9.7s)
+  ok 347 browser-tests\time-reference-interpretation.spec.js:25:3 › America/New_York › interpret once: automatic Waveform alignment, shared consumers, raw reset and reload (10.9s)
+  ok 348 browser-tests\time-reference-interpretation.spec.js:25:3 › Asia/Kuala_Lumpur › interpret once: automatic Waveform alignment, shared consumers, raw reset and reload (10.2s)
+  ok 349 browser-tests\timing-authority-invalidation.spec.js:4:1 › retained calculated result rejects raw reset and a new page session (5.1s)
+  ok 350 browser-tests\timing-authority-invalidation.spec.js:71:1 › timing invalidation clears Impedance and Sequence but retains unrelated results (2.4s)
+  ok 351 browser-tests\timing-authority-invalidation.spec.js:86:3 › Impedance ignores an in-flight result completed after timing invalidation (2.1s)
+  ok 352 browser-tests\timing-authority-invalidation.spec.js:86:3 › Sequence ignores an in-flight result completed after timing invalidation (2.0s)
+  ok 353 browser-tests\timing-authority-invalidation.spec.js:116:1 › transitive catalogue timing and related waveform caches follow every input (2.5s)
+  ok 354 browser-tests\timing-authority-invalidation.spec.js:135:1 › shared Waveform and reconstruction transport rejects old timing even without abort (2.2s)
+  ok 355 browser-tests\timing-authority-invalidation.spec.js:153:1 › obsolete Impedance locus response cannot refill its invalidated cache (2.2s)
+  ok 356 browser-tests\timing-authority-invalidation.spec.js:172:1 › reconstruction timing invalidates only affected per-unit resolutions (2.2s)
+  ok 357 browser-tests\timing-authority-invalidation.spec.js:193:1 › hidden recording results invalidate while independent manual results survive (2.6s)
+  ok 358 browser-tests\timing-authority-invalidation.spec.js:207:1 › calculated preview clears affected traces and keeps unrelated plotted arrays (2.4s)
+  ok 359 browser-tests\timing-authority-invalidation.spec.js:226:1 › Compliance rejects late readiness and clears calculated traces after a dependency reset (2.3s)
+  ok 360 browser-tests\timing-authority-invalidation.spec.js:250:1 › obsolete transport releases its busy marker after the selected context moves away (2.6s)
+  ok 361 browser-tests\ui_rec_001_recording_info.spec.js:58:1 › metadata is one bordered two-column card with a divider, real values and no overflow (3.1s)
+  ok 362 browser-tests\ui_rec_001_recording_info.spec.js:87:1 › Measurement Side is the approved heading, description and pill control only (3.1s)
+  ok 363 browser-tests\ui_rec_001_recording_info.spec.js:110:1 › Level 1 selection, correction and its disclosure still work and are saved through the existing API (3.9s)
+  ok 364 browser-tests\ui_rec_001_recording_info.spec.js:121:1 › an undeclared recording still asks for a side (unresolved evidence is not hidden) (3.2s)
+  ok 365 browser-tests\ui_rec_001_recording_info.spec.js:127:1 › Per-unit Configuration card shows the real warning, and Review affected groups navigates (3.7s)
+  ok 366 browser-tests\ui_rec_001_recording_info.spec.js:141:1 › the Per-unit Configuration card is there on the first Recording Info load, with no loop and no request of its own (4.7s)
+  ok 367 browser-tests\ui_rec_001_recording_info.spec.js:173:1 › groups arriving late never pull the engineer out of Group Details or onto another recording (5.5s)
+  ok 368 browser-tests\ui_rec_001_recording_info.spec.js:189:1 › header and tabs keep their behaviour; Group Details keeps its own layout (3.2s)
+  ok 369 browser-tests\ui_rec_001_recording_info.spec.js:209:3 › no horizontal overflow or clipping at 1600px (3.1s)
+  ok 370 browser-tests\ui_rec_001_recording_info.spec.js:209:3 › no horizontal overflow or clipping at 1280px (3.1s)
+  ok 371 browser-tests\ui_rec_001_recording_info.spec.js:209:3 › no horizontal overflow or clipping at 1000px (3.2s)
+  ok 372 browser-tests\ui_rec_001_recording_info.spec.js:209:3 › no horizontal overflow or clipping at 900px (3.2s)
+  ok 373 browser-tests\ui_rec_001_recording_info.spec.js:209:3 › no horizontal overflow or clipping at 640px (3.1s)
+  ok 374 browser-tests\waveform-top-toolbar-migration.spec.js:146:3 › Waveform top toolbar -- controls present and complete › Zoom X/Y, Autoscale X/Y and A/B Cursors all render in the page-level toolbar (2.5s)
+  ok 375 browser-tests\waveform-top-toolbar-migration.spec.js:153:3 › Waveform top toolbar -- controls present and complete › no recordings loaded: the complete toolbar still renders, these controls stay visible but disabled (2.7s)
+  x  376 browser-tests\waveform-top-toolbar-migration.spec.js:174:3 › Waveform top toolbar -- controls present and complete › a recording exists but no channel is displayed yet: still disabled (13.2s)
+(node:29376) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  377 browser-tests\waveform-top-toolbar-migration.spec.js:185:3 › Waveform top toolbar -- controls present and complete › once a channel is displayed, all five enable together, targeting the same active Time Group (13.4s)
+(node:22664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  378 browser-tests\waveform-top-toolbar-migration.spec.js:203:3 › Waveform top toolbar -- per-Time-Group duplicate controls removed › SUPERSEDED: the local canvas toolbar no longer shows Zoom/Autoscale/Cursor/t0/Sync controls at all -- a later Waveform toolbar refinement ticket moved t0 out the same way and removed Synchronize Sources outright; see waveform-toolbar-t0-sync-refinement.spec.js for that ticket's own full coverage (13.6s)
+(node:19596) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  379 browser-tests\waveform-top-toolbar-migration.spec.js:221:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › Zoom X In/Out act on the active Time Group only; X range changes, Y stays (14.3s)
+(node:28428) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  380 browser-tests\waveform-top-toolbar-migration.spec.js:240:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › Autoscale X restores the active Time Group's own full bounds, never another group's (14.7s)
+(node:22948) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  381 browser-tests\waveform-top-toolbar-migration.spec.js:259:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › no explicit selection: Zoom X falls back to ww.panels[0]'s own Time Group, matching Zoom Y's own fallback (14.0s)
+(node:28700) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  382 browser-tests\waveform-top-toolbar-migration.spec.js:269:3 › Waveform top toolbar -- A/B Cursors targeting › toggling A/B Cursors affects only the active Time Group; never every group at once (14.3s)
+(node:27948) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  383 browser-tests\waveform-top-toolbar-migration.spec.js:297:3 › Waveform top toolbar -- A/B Cursors targeting › the button's own aria-pressed follows the active target when switched, no stale state (13.8s)
+(node:25904) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  384 browser-tests\waveform-top-toolbar-migration.spec.js:308:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › Autoscale Y resets only the selected Y-axis; the other two panels in the same Time Group are untouched (13.1s)
+(node:28572) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  385 browser-tests\waveform-top-toolbar-migration.spec.js:348:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › other Time Groups remain unaffected by Autoscale Y (15.2s)
+(node:25708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  386 browser-tests\waveform-top-toolbar-migration.spec.js:362:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › no explicit selection: Autoscale Y falls back to ww.panels[0], the exact same panel Zoom Y falls back to (15.1s)
+(node:30432) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  387 browser-tests\waveform-top-toolbar-migration.spec.js:388:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › Zoom Y and Autoscale Y resolve exactly the same target when the active panel switches (14.2s)
+(node:28208) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 388 browser-tests\waveform-top-toolbar-migration.spec.js:400:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › no valid Y-axis: Autoscale Y stays visible but disabled, matching Zoom Y exactly (3.9s)
+  ok 389 browser-tests\waveform-top-toolbar-migration.spec.js:411:3 › Waveform top toolbar -- Y-axis target readout › no data: readout shows 'Y: Select axis' (3.6s)
+  x  390 browser-tests\waveform-top-toolbar-migration.spec.js:420:3 › Waveform top toolbar -- Y-axis target readout › the first valid Waveform axis becomes the fallback readout target (14.2s)
+(node:9824) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  391 browser-tests\waveform-top-toolbar-migration.spec.js:428:3 › Waveform top toolbar -- Y-axis target readout › readout updates when another Y-axis becomes active (15.2s)
+(node:7956) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  392 browser-tests\waveform-top-toolbar-migration.spec.js:438:3 › Waveform top toolbar -- Y-axis target readout › Zoom Y affects exactly the axis shown in the readout (14.7s)
+(node:17748) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  393 browser-tests\waveform-top-toolbar-migration.spec.js:455:3 › Waveform top toolbar -- Y-axis target readout › Autoscale Y affects exactly the same axis shown in the readout (14.8s)
+(node:28276) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  394 browser-tests\waveform-top-toolbar-migration.spec.js:481:3 › Waveform top toolbar -- Y-axis target readout › removing the active axis selects the correct fallback; no stale label remains (15.8s)
+(node:30312) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  395 browser-tests\waveform-top-toolbar-migration.spec.js:501:3 › Waveform top toolbar -- Y-axis target readout › clearing the workspace resets the readout to the empty state (14.2s)
+(node:2424) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  396 browser-tests\waveform-top-toolbar-migration.spec.js:510:3 › Waveform top toolbar -- Y-axis target readout › no stale label remains after switching the active Time Group (15.1s)
+(node:29788) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 397 browser-tests\waveform-top-toolbar-migration.spec.js:528:3 › Event Reconstruction -- active axis readout no regression › wwErActiveAxisReadout keeps its own behaviour, untouched by Waveform's new readout (6.0s)
+  ok 398 browser-tests\waveform-top-toolbar-migration.spec.js:541:3 › Waveform top toolbar -- spacing fix (no empty group between Time and Unit Mode) › Time Display and Unit Mode sit with normal single-separator spacing, both when the hidden Detect Event button is absent and if it were present (3.1s)
+  x  399 browser-tests\waveform-top-toolbar-migration.spec.js:560:3 › Waveform top toolbar -- Per-Unit Settings icon › renders the new pu_settings.svg asset, no broken path, same handler/tooltip/position (12.7s)
+(node:3844) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  400 browser-tests\waveform-top-toolbar-migration.spec.js:579:3 › Waveform top toolbar -- Per-Unit Settings icon › renders correctly in dark theme too (30.5s)
+(node:3432) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 401 browser-tests\waveform-top-toolbar-migration.spec.js:591:3 › Waveform top toolbar -- Clear Waveforms restored to the left operational group › visible and disabled with no recordings; the complete toolbar stays stable (3.8s)
+  ok 402 browser-tests\waveform-top-toolbar-migration.spec.js:602:3 › Waveform top toolbar -- Clear Waveforms restored to the left operational group › sits on the left, after Annotations and before the right-aligned view/layout group (2.8s)
+  x  403 browser-tests\waveform-top-toolbar-migration.spec.js:620:3 › Waveform top toolbar -- Clear Waveforms restored to the left operational group › enables once a waveform is displayed; clears only the displayed panel, never the source recording (13.9s)
+(node:13940) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 404 browser-tests\waveform-top-toolbar-migration.spec.js:635:3 › Waveform top toolbar -- Clear Waveforms restored to the left operational group › no duplicate Clear control remains anywhere else in the toolbar (3.4s)
+  ok 405 browser-tests\waveform-top-toolbar-migration.spec.js:642:3 › Event Reconstruction -- spacing/icon/Clear Waveforms changes no regression › ER's own toolbar is unaffected (3.7s)
+  x  406 browser-tests\waveform-top-toolbar-migration.spec.js:658:3 › Waveform top toolbar -- themes, layout, console › no duplicated controls document-wide; both themes; narrower viewport; no console errors (13.9s)
+(node:30264) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 407 browser-tests\waveform-top-toolbar-migration.spec.js:677:3 › Event Reconstruction -- no regression › its own global Zoom X/Autoscale X/A-B-Cursors controls still work as before (5.3s)
+  x  408 browser-tests\waveform-y-zoom.spec.js:147:3 › Waveform global Y Zoom -- single Time Group, two panels › Zoom Y In targets only the selected (active) panel's axis (14.2s)
+(node:15336) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  409 browser-tests\waveform-y-zoom.spec.js:171:3 › Waveform global Y Zoom -- single Time Group, two panels › Zoom Y Out targets only the selected (active) panel's axis (14.1s)
+(node:28944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  410 browser-tests\waveform-y-zoom.spec.js:192:3 › Waveform global Y Zoom -- single Time Group, two panels › switching the active panel via its header moves the Y Zoom target, never the other panel (14.1s)
+(node:22224) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  411 browser-tests\waveform-y-zoom.spec.js:213:3 › Waveform global Y Zoom -- multiple Time Groups › zooming the active panel never touches another Time Group's own panel (15.5s)
+(node:17748) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  412 browser-tests\waveform-y-zoom.spec.js:231:3 › Waveform global Y Zoom -- multiple Time Groups › no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed (15.5s)
+(node:31440) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 413 browser-tests\waveform-y-zoom.spec.js:254:3 › Waveform global Y Zoom -- no valid target › no recordings at all: Y Zoom In/Out stay disabled (3.5s)
+  x  414 browser-tests\waveform-y-zoom.spec.js:263:3 › Waveform global Y Zoom -- no valid target › a recording exists but no channel is displayed yet: still disabled (14.1s)
+(node:15724) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  415 browser-tests\waveform-y-zoom.spec.js:273:3 › Waveform global Y Zoom -- no valid target › the tooltip names the targeted panel's own label once a target exists (14.5s)
+(node:28816) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  416 browser-tests\waveform-y-zoom.spec.js:284:3 › Waveform global Y Zoom -- Autoscale Y interaction › Autoscale Y restores the correct automatic range for the same target axis after a manual zoom (15.1s)
+(node:15524) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 417 browser-tests\waveform-y-zoom.spec.js:327:3 › Event Reconstruction Y-axis zoom -- no regression › wwErZoomYInBtn/wwErZoomYOutBtn still step the active axis as before (6.6s)
+
+
+  1) browser-tests\event-reconstruction-annotations.spec.js:552:3 › Event Reconstruction annotations -- manager and independence › the manager lists, focuses, edits and deletes Event Reconstruction annotations only; Waveform's are untouched
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#workspaceRow')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#workspaceRow')
+        23 × locator resolved to <div hidden="" id="workspaceRow">…</div>
+           - unexpected value "hidden"
+
+
+      556 |     await page.locator("#mainNavRecordingDetailsBtn").click();
+      557 |     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    > 558 |     await expect(page.locator("#workspaceRow")).toBeVisible();
+          |                                                 ^
+      559 |     const row = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+      560 |     if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();
+      561 |     await page.evaluate(() => wwCreateAnnotation("text_note", "main", { x: 40, y: 40 }, { text: "Waveform note" }));
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\event-reconstruction-annotations.spec.js:558:49
+
+    Error Context: ..\baseline-browser-results\event-reconstruction-annot-0a1d9-ly-Waveform-s-are-untouched\error-context.md
+
+  2) browser-tests\event-reconstruction-cursors.spec.js:404:3 › Event Reconstruction Slice 3E -- Waveform isolation › Event Reconstruction cursors never change Waveform cursors, values or state
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#workspaceRow')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#workspaceRow')
+        23 × locator resolved to <div hidden="" id="workspaceRow">…</div>
+           - unexpected value "hidden"
+
+
+      409 |     // Waveform: one displayed channel with its own A/B cursors on.
+      410 |     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    > 411 |     await expect(page.locator("#workspaceRow")).toBeVisible();
+          |                                                 ^
+      412 |     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+      413 |     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();
+      414 |     await expect(wfRow).toHaveAttribute("aria-pressed", "true");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\event-reconstruction-cursors.spec.js:411:49
+
+    Error Context: ..\baseline-browser-results\event-reconstruction-curso-fba19-orm-cursors-values-or-state\error-context.md
+
+  3) browser-tests\event-reconstruction-plot.spec.js:520:3 › Event Reconstruction Slice 3C -- Waveform isolation › plotting, zooming and panning never change Waveform state
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#workspaceRow')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#workspaceRow')
+        23 × locator resolved to <div hidden="" id="workspaceRow">…</div>
+           - unexpected value "hidden"
+
+
+      526 |     // Waveform: one displayed channel, a zoomed viewport, a rename.
+      527 |     await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    > 528 |     await expect(page.locator("#workspaceRow")).toBeVisible();
+          |                                                 ^
+      529 |     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+      530 |     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();
+      531 |     await expect(wfRow).toHaveAttribute("aria-pressed", "true");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\event-reconstruction-plot.spec.js:528:49
+
+    Error Context: ..\baseline-browser-results\event-reconstruction-plot--e48be-never-change-Waveform-state\error-context.md
+
+  4) browser-tests\per-unit-display-synchronization.spec.js:139:1 › latest Engineering selection wins over delayed PU metadata
+
+    Test timeout of 30000ms exceeded.
+
+    Error Context: ..\baseline-browser-results\per-unit-display-synchroni-5db9f-ns-over-delayed-PU-metadata\error-context.md
+
+  5) browser-tests\per-unit-display-synchronization.spec.js:153:1 › real Voltage Group save refreshes fixed cursors and rejects an old cursor response
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      163 |   await page.evaluate(source => { window.oldCursorJob = wwFetchCursorValuesForSource(source); }, source);
+      164 |   await held.reached;
+    > 165 |   await page.locator("#wwOpenPerUnitSettingsBtn").click();
+          |                                                   ^
+      166 |   await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      167 |   await page.locator(`[id="wwMgEditBtn-${voltage.id}"]`).click();
+      168 |   await page.locator("#wwMgVoltageKvInput").fill("132");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-display-synchronization.spec.js:165:51
+
+    attachment #1: VA-per_unit-cursor-values (application/json) ────────────────────────────────────
+    ..\baseline-browser-results\per-unit-display-synchroni-1638c-ects-an-old-cursor-response\attachments\VA-per-unit-cursor-values-c7b4d290f2c4e105b10cb854a2e7e92b66aff3a4.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\baseline-browser-results\per-unit-display-synchroni-1638c-ects-an-old-cursor-response\error-context.md
+
+  6) browser-tests\per-unit-display-synchronization.spec.js:177:1 › Source Default save and clear update fixed cursors through the real editor
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      181 |   await expectCursors(page, source, Math.sqrt(2));
+      182 |   const open = async () => {
+    > 183 |     await page.locator("#wwOpenPerUnitSettingsBtn").click();
+          |                                                     ^
+      184 |     await page.locator("#wwOpenPerUnitProfilesFromSettingsBtn").click();
+      185 |     await page.locator("#perUnitSourceSelect").selectOption(source);
+      186 |   };
+        at open (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-display-synchronization.spec.js:183:53)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-display-synchronization.spec.js:187:9
+
+    attachment #1: VA-per_unit-cursor-values (application/json) ────────────────────────────────────
+    ..\baseline-browser-results\per-unit-display-synchroni-87ae7-ors-through-the-real-editor\attachments\VA-per-unit-cursor-values-7fcbf6d3241bfc57e4ef50787e53f556b78f295d.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\baseline-browser-results\per-unit-display-synchroni-87ae7-ors-through-the-real-editor\error-context.md
+
+  7) browser-tests\per-unit-display-synchronization.spec.js:240:1 › rapid ENG-PU-ENG-PU intent wins even when the oldest metadata finishes last
+
+    Test timeout of 30000ms exceeded.
+
+    Error Context: ..\baseline-browser-results\per-unit-display-synchroni-bc195-dest-metadata-finishes-last\error-context.md
+
+  8) browser-tests\per-unit-display-synchronization.spec.js:281:1 › reset during delayed PU metadata cannot restore the old mode or arrays
+
+    Test timeout of 30000ms exceeded.
+
+    Error Context: ..\baseline-browser-results\per-unit-display-synchroni-34357-tore-the-old-mode-or-arrays\error-context.md
+
+  9) browser-tests\per-unit-display-synchronization.spec.js:362:1 › a base edit keeps another source's values and avoids requests for it
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwRdUploadBtn')
+        - locator resolved to <button type="button" id="wwRdUploadBtn" class="ww-rd-upload-btn">…</button>
+      - attempting click action
+        2 × waiting for element to be visible, enabled and stable
+          - element is not visible
+        - retrying click action
+        - waiting 20ms
+        2 × waiting for element to be visible, enabled and stable
+          - element is not visible
+        - retrying click action
+          - waiting 100ms
+        49 × waiting for element to be visible, enabled and stable
+           - element is not visible
+         - retrying click action
+           - waiting 500ms
+        - waiting for element to be visible, enabled and stable
+
+
+       at support\event_reconstruction_helpers.js:29
+
+      27 | async function uploadRecord(page, { station, date, startClock, triggerClock, rateHz = 1000, durationS = 1, channels = VI }) {
+      28 |   const { cfg, dat } = syntheticComtrade({ station, date, startClock, triggerClock, rateHz, durationS, channels });
+    > 29 |   await page.locator("#wwRdUploadBtn").click();
+         |                                        ^
+      30 |   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+      31 |   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfg });
+      32 |   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: dat });
+        at uploadRecord (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\support\event_reconstruction_helpers.js:29:40)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-display-synchronization.spec.js:364:9
+
+    Error Context: ..\baseline-browser-results\per-unit-display-synchroni-2af79--and-avoids-requests-for-it\error-context.md
+
+  10) browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects true atomically, then accepts a practical base
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      49 |     const displayed = await entry(page, sid);
+      50 |     expect(Math.max(...displayed.values.map(Math.abs))).toBeCloseTo(Math.sqrt(2), 10);
+    > 51 |     await page.locator("#wwOpenPerUnitSettingsBtn").click();
+         |                                                     ^
+      52 |     await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      53 |     await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+      54 |     await page.locator("#wwMgVoltageKvInput").fill("132");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-numeric-integrity.spec.js:51:53
+
+    Error Context: ..\baseline-browser-results\per-unit-numeric-integrity-44600-en-accepts-a-practical-base\error-context.md
+
+  11) browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects false atomically, then accepts a practical base
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      49 |     const displayed = await entry(page, sid);
+      50 |     expect(Math.max(...displayed.values.map(Math.abs))).toBeCloseTo(Math.sqrt(2), 10);
+    > 51 |     await page.locator("#wwOpenPerUnitSettingsBtn").click();
+         |                                                     ^
+      52 |     await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      53 |     await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+      54 |     await page.locator("#wwMgVoltageKvInput").fill("132");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-numeric-integrity.spec.js:51:53
+
+    Error Context: ..\baseline-browser-results\per-unit-numeric-integrity-bd241-en-accepts-a-practical-base\error-context.md
+
+  12) browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects overflowing SI base atomically, then accepts a practical base
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      49 |     const displayed = await entry(page, sid);
+      50 |     expect(Math.max(...displayed.values.map(Math.abs))).toBeCloseTo(Math.sqrt(2), 10);
+    > 51 |     await page.locator("#wwOpenPerUnitSettingsBtn").click();
+         |                                                     ^
+      52 |     await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      53 |     await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+      54 |     await page.locator("#wwMgVoltageKvInput").fill("132");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-numeric-integrity.spec.js:51:53
+
+    Error Context: ..\baseline-browser-results\per-unit-numeric-integrity-ce593-en-accepts-a-practical-base\error-context.md
+
+  13) browser-tests\per-unit-numeric-integrity.spec.js:76:1 › valid tiny base reports numerical unavailability consistently in Waveform and ER and recovers
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      103 |   // resolution cache on page entry, matching the supported user workflow.
+      104 |   await page.locator("#mainNavWaveformBtn").click();
+    > 105 |   await page.locator("#wwOpenPerUnitSettingsBtn").click();
+          |                                                   ^
+      106 |   await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      107 |   await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+      108 |   await page.locator("#wwMgVoltageKvInput").fill("275");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-numeric-integrity.spec.js:105:51
+
+    Error Context: ..\baseline-browser-results\per-unit-numeric-integrity-f3801-aveform-and-ER-and-recovers\error-context.md
+
+  14) browser-tests\per-unit-reference-safety.spec.js:231:1 › Current MG drawer shows no PU controls for standard Current group (DEC-212)
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      250 |
+      251 |   await page.locator("#mainNavWaveformBtn").click();
+    > 252 |   await page.locator("#wwOpenPerUnitSettingsBtn").click();
+          |                                                   ^
+      253 |   await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      254 |   await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
+      255 |   await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-reference-safety.spec.js:252:51
+
+    Error Context: ..\baseline-browser-results\per-unit-reference-safety--b8c2e-dard-Current-group-DEC-212-\error-context.md
+
+  15) browser-tests\per-unit-reference-safety.spec.js:265:1 › Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      267 |   const c = await setup(page);
+      268 |
+    > 269 |   await page.locator("#wwOpenPerUnitSettingsBtn").click();
+          |                                                   ^
+      270 |   await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
+      271 |   await page.locator(`[id="wwMgEditBtn-${c.group.id}"]`).click();
+      272 |   await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\per-unit-reference-safety.spec.js:269:51
+
+    Error Context: ..\baseline-browser-results\per-unit-reference-safety--44f28-sting-Ibase-config-DEC-212-\error-context.md
+
+  16) browser-tests\waveform-top-toolbar-migration.spec.js:174:3 › Waveform top toolbar -- controls present and complete › a recording exists but no channel is displayed yet: still disabled
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#workspaceRow')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#workspaceRow')
+        23 × locator resolved to <div hidden="" id="workspaceRow">…</div>
+           - unexpected value "hidden"
+
+
+      176 |     const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
+      177 |     await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    > 178 |     await expect(page.locator("#workspaceRow")).toBeVisible();
+          |                                                 ^
+      179 |     const state = await waveformState(page);
+      180 |     for (const id of ["wwZoomXInBtn", "wwZoomXOutBtn", "wwAutoscaleXBtn", "wwAutoscaleYBtn", "wwCursorModeBtn"]) {
+      181 |       expect(state.buttons[id].disabled).toBe(true);
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:178:49
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-959a3-isplayed-yet-still-disabled\error-context.md
+
+  17) browser-tests\waveform-top-toolbar-migration.spec.js:185:3 › Waveform top toolbar -- controls present and complete › once a channel is displayed, all five enable together, targeting the same active Time Group
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="605546fa-bc1e-40a9-a6df-a4fd96f78c23"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="605546fa-bc1e-40a9-a6df-a4fd96f78c23"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="605546fa-bc1e-40a9-a6df-a4fd96f78c23" data-expand-key="source:605546fa-bc1e-40a9-a6df-a4fd96f78c23">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:93:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:186:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-f9489--the-same-active-Time-Group\error-context.md
+
+  18) browser-tests\waveform-top-toolbar-migration.spec.js:203:3 › Waveform top toolbar -- per-Time-Group duplicate controls removed › SUPERSEDED: the local canvas toolbar no longer shows Zoom/Autoscale/Cursor/t0/Sync controls at all -- a later Waveform toolbar refinement ticket moved t0 out the same way and removed Synchronize Sources outright; see waveform-toolbar-t0-sync-refinement.spec.js for that ticket's own full coverage
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="9dd5cc1d-2647-48f5-99a7-a8844936df41"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="9dd5cc1d-2647-48f5-99a7-a8844936df41"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="9dd5cc1d-2647-48f5-99a7-a8844936df41" data-expand-key="source:9dd5cc1d-2647-48f5-99a7-a8844936df41">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:93:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:204:5
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-f574e--ticket-s-own-full-coverage\error-context.md
+
+  19) browser-tests\waveform-top-toolbar-migration.spec.js:221:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › Zoom X In/Out act on the active Time Group only; X range changes, Y stays
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="668471cf-844a-4ace-93ac-c9570d36c168"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="668471cf-844a-4ace-93ac-c9570d36c168"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="668471cf-844a-4ace-93ac-c9570d36c168" data-expand-key="source:668471cf-844a-4ace-93ac-c9570d36c168">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:222:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-e9d10-nly-X-range-changes-Y-stays\error-context.md
+
+  20) browser-tests\waveform-top-toolbar-migration.spec.js:240:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › Autoscale X restores the active Time Group's own full bounds, never another group's
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="60434ce6-fba3-492b-8169-4291977d8bbd"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="60434ce6-fba3-492b-8169-4291977d8bbd"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="60434ce6-fba3-492b-8169-4291977d8bbd" data-expand-key="source:60434ce6-fba3-492b-8169-4291977d8bbd">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:241:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-7f7d5-ounds-never-another-group-s\error-context.md
+
+  21) browser-tests\waveform-top-toolbar-migration.spec.js:259:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › no explicit selection: Zoom X falls back to ww.panels[0]'s own Time Group, matching Zoom Y's own fallback
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="ab4db3f8-cef6-4537-a5c0-1345c7e35e29"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="ab4db3f8-cef6-4537-a5c0-1345c7e35e29"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="ab4db3f8-cef6-4537-a5c0-1345c7e35e29" data-expand-key="source:ab4db3f8-cef6-4537-a5c0-1345c7e35e29">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:260:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-21a7c-ching-Zoom-Y-s-own-fallback\error-context.md
+
+  22) browser-tests\waveform-top-toolbar-migration.spec.js:269:3 › Waveform top toolbar -- A/B Cursors targeting › toggling A/B Cursors affects only the active Time Group; never every group at once
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="b6fd74da-2fcd-4267-9048-6eff3d7d05dc"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="b6fd74da-2fcd-4267-9048-6eff3d7d05dc"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="b6fd74da-2fcd-4267-9048-6eff3d7d05dc" data-expand-key="source:b6fd74da-2fcd-4267-9048-6eff3d7d05dc">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:270:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-25cf2-p-never-every-group-at-once\error-context.md
+
+  23) browser-tests\waveform-top-toolbar-migration.spec.js:297:3 › Waveform top toolbar -- A/B Cursors targeting › the button's own aria-pressed follows the active target when switched, no stale state
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="6a3254c1-8427-4f1a-b3f7-36d7a462de12"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="6a3254c1-8427-4f1a-b3f7-36d7a462de12"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="6a3254c1-8427-4f1a-b3f7-36d7a462de12" data-expand-key="source:6a3254c1-8427-4f1a-b3f7-36d7a462de12">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:298:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-2d48e-hen-switched-no-stale-state\error-context.md
+
+  24) browser-tests\waveform-top-toolbar-migration.spec.js:308:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › Autoscale Y resets only the selected Y-axis; the other two panels in the same Time Group are untouched
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="af9a0fd4-b817-4e35-9701-fd97264cca9f"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="af9a0fd4-b817-4e35-9701-fd97264cca9f"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="af9a0fd4-b817-4e35-9701-fd97264cca9f" data-expand-key="source:af9a0fd4-b817-4e35-9701-fd97264cca9f">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupThreePanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:113:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:309:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-8d253-me-Time-Group-are-untouched\error-context.md
+
+  25) browser-tests\waveform-top-toolbar-migration.spec.js:348:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › other Time Groups remain unaffected by Autoscale Y
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="8c9aeed5-9023-474b-88bf-36cfa9d72b9e"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="8c9aeed5-9023-474b-88bf-36cfa9d72b9e"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="8c9aeed5-9023-474b-88bf-36cfa9d72b9e" data-expand-key="source:8c9aeed5-9023-474b-88bf-36cfa9d72b9e">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:349:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-0765c-n-unaffected-by-Autoscale-Y\error-context.md
+
+  26) browser-tests\waveform-top-toolbar-migration.spec.js:362:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › no explicit selection: Autoscale Y falls back to ww.panels[0], the exact same panel Zoom Y falls back to
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="a3fefbfb-6bc9-45d2-8d23-9dc18bf57485"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="a3fefbfb-6bc9-45d2-8d23-9dc18bf57485"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="a3fefbfb-6bc9-45d2-8d23-9dc18bf57485" data-expand-key="source:a3fefbfb-6bc9-45d2-8d23-9dc18bf57485">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:363:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-55484--panel-Zoom-Y-falls-back-to\error-context.md
+
+  27) browser-tests\waveform-top-toolbar-migration.spec.js:388:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › Zoom Y and Autoscale Y resolve exactly the same target when the active panel switches
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="db504dee-b17b-4b5f-b087-579a6875d1ac"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="db504dee-b17b-4b5f-b087-579a6875d1ac"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="db504dee-b17b-4b5f-b087-579a6875d1ac" data-expand-key="source:db504dee-b17b-4b5f-b087-579a6875d1ac">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupThreePanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:113:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:389:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-3ceed-n-the-active-panel-switches\error-context.md
+
+  28) browser-tests\waveform-top-toolbar-migration.spec.js:420:3 › Waveform top toolbar -- Y-axis target readout › the first valid Waveform axis becomes the fallback readout target
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="e3e13749-3011-4441-82b7-385b5f245dba"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="e3e13749-3011-4441-82b7-385b5f245dba"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="e3e13749-3011-4441-82b7-385b5f245dba" data-expand-key="source:e3e13749-3011-4441-82b7-385b5f245dba">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:93:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:421:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-e1dd8-the-fallback-readout-target\error-context.md
+
+  29) browser-tests\waveform-top-toolbar-migration.spec.js:428:3 › Waveform top toolbar -- Y-axis target readout › readout updates when another Y-axis becomes active
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="95efedc2-6309-49e1-bb16-9ad6f13065c0"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="95efedc2-6309-49e1-bb16-9ad6f13065c0"]')
+        22 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="95efedc2-6309-49e1-bb16-9ad6f13065c0" data-expand-key="source:95efedc2-6309-49e1-bb16-9ad6f13065c0">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupThreePanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:113:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:429:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-ee896-other-Y-axis-becomes-active\error-context.md
+
+  30) browser-tests\waveform-top-toolbar-migration.spec.js:438:3 › Waveform top toolbar -- Y-axis target readout › Zoom Y affects exactly the axis shown in the readout
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="dbec9017-02a7-4f75-b191-ed1d9eab7c87"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="dbec9017-02a7-4f75-b191-ed1d9eab7c87"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="dbec9017-02a7-4f75-b191-ed1d9eab7c87" data-expand-key="source:dbec9017-02a7-4f75-b191-ed1d9eab7c87">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupThreePanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:113:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:439:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-322cd-e-axis-shown-in-the-readout\error-context.md
+
+  31) browser-tests\waveform-top-toolbar-migration.spec.js:455:3 › Waveform top toolbar -- Y-axis target readout › Autoscale Y affects exactly the same axis shown in the readout
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="6b61ed45-6d92-4e7c-916c-65a451451185"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="6b61ed45-6d92-4e7c-916c-65a451451185"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="6b61ed45-6d92-4e7c-916c-65a451451185" data-expand-key="source:6b61ed45-6d92-4e7c-916c-65a451451185">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupThreePanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:113:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:456:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-474e9-e-axis-shown-in-the-readout\error-context.md
+
+  32) browser-tests\waveform-top-toolbar-migration.spec.js:481:3 › Waveform top toolbar -- Y-axis target readout › removing the active axis selects the correct fallback; no stale label remains
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="6cb43c07-d5f6-43e3-90d1-7af8373534dd"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="6cb43c07-d5f6-43e3-90d1-7af8373534dd"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="6cb43c07-d5f6-43e3-90d1-7af8373534dd" data-expand-key="source:6cb43c07-d5f6-43e3-90d1-7af8373534dd">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupThreePanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:113:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:482:35
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-8ab24-back-no-stale-label-remains\error-context.md
+
+  33) browser-tests\waveform-top-toolbar-migration.spec.js:501:3 › Waveform top toolbar -- Y-axis target readout › clearing the workspace resets the readout to the empty state
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="8e530800-2eb4-4518-a37e-83b1b2983272"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="8e530800-2eb4-4518-a37e-83b1b2983272"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="8e530800-2eb4-4518-a37e-83b1b2983272" data-expand-key="source:8e530800-2eb4-4518-a37e-83b1b2983272">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:93:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:502:5
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-cd0a0--readout-to-the-empty-state\error-context.md
+
+  34) browser-tests\waveform-top-toolbar-migration.spec.js:510:3 › Waveform top toolbar -- Y-axis target readout › no stale label remains after switching the active Time Group
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689" data-expand-key="source:84ac7207-1bdb-4aea-a3c7-cbf5bd7c6689">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:136:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:511:36
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-a1f38-ching-the-active-Time-Group\error-context.md
+
+  35) browser-tests\waveform-top-toolbar-migration.spec.js:560:3 › Waveform top toolbar -- Per-Unit Settings icon › renders the new pu_settings.svg asset, no broken path, same handler/tooltip/position
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('#wwOpenPerUnitSettingsBtn')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#wwOpenPerUnitSettingsBtn')
+
+
+      564 |     await page.locator("#mainNavWaveformBtn").click();
+      565 |     const btn = page.locator("#wwOpenPerUnitSettingsBtn");
+    > 566 |     await expect(btn).toBeVisible();
+          |                       ^
+      567 |     await expect(btn).toHaveAttribute("title", "Per-Unit Settings…");
+      568 |     const iconSpan = btn.locator(".ww-icon");
+      569 |     await expect(iconSpan).toHaveAttribute("data-ww-icon", "PU_SETTINGS");
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:566:23
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-57a7d-me-handler-tooltip-position\error-context.md
+
+  36) browser-tests\waveform-top-toolbar-migration.spec.js:579:3 › Waveform top toolbar -- Per-Unit Settings icon › renders correctly in dark theme too
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.evaluate: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('#wwOpenPerUnitSettingsBtn .ww-icon')
+
+
+      582 |     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+      583 |     const iconSpan = page.locator("#wwOpenPerUnitSettingsBtn .ww-icon");
+    > 584 |     const maskImage = await iconSpan.evaluate((el) => getComputedStyle(el).webkitMaskImage || getComputedStyle(el).maskImage);
+          |                                      ^
+      585 |     expect(maskImage).toContain("pu_settings.svg");
+      586 |     await expect(page.locator("#wwOpenPerUnitSettingsBtn")).toBeVisible();
+      587 |   });
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:584:38
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-49456-correctly-in-dark-theme-too\error-context.md
+
+  37) browser-tests\waveform-top-toolbar-migration.spec.js:620:3 › Waveform top toolbar -- Clear Waveforms restored to the left operational group › enables once a waveform is displayed; clears only the displayed panel, never the source recording
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="cb8276d0-1abc-4967-a486-bd2bb78d687e"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="cb8276d0-1abc-4967-a486-bd2bb78d687e"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="cb8276d0-1abc-4967-a486-bd2bb78d687e" data-expand-key="source:cb8276d0-1abc-4967-a486-bd2bb78d687e">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:93:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:621:25
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-5f52a--never-the-source-recording\error-context.md
+
+  38) browser-tests\waveform-top-toolbar-migration.spec.js:658:3 › Waveform top toolbar -- themes, layout, console › no duplicated controls document-wide; both themes; narrower viewport; no console errors
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="84b012f0-aa45-4fe6-89bd-7182d8e87bfc"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="84b012f0-aa45-4fe6-89bd-7182d8e87bfc"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="84b012f0-aa45-4fe6-89bd-7182d8e87bfc" data-expand-key="source:84b012f0-aa45-4fe6-89bd-7182d8e87bfc">…</details>
+           - unexpected value "hidden"
+
+
+      39 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      40 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 41 |   await expect(details).toBeVisible();
+         |                         ^
+      42 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      43 |   const row = page.locator(
+      44 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:41:25)
+        at setupOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:93:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-top-toolbar-migration.spec.js:661:5
+
+    Error Context: ..\baseline-browser-results\waveform-top-toolbar-migra-7c689--viewport-no-console-errors\error-context.md
+
+  39) browser-tests\waveform-y-zoom.spec.js:147:3 › Waveform global Y Zoom -- single Time Group, two panels › Zoom Y In targets only the selected (active) panel's axis
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="435357c9-c94d-4f1c-96d8-f1bd4de4aaa4"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="435357c9-c94d-4f1c-96d8-f1bd4de4aaa4"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="435357c9-c94d-4f1c-96d8-f1bd4de4aaa4" data-expand-key="source:435357c9-c94d-4f1c-96d8-f1bd4de4aaa4">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoPanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:109:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:148:25
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-c25e4-elected-active-panel-s-axis\error-context.md
+
+  40) browser-tests\waveform-y-zoom.spec.js:171:3 › Waveform global Y Zoom -- single Time Group, two panels › Zoom Y Out targets only the selected (active) panel's axis
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="c2333b3f-f643-4213-a219-629acb8386b2"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="c2333b3f-f643-4213-a219-629acb8386b2"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="c2333b3f-f643-4213-a219-629acb8386b2" data-expand-key="source:c2333b3f-f643-4213-a219-629acb8386b2">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoPanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:109:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:172:25
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-f0b43-elected-active-panel-s-axis\error-context.md
+
+  41) browser-tests\waveform-y-zoom.spec.js:192:3 › Waveform global Y Zoom -- single Time Group, two panels › switching the active panel via its header moves the Y Zoom target, never the other panel
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="1d228159-1d60-456d-afdd-70905bfdd345"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="1d228159-1d60-456d-afdd-70905bfdd345"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="1d228159-1d60-456d-afdd-70905bfdd345" data-expand-key="source:1d228159-1d60-456d-afdd-70905bfdd345">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoPanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:109:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:193:25
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-eb522-arget-never-the-other-panel\error-context.md
+
+  42) browser-tests\waveform-y-zoom.spec.js:213:3 › Waveform global Y Zoom -- multiple Time Groups › zooming the active panel never touches another Time Group's own panel
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="30205bec-bb22-4800-a9b0-9aa9995623ae"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="30205bec-bb22-4800-a9b0-9aa9995623ae"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="30205bec-bb22-4800-a9b0-9aa9995623ae" data-expand-key="source:30205bec-bb22-4800-a9b0-9aa9995623ae">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:137:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:214:36
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-7d0df-ther-Time-Group-s-own-panel\error-context.md
+
+  43) browser-tests\waveform-y-zoom.spec.js:231:3 › Waveform global Y Zoom -- multiple Time Groups › no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="081a9de8-2057-4574-8fbe-73356d769fe7"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="081a9de8-2057-4574-8fbe-73356d769fe7"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="081a9de8-2057-4574-8fbe-73356d769fe7" data-expand-key="source:081a9de8-2057-4574-8fbe-73356d769fe7">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoTimeGroups (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:137:5)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:237:36
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-69775-at-is-the-only-panel-zoomed\error-context.md
+
+  44) browser-tests\waveform-y-zoom.spec.js:263:3 › Waveform global Y Zoom -- no valid target › a recording exists but no channel is displayed yet: still disabled
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#workspaceRow')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#workspaceRow')
+        23 × locator resolved to <div hidden="" id="workspaceRow">…</div>
+           - unexpected value "hidden"
+
+
+      265 |     const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
+      266 |     await page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`).click();
+    > 267 |     await expect(page.locator("#workspaceRow")).toBeVisible();
+          |                                                 ^
+      268 |     const state = await waveformState(page);
+      269 |     expect(state.zoomInDisabled).toBe(true);
+      270 |     expect(state.zoomOutDisabled).toBe(true);
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:267:49
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-d62bf-isplayed-yet-still-disabled\error-context.md
+
+  45) browser-tests\waveform-y-zoom.spec.js:273:3 › Waveform global Y Zoom -- no valid target › the tooltip names the targeted panel's own label once a target exists
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="addd6a35-887d-4a8b-935a-e277aac3e938"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="addd6a35-887d-4a8b-935a-e277aac3e938"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="addd6a35-887d-4a8b-935a-e277aac3e938" data-expand-key="source:addd6a35-887d-4a8b-935a-e277aac3e938">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoPanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:109:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:274:25
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-2dd2f--label-once-a-target-exists\error-context.md
+
+  46) browser-tests\waveform-y-zoom.spec.js:284:3 › Waveform global Y Zoom -- Autoscale Y interaction › Autoscale Y restores the correct automatic range for the same target axis after a manual zoom
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('#channelGroups details.source-recording[data-source-id="55ab7af5-b5d4-48e7-80b6-2e62133e5deb"]')
+    Expected: visible
+    Received: hidden
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('#channelGroups details.source-recording[data-source-id="55ab7af5-b5d4-48e7-80b6-2e62133e5deb"]')
+        23 × locator resolved to <details open="" class="source-recording" data-default-open="true" data-source-id="55ab7af5-b5d4-48e7-80b6-2e62133e5deb" data-expand-key="source:55ab7af5-b5d4-48e7-80b6-2e62133e5deb">…</details>
+           - unexpected value "hidden"
+
+
+      50 |   await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      51 |   const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+    > 52 |   await expect(details).toBeVisible();
+         |                         ^
+      53 |   if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      54 |   const row = page.locator(
+      55 |     `#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"][data-channel-name="${channelName}"]`
+        at displayChannel (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:52:25)
+        at setupTwoPanelsOneGroup (D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:109:3)
+        at D:\Programming\oruxa-powerwave\.local-data\wui-001-004-current-dev\.local-data\release\baseline\browser-tests\waveform-y-zoom.spec.js:285:25
+
+    Error Context: ..\baseline-browser-results\waveform-y-zoom-Waveform-g-38a7c-et-axis-after-a-manual-zoom\error-context.md
+
+  Slow test file: browser-tests\overcurrent_analysis.spec.js (5.5m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  46 failed
+    browser-tests\event-reconstruction-annotations.spec.js:552:3 › Event Reconstruction annotations -- manager and independence › the manager lists, focuses, edits and deletes Event Reconstruction annotations only; Waveform's are untouched
+    browser-tests\event-reconstruction-cursors.spec.js:404:3 › Event Reconstruction Slice 3E -- Waveform isolation › Event Reconstruction cursors never change Waveform cursors, values or state
+    browser-tests\event-reconstruction-plot.spec.js:520:3 › Event Reconstruction Slice 3C -- Waveform isolation › plotting, zooming and panning never change Waveform state
+    browser-tests\per-unit-display-synchronization.spec.js:139:1 › latest Engineering selection wins over delayed PU metadata
+    browser-tests\per-unit-display-synchronization.spec.js:153:1 › real Voltage Group save refreshes fixed cursors and rejects an old cursor response
+    browser-tests\per-unit-display-synchronization.spec.js:177:1 › Source Default save and clear update fixed cursors through the real editor
+    browser-tests\per-unit-display-synchronization.spec.js:240:1 › rapid ENG-PU-ENG-PU intent wins even when the oldest metadata finishes last
+    browser-tests\per-unit-display-synchronization.spec.js:281:1 › reset during delayed PU metadata cannot restore the old mode or arrays
+    browser-tests\per-unit-display-synchronization.spec.js:362:1 › a base edit keeps another source's values and avoids requests for it
+    browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects true atomically, then accepts a practical base
+    browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects false atomically, then accepts a practical base
+    browser-tests\per-unit-numeric-integrity.spec.js:42:3 › voltage editor rejects overflowing SI base atomically, then accepts a practical base
+    browser-tests\per-unit-numeric-integrity.spec.js:76:1 › valid tiny base reports numerical unavailability consistently in Waveform and ER and recovers
+    browser-tests\per-unit-reference-safety.spec.js:231:1 › Current MG drawer shows no PU controls for standard Current group (DEC-212)
+    browser-tests\per-unit-reference-safety.spec.js:265:1 › Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)
+    browser-tests\waveform-top-toolbar-migration.spec.js:174:3 › Waveform top toolbar -- controls present and complete › a recording exists but no channel is displayed yet: still disabled
+    browser-tests\waveform-top-toolbar-migration.spec.js:185:3 › Waveform top toolbar -- controls present and complete › once a channel is displayed, all five enable together, targeting the same active Time Group
+    browser-tests\waveform-top-toolbar-migration.spec.js:203:3 › Waveform top toolbar -- per-Time-Group duplicate controls removed › SUPERSEDED: the local canvas toolbar no longer shows Zoom/Autoscale/Cursor/t0/Sync controls at all -- a later Waveform toolbar refinement ticket moved t0 out the same way and removed Synchronize Sources outright; see waveform-toolbar-t0-sync-refinement.spec.js for that ticket's own full coverage
+    browser-tests\waveform-top-toolbar-migration.spec.js:221:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › Zoom X In/Out act on the active Time Group only; X range changes, Y stays
+    browser-tests\waveform-top-toolbar-migration.spec.js:240:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › Autoscale X restores the active Time Group's own full bounds, never another group's
+    browser-tests\waveform-top-toolbar-migration.spec.js:259:3 › Waveform top toolbar -- X-axis targeting (Zoom X, Autoscale X) › no explicit selection: Zoom X falls back to ww.panels[0]'s own Time Group, matching Zoom Y's own fallback
+    browser-tests\waveform-top-toolbar-migration.spec.js:269:3 › Waveform top toolbar -- A/B Cursors targeting › toggling A/B Cursors affects only the active Time Group; never every group at once
+    browser-tests\waveform-top-toolbar-migration.spec.js:297:3 › Waveform top toolbar -- A/B Cursors targeting › the button's own aria-pressed follows the active target when switched, no stale state
+    browser-tests\waveform-top-toolbar-migration.spec.js:308:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › Autoscale Y resets only the selected Y-axis; the other two panels in the same Time Group are untouched
+    browser-tests\waveform-top-toolbar-migration.spec.js:348:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › other Time Groups remain unaffected by Autoscale Y
+    browser-tests\waveform-top-toolbar-migration.spec.js:362:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › no explicit selection: Autoscale Y falls back to ww.panels[0], the exact same panel Zoom Y falls back to
+    browser-tests\waveform-top-toolbar-migration.spec.js:388:3 › Waveform top toolbar -- Autoscale Y shares Zoom Y's own target › Zoom Y and Autoscale Y resolve exactly the same target when the active panel switches
+    browser-tests\waveform-top-toolbar-migration.spec.js:420:3 › Waveform top toolbar -- Y-axis target readout › the first valid Waveform axis becomes the fallback readout target
+    browser-tests\waveform-top-toolbar-migration.spec.js:428:3 › Waveform top toolbar -- Y-axis target readout › readout updates when another Y-axis becomes active
+    browser-tests\waveform-top-toolbar-migration.spec.js:438:3 › Waveform top toolbar -- Y-axis target readout › Zoom Y affects exactly the axis shown in the readout
+    browser-tests\waveform-top-toolbar-migration.spec.js:455:3 › Waveform top toolbar -- Y-axis target readout › Autoscale Y affects exactly the same axis shown in the readout
+    browser-tests\waveform-top-toolbar-migration.spec.js:481:3 › Waveform top toolbar -- Y-axis target readout › removing the active axis selects the correct fallback; no stale label remains
+    browser-tests\waveform-top-toolbar-migration.spec.js:501:3 › Waveform top toolbar -- Y-axis target readout › clearing the workspace resets the readout to the empty state
+    browser-tests\waveform-top-toolbar-migration.spec.js:510:3 › Waveform top toolbar -- Y-axis target readout › no stale label remains after switching the active Time Group
+    browser-tests\waveform-top-toolbar-migration.spec.js:560:3 › Waveform top toolbar -- Per-Unit Settings icon › renders the new pu_settings.svg asset, no broken path, same handler/tooltip/position
+    browser-tests\waveform-top-toolbar-migration.spec.js:579:3 › Waveform top toolbar -- Per-Unit Settings icon › renders correctly in dark theme too
+    browser-tests\waveform-top-toolbar-migration.spec.js:620:3 › Waveform top toolbar -- Clear Waveforms restored to the left operational group › enables once a waveform is displayed; clears only the displayed panel, never the source recording
+    browser-tests\waveform-top-toolbar-migration.spec.js:658:3 › Waveform top toolbar -- themes, layout, console › no duplicated controls document-wide; both themes; narrower viewport; no console errors
+    browser-tests\waveform-y-zoom.spec.js:147:3 › Waveform global Y Zoom -- single Time Group, two panels › Zoom Y In targets only the selected (active) panel's axis
+    browser-tests\waveform-y-zoom.spec.js:171:3 › Waveform global Y Zoom -- single Time Group, two panels › Zoom Y Out targets only the selected (active) panel's axis
+    browser-tests\waveform-y-zoom.spec.js:192:3 › Waveform global Y Zoom -- single Time Group, two panels › switching the active panel via its header moves the Y Zoom target, never the other panel
+    browser-tests\waveform-y-zoom.spec.js:213:3 › Waveform global Y Zoom -- multiple Time Groups › zooming the active panel never touches another Time Group's own panel
+    browser-tests\waveform-y-zoom.spec.js:231:3 › Waveform global Y Zoom -- multiple Time Groups › no explicit selection: falls back to ww.panels[0] (first by insertion order), and that is the only panel zoomed
+    browser-tests\waveform-y-zoom.spec.js:263:3 › Waveform global Y Zoom -- no valid target › a recording exists but no channel is displayed yet: still disabled
+    browser-tests\waveform-y-zoom.spec.js:273:3 › Waveform global Y Zoom -- no valid target › the tooltip names the targeted panel's own label once a target exists
+    browser-tests\waveform-y-zoom.spec.js:284:3 › Waveform global Y Zoom -- Autoscale Y interaction › Autoscale Y restores the correct automatic range for the same target axis after a manual zoom
+  371 passed (53.1m)

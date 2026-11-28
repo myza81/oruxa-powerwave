@@ -98,6 +98,7 @@ from app.domain.impedance import (
     convert_impedance_basis,
     impedance_ratio_valid,
 )
+from app.domain.side_conversion import SideConversionInfo
 from app.domain.phasor import (
     ManualPhasorRoleInput,
     convert_manual_magnitude_to_secondary,
@@ -108,7 +109,11 @@ from app.domain.engineering_units import ENGINEERING_QUANTITY_CURRENT, ENGINEERI
 
 #: Bump ONLY when the calculation/interpretation itself changes -- never
 #: for an unrelated refactor. Included unconditionally in every result.
-ALGORITHM_VERSION = "distance_protection_v1"
+ALGORITHM_VERSION = "distance_protection_v2"
+
+#: The zone-GEOMETRY engine identity (Mho/Quadrilateral outlines and Operated tests). The D5A-UNIT-001 correction changed
+#: how the recorded loop impedance is computed, not these geometries, so the relay-conformance goldens keep stamping v1.
+ZONE_GEOMETRY_ENGINE_VERSION = "distance_protection_v1"
 
 #: Bumped only if Manual Distance Protection's own composition changes --
 #: independent of `ALGORITHM_VERSION`, mirroring every other analyzer's
@@ -461,7 +466,10 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     state across time"). A disabled zone, or no valid point at all
     (e.g. the loop-current guardrail blocked calculation), is always
     `ZONE_STATE_NOT_OPERATED` -- never a fabricated Operated state, and
-    never an exception. Each zone is evaluated completely
+    never an exception. (D5A-2B2C-1B: the RECORDED analysis no longer calls
+    this without a valid point -- a result with no valid impedance reports no
+    zone at all, see `distance_protection_analysis_service.NOT_EVALUATED_ZONES`;
+    the Manual calculator path keeps this behaviour unchanged.) Each zone is evaluated completely
     INDEPENDENTLY (task's own section 15: "do not force only one zone
     to operate" -- Zone 1/2/3 can legitimately all be `Operated`
     simultaneously for a nested characteristic set; this function has
@@ -640,6 +648,7 @@ class DistanceAnalysisResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+    side_conversion: SideConversionInfo | None = None
 
     def __post_init__(self) -> None:
         _fill_standard_slots(self)

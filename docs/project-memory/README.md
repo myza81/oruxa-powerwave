@@ -137,6 +137,15 @@ Before acting on any non-trivial `oruxa_powerwave` task, read in this order:
 [CLAUDE.md](../../CLAUDE.md) and [AGENTS.md](../../AGENTS.md) both require this
 reading sequence before any task, even one that looks simple.
 
+The reading scope is **proportionate to the task**: for a substantive task also identify the applicable DEC records with their
+amendments and later owner decisions, the relevant specification and implementation report, and the actual implementation and
+regression coverage; do not read every historical document. Approved decisions are **binding until the owner supersedes them** and are
+not reopened by a new application of the same policy. The procedure, the classification of difficulties and the engineering-formula
+requirements are in
+[AGENTS.md — Decision preservation and engineering governance](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory)
+([DEC-218](DECISIONS.md#dec-218--approved-decisions-are-binding-agents-consult-them-before-acting-and-preserve-them-agent-governance));
+it is stated there once, for Claude Code and Codex alike.
+
 ## How facts, decisions, and proposals are distinguished
 
 Every claim in these documents should be identifiable as one of:

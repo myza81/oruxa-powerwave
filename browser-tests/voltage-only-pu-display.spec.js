@@ -13,14 +13,14 @@
 //   VD-06: ER: Current channel always state=engineering in wwErChannelUnitDisplay
 //   VD-07: ER: Current channel plots in A panel even when Voltage Display = PU
 //   VD-08: ER: Current channel never shows "PU unavailable" badge, even with no Ibase
-//   VD-09: Measurement Group modal shows DEC-212 note in Current Groups section
-//   VD-10: Measurement Group Voltage drawer shows "Nominal Voltage (kV, Line-to-Line)" label
+//   VD-09: (retired -- see its note below)
+//   VD-10: Voltage group editor (Recording Details) shows the "Nominal voltage (L-L) kV" label
 //   VD-11: Voltage display auto-switch fires on import when Voltage group configured
 //   VD-12: Auto-switch does NOT fire when only Current group is configured (no Voltage)
 //   VD-13: Switching to PU mode and back preserves Current channel engineering values
 //   VD-14: Calculated Current channel is NOT guarded — can follow PU if configured
-//   VD-15: Waveform base summary shows "Nominal Voltage: X.XX kV · Auto · Phase-to-Ground"
-//   VD-16: Current group Edit drawer has no Nominal Voltage PU config field (DEC-212)
+//   VD-15: Group Details (Recording Details) shows the auto-resolved Nominal voltage and its Line-to-ground reference
+//   VD-16: Current group editor (Recording Details) has no Nominal Voltage PU config field (DEC-212)
 //   VD-17: Mixed Voltage PU and Current ENG cursors from same source batch correctly (DEC-212)
 
 const { test, expect } = require("./support/test");
@@ -30,6 +30,7 @@ const {
   openEventReconstruction, waitForPlot, waitForScaledAxes, plotState,
   selectChannel, channelRow, addRecords, api,
 } = require("./support/event_reconstruction_helpers");
+const { openRdGroupDetails, openRdVoltageEditor, openRdCurrentEditor } = require("./support/recording_details_pu_helpers");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,11 +64,12 @@ async function uploadWith275kVVoltageGroup(page, station) {
       .replace(/,1\.0,1\.0,P/g, `,${llKv},1.0,P`),
     "latin1",
   );
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
 }
 
 // Upload with no PU-eligible primary ratio.
@@ -76,11 +78,12 @@ async function uploadBasicRecording(page, station) {
     station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.1,
     channels: makeChannels(),
   });
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: data.cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible({ timeout: 8000 });
 }
 
 const wsUrl = async (page, path) => `${BACKEND}/api/v1/workspaces/${await workspaceId(page)}${path}`;
@@ -116,7 +119,18 @@ function channelState(page, sourceId, name) {
 
 test("VD-01: Waveform toolbar Voltage Display toggle has correct aria-label", async ({ page }) => {
   await page.goto("/index.html");
-  await expect(page.locator("#wwUnitModeToggle")).toHaveAttribute("aria-label", "Voltage Display");
+  // WUI-002 supersedes this case's original global-toolbar placement. Verify
+  // the same accessible operation in an applicable pane, without a duplicate.
+  await expect(page.locator("#wwToolbar #wwUnitModeToggle")).toHaveCount(0);
+  await uploadBasicRecording(page, "VD01");
+  const sid=await sourceIdFor(page,"VD01");
+  await page.locator("#mainNavWaveformBtn").click();
+  const details=page.locator(`#channelGroups details.source-recording[data-source-id="${sid}"]`);
+  if(!(await details.evaluate(el=>el.open))) await details.locator(':scope > summary').click();
+  await page.locator(`tr.channel-row--toggle[data-source-id="${sid}"][data-channel-name="VA"]`).click();
+  const group=page.locator('#viewWaveform .ww-pane-unit-mode:visible');
+  await expect(group).toHaveCount(1);await expect(group).toBeVisible();
+  await expect(group).toHaveAttribute("aria-label", "Voltage Display (all panes)");
   // Buttons retain descriptive individual labels.
   await expect(page.locator("#wwUnitEngineeringBtn")).toHaveAttribute("aria-label", "Engineering Units");
   await expect(page.locator("#wwUnitPerUnitBtn")).toHaveAttribute("aria-label", "Per Unit");
@@ -318,57 +332,28 @@ test("VD-08: ER Current channel never shows PU unavailable badge, even with no I
 });
 
 // ---------------------------------------------------------------------------
-// VD-09: MG modal shows DEC-212 note in Current Groups section
+// VD-09: RETIRED (owner decision, P0 closeout 2026-11-25). It asserted the DEC-212 explanatory note in the
+// Measurement Group modal's "Current Groups" section; the modal was removed by PU-UI-001 (4161a63) and no
+// Recording Details surface carries that text. The behaviour the note described -- raw Current always stays
+// in engineering units -- remains covered by VD-03/04/05/06/07/08/13/17 above and below.
 // ---------------------------------------------------------------------------
-
-test("VD-09: Measurement Group modal shows DEC-212 note in Current Groups section", async ({ page }) => {
-  await page.goto("/index.html");
-  await uploadWith275kVVoltageGroup(page, "VD09");
-
-  // Open Per-Unit Settings modal from the Waveform toolbar.
-  await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await expect(page.locator("#perUnitSettingsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
-
-  // Navigate to the Measurement Groups sub-dialog — DEC-212 note is rendered there
-  // by wwRenderMeasurementGroupsBody() into #measurementGroupsBody.
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await expect(page.locator("#measurementGroupsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
-
-  // DEC-212 note is rendered inside #measurementGroupsBody under "Current Groups" heading.
-  const mgBody = page.locator("#measurementGroupsBody");
-  await expect(mgBody.getByText("Current channels always display in A/kA", { exact: false })).toBeVisible({ timeout: 5000 });
-  await expect(mgBody.getByText("Calculated Channels", { exact: false })).toBeVisible({ timeout: 3000 });
-});
 
 // ---------------------------------------------------------------------------
 // VD-10: Voltage drawer field label
 // ---------------------------------------------------------------------------
 
-test("VD-10: Measurement Group Voltage drawer shows Nominal Voltage (kV, Line-to-Line) label", async ({ page }) => {
+test("VD-10: Voltage group editor shows the Nominal voltage (L-L) kV label", async ({ page }) => {
   await page.goto("/index.html");
   await uploadWith275kVVoltageGroup(page, "VD10");
-  const sid = await sourceIdFor(page, "VD10");
 
-  // Set up a Voltage group so we can open its drawer.
-  await configureVoltageGroup(page, "VD10", ["VA"]);
+  // Set up a Voltage group so we can open its editor.
+  const { sid, group } = await configureVoltageGroup(page, "VD10", ["VA"]);
 
-  // Open Waveform page, open MG settings, and open the Voltage group drawer.
-  await page.locator("#mainNavWaveformBtn").click();
-  // Look for a Measurement Group edit button.
-  await page.evaluate(() => { if (document.getElementById("wwOpenMgBtn")) document.getElementById("wwOpenMgBtn").click(); });
-  await page.waitForTimeout(500);
-
-  // Find and click the Edit/Review button for the Voltage group.
-  const editBtn = page.locator("[id^='wwMgEditBtn-']").first();
-  if (await editBtn.count() > 0) {
-    await editBtn.click();
-    await expect(page.getByText("Nominal Voltage (kV, Line-to-Line)", { exact: false })).toBeVisible({ timeout: 3000 });
-  } else {
-    // Drawer open via other means — check the rendered HTML.
-    const html = await page.content();
-    expect(html).toContain("Nominal Voltage (kV, Line-to-Line)");
-  }
+  // The MG drawer was replaced by the Recording Details Group Details editor
+  // (PU-UI-001); the field is the same -- the nominal Line-to-Line voltage in kV.
+  await openRdVoltageEditor(page, sid, group.id);
+  await expect(page.locator('#wwRdDetailsBody label[for="wwRdVltKv"]')).toHaveText(/^Nominal voltage \(L.L\) kV$/);
+  await expect(page.locator("#wwRdDetailsBody #wwRdVltKv")).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -382,8 +367,7 @@ test("VD-11: auto-switch fires on first import when Voltage group auto-resolves 
   // On the first import with configuredVoltageGroups > 0, the frontend auto-switches to PU.
   await uploadWith275kVVoltageGroup(page, "VD11");
 
-  // Banner appears and unit mode switches to per_unit.
-  await expect(page.locator("#wwImportPuStatusBanner")).not.toHaveAttribute("hidden", { timeout: 8000 });
+  // Unit mode switches to per_unit (UX-3 A: banner removed; PU status shown in Recording Info).
   await expect.poll(() => page.evaluate(() => ww.unitMode), { timeout: 8000 }).toBe("per_unit");
 });
 
@@ -485,7 +469,7 @@ test("VD-14: calculated Current channel is not guarded by DEC-212 — can show P
 // VD-15: Waveform base summary format for auto-detected Voltage group
 // ---------------------------------------------------------------------------
 
-test("VD-15: Measurement Group base summary shows correct Nominal Voltage format", async ({ page }) => {
+test("VD-15: Group Details shows the auto-resolved Nominal voltage and its Line-to-ground reference", async ({ page }) => {
   await page.goto("/index.html");
   await uploadWith275kVVoltageGroup(page, "VD15");
   const sid = await sourceIdFor(page, "VD15");
@@ -496,49 +480,45 @@ test("VD-15: Measurement Group base summary shows correct Nominal Voltage format
     `${BACKEND}/api/v1/workspaces/${ws}/sources/${sid}/measurement-groups`,
   )).json();
 
-  // The auto-resolved Voltage group should have nominal_voltage_ll_kv = 275.00.
+  // The auto-resolved Voltage group must exist and have nominal_voltage_ll_kv = 275.
   const voltageGroup = groups.find((g) => g.kind === "voltage");
-  if (voltageGroup && voltageGroup.voltage_config && voltageGroup.voltage_config.nominal_voltage_ll_kv != null) {
-    // Verify the value is the 275 kV nominal we expect.
-    expect(voltageGroup.voltage_config.nominal_voltage_ll_kv).toBeCloseTo(275.0, 1);
-    // Verify the wwMgBaseSummaryHtml would produce the correct format.
-    const summaryHtml = await page.evaluate(({ group }) => {
-      return wwMgBaseSummaryHtml(group);
-    }, { group: voltageGroup });
-    expect(summaryHtml).toContain("Nominal Voltage:");
-    expect(summaryHtml).toContain("275.00 kV");
-    // Format: "Nominal Voltage: <strong>275.00 kV</strong> · Auto · Phase-to-Ground"
-    expect(summaryHtml).toMatch(/275\.00 kV/);
-  }
+  expect(voltageGroup).toBeTruthy();
+  expect(voltageGroup.voltage_config).toBeTruthy();
+  expect(voltageGroup.voltage_config.nominal_voltage_ll_kv).toBeCloseTo(275.0, 1);
+
+  // wwMgBaseSummaryHtml() (the MG modal's one-line base summary) was retired with the
+  // modal; the same facts -- Nominal voltage, its kV value and the Line-to-ground
+  // reference the auto-detection chose -- are shown by Recording Details -> Group Details.
+  await openRdGroupDetails(page, sid, voltageGroup.id);
+  const details = page.locator("#wwRdDetailsBody");
+  await expect(details).toContainText("Nominal voltage");
+  await expect(details).toContainText("275 kV");
+  await expect(details).toContainText("Line-to-ground");
 });
 
 // ---------------------------------------------------------------------------
 // VD-16: Current group Edit drawer lacks Voltage PU config controls (DEC-212)
 // ---------------------------------------------------------------------------
 
-test("VD-16: Current group edit drawer has no Nominal Voltage PU config field", async ({ page }) => {
+test("VD-16: Current group editor has no Nominal Voltage PU config field", async ({ page }) => {
   await page.goto("/index.html");
   await uploadWith275kVVoltageGroup(page, "VD16");
+  const sid = await sourceIdFor(page, "VD16");
 
-  // Open Per-Unit Settings then Measurement Groups sub-dialog.
-  await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await expect(page.locator("#perUnitSettingsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await expect(page.locator("#measurementGroupsOverlay")).not.toHaveAttribute("hidden", { timeout: 5000 });
+  // The Current group (IA channel group) created by the upload.
+  const groups = await (await page.request.get(await wsUrl(page, `/sources/${sid}/measurement-groups`))).json();
+  const currentGroup = groups.find((g) => g.kind === "current");
+  expect(currentGroup).toBeTruthy();
 
-  // Find the Current group Edit button and open the drawer.
-  const mgBody = page.locator("#measurementGroupsBody");
-  await expect(mgBody.getByText("Current Groups", { exact: false })).toBeVisible({ timeout: 5000 });
+  // The MG drawer was replaced by the Recording Details Equipment Rating editor.
+  await openRdCurrentEditor(page, sid, currentGroup.id);
 
-  // Locate the Edit button for a Current group row (IA channel group).
-  const currentRow = mgBody.locator(".ww-mg-row").filter({ hasText: "IA" }).first();
-  await currentRow.locator("button", { hasText: "Edit" }).click();
-  await expect(page.locator("#wwMgDrawerBackdrop")).not.toHaveAttribute("hidden", { timeout: 5000 });
-
-  // The Current group drawer must NOT show the Nominal Voltage PU-config field
-  // (that's the Voltage group field — wwMgVoltageKvInput with label "Nominal Voltage (kV, Line-to-Line)").
-  await expect(page.locator("#wwMgVoltageKvInput")).toHaveCount(0);
+  // Positive control: the Current editor is open and offers the equipment rating.
+  await expect(page.locator("#wwRdDetailsBody #wwRdCurMva")).toBeVisible();
+  // The Current group editor must NOT show the Nominal Voltage PU-config field
+  // (that is the Voltage group field, #wwRdVltKv "Nominal voltage (L-L) kV").
+  await expect(page.locator("#wwRdVltKv")).toHaveCount(0);
+  await expect(page.locator("#wwRdDetailsBody")).not.toContainText("Nominal voltage");
 });
 
 // ---------------------------------------------------------------------------

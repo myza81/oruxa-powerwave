@@ -6,6 +6,7 @@
 const { test, expect } = require("./support/test");
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 const { BACKEND, workspaceId, sourceIdFor, addRecords, selectChannel, channelRow, waitForPlot } = require("./support/event_reconstruction_helpers");
+const { openRdCurrentEditor } = require("./support/recording_details_pu_helpers");
 
 async function json(response, status = 200) {
   expect(response.status(), await response.text()).toBe(status);
@@ -19,7 +20,7 @@ async function setup(page, { marker = "P", side = "primary", sourceDefault = fal
   const data = syntheticComtrade({ station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.2,
     channels: ["IA", "IB"].map((name, i) => ({ name, phase: i ? "B" : "A", unit: "A", amplitude: .5, frequencyHz: 50 })) });
   const cfg = Buffer.from(data.cfg.toString("latin1").replaceAll(",1.0,1.0,P", `,2000,1,${marker}`), "latin1");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "reference.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "reference.dat", mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
@@ -228,12 +229,12 @@ test("ER uses its own mode and explicit Unknown-reference status without changin
 // Slice 6C.1 — DEC-212 MG drawer: standard vs legacy Current groups
 // ---------------------------------------------------------------------------
 
-test("Current MG drawer shows no PU controls for standard Current group (DEC-212)", async ({ page }) => {
+test("Current group editor shows no PU controls for standard Current group (DEC-212)", async ({ page }) => {
   await page.goto("/index.html");
   const station = "MG_UI_STANDARD";
   const data = syntheticComtrade({ station, startClock: "10:00:00.000000", rateHz: 1000, durationS: 0.1,
     channels: [{ name: "IA", phase: "A", unit: "A", amplitude: .5, frequencyHz: 50 }] });
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "mgtest.cfg", mimeType: "application/octet-stream", buffer: data.cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "mgtest.dat", mimeType: "application/octet-stream", buffer: data.dat });
   await page.locator("#uploadModalSubmitBtn").click();
@@ -248,37 +249,24 @@ test("Current MG drawer shows no PU controls for standard Current group (DEC-212
     display_name: "Standard Current", status: "confirmed",
     channel_refs: [{ kind: "source", source_id: sid, channel_name: "IA" }] } }), 201);
 
-  await page.locator("#mainNavWaveformBtn").click();
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${group.id}"]`).click();
-  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
+  // The MG drawer was replaced by the Recording Details Equipment Rating editor (PU-UI-001).
+  await openRdCurrentEditor(page, sid, group.id);
 
-  // Standard DEC-212 Current group: no PU configuration controls.
-  await expect(page.locator("#wwMgLegacyCurrentSection")).toHaveCount(0);
-  await expect(page.locator("#wwMgManualIbaseInput")).toHaveCount(0);
-  await expect(page.locator("#wwMgCurrentMethod")).toHaveCount(0);
-  await expect(page.locator("#wwMgDrawerBody")).toContainText("Current channels always display in A/kA");
-  await expect(page.locator("#wwMgDrawerBody")).toContainText("DEC-212");
+  // Standard DEC-212 Current group: no PU configuration controls -- the editor offers the
+  // equipment rating and its associated voltage group, and nothing else.
+  const controls = await page.locator("#wwRdDetailsBody input, #wwRdDetailsBody select").evaluateAll(els => els.map(el => el.id));
+  expect(controls).toEqual(["wwRdCurMva", "wwRdCurVoltageGroup"]);
+  await expect(page.locator("#wwRdVltKv")).toHaveCount(0);
+  // Not ported (reported in the P0 handover): the drawer's explanatory note "Current channels always
+  // display in A/kA ... DEC-212" -- no Recording Details surface carries that text.
 });
 
-test("Current MG drawer shows Legacy Current Reference for group with existing Ibase config (DEC-212)", async ({ page }) => {
-  // setup() creates a group with method: "manual" (manual_ibase_ka: 2) → hasLegacyConfig = true.
-  const c = await setup(page);
-
-  await page.locator("#wwOpenPerUnitSettingsBtn").click();
-  await page.locator("#wwOpenMeasurementGroupsFromSettingsBtn").click();
-  await page.locator(`[id="wwMgEditBtn-${c.group.id}"]`).click();
-  await expect(page.locator("#wwMgDrawer")).toHaveClass(/ww-cc-drawer--open/);
-
-  // Legacy group: shows the Legacy Current Reference section with its badge and controls.
-  await expect(page.locator("#wwMgLegacyCurrentSection")).toBeVisible();
-  await expect(page.locator("#wwMgLegacyBadge")).toHaveText("Historical");
-  await expect(page.locator("#wwMgManualIbaseInput")).toBeVisible();
-  await expect(page.locator("#wwMgBaseReferenceSide")).toBeVisible();
-  // The DEC-212 "no PU controls" note is NOT present for legacy groups.
-  await expect(page.locator("#wwMgDrawerBody")).not.toContainText("Per-unit normalisation for current is configured through Calculated Channels");
-});
+// RETIRED (owner decision, P0 closeout 2026-11-25): "Current MG drawer shows Legacy Current Reference for a group
+// with an existing Ibase config". The MG drawer and its Legacy Current Reference section were removed by PU-UI-001
+// (4161a63); Recording Details does not edit a Current group's manual Ibase or base reference side (DEC-212 §5
+// keeps the backend). The underlying behaviour -- a manual Ibase / base reference side still produces the PU
+// result, provenance and compatibility -- stays covered through the real API by the other tests in this file and
+// by current-common-base.spec.js.
 
 // ---------------------------------------------------------------------------
 // Slice 6C.1 — DEC-212 annotation engineeringType storage

@@ -24,6 +24,7 @@ from app.domain.reference_side import ReferenceSide, configured_base_side
 
 from dataclasses import dataclass
 
+from app.domain.auto_nominal_vt import AUTHORITY_AUTO_NOMINAL, derive_auto_nominal_vt
 from app.domain.current_group_config import (
     METHOD_EQUIPMENT_RATING,
     STATUS_CONFIGURED as _CURRENT_STATUS_CONFIGURED,
@@ -53,6 +54,21 @@ class VoltageGroupConfigView:
     detection_reason: str
     base_reference_side: ReferenceSide = "unknown"
     secondary_voltage_ll_v: float | None = None
+    # RD-0B Option A: manual-base conflict flag surfaced from VoltageBaseConfiguration.
+    manual_conflict_detected: bool = False
+    manual_conflict_detail: str | None = None
+    # Slice C-2: authoritative base authority exposed to frontend.
+    base_authority: str = "legacy_manual"
+    # D1: Voltage Transformer (VT) instrument-transformer metadata.
+    vt_primary_v: float | None = None
+    vt_secondary_v: float | None = None
+    vt_ratio: float | None = None
+    vt_authority: str = "not_configured"
+    vt_provenance_note: str | None = None
+    # D4-effective: computed effective VT values (authority hierarchy: manual > recording_metadata > auto_nominal > not_configured).
+    vt_effective_primary_v: float | None = None
+    vt_effective_secondary_v: float | None = None
+    vt_effective_authority: str = "not_configured"
 
 
 @dataclass(slots=True)
@@ -65,6 +81,18 @@ class CurrentGroupConfigView:
     resolved_ibase_ka: float | None
     applicable_voltage_ll_kv: float | None
     base_reference_side: ReferenceSide = "unknown"
+    # Slice C-2: authoritative base authority exposed to frontend.
+    base_authority: str = "legacy_manual"
+    # D1: Current Transformer (CT) instrument-transformer metadata.
+    ct_primary_a: float | None = None
+    ct_secondary_a: float | None = None
+    ct_ratio: float | None = None
+    ct_authority: str = "not_configured"
+    ct_provenance_note: str | None = None
+    # D3: Independent equipment-rating metadata (method-independent).
+    equipment_mva: float | None = None
+    equipment_linked_voltage_group_id: str | None = None
+    equipment_rated_current_ka: float | None = None
 
 
 @dataclass(slots=True)
@@ -81,6 +109,25 @@ def _build_voltage_view(
 ) -> tuple[VoltageGroupConfigView, str, str | None]:
     effective = resolve_effective_voltage_reference_for_group(group, config)
     resolution = resolve_voltage_base_for_group(group, config)
+    # D4-effective: compute effective VT values using authority hierarchy:
+    # manual > recording_metadata > auto_nominal > not_configured.
+    _vt_stored_authority = config.vt_authority if config is not None else "not_configured"
+    _vt_effective_primary_v: float | None = None
+    _vt_effective_secondary_v: float | None = None
+    _vt_effective_authority: str = "not_configured"
+    if _vt_stored_authority in ("manual", "recording_metadata"):
+        _vt_effective_primary_v = config.vt_primary_v if config is not None else None
+        _vt_effective_secondary_v = config.vt_secondary_v if config is not None else None
+        _vt_effective_authority = _vt_stored_authority
+    elif _vt_stored_authority == "not_configured":
+        # Owner decision (D5A, 2026-11-21): the nominal-derived VT is valid engineering configuration;
+        # the ONE definition lives in app.domain.auto_nominal_vt (shared with the protection resolver).
+        _derived = derive_auto_nominal_vt(config)
+        if _derived.derived:
+            _vt_effective_primary_v = _derived.primary_v
+            _vt_effective_secondary_v = _derived.secondary_v
+            _vt_effective_authority = AUTHORITY_AUTO_NOMINAL
+
     view = VoltageGroupConfigView(
         nominal_voltage_ll_kv=config.nominal_voltage_ll_kv if config is not None else None,
         reference_mode=config.reference_mode if config is not None else "auto",
@@ -90,6 +137,17 @@ def _build_voltage_view(
         detection_reason=effective.reason,
         base_reference_side=config.base_reference_side if config is not None else "unknown",
         secondary_voltage_ll_v=config.secondary_voltage_ll_v if config is not None else None,
+        manual_conflict_detected=config.manual_conflict_detected if config is not None else False,
+        manual_conflict_detail=config.manual_conflict_detail if config is not None else None,
+        base_authority=config.base_authority if config is not None else "legacy_manual",
+        vt_primary_v=config.vt_primary_v if config is not None else None,
+        vt_secondary_v=config.vt_secondary_v if config is not None else None,
+        vt_ratio=config.vt_ratio if config is not None else None,
+        vt_authority=config.vt_authority if config is not None else "not_configured",
+        vt_provenance_note=config.vt_provenance_note if config is not None else None,
+        vt_effective_primary_v=_vt_effective_primary_v,
+        vt_effective_secondary_v=_vt_effective_secondary_v,
+        vt_effective_authority=_vt_effective_authority,
     )
     pu_status = "configured" if resolution.status == _VOLTAGE_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason
@@ -114,6 +172,15 @@ def _build_current_view(
     resolution = resolve_current_base_for_group(
         group, config, linked_voltage_group=linked_voltage_group, linked_voltage_config=linked_voltage_config
     )
+    # D3: resolve independent equipment linked voltage group for equipment_rated_current_ka.
+    # This is distinct from the method-coupled linked_voltage_group_id above.
+    equip_nominal_kv: float | None = None
+    if config is not None and config.equipment_linked_voltage_group_id is not None:
+        equip_linked_config = voltage_config_registry.get(group.workspace_id, config.equipment_linked_voltage_group_id)
+        if equip_linked_config is not None:
+            from app.domain.voltage_group_config import voltage_base_valid as _vbv
+            equip_nominal_kv = equip_linked_config.nominal_voltage_ll_kv if _vbv(equip_linked_config.nominal_voltage_ll_kv) else None
+    equipment_rated_current_ka = config.compute_equipment_rated_current_ka(equip_nominal_kv) if config is not None else None
     view = CurrentGroupConfigView(
         base_reference_side=configured_base_side(config.method, config.base_reference_side) if config else "unknown",
         method=config.method if config is not None else "none",
@@ -123,6 +190,15 @@ def _build_current_view(
         manual_ibase_ka=config.manual_ibase_ka if config is not None else None,
         resolved_ibase_ka=resolution.ibase_ka if resolution.status == _CURRENT_STATUS_CONFIGURED else None,
         applicable_voltage_ll_kv=resolution.applicable_voltage_ll_kv if resolution.status == _CURRENT_STATUS_CONFIGURED else None,
+        base_authority=config.base_authority if config is not None else "legacy_manual",
+        ct_primary_a=config.ct_primary_a if config is not None else None,
+        ct_secondary_a=config.ct_secondary_a if config is not None else None,
+        ct_ratio=config.ct_ratio if config is not None else None,
+        ct_authority=config.ct_authority if config is not None else "not_configured",
+        ct_provenance_note=config.ct_provenance_note if config is not None else None,
+        equipment_mva=config.equipment_mva if config is not None else None,
+        equipment_linked_voltage_group_id=config.equipment_linked_voltage_group_id if config is not None else None,
+        equipment_rated_current_ka=equipment_rated_current_ka,
     )
     pu_status = "configured" if resolution.status == _CURRENT_STATUS_CONFIGURED else resolution.status
     return view, pu_status, resolution.reason

@@ -63,6 +63,7 @@ import math
 from dataclasses import dataclass, field
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.side_conversion import SideConversionInfo
 from app.domain.phasor import (
     ManualPhasorRoleInput,
     convert_manual_magnitude_to_secondary,
@@ -73,7 +74,7 @@ from app.domain.engineering_units import ENGINEERING_QUANTITY_CURRENT, ENGINEERI
 
 #: Bump ONLY when the calculation/interpretation itself changes -- never
 #: for an unrelated refactor. Included unconditionally in every result.
-ALGORITHM_VERSION = "impedance_locus_v1"
+ALGORITHM_VERSION = "impedance_locus_v2"
 
 #: See module docstring's own "Low-current guardrail" section for the
 #: full rationale -- a numerical-validity floor, never a relay pickup
@@ -261,6 +262,7 @@ class ImpedanceAnalysisResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+    side_conversion: SideConversionInfo | None = None
 
 
 @dataclass(frozen=True, slots=True)

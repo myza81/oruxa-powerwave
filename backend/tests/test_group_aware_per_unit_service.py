@@ -150,9 +150,11 @@ class TestCurrentGroupResolution:
 
 
 class TestGroupNotConfirmedGate:
-    def test_suggested_current_group_is_base_required_even_with_a_valid_config(
+    def test_suggested_current_group_with_manual_config_resolves(
         self, voltage_config_registry, current_config_registry
     ):
+        """DEC-UA-002: suggested + set_current_base_manual (manual authority) → CONFIGURED.
+        Manual correction is not a separate confirmation workflow."""
         registry = MeasurementGroupRegistry()
         from app.domain.measurement_group import STATUS_SUGGESTED
         registry.add(_group("mg-current-2", KIND_CURRENT, channel_names=("IR2", "IY2", "IB2"), status=STATUS_SUGGESTED))
@@ -166,7 +168,7 @@ class TestGroupNotConfirmedGate:
             current_config_registry=current_config_registry,
         )
         assert result is not None
-        assert result.status == STATUS_BASE_REQUIRED
+        assert result.status == STATUS_CONFIGURED
 
     def test_suggested_linked_voltage_group_does_not_block_current_resolution(
         self, current_config_registry

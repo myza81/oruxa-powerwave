@@ -11,13 +11,14 @@ const duration = t => Math.abs(t) > 0 && Math.abs(t) < .001 ? `${(t * 1e6).toFix
 const valueText = v => v === 0 ? "0.0" : Math.abs(v) >= 1 ? v.toFixed(1) : Math.abs(v) >= .001 ? v.toFixed(3) : v.toExponential(2);
 async function upload(page, files, ben = true) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   if (ben) await page.locator("#uploadModalFormatSelect").selectOption("ben");
   for (let i = 0; i < files.length; i++) await page.locator(`#uploadModalFile_${i}`).setInputFiles(files[i]);
   await page.locator("#uploadModalSubmitBtn").click();
   await expect(page.locator("#uploadModalOverlay")).toBeHidden();
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first(), sid = await row.getAttribute("data-source-id");
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").first(), sid = await row.getAttribute("data-source-id");
   await row.click();
+  await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
   return `${BACKEND}/api/v1/workspaces/${await workspaceId(page)}/sources/${sid}`;
 }
 async function display(page, name) {

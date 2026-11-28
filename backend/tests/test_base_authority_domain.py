@@ -379,13 +379,13 @@ class TestVoltageResolverUnchangedBySlice5B:
         result = resolve_voltage_base_for_group(group, cfg)
         assert result.status == V_STATUS_CONFIGURED
 
-    def test_suggested_group_does_not_resolve_regardless_of_authority(self):
-        """Group status gate: suggested → base_required (unchanged by Slice 5B)."""
+    def test_suggested_group_with_engineer_approved_authority_resolves(self):
+        """DEC-UA-002: suggested + engineer-approved authority → CONFIGURED.
+        Manual correction bypasses the status gate for suggested groups."""
         group = _voltage_group(STATUS_SUGGESTED, channel_names=("VRY",))
         cfg = _vconfig(base_authority=BASE_AUTHORITY_LEGACY)
         result = resolve_voltage_base_for_group(group, cfg)
-        assert result.status == V_STATUS_BASE_REQUIRED
-        assert result.reason == "group_not_confirmed"
+        assert result.status == V_STATUS_CONFIGURED
 
     def test_auto_resolved_authority_resolves_on_confirmed_group(self):
         """auto_resolved authority on a confirmed group → CONFIGURED."""
@@ -574,11 +574,12 @@ class TestCurrentResolverUnchangedBySlice5B:
         expected_ibase = 100.0 / (SQRT_3 * 132.0)
         assert math.isclose(result.ibase_ka, expected_ibase, rel_tol=1e-9)
 
-    def test_suggested_group_does_not_resolve(self):
+    def test_suggested_group_with_engineer_approved_authority_resolves(self):
+        """DEC-UA-002: suggested + engineer-approved authority → CONFIGURED."""
         group = _current_group(STATUS_SUGGESTED)
         cfg = _iconfig()
         result = resolve_current_base_for_group(group, cfg)
-        assert result.status == STATUS_BASE_REQUIRED
+        assert result.status == STATUS_CONFIGURED
 
     def test_legacy_authority_does_not_affect_resolver(self):
         """legacy_manual authority still resolves correctly."""

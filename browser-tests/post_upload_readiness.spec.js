@@ -34,15 +34,55 @@ const path = require("path");
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const STEM = "compliance_smoke_multibay";
 
+// D5A-2B2C-1A (DEC-216 Amendment 4/5): Overcurrent works in secondary current, so a Primary-declared recording needs
+// the CT of its Current Measurement Group. These fixtures carry none, which is a correct refusal
+// (ct_authority_unavailable); the missing-CT refusal itself stays covered by d5a_2b2c_1a_overcurrent_side.spec.js.
+// The Overcurrent tests below are about context auto-selection and compute/render, so they configure a manual CT
+// through the supported group configuration endpoint (the one Recording Details' CT editor saves to) for every
+// Current group of the uploaded recording(s) before opening Analysis.
+const CT_BACKEND = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
+async function configureCurrentGroupCts(page, ctPrimaryA = 1200, ctSecondaryA = 1) {
+  const workspace = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+  const base = `${CT_BACKEND}/api/v1/workspaces/${workspace}`;
+  const sources = await (await page.request.get(`${base}/sources`)).json();
+  let configured = 0;
+  for (const source of sources) {
+    const groups = await (await page.request.get(`${base}/sources/${source.source_id}/measurement-groups`)).json();
+    for (const group of groups.filter((g) => g.kind === "current")) {
+      const response = await page.request.put(`${base}/sources/${source.source_id}/measurement-groups/${group.id}/current-config`, {
+        data: { update_ct_only: true, ct_primary_a: ctPrimaryA, ct_secondary_a: ctSecondaryA },
+      });
+      expect(response.ok(), await response.text()).toBeTruthy();
+      configured += 1;
+    }
+  }
+  expect(configured).toBeGreaterThan(0);
+}
+
+// D5A-2B2C-1B (DEC-216 Amendment 6): Impedance Locus / Distance Protection take the
+// recorded side of every consumed channel from Recording Details and convert to the
+// requested OUTPUT side only where the two differ. The fixtures below declare their
+// Voltage and Current Primary (`P`) and carry no VT/CT, while the analyzers default the
+// output side to Secondary -- a conversion that is correctly refused
+// (`vt_authority_unavailable`, see d5a_2b2c_1b_protection_side.spec.js). The tests that
+// use these fixtures are about context auto-selection and compute/render, so they
+// request the recorded (Primary) side, which needs no ratio. Nothing is seeded and no
+// safeguard is bypassed.
+async function requestRecordedSide(page, panel) {
+  const select = page.locator(`#ww${panel}OutputBasisSelect`);
+  await select.selectOption("primary");
+  await expect(select).toHaveValue("primary");
+}
+
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
 }
 
@@ -116,8 +156,8 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
 
   test("re-uploading a second source into the same workspace does not duplicate or disturb the first bay's discovery", async ({ page }) => {
     await uploadFixture(page);
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "compliance_smoke_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "compliance_smoke_three_phase.dat"));
@@ -129,7 +169,7 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     // 4 original bays + 1 newly-discovered bay from the second upload --
     // idempotent, additive-only, never duplicated on repeated visits.
     await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(6);
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(6);
   });
@@ -176,13 +216,13 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
 test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immediately after upload, with zero manual context selection", () => {
   async function uploadPhasorSmokeFixture(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_three_phase.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "phasor_smoke_three_phase.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -203,6 +243,7 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
 
   test("Overcurrent: input resolution + computation + render succeed with no manual context selection", async ({ page }) => {
     await uploadPhasorSmokeFixture(page);
+    await configureCurrentGroupCts(page);
     await page.locator("#mainNavAnalysisBtn").click();
     await expect(page.locator("#pageAnalysis")).toBeVisible();
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
@@ -221,6 +262,7 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
     await expect(page.locator("#pageAnalysis")).toBeVisible();
     await page.locator("#wwAnalysisTypeImpedanceBtn").click();
     await expect(page.locator("#wwAnalysisTypeImpedanceBtn")).toHaveClass(/active/);
+    await requestRecordedSide(page, "Impedance");
 
     await expect(page.locator("#wwImpedanceContextSelect")).not.toHaveValue("");
     await expect(async () => {
@@ -249,6 +291,7 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
     await expect(page.locator("#pageAnalysis")).toBeVisible();
     await page.locator("#wwAnalysisTypeDistanceBtn").click();
     await expect(page.locator("#wwAnalysisTypeDistanceBtn")).toHaveClass(/active/);
+    await requestRecordedSide(page, "Distance");
 
     await expect(page.locator("#wwDistanceContextSelect")).not.toHaveValue("");
     await expect(async () => {
@@ -321,13 +364,13 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
 test.describe("DEC-106: initial context auto-selection is analyzer-compatibility-aware, not merely 'first context'", () => {
   async function uploadMixedCapabilityFixture(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "mixed_capability_multibay.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "mixed_capability_multibay.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -342,6 +385,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
 
   test("Overcurrent skips the Voltage-only bay and auto-selects the Voltage+Current bay; real computation succeeds", async ({ page }) => {
     await uploadMixedCapabilityFixture(page);
+    await configureCurrentGroupCts(page);
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
     await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
 
@@ -357,6 +401,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
   test("Impedance Locus skips the Voltage-only bay and auto-selects the Voltage+Current bay; current point and locus both succeed", async ({ page }) => {
     await uploadMixedCapabilityFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await requestRecordedSide(page, "Impedance");
     await expect(page.locator("#wwImpedanceContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
 
     const kpdn2Id = await page.evaluate(() => wwImpedanceState.contexts.find((c) => c.display_name === "KPDN2").id);
@@ -370,6 +415,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
   test("Distance Protection skips the Voltage-only bay and auto-selects the Voltage+Current bay; loop impedance succeeds", async ({ page }) => {
     await uploadMixedCapabilityFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await requestRecordedSide(page, "Distance");
     await expect(page.locator("#wwDistanceContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
 
     const kpdn2Id = await page.evaluate(() => wwDistanceState.contexts.find((c) => c.display_name === "KPDN2").id);
@@ -408,7 +454,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
     // Overcurrent/Impedance/Distance requirement is genuinely
     // unsatisfiable by any context.
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "compliance_smoke_multibay.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "compliance_smoke_multibay.dat"));
@@ -451,7 +497,7 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
     // the engineer's own explicit choice is preserved, even though it
     // is analyzer-incompatible (auto-selection only applies to the
     // initial unselected state).
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn1Id);
   });
@@ -489,13 +535,13 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
 test.describe("DEC-107: initial context auto-selection is representation-eligibility-aware (RMS/magnitude current is never treated as usable)", () => {
   async function uploadRepresentationEligibilityFixture(page, stem) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -510,6 +556,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
 
   test("Overcurrent skips the RMS-shaped-current bay and auto-selects the instantaneous bay; real RMS computation succeeds", async ({ page }) => {
     await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
+    await configureCurrentGroupCts(page);
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
     await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // placeholder + 2 bays
 
@@ -525,6 +572,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
   test("Impedance Locus skips the RMS-shaped-current bay and auto-selects the instantaneous bay; current point, locus, and Related Waveforms all succeed", async ({ page }) => {
     await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
     await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await requestRecordedSide(page, "Impedance");
     await expect(page.locator("#wwImpedanceContextSelect option")).toHaveCount(3, { timeout: 10000 });
 
     const instbayId = await page.evaluate(() => wwImpedanceState.contexts.find((c) => c.display_name === "INSTBAY").id);
@@ -542,6 +590,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
   test("Distance Protection skips the RMS-shaped-current bay and auto-selects the instantaneous bay; loop impedance succeeds", async ({ page }) => {
     await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
     await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await requestRecordedSide(page, "Distance");
     await expect(page.locator("#wwDistanceContextSelect option")).toHaveCount(3, { timeout: 10000 });
 
     const instbayId = await page.evaluate(() => wwDistanceState.contexts.find((c) => c.display_name === "INSTBAY").id);
@@ -600,7 +649,7 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
     await page.locator("#wwOvercurrentContextSelect").selectOption(rmsbayId);
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
 
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
   });
@@ -641,13 +690,13 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
 test.describe("DEC-108: multi-window waveform-form detector correctly accepts genuine disturbance-record instantaneous current", () => {
   async function uploadDisturbanceRecordFixture(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "disturbance_record_multibay.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "disturbance_record_multibay.dat"));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
     await expect(row).toBeVisible();
   }
 
@@ -660,6 +709,7 @@ test.describe("DEC-108: multi-window waveform-form detector correctly accepts ge
 
   test("Overcurrent: context auto-selected, no waveform_form_not_eligible, real RMS current renders", async ({ page }) => {
     await uploadDisturbanceRecordFixture(page);
+    await configureCurrentGroupCts(page);
     await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
 
     await expect(page.locator("#wwOvercurrentContextSelect")).not.toHaveValue("", { timeout: 10000 });
@@ -675,6 +725,7 @@ test.describe("DEC-108: multi-window waveform-form detector correctly accepts ge
   test("Impedance Locus: same context eligible, current point and locus both render", async ({ page }) => {
     await uploadDisturbanceRecordFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await requestRecordedSide(page, "Impedance");
 
     await expect(page.locator("#wwImpedanceContextSelect")).not.toHaveValue("", { timeout: 10000 });
     await expect(async () => {
@@ -688,6 +739,7 @@ test.describe("DEC-108: multi-window waveform-form detector correctly accepts ge
   test("Distance Protection: loop result renders", async ({ page }) => {
     await uploadDisturbanceRecordFixture(page);
     await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await requestRecordedSide(page, "Distance");
 
     await expect(page.locator("#wwDistanceContextSelect")).not.toHaveValue("", { timeout: 10000 });
     await expect(async () => {

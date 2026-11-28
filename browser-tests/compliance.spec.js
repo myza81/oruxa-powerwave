@@ -17,7 +17,7 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     await page.goto("/index.html");
     const labels = page.locator("#mainSidebarMenu .shell-nav-list .shell-nav-label");
     await expect(labels).toHaveText([
-      "Recordings",
+      "Recording Details",
       "Waveform",
       "Event Reconstruction",
       "Table",
@@ -112,8 +112,8 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
   test("switching to other main pages works, no stale Compliance panel remains visible", async ({ page }) => {
     await openCompliance(page);
 
-    await page.locator("#mainNavRecordingsBtn").click();
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
     await expect(page.locator("#pageCompliance")).toBeHidden();
 
     await page.locator("#mainNavComplianceBtn").click();

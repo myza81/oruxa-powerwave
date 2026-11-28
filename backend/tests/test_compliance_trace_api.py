@@ -144,15 +144,18 @@ class TestNothingIsGuessed:
         assert _readiness(client, "KPDN1")["status"] == "ready"
         assert len(_traces(client, "KPDN1")["traces"]) > 0
 
-    def test_a_base_that_is_not_applied_yet_plots_nothing(self, client):
+    def test_engineer_approved_base_on_suggested_group_plots_traces(self, client):
+        """An engineer-approved base (manual authority) on a suggested group
+        is active via skip_status_gate (DEC-050 / VLT-REF-001 Slice 5C-1).
+        Traces are generated even though the group is not yet confirmed."""
         _add_reference(client, representation="phase_ground_rms", unit="pu")
         _prepare(client, "KPDN1")
         group = _groups(client)["KPDN1"]
         client.put(
             f"/api/v1/workspaces/{WS}/sources/{group['source_id']}/measurement-groups/{group['id']}/voltage-config",
             json={"nominal_voltage_ll_kv": 132.0, "reference_mode": "auto"},
-        )  # saved, group still only suggested
-        assert _traces(client, "KPDN1")["traces"] == []
+        )  # manual authority; skip_status_gate bypasses the suggested group gate
+        assert len(_traces(client, "KPDN1")["traces"]) > 0
 
     def test_unsafe_line_line_plots_nothing(self, client):
         _add_reference(client, unit="kV")

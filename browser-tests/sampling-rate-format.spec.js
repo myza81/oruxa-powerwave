@@ -32,9 +32,9 @@ test("Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly,
 
   await test.step("Upload a CSV with a genuine 60s sample interval", async () => {
     await page.goto("/index.html");
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
 
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFormatSelect").selectOption("csv");
     await page.locator("#uploadModalFile_0").setInputFiles({
@@ -45,9 +45,10 @@ test("Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly,
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 
-    const row = page.locator('#recordingsTableBody tr[data-source-id][data-recording-kind="csv"]').first();
-    await expect(row).toBeVisible();
-    await row.click();
+    const item = page.locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind="csv"]').first();
+    await expect(item).toBeVisible();
+    const itemSourceId = await item.getAttribute("data-source-id");
+    await page.evaluate(async (sid) => { await openDataPreparationWorkspace(sid); }, itemSourceId);
     await expect(page.locator("#pageDataPreparation")).toBeVisible();
   });
 
@@ -109,10 +110,10 @@ test("Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly,
   });
 
   await test.step("Back on Recordings: the Sampling Rate(s) cell shows a clean value, no floating-point tail", async () => {
-    await page.locator("#mainNavRecordingsBtn").click();
-    await expect(page.locator("#pageRecordings")).toBeVisible();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
+    await expect(page.locator("#pageRecordingDetails")).toBeVisible();
 
-    const row = page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`);
+    const row = page.locator(`#wwRdRecordingList .ww-rd-recording-item[data-source-id="${sourceId}"]`);
     await expect(row).toBeVisible();
 
     const cell = row.locator("td.recording-sampling-rates-cell");
@@ -128,7 +129,7 @@ test("Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly,
     // proves the fix does not regress the already-correct integer path.
     const path = require("path");
     const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
-    await page.locator("#recordingsUploadBtn").click();
+    await page.locator("#wwRdUploadBtn").click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
@@ -140,9 +141,9 @@ test("Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly,
     // data-recording-kind="comtrade" (every real registered source does,
     // regardless of original format; only a not-yet-converted
     // "Needs Preparation" row keeps its own csv/excel kind).
-    const row = page.locator('#recordingsTableBody tr[data-source-id][data-recording-kind="comtrade"]').last();
+    const row = page.locator('#wwRdRecordingList .ww-rd-recording-item[data-source-kind="comtrade"]').last();
     await expect(row).toBeVisible();
-    await expect(row.locator("td.recording-sampling-rates-cell")).toHaveText("4000 Hz");
+    await expect(row.locator(".ww-rd-recording-item-meta")).toContainText("4000 Hz");
   });
 
   await test.step("Zero unexpected console/page errors", async () => {

@@ -227,17 +227,25 @@ class TestManualOverrideChangesTheDenominator:
 
 
 class TestAuthoritativeStatusGate:
-    """Section 9/25: only confirmed/manual groups may resolve a real
-    denominator -- suggested/needs_review must never silently become
-    authoritative for PU conversion."""
+    """Section 9/25 (as amended by DEC-UA-002): suggested groups with
+    engineer-approved or auto_resolved authority resolve a real denominator
+    without an explicit confirmation step.  needs_review groups must never
+    silently become authoritative for PU conversion."""
 
-    def test_suggested_group_is_base_required_even_with_a_valid_configuration(self):
+    def test_suggested_group_with_valid_config_resolves(self):
+        """DEC-UA-002: suggested + legacy_manual authority + valid nominal → CONFIGURED.
+        Manual correction is not a separate confirmation workflow."""
         group = _group(status=STATUS_SUGGESTED, channel_names=("VR", "VY", "VB"))
         config = _config(nominal_voltage_ll_kv=275.0)
         resolution = resolve_voltage_base_for_group(group, config)
+        assert resolution.status == STATUS_CONFIGURED
+
+    def test_suggested_group_no_config_is_base_required(self):
+        """Without any configuration, suggested → group_not_confirmed."""
+        group = _group(status=STATUS_SUGGESTED, channel_names=("VR", "VY", "VB"))
+        resolution = resolve_voltage_base_for_group(group, None)
         assert resolution.status == STATUS_BASE_REQUIRED
         assert resolution.reason == "group_not_confirmed"
-        assert resolution.denominator_kv is None
 
     def test_needs_review_group_is_base_required_even_with_a_valid_configuration(self):
         group = _group(status=STATUS_NEEDS_REVIEW, channel_names=("VR", "VY", "VB"))
@@ -287,7 +295,7 @@ class TestNotApplicableAndBaseRequired:
 
 class TestConvertVoltageToPu:
     def test_returns_none_when_resolution_is_not_configured(self):
-        group = _group(status=STATUS_SUGGESTED, channel_names=("VR", "VY", "VB"))
+        group = _group(status=STATUS_NEEDS_REVIEW, channel_names=("VR", "VY", "VB"))
         resolution = resolve_voltage_base_for_group(group, _config(nominal_voltage_ll_kv=275.0))
         assert convert_voltage_to_pu(158.77, "kV", resolution) is None
 

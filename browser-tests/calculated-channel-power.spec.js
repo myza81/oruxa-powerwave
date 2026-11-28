@@ -52,13 +52,13 @@ async function uploadFixture(page) {
   await routeConfig(page);
   await page.goto("/index.html");
   const { cfg, dat } = powerFixture();
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles({ name: "power.cfg", mimeType: "application/octet-stream", buffer: cfg });
   await page.locator("#uploadModalFile_1").setInputFiles({ name: "power.dat", mimeType: "application/octet-stream", buffer: dat });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
   await page.locator("#mainNavCalculatedChannelsBtn").click();
   await expect(page.locator("#pageCalculatedChannels")).toBeVisible();
 }
@@ -97,7 +97,7 @@ async function expectPowerRow(page, { glyph, operation, label, expression, unit 
   await expect(createdRow.locator(".ww-cc-list-row-class")).toHaveText("Power");
   await expect(createdRow.locator(".ww-cc-list-row-unit")).toHaveText(unit);
   const id = await createdRow.getAttribute("data-calculated-channel-id");
-  const sourceId = await page.locator("#recordingsTableBody tr[data-source-id]").first().getAttribute("data-source-id");
+  const sourceId = await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().getAttribute("data-source-id");
   const calculation = await page.evaluate((calcId) => ww.calculatedChannels.get(calcId), id);
   expect(calculation).toMatchObject({
     id, name: `${glyph} (VA, IA)`, operation, unit, engineering_type: "Power",
@@ -457,7 +457,7 @@ test.describe("Phase D: Hybrid V-I Pair Picker", () => {
       "1.0",
     ].join("\r\n") + "\r\n";
     const dat = ["1,0,0.0", "2,5000,0.1", "3,10000,0.2", "4,15000,0.3", "5,20000,0.4"].join("\r\n") + "\r\n";
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await page.locator("#uploadModalFile_0").setInputFiles({ name: "nopair.cfg", mimeType: "application/octet-stream", buffer: Buffer.from(cfg, "latin1") });
     await page.locator("#uploadModalFile_1").setInputFiles({ name: "nopair.dat", mimeType: "application/octet-stream", buffer: Buffer.from(dat, "latin1") });
     await page.locator("#uploadModalSubmitBtn").click();

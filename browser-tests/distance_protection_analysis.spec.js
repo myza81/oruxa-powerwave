@@ -26,6 +26,7 @@
 const { test, expect } = require("./support/test");
 const path = require("path");
 const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
+const { configureRecordedCtVt } = require("./support/ctvt_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const STEM = "phasor_smoke_three_phase";
@@ -33,7 +34,7 @@ const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", 
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
@@ -51,11 +52,13 @@ async function createFullBayContext(page, workspaceId, sourceId, displayName) {
 
 async function uploadAndCreateContext(page) {
   await uploadFixture(page);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  const row = page.locator("#wwRdRecordingList .ww-rd-recording-item").last();
   await expect(row).toBeVisible();
   const sourceId = await row.getAttribute("data-source-id");
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
   const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
+  // D5A: recorded CT/VT come only from the Recording Details Measurement Groups.
+  await configureRecordedCtVt(page, workspaceId, sourceId);
   return { workspaceId, sourceId, contextId: context.id };
 }
 

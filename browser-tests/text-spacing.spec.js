@@ -25,13 +25,13 @@ const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "com
 
 async function upload(page, cfg, dat) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, cfg));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, dat));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
 }
 // Bare VA/VB/VC -> one rootless bay, "Default Context" (A/B/C).
 const uploadDefaultContext = (page) => upload(page, "phasor_bare_three_phase.cfg", "phasor_smoke_three_phase.dat");
@@ -419,7 +419,7 @@ test.describe("Composed labels keep their word spacing", () => {
       upper_boundary: null, metadata: {},
     } });
     await page.request.post(`${base}/reference-layers`, { data: { profile_id: (await profile.json()).id, visible: true } });
-    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#mainNavRecordingDetailsBtn").click();
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
     const groupLabel = (await page.locator("#wwComplianceGroupSelect option").allTextContents()).find((t) => t.startsWith("KPDN1"));

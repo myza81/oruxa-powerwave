@@ -15,6 +15,8 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app.domain.calculated_channel import ChannelRef
+from app.domain.measurement_group import KIND_CURRENT, STATUS_CONFIRMED, MeasurementGroup
 from app.main import create_app
 
 
@@ -27,16 +29,17 @@ def client(settings):
 
 def _build_ascii_comtrade(
     *, station: str, channels: list[tuple[str, str, float]], sample_rate_hz: float, duration_s: float,
-    nominal_frequency_hz: float = 50.0,
+    nominal_frequency_hz: float = 50.0, side_flag: str = "S",
 ) -> tuple[bytes, bytes]:
     """`channels`: list of `(name, unit, rms_amps)` -- a pure sinusoid at
     `nominal_frequency_hz`, `a=1.0, b=0.0` so raw sample values ARE the
-    engineering values directly."""
+    engineering values directly. `side_flag` is the recording's own P/S declaration for every channel
+    (D5A-2B2C-1A: Recording Details, fed by this flag, decides the side of the recorded current)."""
     n = int(round(duration_s * sample_rate_hz))
     dt_us = 1_000_000.0 / sample_rate_hz
     lines_cfg = [f"{station},OCDEV,1999", f"{len(channels)},{len(channels)}A,0D"]
     for i, (name, unit, _rms) in enumerate(channels, start=1):
-        lines_cfg.append(f"{i},{name},,,{unit},1.0,0.0,0,-99999999,99999999,1.0,1.0,P")
+        lines_cfg.append(f"{i},{name},,,{unit},1.0,0.0,0,-99999999,99999999,1.0,1.0,{side_flag}")
     lines_cfg.append(str(nominal_frequency_hz))
     lines_cfg.append("1")
     lines_cfg.append(f"{sample_rate_hz},{n}")
@@ -56,7 +59,7 @@ def _build_ascii_comtrade(
     return cfg_text.encode("ascii"), dat_text.encode("ascii")
 
 
-def _upload_current_source(client, workspace_id, *, channels, sample_rate_hz=5000.0, duration_s=3.0, nominal_frequency_hz=50.0, stem="oc_ascii"):
+def _upload_current_source(client, workspace_id, *, channels, sample_rate_hz=5000.0, duration_s=3.0, nominal_frequency_hz=50.0, stem="oc_ascii", side_flag="S"):
     """DEC-104 (2026-09-23): upload now also runs automatic Engineering
     Context discovery, which would otherwise collide with this module's
     own hand-built contexts on the same channels -- clear whatever
@@ -64,17 +67,17 @@ def _upload_current_source(client, workspace_id, *, channels, sample_rate_hz=500
     keeps constructing its own contexts from a clean slate."""
     source_id = _upload_current_source_without_clearing(
         client, workspace_id, channels=channels, sample_rate_hz=sample_rate_hz,
-        duration_s=duration_s, nominal_frequency_hz=nominal_frequency_hz, stem=stem,
+        duration_s=duration_s, nominal_frequency_hz=nominal_frequency_hz, stem=stem, side_flag=side_flag,
     )
     for context in client.get(_contexts_url(workspace_id)).json():
         client.delete(f"{_contexts_url(workspace_id)}/{context['id']}")
     return source_id
 
 
-def _upload_current_source_without_clearing(client, workspace_id, *, channels, sample_rate_hz=5000.0, duration_s=3.0, nominal_frequency_hz=50.0, stem="oc_ascii"):
+def _upload_current_source_without_clearing(client, workspace_id, *, channels, sample_rate_hz=5000.0, duration_s=3.0, nominal_frequency_hz=50.0, stem="oc_ascii", side_flag="S"):
     cfg, dat = _build_ascii_comtrade(
         station="OCSTA", channels=channels, sample_rate_hz=sample_rate_hz, duration_s=duration_s,
-        nominal_frequency_hz=nominal_frequency_hz,
+        nominal_frequency_hz=nominal_frequency_hz, side_flag=side_flag,
     )
     files = {
         "cfg_file": (f"{stem}.cfg", io.BytesIO(cfg), "application/octet-stream"),
@@ -83,6 +86,23 @@ def _upload_current_source_without_clearing(client, workspace_id, *, channels, s
     resp = client.post(f"/api/v1/workspaces/{workspace_id}/sources", files=files)
     assert resp.status_code == 201, resp.text
     return resp.json()["source_id"]
+
+
+def _configure_ct(client, workspace_id, source_id, channel_name, ct_primary, ct_secondary):
+    """The CT of the Current Measurement Group that owns the channel, exactly as Recording Details stores it."""
+    state = client.app.state
+    ref = ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
+    group_id = state.measurement_group_registry.group_for_channel(workspace_id, ref)     # the upload already grouped it
+    if group_id is None:
+        group_id = f"ig-{channel_name}"
+        state.measurement_group_registry.add(MeasurementGroup(
+            id=group_id, workspace_id=workspace_id, source_id=source_id, kind=KIND_CURRENT, display_name=group_id,
+            status=STATUS_CONFIRMED, channel_refs=[ref],
+        ))
+    state.current_group_config_registry.update_fields(
+        workspace_id, group_id, ct_primary_a=ct_primary, ct_secondary_a=ct_secondary, ct_authority="manual",
+        ct_provenance_note=None, update_ct=True,
+    )
 
 
 def _contexts_url(workspace_id):
@@ -158,7 +178,8 @@ class TestComputedThroughRealUpload:
         assert body["channel_ref"]["channel_name"] == "ALPHA1_IA"
 
     def test_primary_basis_ct_conversion_via_http(self, client):
-        source_id = _upload_current_source(client, "ws-1", channels=[("ALPHA1_IA", "A", 4200.0)])
+        source_id = _upload_current_source(client, "ws-1", channels=[("ALPHA1_IA", "A", 4200.0)], side_flag="P")
+        _configure_ct(client, "ws-1", source_id, "ALPHA1_IA", 1000.0, 1.0)
         context = _create_context(client, "ws-1", [{"channel_ref": _ref(source_id, "ALPHA1_IA"), "phase": "A", "phase_source": "engineer_confirmed"}])
         resp = _overcurrent(
             client, "ws-1", context["id"], phase="A", analysis_time=1.5,
@@ -187,7 +208,8 @@ class TestComputedThroughRealUpload:
         COMTRADE upload: a 2.4 kA primary channel through a 1200:1 CT
         must resolve to a 2.0 A relay-equivalent current (2.5x a 0.8 A
         secondary pickup), never the un-normalized 0.002 A."""
-        source_id = _upload_current_source(client, "ws-1", channels=[("ALPHA1_IA", "kA", 2.4)])
+        source_id = _upload_current_source(client, "ws-1", channels=[("ALPHA1_IA", "kA", 2.4)], side_flag="P")
+        _configure_ct(client, "ws-1", source_id, "ALPHA1_IA", 1200.0, 1.0)
         context = _create_context(client, "ws-1", [{"channel_ref": _ref(source_id, "ALPHA1_IA"), "phase": "A", "phase_source": "engineer_confirmed"}])
         resp = _overcurrent(
             client, "ws-1", context["id"], phase="A", analysis_time=1.5,

@@ -44,13 +44,13 @@ async function addComplianceReference(page) {
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
-  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await page.locator("#wwRdUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
   await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
   await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
 }
 
 async function contextsByName(page) {
@@ -244,7 +244,8 @@ test.describe("Phase display convention (DEC-118)", () => {
 
   test("source channel names stay exactly as supplied in the Waveform sidebar", async ({ page }) => {
     await uploadFixture(page);
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     await expect(rows.first()).toBeVisible();
     for (const name of ["KPDN1_VR", "KPDN1_VY", "KPDN1_VB", "MCRS_VA", "MCRS_VB", "MCRS_VC", "AMBG_VB"]) {
@@ -337,13 +338,13 @@ test.describe("Phase display convention -- R/Y/B names with COMTRADE ph A/B/C (o
 
   async function uploadStructuredPh(page) {
     await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#wwRdUploadBtn").first().click();
     await expect(page.locator("#uploadModalOverlay")).toBeVisible();
     await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${PH_STEM}.cfg`));
     await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${PH_STEM}.dat`));
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+    await expect(page.locator("#wwRdRecordingList .ww-rd-recording-item").first()).toBeVisible();
   }
 
   const relatedVoltageNames = (page) => page.evaluate(() => {
@@ -541,7 +542,8 @@ test.describe("Phase display convention -- phase currents follow the bay", () =>
 
   test("source channel names and the source Phase column are never rewritten", async ({ page }) => {
     await uploadFixture(page);
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await page.locator("#wwRdRecordingList .ww-rd-recording-item").first().click();
+    await page.locator("#mainNavWaveformBtn").click();   // selecting a recording in Recording Details no longer opens Waveform
     const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
     await expect(rows.first()).toBeVisible();
     for (const name of ["KPDN1_IR", "KPDN1_IY", "KPDN1_IB", "MCRS_IA", "MCRS_IB", "MCRS_IC"]) {
