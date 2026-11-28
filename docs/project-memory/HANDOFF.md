@@ -14,6 +14,8 @@ Last updated: **2026-11-27** — Per-Unit workstream accepted by the owner after
 
 ## Per-Unit workstream — final acceptance and release readiness (2026-11-27)
 
+[UAT] **Final release gates (2026-11-28):** G1 only `docs/` differ from `4885ca2`; G2 CI green (runs `46000032072`, `46000644031`; backend 15,244 passed / 410 skipped); G3 `main` `b743a67` clean fast-forward-equivalent merge; G4 browser **1,812 passed / 7 failed / 8 skipped**: six are the accepted CSV/Excel backlog and one, `waveform-legend-visibility.spec.js:87`, is a suspected timing-sensitive flake (passed 14/14 three times on the PR head; not a proven defect, root cause not established). Accepted with these qualifications, not as an unconditional pass; the original failure evidence is in `evidence/pu-release-g4-2026-11-28/`. Functional baseline `4885ca2` unchanged (non-docs tree identical). PR #14 authorised to merge with a merge commit after this documentation commit's CI; DEV deploys automatically, the owner accepts DEV, PROD is a separate decision (signing key, host `.env` and the rollback tag are outstanding). NF-3E is frozen separately (`00387aa`, docs `edf18b2`) and is not part of this release. See section 12 of the acceptance record.
+
 [UAT] Owner DEV UAT passed; PU-MIG S1–S6, DEC-219, W-1 and the Voltage-configuration UI simplification are accepted. Frozen functional baseline **`4885ca2`**
 (`feature/pu-mig-s5-verification-presentation`; DEV release branch `uat/dev-pu-mig-dec219-20261127`; CI `45986951629`; Deploy `45988779482`). No owner-reported PU defects.
 Do **not** add PU features: raw Current ENG/PU toggle, more Current PU reference types, creation-time Current PU configuration, Stage 6D, legacy Secondary base management (W-2), legacy API-field

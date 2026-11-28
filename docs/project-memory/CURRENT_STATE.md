@@ -24,6 +24,8 @@ nominal is not editable in Recording Details; a new Secondary recording stays `n
 [DEFERRED] Raw Current ENG/PU display toggle; additional Current PU reference types; creation-time Current PU configuration; Stage 6D proposals; legacy Secondary base
 management UI (W-2); legacy `*_base_reference_side` API field deprecation; a new CFG transformer-ratio authority. These are enhancements, not incomplete release requirements.
 
+[UAT] Final release gates (2026-11-28): G1 only `docs/` differ from `4885ca2`; G2 CI green (backend 15,244 passed / 410 skipped / 0 failed); G3 clean merge against `b743a67`; G4 browser 1,812 passed / 7 failed / 8 skipped, accepted **with qualifications**: six failures are the accepted CSV/Excel backlog and one (`waveform-legend-visibility.spec.js:87`) is a suspected, non-reproduced timing flake (14/14 three times), not a proven defect. Evidence preserved in `evidence/pu-release-g4-2026-11-28/`. Merge into `main` authorised; DEV acceptance and the PROD decision follow separately.
+
 [FACT] Integration: `origin/main` = `b743a67` is a direct ancestor of the candidate (198 ahead, 0 behind); no merge conflict; no NF or RMS content; the WUI-001–004
 and D5A base are included because they were merged into the DEV base, not into `main`. PROD currently runs only a `/health` skeleton (last PROD deploy `31597729649`,
 `main` @ `947b72b`), so a PROD release of this line is the first production release of the application. Nothing is merged or deployed to PROD; the integration needs

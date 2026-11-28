@@ -1,7 +1,7 @@
 # Per-Unit workstream — final owner acceptance and release readiness (2026-11-27)
 
-Status: **owner UAT passed; Per-Unit workstream accepted and frozen. Integration readiness reviewed; awaiting owner review.**
-Nothing described here was merged, pushed to `main`, or deployed to PROD by this record.
+Status: **owner UAT passed; Per-Unit workstream accepted and frozen. Final release gates G1-G4 accepted with documented qualifications (section 12); PR #14 authorised for merge once the documentation commit passes CI.**
+Nothing described here deploys to PROD; the merge into `main` is recorded in the PR and in HANDOFF.md, and PROD is a separate decision.
 
 This is the closeout record for the Per-Unit migration (PU-MIG S1–S6), DEC-219, the W-1 auto-base alignment and the final
 Voltage-configuration UI simplification. It does not introduce policy: every rule it cites is recorded in
@@ -198,3 +198,27 @@ Excluded: NF development, RMS development, any paused WUI work and every other u
 | `integration/wui-001-002-into-dev-20261122` | `b355e69` | Superseded by the integrated lineage. |
 
 `integration/wui-001-004-into-dev-20261123` (`ad1b6ed`) and `integration/wui-001-004-dev-f24f1d7` (`3ed200c`, on `origin`, merged by PR #13) are already ancestors of the candidate.
+
+## 12. Final release gates G1-G4 and their acceptance (2026-11-28)
+
+Candidate: PR #14, `feature/pu-mig-s5-verification-presentation`. Accepted functional baseline **`4885ca2`** (frozen). The gates were run on `f51a631` (the baseline plus two documentation-only commits); the documentation commit that records them (this one) keeps the non-documentation tree identical to `4885ca2`.
+
+| Gate | Result | Owner disposition |
+|---|---|---|
+| **G1** functional identity | `git diff 4885ca2..f51a631` touches 4 files, all under `docs/` | accepted |
+| **G2** CI on the PR head | success, runs `46000032072` (push) and `46000644031` (pull_request): backend **15,244 passed, 410 skipped, 0 failed** (15,654 collected); Compose overlay validation (DEV, PROD, isolation) success | accepted |
+| **G3** mergeability | `origin/main` `b743a67` (a direct ancestor; 200 ahead / 0 behind), `git merge-tree --write-tree` clean, merged tree identical to the head's tree, GitHub MERGEABLE/CLEAN | accepted (re-checked immediately before the merge) |
+| **G4** full browser regression on `f51a631` (1 worker, 2.1 h, BEN5K test flag on, retries off) | **1,812 passed, 7 failed, 8 skipped, 0 flaky** (1,827 tests) | **accepted with qualifications** (below); not an unconditional pass |
+
+**G4 qualifications.**
+
+* **Six failures are the previously accepted CSV/Excel preparation-row backlog**, identical to the S6 record: `data-issues-estimate-fill.spec.js:32` and `:208`, `data-issues-panel.spec.js:27` and `:193`, `data-preparation-sticky-header.spec.js:50`, `sampling-rate-format.spec.js:24`. None is Per-Unit related.
+* **One failure, `waveform-legend-visibility.spec.js:87`, was not reproduced.** It failed once in 2.6 s: after the legend toggle was clicked twice and the panes were reported ready, `ww.displayed.get(key).channel.values` was an empty array where the recorded samples were expected (the inventory check passed). The whole spec then passed **14 of 14 on each of three consecutive runs** against a `git archive` copy of `f51a631` (no PU file written). The owner's classification: **a suspected timing-sensitive flake, not a proven production defect. Its root cause has not been conclusively established**; the spec (and the legend code it exercises) comes from the WUI-001-004 consolidation (`3ed200c`), the PU commits do not touch the spec, and the same test passed in the S6 full run. My concurrent isolated browser runs overlapped the final hour of G4; whether that load mattered is unknown.
+* The 8 skips need the owner recordings (unchanged).
+* The original failure evidence is preserved verbatim in [evidence/pu-release-g4-2026-11-28/g4_failures.json](evidence/pu-release-g4-2026-11-28/g4_failures.json) (all seven failures with their error excerpts, the totals and the configuration).
+* **Evidence images:** the run rewrote seven tracked screenshots (`evidence/rd1-d2-refine/*.png` x5, `evidence/recording-details-toolbar/toolbar-*.png` x2, written by `rd1-d2-screenshots.spec.js` and `recording-details-toolbar.spec.js`). Pixel comparison: the Recording Details images differ in about 44-61 % of pixels (the regenerated ones show the current UI, the committed ones are historical milestone evidence), the toolbar images in about 0.1 %. They were not committed; the working copies were restored. Refreshing that evidence is a separate, optional decision.
+* No new full browser run is required: the functional tree is identical to the accepted baseline `4885ca2`.
+
+**Known limitations** are those of section 3 (unchanged). **Deferred enhancements** are those of section 4 (unchanged, none authorised). **Excluded workstreams:** NF (NF-001 line frozen at `00387aa`, documentation `edf18b2`, integrated separately after this release), RMS, any further WUI work.
+
+**Integration disposition (owner, 2026-11-28):** merge PR #14 with a merge commit after the documentation commit passes the required CI and G3 is re-checked; allow the automatic DEV deployment of `main`; the owner then accepts DEV, and PROD deployment is a separate decision. The PROD prerequisites (the signing key and host `.env`) and the rollback tag are handled separately; the production state is unchanged by this record.
