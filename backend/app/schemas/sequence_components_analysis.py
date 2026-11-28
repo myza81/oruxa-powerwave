@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel
+from app.schemas.frequency_provenance import NominalFrequencyProvenanceOut
 
 from app.schemas.calculated_channel import ChannelRefOut
 
@@ -40,7 +41,7 @@ class SequenceFamilyResultOut(BaseModel):
     message: str
 
 
-class SequenceAnalysisResultOut(BaseModel):
+class SequenceAnalysisResultOut(NominalFrequencyProvenanceOut):
     status: SequenceStatus
     engineering_context_id: str
     analysis_time: float

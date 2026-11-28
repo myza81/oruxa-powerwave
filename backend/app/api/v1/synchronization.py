@@ -29,6 +29,7 @@ from app.schemas.event_detection import DetectEventOut, DetectEventRequest
 from app.schemas.source import ErrorOut
 from app.schemas.synchronization import SourceAlignmentOut, SourceAlignmentUpdateRequest, T0Out, T0UpdateRequest, TimeGroupOut
 from app.services.errors import ImportServiceError
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import (
     clear_t0,
@@ -61,6 +62,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
 
 def get_workspace_registry(request: Request) -> WorkspaceRegistry:
     return request.app.state.workspace_registry
+
+
+def get_nominal_frequency_access(request: Request) -> NominalFrequencyAccess:
+    return request.app.state.nominal_frequency_access
 
 
 def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
@@ -243,6 +248,7 @@ def detect_event(
     body: DetectEventRequest,
     registry: SynchronizationRegistry = Depends(get_synchronization_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> DetectEventOut:
     """Slice 3: assisted event-origin detection (task section 26).
     Advisory only -- this NEVER sets `t0` itself; a `found=True` result
@@ -262,6 +268,7 @@ def detect_event(
             search_end_time=body.search_end_time,
             source_registry=source_registry,
             synchronization_registry=registry,
+            frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc

@@ -71,6 +71,12 @@ class Settings:
     # Stage 7: legacy BEN5K experimental decoder. Off by default; enable with
     # BEN5K_EXPERIMENTAL_ENABLED=1 in the environment. Never frontend-controlled.
     ben5k_experimental_enabled: bool = False
+    # NF-3B (NF-001 / DEC-217, owner decision O-1): the SERVER-SIDE release gate for a Manual nominal-frequency override. Closed
+    # (False) by default and in every deployed build; open only through NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED in a local or
+    # isolated test process. While closed the backend refuses to store a Manual value (409), reports and uses the Auto value for
+    # every recording, and no engineering consumer can be influenced by a stored override. Never frontend-controlled: the UI
+    # flag only shows or hides a control, it is not enforcement.
+    nominal_frequency_manual_override_enabled: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -196,6 +202,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "1", "true", "yes"
     )
 
+    # NF-3B (O-1): enabling the Manual nominal-frequency override is a deliberate act in a local or isolated test process. A deployed
+    # build (production, or any build the deploy workflows started) refuses the value outright rather than ignoring it, so a
+    # copied environment file can never open the gate unnoticed. The separate gate-opening change (NF-3I) is what introduces a
+    # deployment path, and it edits this refusal in the same reviewed commit.
+    nominal_frequency_manual_override_enabled = env.get(
+        "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    if nominal_frequency_manual_override_enabled and deployed:
+        raise ConfigurationError(
+            "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED must not be set in a deployed environment "
+            "(the Manual nominal-frequency override has not been released)"
+        )
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
@@ -209,4 +227,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         relay_review_signing_key=signing_key,
         relay_review_token_ttl_hours=relay_review_token_ttl_hours,
         ben5k_experimental_enabled=ben5k_experimental_enabled,
+        nominal_frequency_manual_override_enabled=nominal_frequency_manual_override_enabled,
     )

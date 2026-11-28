@@ -15,6 +15,7 @@ from app.domain import cross_signal_evidence as cs
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import UNDEFINED
 from app.domain.mode_shape import track_activity
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_damping_service import compute_damping
@@ -98,6 +99,7 @@ def analyse_signals(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     include_damping: bool = True,
     keep_activity: bool = False,
 ) -> tuple[list[dict], list[dict]]:
@@ -124,7 +126,7 @@ def analyse_signals(
         common = dict(
             workspace_id=workspace_id, input_ref=ref, representation=entry["representation"],
             window_start_s=entry["window_start_s"], window_end_s=entry["window_end_s"], f_min_hz=f_min_hz, f_max_hz=f_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
         try:
             spectrum = compute_spectrum(**common)
@@ -174,12 +176,13 @@ def compute_cross_signal(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> dict:
     """`entries`: `{input_ref, representation, signal_revision, window_start_s, window_end_s, offset_s, label}`."""
     validate_entries(entries, f_min_hz, f_max_hz, minimum=1)
     signal_rows, analysed = analyse_signals(
         workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz,
-        source_registry=source_registry, calc_registry=calc_registry)
+        source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access)
     return build_result(signal_rows, analysed, f_min_hz, f_max_hz, cs.group_components(analysed))
 
 

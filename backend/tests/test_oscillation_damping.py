@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.nf3c_access_support import access_for
 from app.domain import damping_estimation as de
 from app.domain.calculated_channel import ChannelRef
 from app.main import create_app
@@ -353,7 +354,7 @@ def _service(registries, name="X", *, representation="native", f_min=0.1, f_max=
         representation=representation, signal_revision="rev-1",
         window_start_s=float(t[0]) if start is None else start, window_end_s=float(t[-1]) if end is None else end,
         f_min_hz=f_min, f_max_hz=f_max, candidate_frequencies_hz=selection,
-        source_registry=source_registry, calc_registry=calc_registry,
+        source_registry=source_registry, frequency_access=access_for(source_registry), calc_registry=calc_registry,
     )
 
 

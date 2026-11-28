@@ -1,4 +1,5 @@
 """Session-specific validity of retained calculated results (Slice A)."""
+from tests.nf3c_access_support import access_for
 import pytest
 from test_ben5k_api import settings_flag_on
 from test_time_reference_interpretation import client, upload, url
@@ -151,10 +152,10 @@ def test_analysis_readers_do_not_bypass_transitive_session_validation(client, re
                 if reader == "calculation":
                     calculation._resolve_input(ref, workspace_id="clock", source_registry=sources, calc_registry=calcs)
                 elif reader == "overcurrent":
-                    overcurrent._fetch_current_candidate(ref, **common)
+                    overcurrent._fetch_current_candidate(ref, frequency_access=access_for(sources), **common)
                 elif reader == "phasor":
                     # This is also the array reader shared by Impedance, Sequence and Distance.
-                    phasor._fetch_role_candidate("Va", ref, **common)
+                    phasor._fetch_role_candidate("Va", ref, frequency_access=access_for(sources), **common)
                 else:
                     compliance._raw(ref, workspace_id="clock", reg=SimpleNamespace(source=sources, calc=calcs))
     finally:

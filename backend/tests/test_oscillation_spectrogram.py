@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from scipy import signal as sp_signal
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import ChannelRef
 from app.domain.spectral_estimation import choose_segmentation, welch_psd
 from app.domain.spectrogram_estimation import (
@@ -45,7 +46,7 @@ def _gram_service(registries, name="X", *, representation="native", start=None, 
         workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src", channel_name=name),
         representation=representation, signal_revision="rev-1",
         window_start_s=float(t[0]) if start is None else start, window_end_s=float(t[-1]) if end is None else end,
-        f_min_hz=f_min, f_max_hz=f_max, source_registry=source_registry, calc_registry=calc_registry,
+        f_min_hz=f_min, f_max_hz=f_max, source_registry=source_registry, frequency_access=access_for(source_registry), calc_registry=calc_registry,
     )
 
 
@@ -421,7 +422,7 @@ class TestSpectrumIsUnchangedByTheSharedPath:
         spec = compute_spectrum(
             workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src", channel_name="X"),
             representation="native", window_start_s=0.0, window_end_s=float(t[-1]), f_min_hz=0.5, f_max_hz=10.0,
-            source_registry=registries[0], calc_registry=registries[1],
+            source_registry=registries[0], frequency_access=access_for(registries[0]), calc_registry=registries[1],
         )
         assert gram["window"] == spec["window"] and gram["signal"] == spec["signal"]
         assert gram["representation"] == spec["representation"]

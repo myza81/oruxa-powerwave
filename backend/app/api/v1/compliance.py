@@ -99,6 +99,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "measurement_group_not_found": status.HTTP_404_NOT_FOUND,
     "compliance_measurement_group_not_voltage_kind": status.HTTP_400_BAD_REQUEST,
     "invalid_calibration_authority": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # NF-3E: a new assessment on a stale calculated input conflicts with the recording's current nominal frequency.
+    "stale_calculated_input": status.HTTP_409_CONFLICT,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -209,6 +211,7 @@ def get_compliance_voltage_measurement(
             group_registry=get_measurement_group_registry(request),
             voltage_config_registry=get_voltage_group_config_registry(request),
             current_config_registry=get_current_group_config_registry(request),
+            frequency_access=request.app.state.nominal_frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -273,6 +276,7 @@ def _readiness_deps(request: Request) -> dict:
         context_registry=state.engineering_context_registry, layer_registry=state.reference_layer_registry,
         profile_registry=state.reference_profile_registry, per_unit_registry=state.per_unit_registry,
         side_authority=RecordedAuthority.from_app_state(state),
+        frequency_access=state.nominal_frequency_access,
     )
 
 
@@ -339,6 +343,7 @@ def get_compliance_voltage_measurement_traces(
                 per_unit=state.per_unit_registry, group=state.measurement_group_registry,
                 voltage_config=state.voltage_group_config_registry, current_config=state.current_group_config_registry,
                 side_authority=RecordedAuthority.from_app_state(state),
+                frequency_access=state.nominal_frequency_access,
             ),
             alignment=alignment,
         )

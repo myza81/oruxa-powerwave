@@ -20,6 +20,7 @@ from app.domain.metadata import RecordingMetadata
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
 from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.synchronization_registry import SynchronizationRegistry
+from tests.nf3c_access_support import access_for
 from app.services.synchronization_service import (
     detect_event_candidate,
     get_t0,
@@ -182,6 +183,7 @@ class TestDetectEventUsesEffectiveOffsetWithinItsOwnGroup:
             workspace_id="ws-1", source_id="B", channel_name="VA", sensitivity="normal",
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
+            frequency_access=access_for(source_registry),
         )
         assert view.found is True
         # B's own timestamp placement is +0.401s relative to A (the

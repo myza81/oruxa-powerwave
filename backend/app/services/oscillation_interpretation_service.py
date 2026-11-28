@@ -22,6 +22,7 @@ from app.domain import coherence as co
 from app.domain import mode_shape as ms
 from app.domain import oscillation_classification as oc
 from app.domain import oscillation_summary as osum
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.oscillation_coherence_service import coherence_component
 from app.services.oscillation_cross_signal_service import analyse_signals, build_result, validate_entries
@@ -38,6 +39,7 @@ def compute_interpretation(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     sync_registry: SynchronizationRegistry | None = None,
 ) -> dict:
     """`entries` as for `compute_cross_signal` (1-8 signals). With `sync_registry` and 2+ signals the mode shape and the coherence are integrated."""
@@ -49,13 +51,13 @@ def compute_interpretation(
     if integrated:
         ctx = derive_components(
             workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz, source_registry=source_registry,
-            calc_registry=calc_registry, sync_registry=sync_registry, include_damping=True, minimum=1)
+            calc_registry=calc_registry, frequency_access=frequency_access, sync_registry=sync_registry, include_damping=True, minimum=1)
         signal_rows, analysed, components = ctx["signal_rows"], ctx["analysed"], ctx["components"]
         analysed_at, grouped_at = ctx["analysed_at"], ctx["grouped_at"]
     else:
         signal_rows, analysed = analyse_signals(
             workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry)
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access)
         analysed_at = time.perf_counter()
         components = cs.group_components(analysed)
         grouped_at = time.perf_counter()

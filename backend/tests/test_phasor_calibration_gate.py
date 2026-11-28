@@ -45,6 +45,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import (
     CalculatedChannel,
     ChannelRef,
@@ -236,7 +237,7 @@ class TestUnverifiedVoltage:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult), (
             f"Unverified BEN5K must return _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -259,7 +260,7 @@ class TestUnverifiedCurrent:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "IA")
-        result = _fetch_role_candidate("Ia", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Ia", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult), (
             f"Unverified BEN5K current must return _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -283,7 +284,7 @@ class TestUnverifiedCalcRef:
         src_reg = _make_registry(active)
         calc_reg = _make_calc_registry(calc)
         ref = _calc_ref("calc-1")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=src_reg, calculated_channel_registry=calc_reg)
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=src_reg, calculated_channel_registry=calc_reg, frequency_access=access_for(src_reg))
         assert isinstance(result, _CalibrationBlockedResult), (
             f"Calc ref with Unverified leaf must return _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -319,7 +320,7 @@ class TestNestedCalcChainBlocked:
         src_reg = _make_registry(active)
         calc_reg = _make_calc_registry(calc1, calc2)
         ref = _calc_ref("calc-2")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=src_reg, calculated_channel_registry=calc_reg)
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=src_reg, calculated_channel_registry=calc_reg, frequency_access=access_for(src_reg))
         assert isinstance(result, _CalibrationBlockedResult), (
             f"2-level calc chain with Unverified leaf must return _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -350,8 +351,8 @@ class TestMixedBen5kComtrade:
         ref_ben = _source_ref("src-ben", "VA")
         ref_ct = _source_ref("src-ct", "VA")
 
-        result_ben = _fetch_role_candidate("Va", ref_ben, workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg)
-        result_ct = _fetch_role_candidate("Va", ref_ct, workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg)
+        result_ben = _fetch_role_candidate("Va", ref_ben, workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg, frequency_access=access_for(reg))
+        result_ct = _fetch_role_candidate("Va", ref_ct, workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg, frequency_access=access_for(reg))
 
         assert isinstance(result_ben, _CalibrationBlockedResult), (
             f"BEN5K Unverified must return _CalibrationBlockedResult; got {type(result_ben).__name__}"
@@ -375,7 +376,7 @@ class TestInvalidAuthority:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult), (
             f"Invalid authority must return _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -401,7 +402,7 @@ class TestImpedanceDelegation:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult)
         assert result.reason
 
@@ -422,7 +423,7 @@ class TestDistanceProtectionDelegation:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult)
         assert result.reason
 
@@ -442,7 +443,7 @@ class TestSequenceComponentsDelegation:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult)
         assert result.reason
 
@@ -462,7 +463,7 @@ class TestVerifiedSource:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert result is not None
         assert result.role_key == "Va"
 
@@ -482,7 +483,7 @@ class TestComtradeNotAssessed:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-ct", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert result is not None
         assert result.role_key == "Va"
 
@@ -532,7 +533,7 @@ class TestBen5kMissingChannel:
         active = ActiveSource(metadata=meta, record=record)
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert isinstance(result, _CalibrationBlockedResult), (
             f"BEN5K + missing channel must return _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -557,7 +558,7 @@ class TestBen5kAbsentAuthority:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-a", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         # BEN5K with None authority → fail-closed. Matches Stage 3B-2A: BEN5K + absent authority
         # is not treated as not-assessed. The gate explicitly checks: if _full_ch exists but
         # authority is None AND _is_ben5k → return _CalibrationBlockedResult(reason="ben5k_authority_absent").
@@ -618,7 +619,7 @@ class TestNumericalIntegrity:
         )
         reg = _make_registry(active)
         ref = _source_ref("src-ct", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert result is not None
         np.testing.assert_array_equal(result.values, _V)
         np.testing.assert_array_equal(result.time, _T)
@@ -653,8 +654,8 @@ class TestPerRoleBlocking:
         reg = _make_registry(ben5k, verified)
         calc_reg = _make_calc_registry()
 
-        result_a = _fetch_role_candidate("Va", _source_ref("src-ben", "VA"), workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg)
-        result_b = _fetch_role_candidate("Vb", _source_ref("src-ver", "VB"), workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg)
+        result_a = _fetch_role_candidate("Va", _source_ref("src-ben", "VA"), workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg, frequency_access=access_for(reg))
+        result_b = _fetch_role_candidate("Vb", _source_ref("src-ver", "VB"), workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg, frequency_access=access_for(reg))
 
         assert isinstance(result_a, _CalibrationBlockedResult), (
             f"Unverified BEN5K Va must return _CalibrationBlockedResult; got {type(result_a).__name__}"
@@ -678,6 +679,7 @@ class TestPerRoleBlocking:
             result = _fetch_role_candidate(
                 f"V{ch[-1].lower()}", _source_ref(src.metadata.source_id, ch),
                 workspace_id=WS, source_registry=reg, calculated_channel_registry=calc_reg,
+                frequency_access=access_for(reg),
             )
             assert result is not None
 
@@ -697,7 +699,7 @@ class TestGenuinelyUnconfigured:
         """Source not in registry → plain None (not _CalibrationBlockedResult)."""
         reg = _make_registry()  # empty registry — source not found
         ref = _source_ref("nonexistent-source", "VA")
-        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry())
+        result = _fetch_role_candidate("Va", ref, workspace_id=WS, source_registry=reg, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg))
         assert result is None, (
             f"Missing source must return None, not _CalibrationBlockedResult; got {type(result).__name__}"
         )
@@ -711,7 +713,7 @@ class TestGenuinelyUnconfigured:
         """
         # Unconfigured: source absent → None
         reg_empty = _make_registry()
-        result_missing = _fetch_role_candidate("Va", _source_ref("ghost", "VA"), workspace_id=WS, source_registry=reg_empty, calculated_channel_registry=_make_calc_registry())
+        result_missing = _fetch_role_candidate("Va", _source_ref("ghost", "VA"), workspace_id=WS, source_registry=reg_empty, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg_empty))
         assert result_missing is None
         assert not isinstance(result_missing, _CalibrationBlockedResult)
 
@@ -722,7 +724,7 @@ class TestGenuinelyUnconfigured:
             calibration_authority=_UNVERIFIED_AUTH,
         )
         reg_present = _make_registry(active)
-        result_blocked = _fetch_role_candidate("Va", _source_ref("src-a", "VA"), workspace_id=WS, source_registry=reg_present, calculated_channel_registry=_make_calc_registry())
+        result_blocked = _fetch_role_candidate("Va", _source_ref("src-a", "VA"), workspace_id=WS, source_registry=reg_present, calculated_channel_registry=_make_calc_registry(), frequency_access=access_for(reg_present))
         assert isinstance(result_blocked, _CalibrationBlockedResult)
 
 

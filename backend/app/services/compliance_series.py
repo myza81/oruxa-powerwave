@@ -34,6 +34,8 @@ from app.domain.physical_calibration import evaluate_calibration_eligibility, PU
 from app.domain.reference_profile import UNIT_KILOVOLT, UNIT_PER_UNIT, UNIT_VOLT
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.calculated_channel_staleness import assert_inputs_not_stale
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_service import (
     _collect_leaf_authorities,
     _resolve_effective_per_unit_for_calculated_channel,
@@ -63,6 +65,9 @@ class Registries:
     #: PU-MIG S2: Recording Details' side authority, so a source Voltage series is normalised by the same function as the
     #: display. None keeps the historical gate.
     side_authority: RecordedAuthority | None = None
+    #: NF-3E: the nominal-frequency authority, so a NEW assessment can refuse a stale calculated input. Every production caller passes it
+    #: (a static guard pins that); without it the refusal cannot run.
+    frequency_access: NominalFrequencyAccess | None = None
 
 
 @dataclass(slots=True)
@@ -234,7 +239,12 @@ def load_series(
     ref: ChannelRef, reference_unit: str, *, workspace_id: str, reg: Registries,
 ) -> tuple[Series | None, str | None]:
     """The full-resolution series behind `ref`, in the Reference's unit --
-    or `(None, reason)`."""
+    or `(None, reason)`.
+
+    NF-3E: this is the EXECUTION path of an assessment, so a stale calculated channel (directly, or through an input it depends on) is
+    refused with the typed `stale_calculated_input`; readiness reports the same condition as a blocked state without raising."""
+    if reg.frequency_access is not None:
+        assert_inputs_not_stale([ref], workspace_id=workspace_id, calc_registry=reg.calc, frequency_access=reg.frequency_access)
     raw = _raw(ref, workspace_id=workspace_id, reg=reg)
     if raw is None:
         return None, "The measurement channel no longer exists."

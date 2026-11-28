@@ -119,6 +119,7 @@ from app.services.errors import (
     UnknownComplianceQuantityError,
 )
 from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.measurement_group_view_service import build_group_view
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
@@ -274,7 +275,9 @@ def resolve_voltage_role_catalogue_for_group(
     )
 
 
-def _classify_input_type(channel_ref: ChannelRef, *, workspace_id: str, source_registry: WorkspaceRegistry) -> str | None:
+def _classify_input_type(
+    channel_ref: ChannelRef, *, workspace_id: str, source_registry: WorkspaceRegistry, frequency_access: NominalFrequencyAccess,
+) -> str | None:
     """Trusted-metadata-first, algorithmic-detector-fallback -- the exact
     same hierarchy `app.services.calculated_channel_service.check_rms_
     eligibility()`/`app.services.phasor_analysis_service._waveform_form_
@@ -292,10 +295,16 @@ def _classify_input_type(channel_ref: ChannelRef, *, workspace_id: str, source_r
         return INPUT_TYPE_INSTANTANEOUS
     if matching.waveform_form in (WAVEFORM_FORM_RMS, WAVEFORM_FORM_MAGNITUDE):
         return INPUT_TYPE_RMS
+    # NF-3C: the detector needs a usable nominal frequency. Ask the central authority; an unusable declaration (0, negative, NaN, infinite,
+    # outside 1-1000 Hz) is never handed to the detector (it used to raise, a 500 at the endpoint): "do not guess", exactly as for an
+    # ambiguous verdict. A Manual value (only when the server gate is open) is the effective frequency.
+    frequency = frequency_access.for_source(workspace_id, channel_ref.source_id)
+    if not frequency.usable:
+        return None
     waveform_data = active.record.waveform_data
     time = waveform_data["time"].to_numpy()
     values = waveform_data[channel_ref.channel_name].to_numpy()
-    detector_result = classify_waveform_form(time, values, active.metadata.nominal_frequency)
+    detector_result = classify_waveform_form(time, values, frequency.hz)
     if detector_result == LIKELY_INSTANTANEOUS:
         return INPUT_TYPE_INSTANTANEOUS
     if detector_result == LIKELY_MAGNITUDE_OR_RMS:
@@ -365,6 +374,7 @@ def evaluate_voltage_measurement(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> ComplianceVoltageMeasurementResult:
     quantity = get_voltage_quantity(quantity_id)
     if quantity is None:
@@ -413,7 +423,8 @@ def evaluate_voltage_measurement(
     resolved = {role: catalogue[role].candidates[0] for role in roles_needed}
 
     input_types: dict[str, str | None] = {
-        role: _classify_input_type(entry.channel_ref, workspace_id=workspace_id, source_registry=source_registry)
+        role: _classify_input_type(
+            entry.channel_ref, workspace_id=workspace_id, source_registry=source_registry, frequency_access=frequency_access)
         for role, entry in resolved.items()
     }
     if any(value is None for value in input_types.values()):

@@ -49,6 +49,7 @@ from app.domain.side_conversion import (
     plan_echo,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.phasor_analysis_service import compute_phasor_diagram, evaluate_prepared_phasor_diagram, prepare_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
@@ -90,6 +91,7 @@ def compute_impedance_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     side_plan: SidePlan | SideBlock,
 ) -> ImpedanceAnalysisResult:
     """Selected-time-only Recording-mode Impedance for ONE phase (`Za`/`Zb`/`Zc`).
@@ -110,7 +112,7 @@ def compute_impedance_analysis(
     diagram = compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz_override=reference_frequency_hz_override,
-        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
     return _impedance_analysis_from_diagram(
         diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
@@ -169,7 +171,7 @@ def _strict_impedance_result(
         return refuse(REASON_UNSUPPORTED_CURRENT_UNIT, f"Current unit {current_role.unit!r} cannot be normalized to amperes.", "current")
 
     common = dict(
-        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
+        reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds, frequency_provenance=diagram.frequency_provenance,
         voltage_channel_ref=voltage_role.channel_ref, voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
         current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
         side_conversion=plan.info,
@@ -258,6 +260,7 @@ def compute_impedance_locus(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     side_plan: SidePlan | SideBlock,
 ) -> list[ImpedanceLocusPoint]:
     """The static locus/trajectory (task's own section 18-19) --
@@ -307,7 +310,7 @@ def compute_impedance_locus(
     prepared = prepare_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
         reference_frequency_hz_override=reference_frequency_hz_override,
-        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
 
     points: list[ImpedanceLocusPoint] = []

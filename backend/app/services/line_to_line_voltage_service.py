@@ -77,6 +77,8 @@ from app.domain.phase_identity import CANONICAL_PHASE_DISPLAY, PhaseDisplayConve
 from app.domain.phasor import REASON_WAVEFORM_FORM_NOT_ELIGIBLE
 from app.domain.voltage_reference import LINE_TO_LINE
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.calculated_channel_staleness import assert_inputs_not_stale
+from app.services.nominal_frequency_access import NominalFrequencyAccess
 from app.services.calculated_channel_service import (
     _effective_input_values,
     _resolve_input,
@@ -238,6 +240,7 @@ def check_line_to_line_readiness(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> LineToLineContextReadiness:
     """Per-role and per-output readiness for one Engineering Context --
     the ONE authority both the selector UI and creation consult (creation
@@ -250,7 +253,7 @@ def check_line_to_line_readiness(
     phasor_readiness = check_phasor_diagram_readiness(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
         reference_frequency_hz_override=None, context_registry=context_registry,
-        source_registry=source_registry, calculated_channel_registry=calc_registry,
+        source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
         role_keys=PHASE_ROLE_KEYS,
     )
 
@@ -346,13 +349,14 @@ def list_line_to_line_readiness(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> list[LineToLineContextReadiness]:
     """Every Engineering Context in the workspace, INCLUDING incomplete/
     unsupported ones (owner section 11/31: never hide a bay -- show why)."""
     return [
         check_line_to_line_readiness(
             workspace_id=workspace_id, engineering_context_id=context.id, context_registry=context_registry,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
         )
         for context in context_registry.list_for_workspace(workspace_id)
     ]
@@ -367,6 +371,7 @@ def create_line_to_line_voltage_channels(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     per_unit_registry: PerUnitRegistry | None = None,
     null_policy: str = DEFAULT_NULL_POLICY,
     estimation_method: str | None = None,
@@ -395,7 +400,7 @@ def create_line_to_line_voltage_channels(
 
     readiness = check_line_to_line_readiness(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
-        context_registry=context_registry, source_registry=source_registry, calc_registry=calc_registry,
+        context_registry=context_registry, source_registry=source_registry, calc_registry=calc_registry, frequency_access=frequency_access,
     )
     requested_pairs = pairs_for_output(output)
     unavailable = [readiness.outputs[p] for p in requested_pairs if not readiness.outputs[p].available]
@@ -448,6 +453,11 @@ def create_line_to_line_voltage_channels(
         estimation_method=estimation_method_out, max_gap_value=max_gap_value_out,
         local_mean_radius=local_mean_radius_out,
     )))
+
+    # NF-3E (Option B): a stale calculated operand is never silently reused for a new calculation.
+    assert_inputs_not_stale(
+        [readiness.roles[ROLE_KEY_BY_PHASE[p]].channel_ref for pair in requested_pairs for p in PAIR_OPERANDS[pair]],
+        workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access)
 
     batch_id = ("llb-" + uuid4().hex) if len(requested_pairs) > 1 else None
     dependency_map = {c.id: c.dependency_ids for c in calc_registry.list_for_workspace(workspace_id)}

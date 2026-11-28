@@ -29763,6 +29763,21 @@ Authority: the owner's direction "PU-MIG S0 Closure and S1" (2026-11-24). Ledger
 
 ---
 
+## DEC-217 — A recording has one nominal frequency, decided by one shared authority (NF-001 / NF-1)
+
+Date: 2026-11-24. Owner decision (NF-001 direction; "Nominal Frequency SSOT — Simplified Implementation Direction").
+
+- **One authoritative nominal frequency per recording**, applying to every channel, Measurement Group and bay of that recording. No bay-level or channel-level frequency setting. Workspace-scoped and recording-specific, held in an in-memory registry like the other recording configuration.
+- **Resolution:** *Auto* uses a valid frequency from the recording's metadata (COMTRADE `lf`; a BEN upload-supplied value is part of the automatic baseline and keeps its own internal origin), otherwise **50 Hz**. *Manual* uses a valid user-defined frequency. Returning to Auto restores the automatic value.
+- **Originals are never mutated:** imported `SourceMetadata`, its provenance and the waveform samples are preserved. This supersedes the RD0A proposal to overwrite `SourceMetadata.nominal_frequency`.
+- **Invalid explicitly declared frequency:** the declared value is preserved, no usable frequency exists, frequency-dependent calculations must not use it, and the engineer may correct it manually. Native waveform viewing is unaffected. The recording-level validity predicate stays the existing 1–1000 Hz definition; each algorithm keeps its own additional prerequisites.
+- **Calculated results are never silently recalculated** when the frequency changes, and a calculation needing a common frequency across several recordings must not silently take the first recording's.
+- **Rollout:** engineering consumers migrate progressively (NF-3). The manual override is not released for normal use until they honour it. NF-1 is the backend foundation only; it changes no consumer.
+
+Implementation record: [NF_1_NOMINAL_FREQUENCY_AUTHORITY_2026-11-24.md](NF_1_NOMINAL_FREQUENCY_AUTHORITY_2026-11-24.md).
+
+---
+
 ## DEC-218 — Approved decisions are binding; agents consult them before acting and preserve them (agent governance)
 
 Date: 2026-11-26. Owner decision (governance only; no engineering policy is created, changed or superseded by this entry).

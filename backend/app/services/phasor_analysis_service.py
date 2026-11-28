@@ -88,6 +88,8 @@ from app.domain.phasor import (
     PHASOR_DIAGRAM_ROLE_ORDER,
     PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE,
     PHASOR_STATUS_COMPUTED,
+    PHASOR_MIN_SAMPLES_PER_CYCLE,
+    REASON_INSUFFICIENT_SAMPLING_DENSITY,
     REASON_INVALID_REFERENCE_FREQUENCY,
     REASON_REFERENCE_FREQUENCY_CONFLICT,
     REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
@@ -115,10 +117,17 @@ from app.domain.physical_calibration import (
     evaluate_calibration_eligibility,
 )
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
+from app.services.analysis_reference_frequency import (
+    FORM_ELIGIBLE, FORM_NOT_ELIGIBLE, SAMPLING_UNSUPPORTED, decide_reference_frequency, sampling_reason_message, sampling_supports,
+)
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import _collect_leaf_authorities
+from app.services.calculated_channel_staleness import (
+    REASON_STALE_CALCULATED_INPUT, StaleInputBlocked, stale_input_block,
+)
 from app.services.calculated_timing_service import get_calculated_result
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess, SourceFrequency
 from app.services.workspace_registry import WorkspaceRegistry
 
 
@@ -141,11 +150,11 @@ class _CalibrationBlockedResult:
 
 class _RoleCandidate:
     __slots__ = (
-        "role_key", "channel_ref", "time", "values", "unit", "waveform_form", "start_epoch", "nominal_frequency",
+        "role_key", "channel_ref", "time", "values", "unit", "waveform_form", "start_epoch", "frequency",
         "reference_source_id",
     )
 
-    def __init__(self, *, role_key, channel_ref, time, values, unit, waveform_form, start_epoch, nominal_frequency, reference_source_id):
+    def __init__(self, *, role_key, channel_ref, time, values, unit, waveform_form, start_epoch, frequency: SourceFrequency, reference_source_id):
         self.role_key = role_key
         self.channel_ref = channel_ref
         self.time = time
@@ -153,7 +162,8 @@ class _RoleCandidate:
         self.unit = unit
         self.waveform_form = waveform_form
         self.start_epoch = start_epoch
-        self.nominal_frequency = nominal_frequency
+        #: NF-3D: the central authority's outcome for the recording that grounds this channel (never the imported value read directly).
+        self.frequency = frequency
         #: The grounding real source id `timebases_aligned()` itself
         #: needs for its own same-source short-circuit (never the
         #: display/channel_ref id -- for a calculated channel this is its
@@ -168,8 +178,8 @@ class _RoleCandidate:
 
 def _fetch_role_candidate(
     role_key: str, channel_ref: ChannelRef, *, workspace_id: str,
-    source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry,
-) -> "_RoleCandidate | _CalibrationBlockedResult | None":
+    source_registry: WorkspaceRegistry, calculated_channel_registry: CalculatedChannelRegistry, frequency_access: NominalFrequencyAccess,
+) -> "_RoleCandidate | _CalibrationBlockedResult | StaleInputBlocked | None":
     """Fetches ONE resolved role's own full-resolution sample arrays and
     engineering metadata. Mirrors `calculated_channel_service._resolve_
     input()`'s own source/calculated-channel branching exactly (a
@@ -212,9 +222,13 @@ def _fetch_role_candidate(
             role_key=role_key, channel_ref=channel_ref,
             time=waveform_data["time"].to_numpy(), values=waveform_data[channel_ref.channel_name].to_numpy(),
             unit=matching.unit, waveform_form=matching.waveform_form,
-            start_epoch=_source_start_epoch(active), nominal_frequency=active.metadata.nominal_frequency,
+            start_epoch=_source_start_epoch(active), frequency=frequency_access.for_source(workspace_id, channel_ref.source_id),
             reference_source_id=channel_ref.source_id,
         )
+    # NF-3E: a stale calculated channel is not a valid input for a new engineering calculation (shared staleness authority).
+    stale = stale_input_block(channel_ref, workspace_id=workspace_id, calc_registry=calculated_channel_registry, frequency_access=frequency_access)
+    if stale is not None:
+        return stale
     calculated = get_calculated_result(workspace_id, channel_ref.calculated_channel_id, source_registry=source_registry, calc_registry=calculated_channel_registry)
     if calculated is None:
         return None
@@ -242,12 +256,12 @@ def _fetch_role_candidate(
         role_key=role_key, channel_ref=channel_ref,
         time=calculated.time, values=calculated.values,
         unit=calculated.unit, waveform_form=calculated.waveform_form,
-        start_epoch=_source_start_epoch(reference_source), nominal_frequency=reference_source.metadata.nominal_frequency,
+        start_epoch=_source_start_epoch(reference_source), frequency=frequency_access.for_source(workspace_id, calculated.reference_source_id),
         reference_source_id=calculated.reference_source_id,
     )
 
 
-def _waveform_form_eligible(candidate: _RoleCandidate, reference_frequency_hz: float) -> bool:
+def _waveform_form_eligible(candidate: _RoleCandidate, reference_frequency_hz: float) -> str:
     """Trusted-metadata-first, algorithmic-fallback-second -- mirrors
     `calculated_channel_service.check_rms_eligibility()`'s own structure
     applied to a stricter Phasor policy: explicit `instantaneous` always
@@ -277,15 +291,17 @@ def _waveform_form_eligible(candidate: _RoleCandidate, reference_frequency_hz: f
     the audit's own earlier, since-reconsidered suggestion.
     """
     if candidate.waveform_form == WAVEFORM_FORM_INSTANTANEOUS:
-        return True
+        return FORM_ELIGIBLE
     if candidate.waveform_form in (WAVEFORM_FORM_RMS, WAVEFORM_FORM_MAGNITUDE):
-        return False
+        return FORM_NOT_ELIGIBLE
+    # NF-3D (Phase C): the detector classifies by looking at cycles. If the sampling cannot hold the estimator's own minimum samples per cycle at
+    # this (valid) frequency, it can only answer "uncertain", which used to be reported as a form problem. Say what is true instead.
+    if not sampling_supports(candidate.time, reference_frequency_hz, PHASOR_MIN_SAMPLES_PER_CYCLE):
+        return SAMPLING_UNSUPPORTED
     detector_result = classify_waveform_form(candidate.time, candidate.values, reference_frequency_hz)
     if detector_result == LIKELY_INSTANTANEOUS:
-        return True
-    if detector_result == LIKELY_MAGNITUDE_OR_RMS:
-        return False
-    return False  # UNCERTAIN -- rejected, see docstring above.
+        return FORM_ELIGIBLE
+    return FORM_NOT_ELIGIBLE  # LIKELY_MAGNITUDE_OR_RMS, or UNCERTAIN -- rejected, see docstring above.
 
 
 def _short_circuit(status: str, *, analysis_kind: str, mode: str, engineering_context_id: str, analysis_time: float,
@@ -307,6 +323,7 @@ def compute_phasor_analysis(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> PhasorAnalysisResult:
     """The one service-layer entry point. Selected-time only -- computes
     a phasor at exactly one `analysis_time`, never a time series, never
@@ -342,7 +359,7 @@ def compute_phasor_analysis(
     for role_key, ref in resolution.resolved_roles.items():
         candidate = _fetch_role_candidate(
             role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
-            calculated_channel_registry=calculated_channel_registry,
+            calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
         )
         if isinstance(candidate, _CalibrationBlockedResult):
             return _short_circuit(
@@ -351,6 +368,13 @@ def compute_phasor_analysis(
                 reason_code="calibration_unavailable",
                 message=f"Role '{role_key}' is blocked by physical calibration authority ({candidate.reason}).",
                 role_reasons={role_key: "calibration_unavailable"},
+            )
+        if isinstance(candidate, StaleInputBlocked):
+            return _short_circuit(
+                STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
+                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
+                reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
+                role_reasons={role_key: REASON_STALE_CALCULATED_INPUT},
             )
         if candidate is None:
             return _short_circuit(
@@ -362,40 +386,43 @@ def compute_phasor_analysis(
         candidates[role_key] = candidate
 
     # ---- Reference frequency: explicit override, else unanimous agreement ----
-    if reference_frequency_hz_override is not None:
-        if not nominal_frequency_valid(reference_frequency_hz_override):
-            return _short_circuit(
-                STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
-                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-                reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
-                message="The supplied reference_frequency_hz is outside the plausible range.",
-            )
-        reference_frequency_hz = reference_frequency_hz_override
-    else:
-        declared = [c.nominal_frequency for c in candidates.values()]
-        first = declared[0]
-        if not all(math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9) for f in declared):
-            return _short_circuit(
-                STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
-                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-                reason_code=REASON_REFERENCE_FREQUENCY_CONFLICT,
-                message=(
-                    "Resolved roles come from sources declaring different nominal frequencies; supply an explicit "
-                    "reference_frequency_hz to proceed."
-                ),
-            )
-        reference_frequency_hz = first
+    decision = decide_reference_frequency(
+        override=reference_frequency_hz_override, frequencies=[c.frequency for c in candidates.values()],
+        conflict_message=(
+            "Resolved roles come from sources declaring different nominal frequencies; supply an explicit "
+            "reference_frequency_hz to proceed."
+        ),
+    )
+    if not decision.usable:
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
+            engineering_context_id=engineering_context_id, analysis_time=analysis_time,
+            reason_code=decision.reason_code, message=decision.message,
+        )
+    reference_frequency_hz = decision.hz
 
     # ---- Waveform-form eligibility, per role ----
     role_reasons: dict[str, str] = {}
     for role_key, candidate in candidates.items():
-        if not _waveform_form_eligible(candidate, reference_frequency_hz):
+        verdict = _waveform_form_eligible(candidate, reference_frequency_hz)
+        if verdict == SAMPLING_UNSUPPORTED:
+            role_reasons[role_key] = REASON_INSUFFICIENT_SAMPLING_DENSITY
+        elif verdict != FORM_ELIGIBLE:
             role_reasons[role_key] = REASON_WAVEFORM_FORM_NOT_ELIGIBLE
     if role_reasons:
+        distinct = set(role_reasons.values())
+        if distinct == {REASON_INSUFFICIENT_SAMPLING_DENSITY}:
+            return _short_circuit(
+                STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
+                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
+                reason_code=REASON_INSUFFICIENT_SAMPLING_DENSITY,
+                message=sampling_reason_message(reference_frequency_hz, PHASOR_MIN_SAMPLES_PER_CYCLE),
+                role_reasons=role_reasons,
+            )
         return _short_circuit(
             STATUS_NEEDS_CONFIGURATION, analysis_kind=analysis_kind, mode=mode,
             engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-            reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
+            reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE if len(distinct) == 1 else "multiple_issues",
             message="One or more resolved roles are not eligible sinusoidal waveform inputs for phasor estimation.",
             role_reasons=role_reasons,
         )
@@ -448,7 +475,7 @@ def compute_phasor_analysis(
         status=PHASOR_STATUS_COMPUTED, analysis_kind=analysis_kind, mode=mode,
         engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds,
-        roles=roles_out, message="All required roles resolved and estimated.",
+        roles=roles_out, message="All required roles resolved and estimated.", frequency_provenance=decision.provenance,
     )
 
 
@@ -527,7 +554,7 @@ class PreparedPhasorDiagram:
     __slots__ = (
         "engineering_context_id", "outcome",
         "role_statuses", "role_reason_codes", "candidates",
-        "reference_frequency_hz", "window_seconds",
+        "reference_frequency_hz", "window_seconds", "frequency_provenance",
         "eligible_candidates", "eligible_t_shared",
         "anchor_role_key", "anchor_offset",
         "block_reason_code", "block_message",
@@ -539,7 +566,7 @@ class PreparedPhasorDiagram:
         reference_frequency_hz: float | None = None, window_seconds: float | None = None,
         eligible_candidates: dict[str, _RoleCandidate] | None = None, eligible_t_shared: dict[str, object] | None = None,
         anchor_role_key: str | None = None, anchor_offset: float | None = None,
-        block_reason_code: str | None = None, block_message: str | None = None,
+        block_reason_code: str | None = None, block_message: str | None = None, frequency_provenance=None,
     ):
         self.engineering_context_id = engineering_context_id
         self.outcome = outcome
@@ -548,6 +575,7 @@ class PreparedPhasorDiagram:
         self.candidates = candidates
         self.reference_frequency_hz = reference_frequency_hz
         self.window_seconds = window_seconds
+        self.frequency_provenance = frequency_provenance
         self.eligible_candidates = eligible_candidates or {}
         self.eligible_t_shared = eligible_t_shared or {}
         self.anchor_role_key = anchor_role_key
@@ -564,6 +592,7 @@ def prepare_phasor_diagram(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> PreparedPhasorDiagram:
     """DEC-114: role resolution -> candidate fetch -> reference-frequency
     agreement -> waveform-form eligibility -> shared absolute-time
@@ -600,11 +629,15 @@ def prepare_phasor_diagram(
         ref = resolution.resolved_roles[role_key]
         candidate = _fetch_role_candidate(
             role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
-            calculated_channel_registry=calculated_channel_registry,
+            calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
         )
         if isinstance(candidate, _CalibrationBlockedResult):
             role_statuses[role_key] = ROLE_STATUS_CALIBRATION_UNAVAILABLE
             role_reason_codes[role_key] = candidate.reason
+            continue
+        if isinstance(candidate, StaleInputBlocked):
+            role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
+            role_reason_codes[role_key] = REASON_STALE_CALCULATED_INPUT
             continue
         if candidate is None:
             role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
@@ -625,29 +658,21 @@ def prepare_phasor_diagram(
     # that function's own comment for why (waveform-form eligibility
     # itself needs a reference frequency as an input, so it cannot be
     # computed only from the post-eligibility subset).
-    if reference_frequency_hz_override is not None:
-        if not nominal_frequency_valid(reference_frequency_hz_override):
-            return PreparedPhasorDiagram(
-                engineering_context_id=engineering_context_id, outcome="blocked",
-                role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-                block_reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
-                block_message="The supplied reference_frequency_hz is outside the plausible range.",
-            )
-        reference_frequency_hz = reference_frequency_hz_override
-    else:
-        declared = [c.nominal_frequency for c in candidates.values()]
-        first = declared[0]
-        if not all(math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9) for f in declared):
-            return PreparedPhasorDiagram(
-                engineering_context_id=engineering_context_id, outcome="blocked",
-                role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-                block_reason_code=REASON_REFERENCE_FREQUENCY_CONFLICT,
-                block_message=(
-                    "Resolved roles come from sources declaring different nominal frequencies; supply an explicit "
-                    "reference_frequency_hz to compute a combined diagram."
-                ),
-            )
-        reference_frequency_hz = first
+    decision = decide_reference_frequency(
+        override=reference_frequency_hz_override, frequencies=[c.frequency for c in candidates.values()],
+        conflict_message=(
+            "Resolved roles come from sources declaring different nominal frequencies; supply an explicit "
+            "reference_frequency_hz to compute a combined diagram."
+        ),
+    )
+    if not decision.usable:
+        return PreparedPhasorDiagram(
+            engineering_context_id=engineering_context_id, outcome="blocked",
+            role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+            block_reason_code=decision.reason_code, block_message=decision.message,
+        )
+    reference_frequency_hz = decision.hz
+    provenance = decision.provenance
 
     # ---- Waveform-form eligibility, per role -- never blocks others ----
     # The single most expensive step for a role with `unknown` metadata
@@ -656,17 +681,19 @@ def prepare_phasor_diagram(
     # never once per role per `analysis_time`.
     eligible_candidates: dict[str, _RoleCandidate] = {}
     for role_key, candidate in candidates.items():
-        if _waveform_form_eligible(candidate, reference_frequency_hz):
+        verdict = _waveform_form_eligible(candidate, reference_frequency_hz)
+        if verdict == FORM_ELIGIBLE:
             eligible_candidates[role_key] = candidate
         else:
             role_statuses[role_key] = ROLE_STATUS_NOT_ELIGIBLE
-            role_reason_codes[role_key] = REASON_WAVEFORM_FORM_NOT_ELIGIBLE
+            role_reason_codes[role_key] = (
+                REASON_INSUFFICIENT_SAMPLING_DENSITY if verdict == SAMPLING_UNSUPPORTED else REASON_WAVEFORM_FORM_NOT_ELIGIBLE)
 
     if not eligible_candidates:
         return PreparedPhasorDiagram(
             engineering_context_id=engineering_context_id, outcome="no_eligible",
             role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-            reference_frequency_hz=reference_frequency_hz,
+            reference_frequency_hz=reference_frequency_hz, frequency_provenance=provenance,
         )
 
     # ---- Shared, source-independent absolute-time coordinate ----
@@ -675,7 +702,7 @@ def prepare_phasor_diagram(
         return PreparedPhasorDiagram(
             engineering_context_id=engineering_context_id, outcome="blocked",
             role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-            reference_frequency_hz=reference_frequency_hz,
+            reference_frequency_hz=reference_frequency_hz, frequency_provenance=provenance,
             block_reason_code="absolute_time_unavailable",
             block_message="One or more resolved sources have no known absolute start time.",
         )
@@ -696,7 +723,7 @@ def prepare_phasor_diagram(
                 return PreparedPhasorDiagram(
                     engineering_context_id=engineering_context_id, outcome="blocked",
                     role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-                    reference_frequency_hz=reference_frequency_hz,
+                    reference_frequency_hz=reference_frequency_hz, frequency_provenance=provenance,
                     block_reason_code="timebase_incompatible",
                     block_message="Resolved roles are not proven to share a common sample time; a combined diagram is unavailable.",
                 )
@@ -714,7 +741,7 @@ def prepare_phasor_diagram(
     return PreparedPhasorDiagram(
         engineering_context_id=engineering_context_id, outcome="ready",
         role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-        reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds,
+        reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds, frequency_provenance=provenance,
         eligible_candidates=eligible_candidates, eligible_t_shared=eligible_t_shared,
         anchor_role_key=anchor_role_key, anchor_offset=anchor_offset,
     )
@@ -749,7 +776,7 @@ def evaluate_prepared_phasor_diagram(prepared: PreparedPhasorDiagram, analysis_t
     if prepared.outcome == "no_eligible":
         return PhasorDiagramResult(
             status=PHASOR_STATUS_COMPUTED, engineering_context_id=prepared.engineering_context_id, analysis_time=analysis_time,
-            reference_frequency_hz=prepared.reference_frequency_hz,
+            reference_frequency_hz=prepared.reference_frequency_hz, frequency_provenance=prepared.frequency_provenance,
             roles=_assemble_identity_only_roles(prepared.role_statuses, prepared.role_reason_codes, prepared.candidates),
             message="No eligible Phasor roles could be estimated for this Engineering Context.",
         )
@@ -807,7 +834,7 @@ def evaluate_prepared_phasor_diagram(prepared: PreparedPhasorDiagram, analysis_t
     return PhasorDiagramResult(
         status=PHASOR_STATUS_COMPUTED, engineering_context_id=prepared.engineering_context_id, analysis_time=analysis_time,
         reference_frequency_hz=prepared.reference_frequency_hz, window_seconds=prepared.window_seconds,
-        roles=roles_out, message="Available Phasor roles resolved and estimated.",
+        roles=roles_out, message="Available Phasor roles resolved and estimated.", frequency_provenance=prepared.frequency_provenance,
     )
 
 
@@ -829,6 +856,7 @@ def compute_phasor_diagram(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
 ) -> PhasorDiagramResult:
     """The bay-centric aggregation entry point -- resolves and estimates
     ALL SIX supported roles (`PHASOR_DIAGRAM_ROLE_ORDER`) for one
@@ -899,7 +927,7 @@ def compute_phasor_diagram(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
         reference_frequency_hz_override=reference_frequency_hz_override,
         context_registry=context_registry, source_registry=source_registry,
-        calculated_channel_registry=calculated_channel_registry,
+        calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
     )
     return evaluate_prepared_phasor_diagram(prepared, analysis_time)
 
@@ -964,6 +992,7 @@ def check_phasor_diagram_readiness(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess,
     role_keys: tuple[str, ...] = PHASOR_DIAGRAM_ROLE_ORDER,
 ) -> PhasorDiagramReadiness:
     """Mirrors `compute_phasor_diagram()`'s own FIRST phase (role
@@ -1002,12 +1031,17 @@ def check_phasor_diagram_readiness(
         ref = resolution.resolved_roles[role_key]
         candidate = _fetch_role_candidate(
             role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
-            calculated_channel_registry=calculated_channel_registry,
+            calculated_channel_registry=calculated_channel_registry, frequency_access=frequency_access,
         )
         if isinstance(candidate, _CalibrationBlockedResult):
             role_readiness[role_key] = RoleReadiness(
                 status=STATUS_NEEDS_CONFIGURATION, reason_code="calibration_unavailable",
                 message=f"Role {role_key!r} is blocked by physical calibration authority ({candidate.reason}).",
+            )
+            continue
+        if isinstance(candidate, StaleInputBlocked):
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_STALE_CALCULATED_INPUT, message=candidate.message,
             )
             continue
         if candidate is None:
@@ -1024,34 +1058,31 @@ def check_phasor_diagram_readiness(
     # ---- Reference frequency: identical policy to compute_phasor_
     # diagram()'s own -- a conflict/invalid-override blocks every
     # IDENTITY-resolved role with the SAME reason, never partially. ----
-    if reference_frequency_hz_override is not None:
-        if not nominal_frequency_valid(reference_frequency_hz_override):
-            for role_key in candidates:
-                role_readiness[role_key] = RoleReadiness(
-                    status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
-                    message="The supplied reference_frequency_hz is outside the plausible range.",
-                )
-            return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
-        reference_frequency_hz = reference_frequency_hz_override
-    else:
-        declared = [c.nominal_frequency for c in candidates.values()]
-        first = declared[0]
-        if not all(math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9) for f in declared):
-            for role_key in candidates:
-                role_readiness[role_key] = RoleReadiness(
-                    status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_REFERENCE_FREQUENCY_CONFLICT,
-                    message=(
-                        "Resolved roles come from sources declaring different nominal frequencies; supply an "
-                        "explicit reference_frequency_hz to check readiness against a specific frequency."
-                    ),
-                )
-            return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
-        reference_frequency_hz = first
+    decision = decide_reference_frequency(
+        override=reference_frequency_hz_override, frequencies=[c.frequency for c in candidates.values()],
+        conflict_message=(
+            "Resolved roles come from sources declaring different nominal frequencies; supply an "
+            "explicit reference_frequency_hz to check readiness against a specific frequency."
+        ),
+    )
+    if not decision.usable:
+        for role_key in candidates:
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=decision.reason_code, message=decision.message,
+            )
+        return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
+    reference_frequency_hz = decision.hz
 
     # ---- Waveform-form eligibility, per role -- never blocks others ----
     for role_key, candidate in candidates.items():
-        if _waveform_form_eligible(candidate, reference_frequency_hz):
+        verdict = _waveform_form_eligible(candidate, reference_frequency_hz)
+        if verdict == FORM_ELIGIBLE:
             role_readiness[role_key] = RoleReadiness(status=STATUS_RESOLVED, reason_code=None, message=None)
+        elif verdict == SAMPLING_UNSUPPORTED:
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INSUFFICIENT_SAMPLING_DENSITY,
+                message=sampling_reason_message(reference_frequency_hz, PHASOR_MIN_SAMPLES_PER_CYCLE),
+            )
         else:
             role_readiness[role_key] = RoleReadiness(
                 status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE,

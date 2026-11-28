@@ -1,0 +1,126 @@
+{
+ "killed": 23,
+ "total": 24,
+ "results": [
+  {
+   "id": "G1",
+   "status": "KILLED",
+   "why": "compliance execution never refuses a stale input"
+  },
+  {
+   "id": "G2",
+   "status": "KILLED",
+   "why": "compliance execution checks no input"
+  },
+  {
+   "id": "G3",
+   "status": "SURVIVED",
+   "why": "readiness never blocks a stale member"
+  },
+  {
+   "id": "G4",
+   "status": "KILLED",
+   "why": "readiness ignores the stale input of an RMS step"
+  },
+  {
+   "id": "G5",
+   "status": "KILLED",
+   "why": "readiness ignores the member's own stale channel"
+  },
+  {
+   "id": "G6",
+   "status": "KILLED",
+   "why": "a stale member is reported with the wrong state"
+  },
+  {
+   "id": "G7",
+   "status": "KILLED",
+   "why": "compliance maps the refusal to the wrong HTTP status"
+  },
+  {
+   "id": "G8",
+   "status": "KILLED",
+   "why": "the compliance router forgets the authority"
+  },
+  {
+   "id": "G9",
+   "status": "KILLED",
+   "why": "readiness builds Registries without the authority"
+  },
+  {
+   "id": "G10",
+   "status": "KILLED",
+   "why": "oscillation analysis entry no longer refuses (native representation accepts a stale RMS)"
+  },
+  {
+   "id": "G11",
+   "status": "KILLED",
+   "why": "the oscillation representation endpoint no longer refuses"
+  },
+  {
+   "id": "G12",
+   "status": "KILLED",
+   "why": "oscillation maps the refusal to the wrong HTTP status"
+  },
+  {
+   "id": "G13",
+   "status": "KILLED",
+   "why": "the phasor fetcher never blocks a stale channel"
+  },
+  {
+   "id": "G14",
+   "status": "KILLED",
+   "why": "phasor compute does not handle the sentinel"
+  },
+  {
+   "id": "G15",
+   "status": "KILLED",
+   "why": "the phasor diagram reports the wrong reason"
+  },
+  {
+   "id": "G16",
+   "status": "KILLED",
+   "why": "phasor readiness reports the wrong reason"
+  },
+  {
+   "id": "G17",
+   "status": "KILLED",
+   "why": "the overcurrent fetcher never blocks a stale channel"
+  },
+  {
+   "id": "G18",
+   "status": "KILLED",
+   "why": "overcurrent compute does not handle the sentinel"
+  },
+  {
+   "id": "G19",
+   "status": "KILLED",
+   "why": "overcurrent readiness reports the wrong reason"
+  },
+  {
+   "id": "G20",
+   "status": "KILLED",
+   "why": "the recorded current input reports the wrong reason"
+  },
+  {
+   "id": "G21",
+   "status": "KILLED",
+   "why": "the public reason value drifts"
+  },
+  {
+   "id": "G22",
+   "status": "KILLED",
+   "why": "the refusal carries no actionable message"
+  },
+  {
+   "id": "G23",
+   "status": "KILLED",
+   "why": "the refused analysis shows no actionable sentence"
+  },
+  {
+   "id": "G24",
+   "status": "KILLED",
+   "why": "the shared waveform fetcher is guarded (historical inspection would be blocked)"
+  }
+ ]
+}

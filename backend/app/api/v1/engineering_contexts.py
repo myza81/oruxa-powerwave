@@ -116,6 +116,8 @@ from app.schemas.sequence_components_analysis import (
     SequenceManualResultOut,
 )
 from app.schemas.source import ErrorOut
+from app.services.nominal_frequency_access import NominalFrequencyAccess
+from app.schemas.frequency_provenance import provenance_fields
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
@@ -183,6 +185,10 @@ def get_engineering_context_registry(request: Request) -> EngineeringContextRegi
     return request.app.state.engineering_context_registry
 
 
+
+
+def get_nominal_frequency_access(request: Request) -> NominalFrequencyAccess:
+    return request.app.state.nominal_frequency_access
 
 
 def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
@@ -444,6 +450,7 @@ def get_input_readiness(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> AnalysisInputReadinessOut:
     """DEC-107: read-only preflight, one level deeper than `GET .../
     input-resolution` above -- also checks whether the resolved
@@ -480,7 +487,7 @@ def get_input_readiness(
             readiness = check_overcurrent_readiness(
                 workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=role.phase,
                 reference_frequency_hz_override=None,
-                context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+                context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
             )
             return AnalysisInputReadinessOut(
                 status=readiness.status, analysis_kind=analysis_kind, mode=mode,
@@ -489,7 +496,7 @@ def get_input_readiness(
 
         diagram_readiness = check_phasor_diagram_readiness(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, reference_frequency_hz_override=None,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -506,7 +513,7 @@ def _phasor_result_to_out(result: PhasorAnalysisResult) -> PhasorAnalysisResultO
     return PhasorAnalysisResultOut(
         status=result.status, analysis_kind=result.analysis_kind, mode=result.mode,
         engineering_context_id=result.engineering_context_id, analysis_time=result.analysis_time,
-        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        reference_frequency_hz=result.reference_frequency_hz, **provenance_fields(result.frequency_provenance), window_seconds=result.window_seconds,
         algorithm_version=result.algorithm_version,
         roles={
             role_key: PhasorRoleResultOut(
@@ -531,6 +538,7 @@ def get_phasor_analysis(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> PhasorAnalysisResultOut:
     """Read-only, selected-time-only Phasor Analysis (Slice 1). Calls
     the input resolver first (unchanged) -- if it does not reach
@@ -551,7 +559,7 @@ def get_phasor_analysis(
             analysis_kind=analysis_kind, mode=mode, analysis_time=analysis_time,
             reference_frequency_hz_override=reference_frequency_hz,
             context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calc_registry,
+            calculated_channel_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -561,7 +569,7 @@ def get_phasor_analysis(
 def _phasor_diagram_result_to_out(result: PhasorDiagramResult) -> PhasorDiagramResultOut:
     return PhasorDiagramResultOut(
         status=result.status, engineering_context_id=result.engineering_context_id,
-        analysis_time=result.analysis_time, reference_frequency_hz=result.reference_frequency_hz,
+        analysis_time=result.analysis_time, reference_frequency_hz=result.reference_frequency_hz, **provenance_fields(result.frequency_provenance),
         window_seconds=result.window_seconds, algorithm_version=result.algorithm_version,
         roles={
             role_key: PhasorDiagramRoleResultOut(
@@ -586,6 +594,7 @@ def get_phasor_diagram(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> PhasorDiagramResultOut:
     """Read-only, selected-time-only, bay-centric Phasor Diagram
     aggregation (Phasor UAT redesign; see
@@ -606,7 +615,7 @@ def get_phasor_diagram(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id,
             analysis_time=analysis_time, reference_frequency_hz_override=reference_frequency_hz,
             context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calc_registry,
+            calculated_channel_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -811,7 +820,7 @@ def _overcurrent_result_to_out(result) -> OvercurrentAnalysisResultOut:
         analysis_time=result.analysis_time, characteristic_id=result.characteristic_id, tms=result.tms,
         pickup_current_secondary=result.pickup_current_secondary, recording_basis=result.recording_basis,
         ct_primary=result.ct_primary, ct_secondary=result.ct_secondary,
-        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        reference_frequency_hz=result.reference_frequency_hz, **provenance_fields(result.frequency_provenance), window_seconds=result.window_seconds,
         algorithm_version=result.algorithm_version,
         channel_ref=ChannelRefOut.from_domain(result.channel_ref) if result.channel_ref is not None else None,
         measured_rms_current=result.measured_rms_current, measured_rms_current_unit=result.measured_rms_current_unit,
@@ -858,6 +867,7 @@ def get_overcurrent_recorded_input(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OvercurrentRecordedInputOut:
     """D5A-2B2C-1A (DEC-216): read-only report of what the recorded Overcurrent phase `phase` consumes from Recording
     Details -- the Current channel, its Measurement Group, its effective measurement side with provenance, and the CT
@@ -868,7 +878,7 @@ def get_overcurrent_recorded_input(
         report = read_recorded_current_input(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase,
             context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calc_registry, authority=OvercurrentAuthority.from_app_state(request.app.state),
+            calculated_channel_registry=calc_registry, frequency_access=frequency_access, authority=OvercurrentAuthority.from_app_state(request.app.state),
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -892,6 +902,7 @@ def get_overcurrent_analysis(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> OvercurrentAnalysisResultOut:
     """Read-only, selected-time-only Overcurrent Analysis (v1). Calls the
     input resolver first (unchanged) for the ONE current phase requested
@@ -924,7 +935,7 @@ def get_overcurrent_analysis(
             pickup_current_secondary=pickup_current_secondary, recording_basis=recording_basis,
             ct_primary=ct_primary, ct_secondary=ct_secondary, reference_frequency_hz_override=reference_frequency_hz,
             context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calc_registry, authority=OvercurrentAuthority.from_app_state(request.app.state),
+            calculated_channel_registry=calc_registry, frequency_access=frequency_access, authority=OvercurrentAuthority.from_app_state(request.app.state),
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -1035,7 +1046,7 @@ def _impedance_result_to_out(result) -> ImpedanceAnalysisResultOut:
         status=result.status, engineering_context_id=result.engineering_context_id, phase=result.phase,
         analysis_time=result.analysis_time, recording_basis=result.recording_basis, impedance_basis=result.impedance_basis,
         vt_primary=result.vt_primary, vt_secondary=result.vt_secondary, ct_primary=result.ct_primary, ct_secondary=result.ct_secondary,
-        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        reference_frequency_hz=result.reference_frequency_hz, **provenance_fields(result.frequency_provenance), window_seconds=result.window_seconds,
         algorithm_version=result.algorithm_version,
         voltage_channel_ref=ChannelRefOut.from_domain(result.voltage_channel_ref) if result.voltage_channel_ref is not None else None,
         voltage_magnitude_rms=result.voltage_magnitude_rms, voltage_unit=result.voltage_unit,
@@ -1067,6 +1078,7 @@ def get_impedance_analysis(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> ImpedanceAnalysisResultOut:
     """Read-only, selected-time-only Impedance Locus (v1) for ONE phase
     (`Za`/`Zb`/`Zc`). Reuses the existing, unchanged `compute_phasor_
@@ -1102,7 +1114,7 @@ def get_impedance_analysis(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
             reference_frequency_hz_override=reference_frequency_hz,
             impedance_basis=impedance_basis,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
             side_plan=side_plan,
         )
     except ImportServiceError as exc:
@@ -1131,6 +1143,7 @@ def get_impedance_locus(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> ImpedanceLocusOut:
     """The static impedance locus/trajectory over `[start_time, end_time]`
     (task's own section 18-19) -- `point_count` evenly-sampled points
@@ -1161,7 +1174,7 @@ def get_impedance_locus(
             start_time=start_time, end_time=end_time, point_count=point_count,
             reference_frequency_hz_override=reference_frequency_hz,
             impedance_basis=impedance_basis,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
             side_plan=side_plan,
         )
     except ImportServiceError as exc:
@@ -1254,7 +1267,7 @@ def _sequence_family_result_to_out(result) -> SequenceFamilyResultOut:
 def _sequence_result_to_out(result) -> SequenceAnalysisResultOut:
     return SequenceAnalysisResultOut(
         status=result.status, engineering_context_id=result.engineering_context_id, analysis_time=result.analysis_time,
-        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        reference_frequency_hz=result.reference_frequency_hz, **provenance_fields(result.frequency_provenance), window_seconds=result.window_seconds,
         algorithm_version=result.algorithm_version,
         voltage_sequences=_sequence_family_result_to_out(result.voltage_sequences),
         current_sequences=_sequence_family_result_to_out(result.current_sequences),
@@ -1271,6 +1284,7 @@ def get_sequence_components_analysis(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> SequenceAnalysisResultOut:
     """Read-only, selected-time-only positive/negative/zero-sequence
     Voltage and Current, for one Engineering Context. Reuses the
@@ -1288,7 +1302,7 @@ def get_sequence_components_analysis(
         result = compute_sequence_analysis(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
             reference_frequency_hz_override=reference_frequency_hz,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -1422,7 +1436,7 @@ def _distance_result_to_out(result) -> DistanceAnalysisResultOut:
         status=result.status, engineering_context_id=result.engineering_context_id, loop=result.loop,
         analysis_time=result.analysis_time, recording_basis=result.recording_basis, impedance_basis=result.impedance_basis,
         vt_primary=result.vt_primary, vt_secondary=result.vt_secondary, ct_primary=result.ct_primary, ct_secondary=result.ct_secondary,
-        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        reference_frequency_hz=result.reference_frequency_hz, **provenance_fields(result.frequency_provenance), window_seconds=result.window_seconds,
         algorithm_version=result.algorithm_version,
         v1_channel_ref=ChannelRefOut.from_domain(result.v1_channel_ref) if result.v1_channel_ref is not None else None,
         v2_channel_ref=ChannelRefOut.from_domain(result.v2_channel_ref) if result.v2_channel_ref is not None else None,
@@ -1479,6 +1493,7 @@ def get_distance_protection_analysis(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> DistanceAnalysisResultOut:
     """Read-only, selected-time-only Distance Protection (v1) for ONE
     fault loop (`AB`/`BC`/`CA`). Reuses the existing, unchanged
@@ -1521,7 +1536,7 @@ def get_distance_protection_analysis(
             reference_frequency_hz_override=reference_frequency_hz,
             impedance_basis=impedance_basis,
             characteristic=characteristic, zones=named_zones,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
             side_plan=side_plan,
         )
     except ImportServiceError as exc:
@@ -1568,6 +1583,7 @@ def get_distance_protection_locus(
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    frequency_access: NominalFrequencyAccess = Depends(get_nominal_frequency_access),
 ) -> DistanceLocusOut:
     """The static loop-impedance locus/trajectory over `[start_time,
     end_time]` -- `point_count` evenly-sampled points (clamped to
@@ -1606,7 +1622,7 @@ def get_distance_protection_locus(
             reference_frequency_hz_override=reference_frequency_hz,
             impedance_basis=impedance_basis,
             characteristic=characteristic, zones=named_zones,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry, frequency_access=frequency_access,
             side_plan=side_plan,
         )
     except ImportServiceError as exc:

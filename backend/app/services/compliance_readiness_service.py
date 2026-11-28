@@ -67,7 +67,6 @@ from app.domain.calculated_channel import (
     OP_RMS,
     CalculatedChannel,
     ChannelRef,
-    nominal_frequency_valid,
 )
 from app.domain.compliance_measurement import ROLE_A, ROLE_B, ROLE_C
 from app.domain.compliance_requirement import (
@@ -91,6 +90,7 @@ from app.domain.reference_layer import ReferenceLayer
 from app.domain.reference_profile import ReferenceProfile
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import create_calculated_channel
+from app.services.calculated_channel_staleness import frequency_staleness, stale_input_problem
 from app.services.compliance_series import Registries, timebase_key, unit_problem
 from app.services.recorded_side_authority import RecordedAuthority
 from app.services.compliance_measurement_service import (
@@ -111,15 +111,18 @@ from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
 from app.domain.physical_calibration import evaluate_calibration_eligibility, PURPOSE_COMPLIANCE_ASSESSMENT
 from app.services.calculated_channel_service import _collect_leaf_authorities
 from app.services.errors import (
+    CalculatedChannelNotFoundError,
     ComplianceMeasurementGroupNotVoltageKindError,
     InvalidCalibrationAuthorityError,
     MeasurementGroupNotFoundError,
+    SourceNotFoundError,
 )
 from app.services.line_to_line_voltage_service import (
     check_line_to_line_readiness,
     create_line_to_line_voltage_channels,
 )
 from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.nominal_frequency_access import NominalFrequencyAccess, SourceFrequency
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.reference_layer_registry import ReferenceLayerRegistry
 from app.services.reference_profile_registry import ReferenceProfileRegistry
@@ -210,15 +213,19 @@ class PreparationOutcome:
 
 def find_equivalent_rms(
     calc_registry: CalculatedChannelRegistry, workspace_id: str, input_ref: ChannelRef, nominal_frequency_hz: float,
+    *, frequency_access: NominalFrequencyAccess | None = None,
 ) -> CalculatedChannel | None:
     """An existing RMS calculated channel with the SAME calculation
-    identity -- never matched by name."""
+    identity -- never matched by name. NF-3E: with `frequency_access`, a STALE channel (its own frequency or an input's no longer matches
+    its recording) is never reused as a current input."""
     for channel in calc_registry.list_for_workspace(workspace_id):
         if (
             channel.operation == OP_RMS
             and channel.inputs == [input_ref]
             and channel.null_policy == DEFAULT_NULL_POLICY
             and channel.parameters.get("nominal_frequency_hz") == nominal_frequency_hz
+            and not (frequency_access is not None and frequency_staleness(
+                channel, workspace_id=workspace_id, calc_registry=calc_registry, frequency_access=frequency_access).stale)
         ):
             return channel
     return None
@@ -239,19 +246,20 @@ def find_equivalent_line_to_line(
 
 
 def _nominal_frequency_for(
-    ref: ChannelRef, *, workspace_id: str, source_registry: WorkspaceRegistry, calc_registry: CalculatedChannelRegistry,
-) -> float | None:
-    source_id = ref.source_id
-    if ref.kind == "calculated":
-        channel = calc_registry.get(workspace_id, ref.calculated_channel_id)
-        source_id = channel.reference_source_id if channel is not None else None
-    if source_id is None:
+    ref: ChannelRef, *, workspace_id: str, frequency_access: NominalFrequencyAccess, calc_registry: CalculatedChannelRegistry,
+) -> SourceFrequency | None:
+    """The central authority's outcome for the recording that grounds the channel (a calculated channel inherits its reference source's).
+    None only when the recording or the calculated channel no longer exists; an unusable declaration is an outcome with `usable` False."""
+    try:
+        return frequency_access.for_channel_ref(workspace_id, ref, calc_registry=calc_registry)
+    except (SourceNotFoundError, CalculatedChannelNotFoundError):
         return None
-    active = source_registry.get(workspace_id, source_id)
-    if active is None:
-        return None
-    frequency = active.metadata.nominal_frequency
-    return float(frequency) if nominal_frequency_valid(frequency) else None
+
+
+def _declared_text(frequency: SourceFrequency) -> str:
+    """The declared value as imported, readable for any value (never 'None' or an empty string)."""
+    value = frequency.imported_hz
+    return "missing" if value is None else f"{value:g}"
 
 
 def _display_name(ref: ChannelRef, *, workspace_id: str, calc_registry: CalculatedChannelRegistry) -> str:
@@ -272,13 +280,14 @@ class _Context:
     source_registry: WorkspaceRegistry
     calc_registry: CalculatedChannelRegistry
     context_registry: EngineeringContextRegistry
+    frequency_access: NominalFrequencyAccess
     registries: Registries | None = None
     input_types: dict[ChannelRef, str | None] = field(default_factory=dict)
 
     def input_type(self, ref: ChannelRef) -> str | None:
         if ref not in self.input_types:
             self.input_types[ref] = _classify_input_type(
-                ref, workspace_id=self.workspace_id, source_registry=self.source_registry,
+                ref, workspace_id=self.workspace_id, source_registry=self.source_registry, frequency_access=self.frequency_access,
             )
         return self.input_types[ref]
 
@@ -300,21 +309,33 @@ def _rms_step_or_state(ctx: _Context, member: str, ref: ChannelRef, *, label: st
     """A resolved channel that is an instantaneous waveform (or a
     calculated channel derived from one): reuse an equivalent RMS channel,
     else describe the RMS channel that has to be created."""
-    frequency = _nominal_frequency_for(
-        ref, workspace_id=ctx.workspace_id, source_registry=ctx.source_registry, calc_registry=ctx.calc_registry,
+    outcome = _nominal_frequency_for(
+        ref, workspace_id=ctx.workspace_id, frequency_access=ctx.frequency_access, calc_registry=ctx.calc_registry,
     )
     name = _display_name(ref, workspace_id=ctx.workspace_id, calc_registry=ctx.calc_registry)
-    if frequency is None:
+    if outcome is None or not outcome.usable:
+        # NF-3C: an unusable declaration is named as such (it used to be reported as "unknown"); the step stays blocked and never
+        # carries a frequency. A Manual value is offered as a remedy only while the server-side gate can honour it.
+        if outcome is None:
+            reason = "The recording's nominal frequency is unknown, so Powerwave will not guess an RMS window."
+            what = "the nominal frequency of this recording is unknown"
+            remedy = "Create the RMS channel in Calculated Channels with an explicit frequency."
+        else:
+            declared = _declared_text(outcome)
+            reason = f"The recording's declared nominal frequency ({declared}) is not usable, so Powerwave will not guess an RMS window."
+            what = f"the nominal frequency declared by this recording ({declared}) is not usable"
+            remedy = ("Set a nominal frequency in Recording Details, or create the RMS channel in Calculated Channels with an explicit frequency."
+                      if outcome.manual_override_enabled
+                      else "Create the RMS channel in Calculated Channels with an explicit frequency.")
         step = PreparationStep(
-            kind=STEP_RMS, key=(STEP_RMS, ref), description=f"RMS of {name}", executable=False, input_ref=ref,
-            reason="The recording's nominal frequency is unknown, so Powerwave will not guess an RMS window.",
+            kind=STEP_RMS, key=(STEP_RMS, ref), description=f"RMS of {name}", executable=False, input_ref=ref, reason=reason,
         )
         return MemberReadiness(
             member=member, state=STATE_BLOCKED, channel_name=name, step=step,
-            message=f"{label}: fundamental RMS is required, but the nominal frequency of this recording is unknown. "
-                    "Create the RMS channel in Calculated Channels with an explicit frequency.",
+            message=f"{label}: fundamental RMS is required, but {what}. {remedy}",
         )
-    existing = find_equivalent_rms(ctx.calc_registry, ctx.workspace_id, ref, frequency)
+    frequency = outcome.hz
+    existing = find_equivalent_rms(ctx.calc_registry, ctx.workspace_id, ref, frequency, frequency_access=ctx.frequency_access)
     if existing is not None:
         return MemberReadiness(
             member=member, state=STATE_REUSED, channel_name=existing.name, calculated_channel_id=existing.id,
@@ -342,7 +363,7 @@ def _line_to_line_context_id(ctx: _Context, pair: str, operands: tuple[ChannelRe
     try:
         readiness = check_line_to_line_readiness(
             workspace_id=ctx.workspace_id, engineering_context_id=context_id, context_registry=ctx.context_registry,
-            source_registry=ctx.source_registry, calc_registry=ctx.calc_registry,
+            source_registry=ctx.source_registry, calc_registry=ctx.calc_registry, frequency_access=ctx.frequency_access,
         )
     except Exception as exc:  # noqa: BLE001 -- any shared-service refusal is "not preparable here", never a crash
         return None, str(exc)
@@ -544,6 +565,23 @@ def _plottable_problem(
     return "incompatible", None
 
 
+def _block_stale_members(ctx: _Context, members: tuple[MemberReadiness, ...]) -> tuple[MemberReadiness, ...]:
+    """NF-3E: a member whose channel (or the input of its RMS step) is a STALE calculated channel is BLOCKED, naming the channel and the
+    reason; the reference then needs action. The same shared guard the execution path enforces; the readiness only reports it."""
+    blocked = []
+    for m in members:
+        refs = [m.channel_ref, m.step.input_ref if m.step is not None else None]
+        problem = stale_input_problem(
+            refs, workspace_id=ctx.workspace_id, calc_registry=ctx.calc_registry, frequency_access=ctx.frequency_access)
+        if problem is None:
+            blocked.append(m)
+            continue
+        blocked.append(MemberReadiness(
+            member=m.member, state=STATE_BLOCKED, channel_name=m.channel_name, calculated_channel_id=m.calculated_channel_id,
+            channel_ref=m.channel_ref, message=problem))
+    return tuple(blocked)
+
+
 def _evaluate_reference(
     ctx: _Context, layer: ReferenceLayer, profile: ReferenceProfile, base: BaseInfo | None,
 ) -> ReferenceReadiness:
@@ -566,6 +604,7 @@ def _evaluate_reference(
         )
 
     members = tuple(_plan_member(ctx, requirement, m) for m in requirement.required_members)
+    members = _block_stale_members(ctx, members)
 
     # The resolved base channels of one Reference must agree on Instantaneous
     # vs RMS -- they cannot be combined into one assessment otherwise.
@@ -627,6 +666,7 @@ def evaluate_readiness(
     context_registry: EngineeringContextRegistry,
     layer_registry: ReferenceLayerRegistry,
     profile_registry: ReferenceProfileRegistry,
+    frequency_access: NominalFrequencyAccess,
     per_unit_registry: PerUnitRegistry | None = None,
     side_authority: RecordedAuthority | None = None,
 ) -> ReadinessResult:
@@ -642,12 +682,12 @@ def evaluate_readiness(
     ctx = _Context(
         workspace_id=workspace_id, group=group, catalogue=_catalogue_from_detected(detected),
         display=_phase_display_from_detected(detected), source_registry=source_registry,
-        calc_registry=calc_registry, context_registry=context_registry,
+        calc_registry=calc_registry, context_registry=context_registry, frequency_access=frequency_access,
         registries=(
             Registries(
                 source=source_registry, calc=calc_registry, per_unit=per_unit_registry, group=group_registry,
                 voltage_config=voltage_config_registry, current_config=current_config_registry,
-                side_authority=side_authority,
+                side_authority=side_authority, frequency_access=frequency_access,
             )
             if per_unit_registry is not None else None
         ),
@@ -715,6 +755,7 @@ def prepare_measurement(
     context_registry: EngineeringContextRegistry,
     layer_registry: ReferenceLayerRegistry,
     profile_registry: ReferenceProfileRegistry,
+    frequency_access: NominalFrequencyAccess,
     per_unit_registry: PerUnitRegistry,
     side_authority: RecordedAuthority | None = None,
 ) -> PreparationOutcome:
@@ -730,7 +771,7 @@ def prepare_measurement(
             group_registry=group_registry, voltage_config_registry=voltage_config_registry,
             current_config_registry=current_config_registry, calc_registry=calc_registry,
             context_registry=context_registry, layer_registry=layer_registry, profile_registry=profile_registry,
-            per_unit_registry=per_unit_registry, side_authority=side_authority,
+            frequency_access=frequency_access, per_unit_registry=per_unit_registry, side_authority=side_authority,
         )
 
     for _ in range(3):  # line-line first, then the RMS that depends on it
@@ -748,14 +789,16 @@ def prepare_measurement(
                 created.extend(create_line_to_line_voltage_channels(
                     workspace_id=workspace_id, engineering_context_id=step.engineering_context_id, output=step.pair,
                     names={step.pair: name}, context_registry=context_registry, source_registry=source_registry,
-                    calc_registry=calc_registry, per_unit_registry=per_unit_registry,
+                    calc_registry=calc_registry, frequency_access=frequency_access, per_unit_registry=per_unit_registry,
                 ))
             else:
                 source_name = _display_name(step.input_ref, workspace_id=workspace_id, calc_registry=calc_registry)
                 created.append(create_calculated_channel(
                     workspace_id=workspace_id, name=_unique_name(calc_registry, workspace_id, f"RMS ({source_name})"),
                     operation=OP_RMS, inputs=[step.input_ref],
-                    parameters={"nominal_frequency_hz": step.nominal_frequency_hz},
+                    # The step's frequency is the recording's effective one (the readiness just resolved it): recording-following.
+                    parameters={"nominal_frequency_hz": step.nominal_frequency_hz, "nominal_frequency_basis": "recording"},
                     source_registry=source_registry, calc_registry=calc_registry, per_unit_registry=per_unit_registry,
+                    frequency_access=frequency_access,
                 ))
     return PreparationOutcome(created=tuple(created), result=evaluate())

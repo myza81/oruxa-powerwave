@@ -181,15 +181,19 @@ def test_source_inventory_caches_nominal_frequency_with_no_new_network_call():
 
 def test_nominal_frequency_authority_resolver_covers_source_and_calculated_inputs():
     source = _source()
+    # NF-3E: the grounding-recording rule moved into one helper the resolver calls (a source is itself; a calculated channel is grounded
+    # by its reference source).
+    grounding = _function_body(source, "function wwCcGroundingSourceId(inputCandidate)", "const wwCcEffectiveFrequency")
+    assert 'inputCandidate.kind === "source"' in grounding
+    assert "calc.reference_source_id" in grounding
     body = _function_body(
         source, "function wwCcResolveNominalFrequencyAuthority(inputCandidate)", "function wwInfoTipHtml(ariaLabel, text)"
     )
-    assert 'inputCandidate.kind === "source"' in body
-    assert "calc.reference_source_id" in body
+    assert "wwCcGroundingSourceId(inputCandidate)" in body
     assert '"metadata"' in body
     assert '"user"' in body
     # Section 19: never inferred from engineering_type.
-    assert "engineering_type" not in body
+    assert "engineering_type" not in body and "engineering_type" not in grounding
 
 
 def test_builder_state_defaults_nominal_frequency_source_to_user():
@@ -200,7 +204,7 @@ def test_builder_state_defaults_nominal_frequency_source_to_user():
 
 def test_reset_and_select_operation_reset_nominal_frequency_source():
     source = _source()
-    reset_body = _function_body(source, "function wwCcResetBuilder()", "function wwCcResolveNominalFrequencyAuthority")
+    reset_body = _function_body(source, "function wwCcResetBuilder()", "function wwCcGroundingSourceId")
     select_op_body = _function_body(source, "function wwCcSelectOperation(operation)", "function wwCcAddInputByKey(key)")
     assert 'wwCcBuilder.nominalFrequencySource = "user";' in reset_body
     assert 'wwCcBuilder.nominalFrequencySource = "user";' in select_op_body
@@ -211,10 +215,13 @@ def test_add_input_refreshes_nominal_frequency_authority():
     # stale value/source tag from the previous input in place.
     source = _source()
     body = _function_body(source, "function wwCcAddInputByKey(key)", "function wwCcRemoveInput(index)")
-    assert "wwCcResolveNominalFrequencyAuthority(candidate)" in body
-    assert 'authority.source === "metadata"' in body
-    assert 'wwCcBuilder.nominalFrequencySource = "metadata";' in body
-    assert 'wwCcBuilder.nominalFrequencySource = "user";' in body
+    # NF-3E: the authority is applied by one function (also used when the recording's frequency changes under an open builder).
+    assert "wwCcApplyRmsFrequencyAuthority(candidate)" in body
+    apply_body = _function_body(source, "function wwCcApplyRmsFrequencyAuthority(candidate)", "function wwCcReapplyFrequencyAuthority(sourceId)")
+    assert "wwCcResolveNominalFrequencyAuthority(candidate)" in apply_body
+    assert 'authority.source === "metadata"' in apply_body
+    assert 'wwCcBuilder.nominalFrequencySource = "metadata";' in apply_body
+    assert 'wwCcBuilder.nominalFrequencySource = "user";' in apply_body
 
 
 def test_info_tip_trigger_is_keyboard_and_screen_reader_accessible():
@@ -294,9 +301,9 @@ def test_rms_parameter_fields_distinguish_all_four_authority_categories():
     source = _source()
     body = _function_body(source, "function wwCcRenderRmsParameterFields()", "// ---")
 
-    # Category A/B: Nominal Frequency is EITHER the constrained dropdown
-    # (user-selectable, only 50/60 Hz, never free text) OR a readonly
-    # metadata display -- never both rendered as identical text boxes.
+    # Category A/B: Nominal Frequency is ONE constrained dropdown (never free
+    # text): 50/60 Hz are explicit selections; NF-3E / O-8 adds a preselected
+    # "Recording (X Hz)" option when the recording has a usable frequency.
     assert 'wwCcBuilder.nominalFrequencySource === "metadata"' in body
     assert "wwCcNominalFrequencySelect" in body
     assert '<option value="50"' in body

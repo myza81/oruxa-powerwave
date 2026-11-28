@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from scipy import signal as sp_signal
 
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import WAVEFORM_FORM_RMS
 from app.domain.spectral_estimation import (
@@ -47,7 +48,7 @@ def _spectrum(registries, name="X", *, representation="native", start=None, end=
         workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src", channel_name=name),
         representation=representation,
         window_start_s=float(t[0]) if start is None else start, window_end_s=float(t[-1]) if end is None else end,
-        f_min_hz=f_min, f_max_hz=f_max, source_registry=source_registry, calc_registry=calc_registry,
+        f_min_hz=f_min, f_max_hz=f_max, source_registry=source_registry, frequency_access=access_for(source_registry), calc_registry=calc_registry,
     )
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel
+from app.schemas.frequency_provenance import NominalFrequencyProvenanceOut
 
 from app.schemas.calculated_channel import ChannelRefOut
 from app.schemas.side_conversion import SideConversionOut
@@ -16,7 +17,7 @@ from app.schemas.side_conversion import SideConversionOut
 ImpedanceStatus = Literal["computed", "needs_configuration", "missing", "ambiguous", "not_eligible"]
 
 
-class ImpedanceAnalysisResultOut(BaseModel):
+class ImpedanceAnalysisResultOut(NominalFrequencyProvenanceOut):
     """`voltage_channel_ref`/`current_channel_ref` are what let the
     shared Related Waveforms panel know which channel to fetch for this
     phase's Voltage/Current traces (see `ImpedanceAnalysisResult`'s own

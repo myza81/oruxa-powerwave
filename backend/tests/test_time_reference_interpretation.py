@@ -1,4 +1,5 @@
 """Clock authority, microseconds, rollover, and unchanged workspace state."""
+from tests.nf3c_access_support import access_for
 from dataclasses import replace
 from datetime import datetime, timezone
 import io
@@ -206,11 +207,11 @@ def test_every_epoch_consumer_uses_effective_time(client):
         calc_registry = client.app.state.calculated_channel_registry
         common = {"workspace_id": "clock", "source_registry": registry, "calculated_channel_registry": calc_registry}
         assert analysis_input_resolution_service._timebase_identity(ref, **common)[2] == epoch
-        assert overcurrent_analysis_service._fetch_current_candidate(ref, **common).start_epoch == epoch
+        assert overcurrent_analysis_service._fetch_current_candidate(ref, frequency_access=access_for(registry), **common).start_epoch == epoch
         # BEN5K Unverified source: Stage 3B-2C-1 gate blocks phasor analysis (DEC-213, OD-8/OD-9).
         # Assert the gate returns _CalibrationBlockedResult with a machine-readable reason code,
         # never a _RoleCandidate with numeric data.
-        _phasor_cand = phasor_analysis_service._fetch_role_candidate("Va", ref, **common)
+        _phasor_cand = phasor_analysis_service._fetch_role_candidate("Va", ref, frequency_access=access_for(registry), **common)
         assert isinstance(_phasor_cand, _CalibrationBlockedResult), (
             f"BEN5K Unverified must return _CalibrationBlockedResult; got {type(_phasor_cand).__name__}"
         )
@@ -252,7 +253,7 @@ def test_phasor_epoch_consumer_not_assessed_source(client):
     common = {"workspace_id": "clock", "source_registry": registry, "calculated_channel_registry": calc_registry}
 
     # Not-assessed COMTRADE source passes the calibration gate — epoch must be consistent.
-    phasor_cand = phasor_analysis_service._fetch_role_candidate("Va", ref, **common)
+    phasor_cand = phasor_analysis_service._fetch_role_candidate("Va", ref, frequency_access=access_for(registry), **common)
     assert phasor_cand is not None, "COMTRADE not-assessed source must pass the calibration gate"
     assert not isinstance(phasor_cand, _CalibrationBlockedResult), (
         "gate must return _RoleCandidate for not-assessed source, not _CalibrationBlockedResult"

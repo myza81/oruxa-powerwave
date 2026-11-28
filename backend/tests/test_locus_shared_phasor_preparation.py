@@ -34,6 +34,7 @@ import pandas as pd
 import pytest
 
 import app.services.phasor_analysis_service as pas
+from tests.nf3c_access_support import access_for
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import CURRENT, VOLTAGE, WAVEFORM_FORM_INSTANTANEOUS
 from app.domain.disturbance_record import DisturbanceRecord
@@ -152,6 +153,7 @@ class TestImpedanceLocusEquivalence:
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            frequency_access=access_for(registries["source"]),
         )
         locus_points = compute_impedance_locus(
             start_time=sample_times[0], end_time=sample_times[-1], point_count=len(sample_times), **kwargs,
@@ -177,7 +179,7 @@ class TestImpedanceLocusEquivalence:
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             start_time=0.3, end_time=1.9, point_count=50, reference_frequency_hz_override=None,
             impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
 
         # One call per role (Va/Vb/Vc/Ia/Ib/Ic) for the WHOLE 50-point locus,
@@ -193,7 +195,7 @@ class TestImpedanceLocusEquivalence:
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             start_time=sample_times[0], end_time=sample_times[-1], point_count=len(sample_times),
             reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == len(sample_times)  # never silently dropped
         assert points[0].status == "needs_configuration"
@@ -208,7 +210,7 @@ class TestImpedanceLocusEquivalence:
             workspace_id=workspace_id, engineering_context_id=context_id, phase="A",
             start_time=0.3, end_time=1.9, point_count=10, reference_frequency_hz_override=None,
             impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == 10
         for p in points:
@@ -227,7 +229,7 @@ class TestImpedanceLocusEquivalence:
             workspace_id=workspace_id, engineering_context_id="ec-conflict", phase="A",
             start_time=0.3, end_time=1.5, point_count=8, reference_frequency_hz_override=None,
             impedance_basis="secondary", side_plan=IMPEDANCE_PLAN,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == 8
         for p in points:
@@ -242,6 +244,7 @@ class TestDistanceLocusEquivalence:
             reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=DISTANCE_PLAN,
             characteristic="mho", zone1=DISABLED_ZONE, zone2=DISABLED_ZONE, zone3=DISABLED_ZONE,
             context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            frequency_access=access_for(registries["source"]),
         )
 
     def test_locus_matches_independent_single_point_calls(self, registries):
@@ -312,7 +315,7 @@ class TestDistanceLocusEquivalence:
             start_time=0.3, end_time=1.5, point_count=8, workspace_id=workspace_id, engineering_context_id="ec-conflict",
             loop="AB", reference_frequency_hz_override=None, impedance_basis="secondary", side_plan=DISTANCE_PLAN,
             characteristic="mho", zone1=DISABLED_ZONE, zone2=DISABLED_ZONE, zone3=DISABLED_ZONE,
-            context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+            context_registry=registries["context"], frequency_access=access_for(registries["source"]), source_registry=registries["source"], calculated_channel_registry=registries["calc"],
         )
         assert len(points) == 8
         for p in points:

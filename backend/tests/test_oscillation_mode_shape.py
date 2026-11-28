@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.nf3c_access_support import access_for
 from app.domain import mode_shape as ms
 from app.domain.calculated_channel import OP_REVERSE_POLARITY, ChannelRef
 from app.main import create_app
@@ -369,7 +370,7 @@ class Env:
 
     def run(self, entries, component=None, f_min=0.1, f_max=5.0):
         return compute_mode_shape(workspace_id=WS, entries=entries, f_min_hz=f_min, f_max_hz=f_max, component_frequency_hz=component,
-                                  source_registry=self.sources, calc_registry=self.calc, sync_registry=self.sync)
+                                  source_registry=self.sources, frequency_access=access_for(self.sources), calc_registry=self.calc, sync_registry=self.sync)
 
 
 @pytest.fixture

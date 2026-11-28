@@ -1,0 +1,20 @@
+{
+ "nf3b_frozen_baselines": {
+  "recorded_values": 2349,
+  "approved_change_entries": 10,
+  "differences_from_history": 13,
+  "differences_not_covered_by_an_approved_change": 0
+ },
+ "nf3c_pre_migration_baseline": {
+  "recorded_values": 3164,
+  "approved_change_entries": 32,
+  "differences_from_history": 106,
+  "differences_not_covered_by_an_approved_change": 0
+ },
+ "comtrade_frequency_baseline": {
+  "recorded_values": 2193,
+  "approved_change_entries": 14,
+  "differences_from_history": 74,
+  "differences_not_covered_by_an_approved_change": 60
+ }
+}

@@ -45,6 +45,7 @@ from app.services.current_group_config_registry import CurrentGroupConfigRegistr
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.engineering_context_service import prune_engineering_contexts_for_source
 from app.services.measurement_side_registry import MeasurementSideRegistry
+from app.services.nominal_frequency_registry import NominalFrequencyRegistry
 from app.services.measurement_side_service import prune_orphan_group_overrides
 from app.services.errors import (
     AmbiguousSourceUploadError,
@@ -123,6 +124,10 @@ def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry
 
 def get_measurement_side_registry(request: Request) -> MeasurementSideRegistry:
     return request.app.state.measurement_side_registry
+
+
+def get_nominal_frequency_registry(request: Request) -> NominalFrequencyRegistry:
+    return request.app.state.nominal_frequency_registry
 
 
 def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
@@ -785,6 +790,7 @@ def delete_source(
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     measurement_side_registry: MeasurementSideRegistry = Depends(get_measurement_side_registry),
+    nominal_frequency_registry: NominalFrequencyRegistry = Depends(get_nominal_frequency_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
@@ -852,6 +858,8 @@ def delete_source(
     measurement_side_registry.remove_source(workspace_id, source_id)
     prune_orphan_group_overrides(workspace_id, side_registry=measurement_side_registry,
                                  group_registry=measurement_group_registry)
+    # NF-1: the engineer's nominal-frequency value for this recording goes with it.
+    nominal_frequency_registry.remove_source(workspace_id, source_id)
 
 
 @router.put("/{source_id}/time-reference", response_model=SourceSummaryOut)
