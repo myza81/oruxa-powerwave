@@ -175,7 +175,7 @@ class TestEvaluatePowerChannelNumerics:
         time, v, i = self._steady_sinusoid(v_amp_v, i_amp_a, phase_deg)
         return evaluate_power_channel(
             operation, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
 
     def test_active_power_in_phase(self):
@@ -226,9 +226,9 @@ class TestEvaluatePowerChannelNumerics:
         vp, ip = 1000.0, 1.0
         phase_deg = 36.87  # ~0.8 power-factor angle
         time, v, i = self._steady_sinusoid(vp, ip, phase_deg)
-        p = evaluate_power_channel(OP_ACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0, i_values=i, i_scale_to_si=1.0)
-        q = evaluate_power_channel(OP_REACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0, i_values=i, i_scale_to_si=1.0)
-        s = evaluate_power_channel(OP_APPARENT_POWER, v_time=time, v_values=v, v_scale_to_si=1.0, i_values=i, i_scale_to_si=1.0)
+        p = evaluate_power_channel(OP_ACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0, i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0)
+        q = evaluate_power_channel(OP_REACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0, i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0)
+        s = evaluate_power_channel(OP_APPARENT_POWER, v_time=time, v_values=v, v_scale_to_si=1.0, i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0)
         # Evaluate in steady-state only (skip first cycle transient)
         idx = slice(int(FS_HZ * 1.0), None)
         np.testing.assert_allclose(s[idx] ** 2, p[idx] ** 2 + q[idx] ** 2, rtol=1e-6)
@@ -252,7 +252,7 @@ class TestEvaluatePowerChannelNumerics:
         result = evaluate_power_channel(
             OP_ACTIVE_POWER, v_time=time,
             v_values=v_kv, v_scale_to_si=1000.0,  # kV → V
-            i_values=i_ka, i_scale_to_si=1000.0,  # kA → A
+            i_values=i_ka, i_scale_to_si=1000.0, nominal_frequency_hz=50.0,  # kA → A
         )
         steady = result[int(FS_HZ * 1.0):]
         # Expected: (1000 V)×(1000 A)/2 / 1e6 = 0.5 MW
@@ -269,7 +269,7 @@ class TestEvaluatePowerChannelNumerics:
         result = evaluate_power_channel(
             OP_ACTIVE_POWER, v_time=time,
             v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         # At least one NaN must appear in the output (sliding window may
         # propagate it across a window width, not just one sample).
@@ -630,7 +630,7 @@ class TestEvaluatePowerVsSinglePhasePower:
         time, v, i = self._make_inputs(1000.0, 1.0, 0.0)
         p_arr = evaluate_power_channel(
             OP_ACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         vr = compute_sliding_phasor(time, v, F0_HZ)
         ir = compute_sliding_phasor(time, i, F0_HZ)
@@ -654,7 +654,7 @@ class TestEvaluatePowerVsSinglePhasePower:
         time, v, i = self._make_inputs(1000.0, 1.0, -30.0)
         q_arr = evaluate_power_channel(
             OP_REACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         vr = compute_sliding_phasor(time, v, F0_HZ)
         ir = compute_sliding_phasor(time, i, F0_HZ)
@@ -678,7 +678,7 @@ class TestEvaluatePowerVsSinglePhasePower:
         time, v, i = self._make_inputs(1000.0, 1.0, 45.0)
         s_arr = evaluate_power_channel(
             OP_APPARENT_POWER, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         vr = compute_sliding_phasor(time, v, F0_HZ)
         ir = compute_sliding_phasor(time, i, F0_HZ)
@@ -702,15 +702,15 @@ class TestEvaluatePowerVsSinglePhasePower:
         time, v, i = self._make_inputs(1000.0, 1.0, 36.87)
         p_arr = evaluate_power_channel(
             OP_ACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         q_arr = evaluate_power_channel(
             OP_REACTIVE_POWER, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         s_arr = evaluate_power_channel(
             OP_APPARENT_POWER, v_time=time, v_values=v, v_scale_to_si=1.0,
-            i_values=i, i_scale_to_si=1.0,
+            i_values=i, i_scale_to_si=1.0, nominal_frequency_hz=50.0,
         )
         vr = compute_sliding_phasor(time, v, F0_HZ)
         ir = compute_sliding_phasor(time, i, F0_HZ)
@@ -737,7 +737,7 @@ class TestEvaluatePowerVsSinglePhasePower:
         p_arr = evaluate_power_channel(
             OP_ACTIVE_POWER, v_time=time,
             v_values=v_kv, v_scale_to_si=1000.0,   # kV → V
-            i_values=i_ka, i_scale_to_si=1000.0,   # kA → A
+            i_values=i_ka, i_scale_to_si=1000.0, nominal_frequency_hz=50.0,   # kA → A
         )
         # same with SI inputs manually
         v_si = v_kv * 1000.0

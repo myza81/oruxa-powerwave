@@ -62,14 +62,14 @@ FREQUENCY_KEYS = {
 #: value = (count, class, note)
 NUMERIC_LITERALS = {
     "domain/auto_base_evidence.py": (2, "K", "0.02 kV tolerance; 60 kV in a standard-voltage table"),
-    "domain/calculated_channel.py": (2, "M", "C-12 default nominal_frequency_hz=50.0 of the two power kernels (NF-3F, removed in NF-3H)"),
+    # NF-3H retired the two power kernels' `nominal_frequency_hz=50.0` defaults (C-12): the frequency is a required argument; the two literals and this row are gone.
     "domain/damping_estimation.py": (1, "K", "0.02 envelope floor fraction"),
     "domain/event_reconstruction.py": (1, "K", "annotation box offset"),
     "domain/metadata.py": (1, "D", "DEFAULT_NOMINAL_FREQUENCY_HZ: the one sanctioned default, used by the NF-1 resolver"),
     # NF-3G migrated C-08: the assumed-frequency fallback is now the one sanctioned default (`DEFAULT_NOMINAL_FREQUENCY_HZ`), not a second literal.
     "domain/overcurrent.py": (1, "K", "IEC IDMT alpha = 0.02"),
     "domain/relay_import/identification.py": (2, "K", "score thresholds"),
-    "domain/sliding_phasor.py": (1, "M", "C-16 default reference_frequency_hz=50.0 (NF-3H)"),
+    # NF-3H retired `compute_sliding_phasor`'s `reference_frequency_hz=50.0` default (C-16): the literal and this row are gone.
     "domain/waveform_evidence.py": (1, "M", "C-16/C-17 default nominal_frequency_hz=50.0 (NF-3H; Auto Base evidence deferred, O-3)"),
     "providers/ben/layout.py": (1, "K", "byte offset 0x3C"),
     "providers/ben/legacy_ben5k/gpth_slow.py": (3, "K", "60-byte frame length"),
@@ -82,10 +82,9 @@ NUMERIC_LITERALS = {
 
 #: G4. Default VALUES of frequency-named parameters: a caller that omits the argument silently gets this frequency.
 FREQUENCY_DEFAULTS = {
-    ("domain/calculated_channel.py", "evaluate_power_channel", "nominal_frequency_hz", 50.0),                 # M C-12 NF-3F
-    ("domain/calculated_channel.py", "evaluate_three_phase_power_channel", "nominal_frequency_hz", 50.0),     # M C-12 NF-3F
-    ("domain/sliding_phasor.py", "compute_sliding_phasor", "reference_frequency_hz", 50.0),                   # M C-16 NF-3H
-    ("domain/waveform_evidence.py", "extract_waveform_evidence", "nominal_frequency_hz", 50.0),               # M C-16 NF-3H / O-3
+    # NF-3H retired the defaults of `evaluate_power_channel`, `evaluate_three_phase_power_channel` and `compute_sliding_phasor`: the frequency is
+    # required, so a caller can no longer silently get 50 Hz. The one default left is Auto Base evidence, which stays with the Per-Unit workstream (O-3).
+    ("domain/waveform_evidence.py", "extract_waveform_evidence", "nominal_frequency_hz", 50.0),               # M C-17 O-3 (Auto Base evidence, deferred)
 }
 
 #: G5. Who may import which module. The NF-1 service layer owns the gate, so only the accessor imports it; in NF-3B only the

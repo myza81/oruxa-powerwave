@@ -163,7 +163,7 @@ class SlidingPhasorResult:
 def compute_sliding_phasor(
     time: np.ndarray,
     values: np.ndarray,
-    reference_frequency_hz: float = 50.0,
+    reference_frequency_hz: float,
     *,
     output_stride: int = 1,
     min_samples_per_cycle: int = PHASOR_MIN_SAMPLES_PER_CYCLE,

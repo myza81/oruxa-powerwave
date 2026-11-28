@@ -144,12 +144,24 @@ def nf3g_entries(baseline: str) -> list[dict]:
     return json.loads(NF3G_MANIFEST.read_text(encoding="utf-8"))["changes"].get(baseline, [])
 
 
-def apply_approved(document: dict, baseline: str, *, include_nf3d: bool = True, include_nf3f: bool = True, include_nf3g: bool = True) -> dict:
+NF3H_MANIFEST = _FIXTURES / "nf3h_baselines" / "nf3h_approved_changes.json"
+
+
+def nf3h_entries(baseline: str) -> list[dict]:
+    """The NF-3H approved changes (silent 50 Hz defaults retired) for one baseline; recorded against the record after the NF-3G overlay."""
+    if not NF3H_MANIFEST.exists():
+        return []
+    return json.loads(NF3H_MANIFEST.read_text(encoding="utf-8"))["changes"].get(baseline, [])
+
+
+def apply_approved(document: dict, baseline: str, *, include_nf3d: bool = True, include_nf3f: bool = True, include_nf3g: bool = True,
+                   include_nf3h: bool = True) -> dict:
     """A copy of `document["outcomes"]` with this baseline's approved changes applied.
 
     NF-3C entries apply to the historical record first; NF-3D entries (`nf3d_approved_changes.json`, recorded against the record AFTER the
     NF-3C overlay) apply second, NF-3F entries (`nf3f_approved_changes.json`, recorded against the record after both) third, and NF-3G
-    entries (`nf3g_approved_changes.json`) fourth, so each slice's changes stay separately reviewable."""
+    entries (`nf3g_approved_changes.json`) fourth, and NF-3H entries (`nf3h_approved_changes.json`) fifth, so each slice's changes stay
+    separately reviewable."""
     outcomes = _apply_nf3c(document, baseline)
     if include_nf3d:
         from tests.nf3d_diff_tools import apply_entries
@@ -158,6 +170,8 @@ def apply_approved(document: dict, baseline: str, *, include_nf3d: bool = True, 
             outcomes = apply_entries(outcomes, nf3f_entries(baseline))
             if include_nf3g:
                 outcomes = apply_entries(outcomes, nf3g_entries(baseline))
+                if include_nf3h:
+                    outcomes = apply_entries(outcomes, nf3h_entries(baseline))
     return outcomes
 
 

@@ -962,7 +962,7 @@ def evaluate_power_channel(
     v_scale_to_si: float,
     i_values: np.ndarray,
     i_scale_to_si: float,
-    nominal_frequency_hz: float = 50.0,
+    nominal_frequency_hz: float,
 ) -> np.ndarray:
     """Time-varying P(t) [MW], Q(t) [Mvar] or |S|(t) [MVA] from
     instantaneous voltage and current waveforms.
@@ -1028,7 +1028,7 @@ def evaluate_three_phase_power_channel(
     v3_scale_to_si: float,
     i3_values: np.ndarray,
     i3_scale_to_si: float,
-    nominal_frequency_hz: float = 50.0,
+    nominal_frequency_hz: float,
 ) -> np.ndarray:
     """Time-varying three-phase P(t) [MW], Q(t) [Mvar] or |S|(t) [MVA].
 

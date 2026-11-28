@@ -82,7 +82,7 @@ def _evaluate(operation: str, t, v1, i1, v2, i2, v3, i3) -> np.ndarray:
         t,
         v1, 1.0, i1, 1.0,
         v2, 1.0, i2, 1.0,
-        v3, 1.0, i3, 1.0,
+        v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
     )
 
 
@@ -318,7 +318,7 @@ class TestScenarioI_NanPhase1:
             OP_ACTIVE_POWER, t,
             v1, 1.0, i1, 1.0,
             v2, 1.0, i2, 1.0,
-            v3, 1.0, i3, 1.0,
+            v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
         )
         # The NaN window spreads across one DFT window; at least one NaN must appear
         assert np.any(np.isnan(result)), "NaN in phase-1 voltage must propagate to output"
@@ -341,7 +341,7 @@ class TestScenarioJ_NanPhase2:
             OP_REACTIVE_POWER, t,
             v1, 1.0, i1, 1.0,
             v2, 1.0, i2, 1.0,
-            v3, 1.0, i3, 1.0,
+            v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
         )
         assert np.any(np.isnan(result)), "NaN in phase-2 current must propagate to output"
 
@@ -363,7 +363,7 @@ class TestScenarioK_NanPhase3:
             OP_APPARENT_POWER, t,
             v1, 1.0, i1, 1.0,
             v2, 1.0, i2, 1.0,
-            v3, 1.0, i3, 1.0,
+            v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
         )
         assert np.any(np.isnan(result)), "NaN in phase-3 voltage must propagate to output"
 
@@ -408,7 +408,7 @@ class TestScenarioM_UnitScaling:
             OP_ACTIVE_POWER, t,
             v1_kv, 1000.0, i1_ka, 1000.0,   # kV → V, kA → A
             v2_kv, 1000.0, i2_ka, 1000.0,
-            v3_kv, 1000.0, i3_ka, 1000.0,
+            v3_kv, 1000.0, i3_ka, 1000.0, nominal_frequency_hz=50.0,
         )
         p_mean_mw = np.nanmean(_steady(result))
         # Expected: 3 × (1000/√2)² / 1e6 = 3 × 500 000 / 1e6 = 1.5 MW
@@ -485,7 +485,7 @@ class TestUnitScaling_kV_A:
             OP_ACTIVE_POWER, t,
             v1_kv, 1000.0, i1_si, 1.0,
             v2_kv, 1000.0, i2_si, 1.0,
-            v3_kv, 1000.0, i3_si, 1.0,
+            v3_kv, 1000.0, i3_si, 1.0, nominal_frequency_hz=50.0,
         )
         p_kv_a = np.nanmean(_steady(result))
 
@@ -516,7 +516,7 @@ class TestUnitScaling_V_kA:
             OP_REACTIVE_POWER, t,
             v1_si, 1.0, i1_ka, 1000.0,
             v2_si, 1.0, i2_ka, 1000.0,
-            v3_si, 1.0, i3_ka, 1000.0,
+            v3_si, 1.0, i3_ka, 1000.0, nominal_frequency_hz=50.0,
         )
         q_v_ka = np.nanmean(_steady(result))
 
@@ -546,13 +546,13 @@ class TestUnitScaling_MixedPerPhase:
             OP_ACTIVE_POWER, t,
             v1_si / 1000.0, 1000.0,   i1_si,          1.0,    # ph1: kV / A
             v2_si,          1.0,       i2_si / 1000.0, 1000.0, # ph2: V / kA
-            v3_si / 1000.0, 1000.0,   i3_si / 1000.0, 1000.0, # ph3: kV / kA
+            v3_si / 1000.0, 1000.0,   i3_si / 1000.0, 1000.0, nominal_frequency_hz=50.0,  # ph3: kV / kA
         )
         result_s = evaluate_three_phase_power_channel(
             OP_APPARENT_POWER, t,
             v1_si / 1000.0, 1000.0,   i1_si,          1.0,
             v2_si,          1.0,       i2_si / 1000.0, 1000.0,
-            v3_si / 1000.0, 1000.0,   i3_si / 1000.0, 1000.0,
+            v3_si / 1000.0, 1000.0,   i3_si / 1000.0, 1000.0, nominal_frequency_hz=50.0,
         )
         np.testing.assert_allclose(np.nanmean(_steady(result_p)), p_si, rtol=1e-9,
                                    err_msg="Mixed per-phase P must match SI reference")
@@ -572,7 +572,7 @@ class TestUnitScaling_DoubleConversionAbsence:
             OP_ACTIVE_POWER, t,
             v1, 1.0, i1, 1.0,
             v2, 1.0, i2, 1.0,
-            v3, 1.0, i3, 1.0,
+            v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
         )
 
         # kV path: divide V by 1000, scale=1000 (net effect identical to SI)
@@ -580,7 +580,7 @@ class TestUnitScaling_DoubleConversionAbsence:
             OP_ACTIVE_POWER, t,
             v1 / 1000.0, 1000.0, i1, 1.0,
             v2 / 1000.0, 1000.0, i2, 1.0,
-            v3 / 1000.0, 1000.0, i3, 1.0,
+            v3 / 1000.0, 1000.0, i3, 1.0, nominal_frequency_hz=50.0,
         )
 
         np.testing.assert_array_equal(p_si, p_kv,
@@ -643,19 +643,19 @@ class TestNumericalEquivalenceBalanced:
             OP_ACTIVE_POWER, self.t,
             self.v1, 1.0, self.i1, 1.0,
             self.v2, 1.0, self.i2, 1.0,
-            self.v3, 1.0, self.i3, 1.0,
+            self.v3, 1.0, self.i3, 1.0, nominal_frequency_hz=50.0,
         )
         self.q_arr = evaluate_three_phase_power_channel(
             OP_REACTIVE_POWER, self.t,
             self.v1, 1.0, self.i1, 1.0,
             self.v2, 1.0, self.i2, 1.0,
-            self.v3, 1.0, self.i3, 1.0,
+            self.v3, 1.0, self.i3, 1.0, nominal_frequency_hz=50.0,
         )
         self.s_arr = evaluate_three_phase_power_channel(
             OP_APPARENT_POWER, self.t,
             self.v1, 1.0, self.i1, 1.0,
             self.v2, 1.0, self.i2, 1.0,
-            self.v3, 1.0, self.i3, 1.0,
+            self.v3, 1.0, self.i3, 1.0, nominal_frequency_hz=50.0,
         )
         self.steady_start = int(FS_HZ / F0_HZ)
 
@@ -698,19 +698,19 @@ class TestNumericalEquivalenceUnbalanced:
             OP_ACTIVE_POWER, t,
             self.v1, 1.0, self.i1, 1.0,
             self.v2, 1.0, self.i2, 1.0,
-            self.v3, 1.0, self.i3, 1.0,
+            self.v3, 1.0, self.i3, 1.0, nominal_frequency_hz=50.0,
         )
         self.q_arr = evaluate_three_phase_power_channel(
             OP_REACTIVE_POWER, t,
             self.v1, 1.0, self.i1, 1.0,
             self.v2, 1.0, self.i2, 1.0,
-            self.v3, 1.0, self.i3, 1.0,
+            self.v3, 1.0, self.i3, 1.0, nominal_frequency_hz=50.0,
         )
         self.s_arr = evaluate_three_phase_power_channel(
             OP_APPARENT_POWER, t,
             self.v1, 1.0, self.i1, 1.0,
             self.v2, 1.0, self.i2, 1.0,
-            self.v3, 1.0, self.i3, 1.0,
+            self.v3, 1.0, self.i3, 1.0, nominal_frequency_hz=50.0,
         )
         self.steady_start = int(FS_HZ / F0_HZ)
 
@@ -869,7 +869,7 @@ class TestTimbaseContract_SingleArray:
             OP_ACTIVE_POWER, t,
             v1, 1.0, i1, 1.0,
             v2, 1.0, i2, 1.0,
-            v3, 1.0, i3, 1.0,
+            v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
         )
         assert result.shape == t.shape
         assert np.isfinite(_steady(result)).all()
@@ -881,7 +881,7 @@ class TestTimbaseContract_SingleArray:
                 op, t,
                 v1, 1.0, i1, 1.0,
                 v2, 1.0, i2, 1.0,
-                v3, 1.0, i3, 1.0,
+                v3, 1.0, i3, 1.0, nominal_frequency_hz=50.0,
             )
             assert len(result) == len(t), f"op={op}: output length must equal time array length"
 

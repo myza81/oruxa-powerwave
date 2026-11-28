@@ -1,0 +1,579 @@
+{
+ "changes": {
+  "nf3b_frozen_baselines": [
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "single_phase",
+     "active_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 43.3989675162,
+     "mean": 43.301344113,
+     "min": 43.2036554526
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "single_phase",
+     "active_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 50.0846202879,
+     "mean": 50.0000640228,
+     "min": 49.9154750792
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 24.9999761582,
+     "mean": 24.9999761582,
+     "min": 24.9999761582
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "three_phase_active",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 129.78954647,
+     "mean": 129.789418548,
+     "min": 129.789290537
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal50_windowdefault",
+     "three_phase_active",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "single_phase",
+     "active_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 46.2347991768,
+     "mean": 38.2043017289,
+     "min": 30.1743211628
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "single_phase",
+     "active_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 51.0692165149,
+     "mean": 44.0224881196,
+     "min": 37.1604343107
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 21.6888962495,
+     "mean": 21.6888962495,
+     "min": 21.6888962495
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "three_phase_active",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1639,
+     "finite": 1639,
+     "max": 127.442107169,
+     "mean": 114.47259111,
+     "min": 101.494330263
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4096_signal60_windowdefault",
+     "three_phase_active",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "single_phase",
+     "active_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 43.3012701892,
+     "mean": 43.3012701892,
+     "min": 43.3012701892
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "single_phase",
+     "active_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 50.0,
+     "mean": 50.0,
+     "min": 50.0
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 25.0,
+     "mean": 25.0,
+     "min": 25.0
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "three_phase_active",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 129.903810568,
+     "mean": 129.903810568,
+     "min": 129.903810568
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal50_windowdefault",
+     "three_phase_active",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "single_phase",
+     "active_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 46.1689694211,
+     "mean": 38.2084031621,
+     "min": 30.2489189937
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "single_phase",
+     "active_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 51.0133660361,
+     "mean": 44.0288567192,
+     "min": 37.2261585074
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "single_phase",
+     "apparent_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 21.6976905897,
+     "mean": 21.6976905897,
+     "min": 21.6976905897
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "single_phase",
+     "reactive_power",
+     "returns"
+    ]
+   },
+   {
+    "after": "TypeError",
+    "before": {
+     "__absent__": true
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "three_phase_active",
+     "raises"
+    ]
+   },
+   {
+    "after": {
+     "__absent__": true
+    },
+    "before": {
+     "count": 1921,
+     "finite": 1921,
+     "max": 127.506423969,
+     "mean": 114.632886196,
+     "min": 101.747241275
+    },
+    "kind": "silent_default_retired",
+    "path": [
+     "kernels",
+     "power",
+     "fs4800_signal60_windowdefault",
+     "three_phase_active",
+     "returns"
+    ]
+   }
+  ]
+ },
+ "kinds": [
+  "silent_default_retired"
+ ],
+ "purpose": "The approved NF-3H change to the NF-3B kernel baseline: calling a power kernel without a frequency now raises TypeError (the silent 50 Hz default is retired). Applied after the NF-3G overlay. Generated by generate_nf3h_approved_changes.py.",
+ "schema": 1
+}
