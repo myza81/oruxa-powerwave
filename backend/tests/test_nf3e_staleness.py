@@ -4,14 +4,16 @@ is refused for a NEW calculation) and the eligibility 400 (O-10).
 Policy (owner, 2026-11-27): stored values are preserved and never recomputed; a RECORDING-FOLLOWING RMS channel is stale while its stored
 frequency differs from its grounding recording's effective frequency (and clears when they agree again); an EXPLICITLY selected frequency is
 never stale on that account; intent is declared by the caller (`parameters.nominal_frequency_basis`), never inferred from numerical equality;
-dependants inherit staleness transitively and inherited staleness clears only when every stale ancestor is current; power channels are not
-assessed directly (NF-3F) but inherit; creating a new calculation on a stale input (direct or transitive) is refused with a typed error.
+dependants inherit staleness transitively and inherited staleness clears only when every stale ancestor is current; power channels created
+since NF-3F (O-2) are recording-following and assessed like RMS channels (tests/test_nf3f_power_channels.py), while a power channel created
+before it carries no basis and only inherits; creating a new calculation on a stale input (direct or transitive) is refused with a typed error.
 The state is derived on every request: nothing is stored, so nothing can go out of date.
 """
 
 from __future__ import annotations
 
 import itertools
+from datetime import datetime, timezone
 
 import numpy as np
 import pytest
@@ -256,15 +258,22 @@ class TestInheritance:
         s = staleness(client, ws, "sum_raw")
         assert (s["state"], s["assessment"], s["causes"]) == ("current", "inherited_only", [])
 
-    def test_a_power_channel_is_not_assessed_directly_and_keeps_its_stored_parameters_on_a_60hz_recording(self, client, ws):
+    def test_a_power_channel_created_before_nf_3f_has_no_basis_so_it_is_not_assessed_and_keeps_its_stored_parameters(self, client, ws):
+        # NF-3F (O-2): a NEW power channel is recording-following (tests/test_nf3f_power_channels.py). One stored before it (fixed 50 Hz window,
+        # no basis) is built here directly: it is treated as explicit, never flagged, and nothing about it changes.
         sid = rec(client, ws, "r60", f=60.0, lf="60")
-        made = nf3e.create(client, ws, "p", "active_power", [nf3e.src(sid, "VA"), nf3e.src(sid, "IA")])
-        assert made["status"] == 201
-        s = staleness(client, ws, "p")
+        registry = client.app.state.calculated_channel_registry
+        registry.add(CalculatedChannel(
+            id="calc-legacy-power", workspace_id=ws, name="p_legacy", unit="MW", operation=OP_ACTIVE_POWER,
+            inputs=[ChannelRef(kind="source", source_id=sid, channel_name="VA"), ChannelRef(kind="source", source_id=sid, channel_name="IA")],
+            parameters={"nominal_frequency_hz": 50.0, "window_mode": "trailing", "sign_convention": "passive"},
+            dependency_ids=[], reference_source_id=sid, time=np.arange(10, dtype=float), values=np.arange(10, dtype=float),
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+        s = staleness(client, ws, "p_legacy")
         assert (s["state"], s["assessment"]) == ("current", "inherited_only")
-        assert made["body"]["parameters"]["nominal_frequency_hz"] == 50.0
         nf3e.put_manual(client, ws, sid, 50.0)
-        assert staleness(client, ws, "p")["state"] == "current"
+        assert staleness(client, ws, "p_legacy")["state"] == "current"
+        assert registry.get(ws, "calc-legacy-power").parameters["nominal_frequency_hz"] == 50.0
 
     def test_a_power_channel_inherits_upstream_staleness(self, client, ws):
         sid = rec(client, ws)

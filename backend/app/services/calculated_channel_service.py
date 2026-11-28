@@ -93,7 +93,7 @@ from app.domain.calculated_channel import (
 )
 from app.domain.missing_data_estimation import apply_estimation
 from app.services.calculated_channel_staleness import BASIS_EXPLICIT, BASIS_RECORDING, KNOWN_BASES, assert_inputs_not_stale
-from app.services.nominal_frequency_access import NominalFrequencyAccess
+from app.services.nominal_frequency_access import AGREEMENT_MIXED, AGREEMENT_UNAVAILABLE, NominalFrequencyAccess
 from app.domain.channel_classification import (
     CURRENT,
     FREQUENCY,
@@ -131,7 +131,7 @@ from app.domain.per_unit import (
     resolve_per_unit,
     resolve_conversion_eligibility,
 )
-from app.domain.metadata import FORMAT_VARIANT_BEN5K_LEGACY
+from app.domain.metadata import DEFAULT_NOMINAL_FREQUENCY_HZ, FORMAT_VARIANT_BEN5K_LEGACY
 from app.domain.physical_calibration import (
     CALIBRATION_INVALID,
     evaluate_calibration_eligibility,
@@ -174,6 +174,7 @@ from app.services.errors import (
     InvalidMaxGapUnitError,
     InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
+    MixedNominalFrequencyError,
     InvalidNullPolicyError,
     InvalidOperationArityError,
     InvalidPowerInputTypeError,
@@ -916,6 +917,68 @@ def _effective_input_values(
     return [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
 
 
+@dataclass(frozen=True, slots=True)
+class _PowerFrequency:
+    """The one nominal frequency a power calculation uses, and where it came from (NF-3F, O-2)."""
+
+    hz: float
+    origin: str | None
+    revision: int | None
+    #: True when the frequency came from the recording authority (so the channel is assessed for staleness); False only for a caller
+    #: that supplied no authority (no production caller does; the call-path guard pins that), which keeps the sanctioned default.
+    recording_following: bool
+
+
+def _power_input_label(ref: ChannelRef, *, workspace_id: str, calc_registry: CalculatedChannelRegistry) -> str:
+    if ref.kind == "source":
+        return ref.channel_name or ref.source_id
+    channel = calc_registry.get(workspace_id, ref.calculated_channel_id)
+    return channel.name if channel is not None else str(ref.calculated_channel_id)
+
+
+def _resolve_power_frequency(
+    *, workspace_id: str, inputs: list[ChannelRef], resolved: list[_ResolvedInput], calc_registry: CalculatedChannelRegistry,
+    frequency_access: NominalFrequencyAccess | None,
+) -> _PowerFrequency:
+    """NF-3F (O-2): the effective nominal frequency of the recording(s) a power calculation reads, through the shared authority.
+
+    The voltage and current inputs (all six for three-phase) must agree under the accessor's multi-recording contract (never a frequency
+    chosen from members): an unusable recording is refused with the existing `invalid_nominal_frequency`, disagreeing recordings with
+    `nominal_frequency_mixed`. Both are 400s raised before anything is evaluated or written."""
+    if frequency_access is None:
+        return _PowerFrequency(DEFAULT_NOMINAL_FREQUENCY_HZ, None, None, False)
+    outcome = frequency_access.for_sources(workspace_id, [r.reference_source_id for r in resolved])
+    if outcome.status == AGREEMENT_UNAVAILABLE:
+        raise InvalidNominalFrequencyError(
+            "A power channel needs a usable nominal frequency, but the recording's is missing or outside a sensible range. "
+            "Set the nominal frequency in Recording Details and calculate again."
+        )
+    if outcome.status == AGREEMENT_MIXED:
+        by_source = {m.source_id: m.hz for m in outcome.members}
+        listing = ", ".join(
+            f"{_power_input_label(ref, workspace_id=workspace_id, calc_registry=calc_registry)}: {by_source[res.reference_source_id]:g} Hz"
+            for ref, res in zip(inputs, resolved))
+        raise MixedNominalFrequencyError(
+            f"The inputs come from recordings with different nominal frequencies ({listing}). A power channel uses one frequency for "
+            "voltage and current: set the recordings to the same nominal frequency in Recording Details, or choose inputs from "
+            "recordings that already share one."
+        )
+    first = outcome.members[0]
+    return _PowerFrequency(float(outcome.common_hz), first.origin, first.revision, True)
+
+
+def _power_frequency_provenance(power_frequency: _PowerFrequency) -> dict:
+    """NF-3E provenance for a NEW power channel: recording-following, with the recording's origin and revision at creation
+    (informational; staleness is derived). A no-authority caller records nothing, exactly as before."""
+    if not power_frequency.recording_following:
+        return {}
+    return {
+        "nominal_frequency_basis": BASIS_RECORDING,
+        "nominal_frequency_origin": power_frequency.origin,
+        "nominal_frequency_revision": power_frequency.revision,
+    }
+
+
 def create_calculated_channel(
     *,
     workspace_id: str,
@@ -1049,6 +1112,7 @@ def create_calculated_channel(
     # to mirror the established operation-specific validation order.
     power_v_scale: float = 1.0
     power_i_scale: float = 1.0
+    power_frequency: _PowerFrequency | None = None   # NF-3F: set by whichever power branch below runs
     if operation in POWER_OPERATIONS:
         v_res = resolved[0]
         i_res = resolved[1]
@@ -1085,11 +1149,13 @@ def create_calculated_channel(
         power_i_scale = parsed_i.scale_to_canonical  # amperes per declared unit
         # Sampling density: same guard as RMS to ensure at least one valid
         # phasor window exists (DEC-201: PHASOR_MIN_SAMPLES_PER_CYCLE = 8).
-        if not rms_recording_long_enough(v_res.time, 50.0):
+        power_frequency = _resolve_power_frequency(
+            workspace_id=workspace_id, inputs=inputs, resolved=resolved, calc_registry=calc_registry, frequency_access=frequency_access)
+        if not rms_recording_long_enough(v_res.time, power_frequency.hz):
             raise RmsRecordingTooShortError(
                 "Recording is shorter than one complete phasor window (1 cycle at nominal frequency)."
             )
-        if not rms_sampling_dense_enough(v_res.time, 50.0):
+        if not rms_sampling_dense_enough(v_res.time, power_frequency.hz):
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the phasor window to produce a meaningful power estimate."
             )
@@ -1304,11 +1370,13 @@ def create_calculated_channel(
             )
 
         # 8. Sampling density: same guard as single-phase power.
-        if not rms_recording_long_enough(resolved[0].time, 50.0):
+        power_frequency = _resolve_power_frequency(
+            workspace_id=workspace_id, inputs=inputs, resolved=resolved, calc_registry=calc_registry, frequency_access=frequency_access)
+        if not rms_recording_long_enough(resolved[0].time, power_frequency.hz):
             raise RmsRecordingTooShortError(
                 "Recording is shorter than one complete phasor window (1 cycle at nominal frequency)."
             )
-        if not rms_sampling_dense_enough(resolved[0].time, 50.0):
+        if not rms_sampling_dense_enough(resolved[0].time, power_frequency.hz):
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the phasor window to produce a "
                 "meaningful three-phase power estimate."
@@ -1535,6 +1603,7 @@ def create_calculated_channel(
             v_scale_to_si=power_v_scale,
             i_values=effective_values[1],
             i_scale_to_si=power_i_scale,
+            nominal_frequency_hz=power_frequency.hz,
         )
     elif operation in THREE_PHASE_POWER_OPERATIONS:
         values = evaluate_three_phase_power_channel(
@@ -1552,6 +1621,7 @@ def create_calculated_channel(
             v3_scale_to_si=power_3ph_scales[4],
             i3_values=effective_values[5],
             i3_scale_to_si=power_3ph_scales[5],
+            nominal_frequency_hz=power_frequency.hz,
         )
     elif operation == OP_ADDITION:
         values = evaluate_addition(effective_values)
@@ -1589,14 +1659,15 @@ def create_calculated_channel(
         }
     elif operation in POWER_OPERATIONS:
         output_parameters = {
-            "nominal_frequency_hz": 50.0,
+            "nominal_frequency_hz": power_frequency.hz,
             "window_mode": "trailing",
             "sign_convention": "passive",
         }
+        output_parameters |= _power_frequency_provenance(power_frequency)
     elif operation in THREE_PHASE_POWER_OPERATIONS:
         assert _3ph_vref is not None  # always set when THREE_PHASE_POWER_OPERATIONS reaches here
         output_parameters = {
-            "nominal_frequency_hz": 50.0,
+            "nominal_frequency_hz": power_frequency.hz,
             "window_mode": "trailing",
             "sign_convention": "passive",
             "voltage_reference": _3ph_vref.reference,
@@ -1605,6 +1676,7 @@ def create_calculated_channel(
             "voltage_reference_evidence_names": list(_3ph_vref.evidence_names),
             "phase_pairing_confirmed": phase_pairing_confirmed,
         }
+        output_parameters |= _power_frequency_provenance(power_frequency)
     else:
         output_parameters = {}
 

@@ -172,29 +172,35 @@ class TestConsumersMustRefuseAnUnusableDeclaredFrequencyWithoutAnException:
 
 
 class TestPowerChannelsMustUseTheRecordingsFrequency:
-    @pytest.mark.xfail(strict=True, reason="NF-3F: the power window is hard-coded to 50 Hz (D-A, needs O-2)")
+    """NF-3F (O-2) flipped both oracles: the strict-xfail markers were removed in the same commit, the expectations are unchanged (the
+    closed-form value within 1e-3; the stored frequency is the one used), and the harness supplies the central authority exactly as the
+    migrated consumers' tests do (`access_for`)."""
+
     def test_active_power_of_a_60hz_recording_is_the_closed_form_value(self):
         from app.services.calculated_channel_registry import CalculatedChannelRegistry
         from app.services.calculated_channel_service import create_calculated_channel
         from app.services.workspace_registry import WorkspaceRegistry
+        from tests.nf3c_access_support import access_for
         sources, calcs = WorkspaceRegistry(), CalculatedChannelRegistry()
         sources.add(scn.build_source("src", 60.0, {"source_format": "COMTRADE"}, 60.0))
         channel = create_calculated_channel(
             workspace_id=scn.WS, name="P", operation=OP_ACTIVE_POWER, parameters={}, source_registry=sources, calc_registry=calcs,
+            frequency_access=access_for(sources),
             inputs=[ChannelRef(kind="source", source_id="src", channel_name="VA"), ChannelRef(kind="source", source_id="src", channel_name="IA")])
         t = np.asarray(channel.time)
         steady = np.isfinite(channel.values) & (t >= 0.1)
         assert np.max(np.abs(np.asarray(channel.values)[steady] / P_MW - 1.0)) < 1e-3
 
-    @pytest.mark.xfail(strict=True, reason="NF-3F: the stored parameter says 50.0 whatever the recording (D-A)")
     def test_the_stored_frequency_is_the_one_the_calculation_used(self):
         from app.services.calculated_channel_registry import CalculatedChannelRegistry
         from app.services.calculated_channel_service import create_calculated_channel
         from app.services.workspace_registry import WorkspaceRegistry
+        from tests.nf3c_access_support import access_for
         sources, calcs = WorkspaceRegistry(), CalculatedChannelRegistry()
         sources.add(scn.build_source("src", 60.0, {"source_format": "COMTRADE"}, 60.0))
         channel = create_calculated_channel(
             workspace_id=scn.WS, name="P", operation=OP_ACTIVE_POWER, parameters={}, source_registry=sources, calc_registry=calcs,
+            frequency_access=access_for(sources),
             inputs=[ChannelRef(kind="source", source_id="src", channel_name="VA"), ChannelRef(kind="source", source_id="src", channel_name="IA")])
         assert channel.parameters["nominal_frequency_hz"] == 60.0
 

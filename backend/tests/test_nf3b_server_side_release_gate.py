@@ -272,13 +272,13 @@ class TestOpenGate:
 class TestAManualValueInfluencesOnlyTheMigratedConsumers:
     """NF-3B migrated no consumer, and this class said so: with the gate open and a Manual value stored, every consumer reproduced the
     frozen baseline. NF-3C migrated event detection (and compliance and oscillation, tested in test_nf3c_*): their Manual behaviour is
-    asserted there and for event detection below. What this class keeps proving is the OTHER half: the consumers NOT yet migrated (the
-    power channels' fixed 50 Hz window) are still untouched by a stored Manual value. NF-3D migrated the phasor family and overcurrent: a
-    stored Manual value IS their frequency, and the result says so (tests/test_nf3d_behaviour.py proves it in depth). NF-3F will change
-    the power channels, deliberately, and edit this class in the same commit. With the gate closed nothing can be stored at all."""
+    asserted there and for event detection below. NF-3D migrated the phasor family and overcurrent: a stored Manual value IS their
+    frequency, and the result says so (tests/test_nf3d_behaviour.py proves it in depth). NF-3F (O-2) migrated the power channels, so a
+    stored Manual value IS the frequency a new power channel is calculated at, and the channel records it; this class was edited in that
+    commit, as it announced. With the gate closed nothing can be stored at all."""
 
     @pytest.mark.parametrize("recording,manual", [("r50", 60.0), ("r60", 50.0), ("assumed_on_60hz_signal", 60.0), ("declared_zero", 60.0)])
-    def test_a_stored_manual_value_reaches_event_detection_and_the_phasor_family_and_leaves_the_power_channels_unchanged(self, opened_lenient, recording, manual):
+    def test_a_stored_manual_value_reaches_event_detection_the_phasor_family_and_the_power_channels(self, opened_lenient, recording, manual):
         opened = opened_lenient
         fs, f_sig, lf = base.HTTP_RECORDINGS[recording]
         ws = base.WS
@@ -312,9 +312,13 @@ class TestAManualValueInfluencesOnlyTheMigratedConsumers:
         if body["status"] == "computed":
             assert body["reference_frequency_hz"] == manual
             assert (body["nominal_frequency_origin"], body["nominal_frequency_revision"]) == ("manual", 1)
-        # the power channels are not migrated (NF-3F): their stored frequency is still the fixed 50 Hz window, whatever Manual says
+        # NF-3F (O-2): the power channels are migrated, so the Manual value IS the frequency a new power channel is calculated at, and the
+        # channel records the origin and revision it used (recording-following, so a later change makes it stale)
         power = opened.post(f"/api/v1/workspaces/{ws}/calculated-channels", json={
             "operation": "active_power", "name": "P-manual", "parameters": {},
             "inputs": [ref("ALPHA1_VA"), ref("ALPHA1_IA")]})
         assert power.status_code == 201
-        assert opened.app.state.calculated_channel_registry.get(ws, power.json()["id"]).parameters["nominal_frequency_hz"] == 50.0
+        stored = opened.app.state.calculated_channel_registry.get(ws, power.json()["id"]).parameters
+        assert stored["nominal_frequency_hz"] == manual
+        assert (stored["nominal_frequency_basis"], stored["nominal_frequency_origin"], stored["nominal_frequency_revision"]) == (
+            "recording", "manual", 1)

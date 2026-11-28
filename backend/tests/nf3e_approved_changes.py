@@ -118,8 +118,9 @@ def _add_staleness_field(node):
             _add_staleness_field(value)
 
 
-def apply_phase_a(outcomes: dict) -> dict:
-    """The NF-3E Phase A baseline's `outcomes` with the approved additive changes applied (a deep copy)."""
+def apply_phase_a(outcomes: dict, *, include_nf3f: bool = True) -> dict:
+    """The NF-3E Phase A baseline's `outcomes` with the approved additive changes applied (a deep copy); the NF-3F power-channel entries
+    (O-2, `nf3f_approved_changes.json`) apply last."""
     out = copy.deepcopy(outcomes)
     manual = {"nominal_frequency_basis": "explicit", "nominal_frequency_origin": "manual", "nominal_frequency_revision": 1}
     after_manual = out["rms_after_manual_change"]
@@ -133,4 +134,8 @@ def apply_phase_a(outcomes: dict) -> dict:
     _add_staleness_field(out)
     keys = after_manual["created_50"]["keys"]
     after_manual["created_50"]["keys"] = sorted(keys + ["frequency_staleness"])
+    if include_nf3f:
+        from tests.nf3c_approved_changes import nf3f_entries
+        from tests.nf3d_diff_tools import apply_entries
+        out = apply_entries(out, nf3f_entries("nf3e_phase_a_baseline"))
     return out

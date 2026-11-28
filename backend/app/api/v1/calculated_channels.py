@@ -97,6 +97,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_calculated_operation": status.HTTP_400_BAD_REQUEST,
     "invalid_time_range": status.HTTP_400_BAD_REQUEST,
     "invalid_nominal_frequency": status.HTTP_400_BAD_REQUEST,
+    # NF-3F (O-2): power inputs from recordings whose nominal frequencies disagree
+    "nominal_frequency_mixed": status.HTTP_400_BAD_REQUEST,
     # NF-3E (Option B): a new calculation on a stale input conflicts with the current state of the recording's frequency.
     "stale_calculated_input": status.HTTP_409_CONFLICT,
     "rms_recording_too_short": status.HTTP_400_BAD_REQUEST,

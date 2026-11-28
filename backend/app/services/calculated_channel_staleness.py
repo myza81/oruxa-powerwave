@@ -10,12 +10,15 @@ Rules
   differs (the accessor's agreement tolerance) from the effective frequency of the recording that grounds it (`reference_source_id`), or
   while that recording has no usable frequency. It is current again as soon as they agree (Manual set back to the stored value, or the
   return to Auto), with no separate clearing step.
+* **Recording-following power channel** (NF-3F; single- and three-phase, `basis == "recording"`): the same rule, applied to EACH recording
+  that grounds one of its inputs (a power channel reads voltage and current, possibly from two recordings), so it is stale if any of them
+  no longer has the frequency it was calculated at.
 * **Explicit** RMS channel (`"explicit"`, and any channel created before the basis existed): never stale on its own account. The intent is
   declared by the caller at creation; it is never inferred from the number being equal to the recording's.
 * **Inherited**: a channel is stale if any calculated channel it depends on, directly or transitively, is stale. Inherited staleness clears
   only when every stale ancestor is current; unrelated causes are untouched.
-* **Not assessed directly**: power channels (fixed 50 Hz, reserved for NF-3F) and every operation that stores no frequency. They only
-  inherit; `assessment` says so.
+* **Not assessed directly**: every operation that stores no frequency, and a power channel created before NF-3F (it carries no basis: it
+  was calculated at a fixed 50 Hz and is treated as explicit). They only inherit; `assessment` says so.
 * **Option B** (`assert_inputs_not_stale`): a NEW calculation on a stale input is refused with `StaleCalculatedInputError`. Raw source
   inputs are never stale. Viewing, inspecting and deleting a stale channel is unaffected.
 * **Governing principle** (owner, 2026-11-27): a stale calculated channel stays available for HISTORICAL INSPECTION (waveform, cursors, peaks,
@@ -31,7 +34,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable
 
-from app.domain.calculated_channel import OP_RMS, ChannelRef
+from app.domain.calculated_channel import OP_RMS, POWER_OPERATIONS, THREE_PHASE_POWER_OPERATIONS, ChannelRef
 from app.domain.nominal_frequency import ORIGIN_ASSUMED_DEFAULT, ORIGIN_MANUAL
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import SourceNotFoundError, StaleCalculatedInputError
@@ -72,6 +75,8 @@ class StaleCause:
     stored_revision: int | None
     effective_origin: str | None
     effective_revision: int | None
+    #: The stale channel's operation (selects the wording of the remedy); RMS unless a power channel.
+    operation: str = OP_RMS
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,21 +94,43 @@ def _agree(a: float, b: float) -> bool:
     return math.isclose(a, b, rel_tol=AGREEMENT_REL_TOL, abs_tol=AGREEMENT_ABS_TOL)
 
 
-def _own_cause(channel, workspace_id: str, access: NominalFrequencyAccess) -> StaleCause | None:
+_FREQUENCY_AWARE_OPERATIONS = frozenset({OP_RMS}) | POWER_OPERATIONS | THREE_PHASE_POWER_OPERATIONS
+
+
+def _grounding_source_ids(channel, workspace_id: str, calc_registry: CalculatedChannelRegistry) -> list[str]:
+    """The recording(s) whose frequency the channel's stored `nominal_frequency_hz` must match: an RMS channel's one grounding recording; a
+    power channel's voltage and current recordings (distinct, in input order)."""
+    if channel.operation == OP_RMS:
+        return [channel.reference_source_id]
+    ids: list[str] = []
+    for ref in channel.inputs:
+        if ref.kind == "source":
+            source_id = ref.source_id
+        else:
+            dependency = calc_registry.get(workspace_id, ref.calculated_channel_id)
+            source_id = None if dependency is None else dependency.reference_source_id
+        if source_id is not None and source_id not in ids:
+            ids.append(source_id)
+    return ids
+
+
+def _own_cause(channel, workspace_id: str, access: NominalFrequencyAccess, calc_registry: CalculatedChannelRegistry) -> StaleCause | None:
     stored = channel.parameters.get("nominal_frequency_hz")
     if isinstance(stored, bool) or not isinstance(stored, (int, float)):
         return None
-    try:
-        effective = access.for_source(workspace_id, channel.reference_source_id)
-    except SourceNotFoundError:
-        return None                                      # the recording is gone: the existing `incompatible_time_base` signal covers it
-    if effective.usable and _agree(float(stored), effective.hz):
-        return None
-    return StaleCause(
-        channel_id=channel.id, channel_name=channel.name, reason=REASON_CHANGED if effective.usable else REASON_UNUSABLE,
-        stored_hz=float(stored), effective_hz=effective.hz,
-        stored_origin=channel.parameters.get("nominal_frequency_origin"), stored_revision=channel.parameters.get("nominal_frequency_revision"),
-        effective_origin=effective.origin, effective_revision=effective.revision)
+    for source_id in _grounding_source_ids(channel, workspace_id, calc_registry):
+        try:
+            effective = access.for_source(workspace_id, source_id)
+        except SourceNotFoundError:
+            continue                                     # the recording is gone: the existing `incompatible_time_base` signal covers it
+        if effective.usable and _agree(float(stored), effective.hz):
+            continue
+        return StaleCause(
+            channel_id=channel.id, channel_name=channel.name, reason=REASON_CHANGED if effective.usable else REASON_UNUSABLE,
+            stored_hz=float(stored), effective_hz=effective.hz,
+            stored_origin=channel.parameters.get("nominal_frequency_origin"), stored_revision=channel.parameters.get("nominal_frequency_revision"),
+            effective_origin=effective.origin, effective_revision=effective.revision, operation=channel.operation)
+    return None
 
 
 def frequency_staleness(
@@ -114,10 +141,10 @@ def frequency_staleness(
     cached = memo.get(channel.id)
     if cached is not None:
         return cached
-    own_assessed = channel.operation == OP_RMS and channel.parameters.get("nominal_frequency_basis") == BASIS_RECORDING
+    own_assessed = channel.operation in _FREQUENCY_AWARE_OPERATIONS and channel.parameters.get("nominal_frequency_basis") == BASIS_RECORDING
     causes: list[StaleCause] = []
     if own_assessed:
-        own = _own_cause(channel, workspace_id, frequency_access)
+        own = _own_cause(channel, workspace_id, frequency_access, calc_registry)
         if own is not None:
             causes.append(own)
     for dependency_id in channel.dependency_ids:
@@ -158,7 +185,8 @@ def _cause_sentence(cause: StaleCause, *, inherited: bool) -> str:
 def stale_input_message(input_name: str, staleness: FrequencyStaleness, input_id: str) -> str:
     sentences = [_cause_sentence(c, inherited=c.channel_id != input_id) for c in staleness.causes]
     first = staleness.causes[0]
-    remedy = (f"Create a new RMS channel at the recording's current frequency and use that instead, or return the recording to "
+    kind = "RMS" if first.operation == OP_RMS else "power"
+    remedy = (f"Create a new {kind} channel at the recording's current frequency and use that instead, or return the recording to "
               f"{first.stored_hz:g} Hz. The stale channel stays available to view; its values are not changed.")
     return f"'{input_name}' cannot be used as an input because " + "; ".join(sentences) + ". " + remedy
 

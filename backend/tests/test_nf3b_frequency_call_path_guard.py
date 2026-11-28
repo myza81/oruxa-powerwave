@@ -49,7 +49,7 @@ ATTRIBUTE_READS = {
 FREQUENCY_KEYS = {
     ("domain/oscillation_classification.py", "nominal_frequency_hz"): 3,       # M  C-08 NF-3G
     ("providers/ben/provider.py", "nominal_frequency_hz"): 1,                  # D  C-18 BEN upload value
-    ("services/calculated_channel_service.py", "nominal_frequency_hz"): 4,     # D/M C-14 (RMS parameter), C-13 (power: NF-3F)
+    ("services/calculated_channel_service.py", "nominal_frequency_hz"): 4,     # D  C-14 (RMS parameter); the power channels (C-13, NF-3F) store the EFFECTIVE value
     ("services/calculated_channel_staleness.py", "nominal_frequency_hz"): 1,   # K  NF-3E: reads the STORED parameter to compare it with the accessor
     ("services/compliance_readiness_service.py", "nominal_frequency_hz"): 2,   # M  C-04 NF-3C
     ("services/oscillation_cross_signal_service.py", "nominal_frequency_hz"): 2,  # M  C-07 NF-3C
@@ -74,7 +74,7 @@ NUMERIC_LITERALS = {
     "providers/ben/layout.py": (1, "K", "byte offset 0x3C"),
     "providers/ben/legacy_ben5k/gpth_slow.py": (3, "K", "60-byte frame length"),
     "providers/comtrade.py": (1, "D", "C-18 importer default when `lf` is unparseable (flagged nominal_frequency_assumed)"),
-    "services/calculated_channel_service.py": (6, "M", "C-11 gates (4), C-13 stored parameter (2) of the power channels (NF-3F)"),
+    # NF-3F migrated C-11 (the four power prerequisite gates) and C-13 (the stored parameter): the six literals and this row are gone.
     "services/time_axis_interpreters.py": (4, "K", "minutes/seconds arithmetic"),
     "services/time_axis_normalization.py": (3, "K", "minutes/seconds arithmetic"),
     "services/time_axis_service.py": (1, "K", "time-axis sample limit"),
