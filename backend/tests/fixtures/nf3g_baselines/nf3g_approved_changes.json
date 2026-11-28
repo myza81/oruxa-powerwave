@@ -1,0 +1,491 @@
+{
+ "changes": {
+  "nf3b_frozen_baselines": [
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_50_second_60",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": "frequency_outside_electromechanical_range",
+    "before": "frequency_alone_not_sso",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_50_second_60",
+     "returns",
+     "limiting",
+     0
+    ]
+   },
+   {
+    "after": "no_family_requirements_met",
+    "before": "frequency_outside_electromechanical_range",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_50_second_60",
+     "returns",
+     "limiting",
+     1
+    ]
+   },
+   {
+    "after": "nominal_frequency_mixed",
+    "before": "no_family_requirements_met",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_50_second_60",
+     "returns",
+     "limiting",
+     2
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "50.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_50_second_60",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_60_second_50",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": "frequency_outside_electromechanical_range",
+    "before": "frequency_alone_not_sso",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     0
+    ]
+   },
+   {
+    "after": "no_family_requirements_met",
+    "before": "frequency_outside_electromechanical_range",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     1
+    ]
+   },
+   {
+    "after": "nominal_frequency_mixed",
+    "before": "no_family_requirements_met",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     2
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "60.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_60_second_50",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": [
+     "frequency_outside_electromechanical_range",
+     "no_family_requirements_met",
+     "nominal_frequency_mixed"
+    ],
+    "before": [
+     "frequency_alone_not_sso",
+     "frequency_outside_electromechanical_range",
+     "no_family_requirements_met",
+     "nominal_frequency_assumed"
+    ],
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "limiting"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "50.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_45hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_50_second_60",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": "frequency_outside_electromechanical_range",
+    "before": "frequency_alone_not_sso",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_50_second_60",
+     "returns",
+     "limiting",
+     0
+    ]
+   },
+   {
+    "after": "no_family_requirements_met",
+    "before": "frequency_outside_electromechanical_range",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_50_second_60",
+     "returns",
+     "limiting",
+     1
+    ]
+   },
+   {
+    "after": "nominal_frequency_mixed",
+    "before": "no_family_requirements_met",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_50_second_60",
+     "returns",
+     "limiting",
+     2
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "50.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_50_second_60",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_60_second_50",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": "frequency_outside_electromechanical_range",
+    "before": "frequency_alone_not_sso",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     0
+    ]
+   },
+   {
+    "after": "no_family_requirements_met",
+    "before": "frequency_outside_electromechanical_range",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     1
+    ]
+   },
+   {
+    "after": "nominal_frequency_mixed",
+    "before": "no_family_requirements_met",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     2
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "60.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_60_second_50",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": [
+     "frequency_outside_electromechanical_range",
+     "no_family_requirements_met",
+     "nominal_frequency_mixed"
+    ],
+    "before": [
+     "frequency_alone_not_sso",
+     "frequency_outside_electromechanical_range",
+     "no_family_requirements_met",
+     "nominal_frequency_assumed"
+    ],
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "limiting"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "50.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_4hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": [
+     "frequency_outside_electromechanical_range",
+     "no_family_requirements_met",
+     "nominal_frequency_mixed"
+    ],
+    "before": [
+     "frequency_outside_electromechanical_range",
+     "no_family_requirements_met"
+    ],
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_50_second_60",
+     "returns",
+     "limiting"
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "higher_frequency_oscillatory_component"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_60_second_50",
+     "returns",
+     "descriptors"
+    ]
+   },
+   {
+    "after": "frequency_outside_electromechanical_range",
+    "before": "frequency_alone_not_sso",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     0
+    ]
+   },
+   {
+    "after": "no_family_requirements_met",
+    "before": "frequency_outside_electromechanical_range",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     1
+    ]
+   },
+   {
+    "after": "nominal_frequency_mixed",
+    "before": "no_family_requirements_met",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_60_second_50",
+     "returns",
+     "limiting",
+     2
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "60.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_60_second_50",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   },
+   {
+    "after": "nominal_frequency_mixed",
+    "before": "nominal_frequency_assumed",
+    "kind": "nominal_frequency_mixed_reported",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "limiting",
+     2
+    ]
+   },
+   {
+    "after": [],
+    "before": [
+     "50.0"
+    ],
+    "kind": "nominal_comparison_withheld",
+    "path": [
+     "oscillation_selection",
+     "component_55hz",
+     "first_assumed_second_manual_like_60",
+     "returns",
+     "nominal_values_in_evidence"
+    ]
+   }
+  ]
+ },
+ "kinds": [
+  "nominal_comparison_withheld",
+  "nominal_frequency_mixed_reported"
+ ],
+ "purpose": "The approved NF-3G (O-9) change to the NF-3B oscillation-selection baseline; applied after the NF-3F overlay. Generated by generate_nf3g_approved_changes.py; every entry has a kind and only disagreeing-member cases may change.",
+ "schema": 1
+}

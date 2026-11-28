@@ -47,7 +47,7 @@ ATTRIBUTE_READS = {
 
 #: G2. Every string constant naming a frequency field (dictionary keys, `parameters[...]`, `.get(...)`): the wire/storage names.
 FREQUENCY_KEYS = {
-    ("domain/oscillation_classification.py", "nominal_frequency_hz"): 3,       # M  C-08 NF-3G
+    ("domain/oscillation_classification.py", "nominal_frequency_hz"): 3,       # D  C-08 (NF-3G): reads each member's EFFECTIVE value; the agreement rule decides
     ("providers/ben/provider.py", "nominal_frequency_hz"): 1,                  # D  C-18 BEN upload value
     ("services/calculated_channel_service.py", "nominal_frequency_hz"): 4,     # D  C-14 (RMS parameter); the power channels (C-13, NF-3F) store the EFFECTIVE value
     ("services/calculated_channel_staleness.py", "nominal_frequency_hz"): 1,   # K  NF-3E: reads the STORED parameter to compare it with the accessor
@@ -66,7 +66,7 @@ NUMERIC_LITERALS = {
     "domain/damping_estimation.py": (1, "K", "0.02 envelope floor fraction"),
     "domain/event_reconstruction.py": (1, "K", "annotation box offset"),
     "domain/metadata.py": (1, "D", "DEFAULT_NOMINAL_FREQUENCY_HZ: the one sanctioned default, used by the NF-1 resolver"),
-    "domain/oscillation_classification.py": (1, "M", "C-08 ASSUMED_NOMINAL_FREQUENCY_HZ (NF-3G)"),
+    # NF-3G migrated C-08: the assumed-frequency fallback is now the one sanctioned default (`DEFAULT_NOMINAL_FREQUENCY_HZ`), not a second literal.
     "domain/overcurrent.py": (1, "K", "IEC IDMT alpha = 0.02"),
     "domain/relay_import/identification.py": (2, "K", "score thresholds"),
     "domain/sliding_phasor.py": (1, "M", "C-16 default reference_frequency_hz=50.0 (NF-3H)"),
@@ -265,7 +265,10 @@ class TestTheAuthorityCannotBeBypassed:
         assert users == {"services/nominal_frequency_service.py", "services/nominal_frequency_registry.py",
                          "services/nominal_frequency_access.py", "schemas/nominal_frequency.py",
                          "services/oscillation_representation_service.py",
-                         "services/calculated_channel_staleness.py"}                  # NF-3E: ORIGIN_* names for the reason text only
+                         "services/calculated_channel_staleness.py",                  # NF-3E: ORIGIN_* names for the reason text only
+                         # NF-3G (O-9): the classifier applies the shared multi-recording agreement rule (`agreed_frequency`), which lives in the
+                         # domain module so no domain code imports a service; it reads no registry and resolves nothing.
+                         "domain/oscillation_classification.py"}
 
     def test_the_server_side_gate_is_read_from_settings_by_one_place(self):
         users = sorted(rel for rel, _ in _files(APP_DIR) if "nominal_frequency_manual_override_enabled" in (APP_DIR / rel).read_text(encoding="utf-8"))

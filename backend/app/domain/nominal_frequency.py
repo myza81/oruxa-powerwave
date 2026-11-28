@@ -25,8 +25,9 @@ keep their own additional prerequisites. This module reads no registry and chang
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from app.domain.calculated_channel import nominal_frequency_valid
 from app.domain.metadata import DEFAULT_NOMINAL_FREQUENCY_HZ
@@ -46,6 +47,26 @@ ORIGIN_MANUAL = "manual"
 ORIGIN_UNUSABLE = "unusable"
 
 _BEN_SOURCE_FORMAT = "BEN"
+
+#: The agreement tolerance the phasor family already applies to recordings declaring "the same" frequency
+#: (`phasor_analysis_service`, `math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9)`). Reused, not invented.
+AGREEMENT_REL_TOL = 1e-9
+AGREEMENT_ABS_TOL = 1e-9
+
+
+def frequencies_agree(values: Iterable[float]) -> bool:
+    """The ONE multi-recording agreement rule (NF-3B N-5): every value is the smallest one within the tolerance. Order-independent.
+    The central accessor (`NominalFrequencyAccess.for_sources`) and the oscillation cross-signal classifier (NF-3G) both apply exactly this."""
+    values = list(values)
+    low = min(values)
+    return all(math.isclose(v, low, rel_tol=AGREEMENT_REL_TOL, abs_tol=AGREEMENT_ABS_TOL) for v in values)
+
+
+def agreed_frequency(values: Iterable[float]) -> float | None:
+    """The common frequency of values that agree (the smallest of them, so the answer cannot depend on order), else None. Never a
+    representative chosen from values that disagree."""
+    values = list(values)
+    return min(values) if values and frequencies_agree(values) else None
 
 
 @dataclass(frozen=True, slots=True)

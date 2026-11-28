@@ -134,18 +134,30 @@ def nf3f_entries(baseline: str) -> list[dict]:
     return json.loads(NF3F_MANIFEST.read_text(encoding="utf-8"))["changes"].get(baseline, [])
 
 
-def apply_approved(document: dict, baseline: str, *, include_nf3d: bool = True, include_nf3f: bool = True) -> dict:
+NF3G_MANIFEST = _FIXTURES / "nf3g_baselines" / "nf3g_approved_changes.json"
+
+
+def nf3g_entries(baseline: str) -> list[dict]:
+    """The NF-3G approved changes (oscillation cross-signal, O-9) for one baseline; recorded against the record after the NF-3F overlay."""
+    if not NF3G_MANIFEST.exists():
+        return []
+    return json.loads(NF3G_MANIFEST.read_text(encoding="utf-8"))["changes"].get(baseline, [])
+
+
+def apply_approved(document: dict, baseline: str, *, include_nf3d: bool = True, include_nf3f: bool = True, include_nf3g: bool = True) -> dict:
     """A copy of `document["outcomes"]` with this baseline's approved changes applied.
 
     NF-3C entries apply to the historical record first; NF-3D entries (`nf3d_approved_changes.json`, recorded against the record AFTER the
-    NF-3C overlay) apply second, and NF-3F entries (`nf3f_approved_changes.json`, recorded against the record after both) apply third, so
-    each slice's changes stay separately reviewable."""
+    NF-3C overlay) apply second, NF-3F entries (`nf3f_approved_changes.json`, recorded against the record after both) third, and NF-3G
+    entries (`nf3g_approved_changes.json`) fourth, so each slice's changes stay separately reviewable."""
     outcomes = _apply_nf3c(document, baseline)
     if include_nf3d:
         from tests.nf3d_diff_tools import apply_entries
         outcomes = apply_entries(outcomes, nf3d_entries(baseline))
         if include_nf3f:
             outcomes = apply_entries(outcomes, nf3f_entries(baseline))
+            if include_nf3g:
+                outcomes = apply_entries(outcomes, nf3g_entries(baseline))
     return outcomes
 
 

@@ -40,16 +40,18 @@ reset, or a recording that belongs to another workspace is "not found" (`SourceN
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.nominal_frequency import (
+    AGREEMENT_ABS_TOL,
+    AGREEMENT_REL_TOL,
     ORIGIN_ASSUMED_DEFAULT,
     ORIGIN_MANUAL,
     EffectiveNominalFrequency,
+    frequencies_agree,
 )
 from app.services import nominal_frequency_service as _authority
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -65,10 +67,8 @@ AGREEMENT_UNAVAILABLE = "unavailable"
 AGREEMENT_AGREED = "agreed"
 AGREEMENT_MIXED = "mixed"
 
-#: The agreement tolerance the phasor family already applies to recordings declaring "the same" frequency
-#: (`phasor_analysis_service`, `math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9)`). Reused, not invented.
-AGREEMENT_REL_TOL = 1e-9
-AGREEMENT_ABS_TOL = 1e-9
+# The agreement tolerance and rule live in `app.domain.nominal_frequency` (AGREEMENT_REL_TOL / AGREEMENT_ABS_TOL, `frequencies_agree`) so the
+# oscillation classifier can apply the same rule without importing a service; both names stay importable from here.
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,11 +136,6 @@ def _source_frequency(source_id: str, r: EffectiveNominalFrequency, manual_overr
     )
 
 
-def _agree(values: list[float]) -> bool:
-    low = min(values)
-    return all(math.isclose(v, low, rel_tol=AGREEMENT_REL_TOL, abs_tol=AGREEMENT_ABS_TOL) for v in values)
-
-
 def combine(members: Iterable[SourceFrequency]) -> MultiSourceFrequency:
     """Apply the multi-recording contract to already-resolved members (pure; order-independent apart from `members` itself)."""
     members = tuple(members)
@@ -151,7 +146,7 @@ def combine(members: Iterable[SourceFrequency]) -> MultiSourceFrequency:
         return MultiSourceFrequency(members, AGREEMENT_EMPTY, None, (), ())
     if unusable:
         return MultiSourceFrequency(members, AGREEMENT_UNAVAILABLE, None, distinct, unusable)
-    if _agree(usable):
+    if frequencies_agree(usable):
         return MultiSourceFrequency(members, AGREEMENT_AGREED, min(usable), distinct, ())
     return MultiSourceFrequency(members, AGREEMENT_MIXED, None, distinct, ())
 

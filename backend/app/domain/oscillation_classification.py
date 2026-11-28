@@ -33,6 +33,8 @@ from __future__ import annotations
 from app.domain import channel_classification as cc
 from app.domain import cross_signal_evidence as cs
 from app.domain import oscillation_integration as oi
+from app.domain.metadata import DEFAULT_NOMINAL_FREQUENCY_HZ
+from app.domain.nominal_frequency import agreed_frequency
 
 # ---------------------------------------------------------------- Phase-1 heuristics (not standards)
 #: Conventional electromechanical range (inter-area + local + intra-plant); a supporting dimension only.
@@ -45,8 +47,8 @@ LOCAL_BAND_HZ = (0.8, 3.0)
 SUBSYNCHRONOUS_MIN_HZ = 3.0
 #: Control / converter interactions are considered from the lower edge of this range upward.
 CONTROL_BAND_HZ = (3.0, 100.0)
-#: Assumed when neither the representation nor the recording declares one (flagged as a limitation).
-ASSUMED_NOMINAL_FREQUENCY_HZ = 50.0
+#: Assumed when neither the representation nor the recording declares one (flagged as a limitation): the one sanctioned default (NF-1).
+ASSUMED_NOMINAL_FREQUENCY_HZ = DEFAULT_NOMINAL_FREQUENCY_HZ
 #: Active STFT span at least this fraction of the analysed window = "persistent".
 PERSISTENT_SPAN_FRACTION = 0.8
 #: A quiet lead-in of at least this fraction of the analysed window before the activity starts = onset observed.
@@ -256,9 +258,14 @@ def classify_component(component: dict, signals: list[dict], evidence: dict | No
     compared_without = max(0, len(signals) - component["signal_count"])
     em_types = sorted(types & ELECTROMECHANICAL_SIGNAL_TYPES)
     electrical_types = sorted(types & ELECTRICAL_SIGNAL_TYPES)
-    nominal = next((s["nominal_frequency_hz"] for s in meta if s.get("nominal_frequency_hz")), None)
-    nominal_assumed = nominal is None or any(s.get("nominal_frequency_assumed") for s in meta)
-    nominal_hz = nominal if nominal is not None else ASSUMED_NOMINAL_FREQUENCY_HZ
+    # NF-3G (O-9, DEC-217 amendment 1): ONE nominal frequency for the whole component, decided by the shared agreement rule over what its members
+    # carry -- never the first member's. Members that DISAGREE give no frequency at all (`nominal_mixed`): no representative is chosen, nothing
+    # below is compared with a nominal value, and the result says so. The assumed-frequency provenance is kept either way.
+    declared = [s["nominal_frequency_hz"] for s in meta if s.get("nominal_frequency_hz")]
+    nominal = agreed_frequency(declared)
+    nominal_mixed = bool(declared) and nominal is None
+    nominal_assumed = not declared or any(s.get("nominal_frequency_assumed") for s in meta)
+    nominal_hz = nominal if nominal is not None else (None if nominal_mixed else ASSUMED_NOMINAL_FREQUENCY_HZ)
 
     temporal = _temporal_facts(members, signals)
     behaviour, behaviour_support, behaviour_limits = _behaviour(members, temporal)
@@ -267,7 +274,7 @@ def classify_component(component: dict, signals: list[dict], evidence: dict | No
     in_em_band = ELECTROMECHANICAL_BAND_HZ[0] <= frequency <= ELECTROMECHANICAL_BAND_HZ[1]
     in_inter_area = INTER_AREA_BAND_HZ[0] <= frequency <= INTER_AREA_BAND_HZ[1]
     in_local = LOCAL_BAND_HZ[0] <= frequency <= LOCAL_BAND_HZ[1]
-    sub_synchronous_band = SUBSYNCHRONOUS_MIN_HZ <= frequency < nominal_hz
+    sub_synchronous_band = nominal_hz is not None and SUBSYNCHRONOUS_MIN_HZ <= frequency < nominal_hz
     in_control_band = CONTROL_BAND_HZ[0] <= frequency < CONTROL_BAND_HZ[1]
     narrow = _narrowness(members, signals)
 
@@ -394,9 +401,17 @@ def classify_component(component: dict, signals: list[dict], evidence: dict | No
     supporting = list(facts_support) + list(behaviour_support)
     limiting = list(facts_limit) + list(behaviour_limits)
     warnings: list[dict] = []
-    if nominal_assumed and (sub_synchronous_band or in_control_band or primary is not None and primary["code"] == TYPE_SUB_SYNCHRONOUS):
+    if nominal_assumed and not nominal_mixed and (sub_synchronous_band or in_control_band or primary is not None and primary["code"] == TYPE_SUB_SYNCHRONOUS):
         limiting.append(_ev("nominal_frequency_assumed", f"The nominal frequency was not declared; {_fmt(ASSUMED_NOMINAL_FREQUENCY_HZ, 3)} Hz is assumed for the sub-synchronous comparison.",
                             nominal_frequency_hz=ASSUMED_NOMINAL_FREQUENCY_HZ))
+    if nominal_mixed and frequency >= SUBSYNCHRONOUS_MIN_HZ:
+        # O-9: the members declare different nominal frequencies. The comparison with the nominal frequency (which needs ONE value) is not
+        # made, and the evidence names every value so the engineer can see the conflict; assumed-frequency provenance is carried.
+        limiting.append(_ev(
+            "nominal_frequency_mixed",
+            "The members come from recordings with different nominal frequencies (" + ", ".join(f"{_fmt(v, 3)} Hz" for v in sorted(set(declared)))
+            + "); no single nominal frequency is chosen, so the component is not compared with the nominal frequency.",
+            nominal_frequencies_hz=",".join(_fmt(v, 3) for v in sorted(set(declared))), any_assumed=nominal_assumed))
 
     if sub_synchronous_band and not (primary is not None and primary["code"] == TYPE_SUB_SYNCHRONOUS):
         limiting.append(_ev(

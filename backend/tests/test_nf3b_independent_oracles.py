@@ -206,7 +206,7 @@ class TestPowerChannelsMustUseTheRecordingsFrequency:
 
 
 class TestOscillationFrequencySelectionMustNotDependOnMemberOrder:
-    @pytest.mark.xfail(strict=True, reason="NF-3G: the FIRST member's frequency decides (D-D, needs O-9)")
+    # NF-3G (O-9) flipped this oracle: the strict-xfail marker was removed in the same commit, the expectation is unchanged.
     def test_swapping_the_recordings_does_not_change_the_verdict(self):
         cases = scn.run_oscillation_selection_scenarios()["component_55hz"]
         assert cases["first_50_second_60"] == cases["first_60_second_50"]
