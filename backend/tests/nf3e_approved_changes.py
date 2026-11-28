@@ -12,6 +12,10 @@ Changes (owner, 2026-11-27, NF-3E Phase B):
 * **O-6 / provenance** -- a new RMS channel created through the API records `nominal_frequency_basis` (the caller-declared intent; omitted =
   `explicit`) and the recording's `nominal_frequency_origin` and `nominal_frequency_revision`; every calculated-channel response carries
   the derived, read-only `frequency_staleness` object. Additive: no existing field changes and no value is recomputed.
+* **PU-MIG S5 (NF integration, 2026-11-28)** -- every per-unit response object carries the additive `per_unit_verification_state` field
+  that PU-MIG S5 added on `main` (owner-accepted, DEV UAT 2026-11-27). It is `null` for these calculated-channel scenarios (no verification
+  claim is made for them). The R0 baseline was frozen before S5 existed, so the field is applied here as one visible, additive entry; the
+  frozen history is not edited and nothing else in any of these payloads changes (proved by a leaf-level diff at integration time).
 """
 
 from __future__ import annotations
@@ -56,6 +60,19 @@ def _stamp_channels(node):
             _stamp_channels(value)
 
 
+def _add_pu_verification_state(node):
+    """PU-MIG S5: the additive `per_unit_verification_state` (null for calculated-channel responses) beside the reference compatibility."""
+    if isinstance(node, dict):
+        if "per_unit_reference_compatibility" in node:
+            assert "per_unit_verification_state" not in node, "the historical record already carries the PU-MIG S5 field"
+            node["per_unit_verification_state"] = None
+        for value in node.values():
+            _add_pu_verification_state(value)
+    elif isinstance(node, list):
+        for value in node:
+            _add_pu_verification_state(value)
+
+
 def apply_r0(outcomes: dict) -> dict:
     """The R0 behavioural baseline's `outcomes` with the NF-3E approved changes applied (a deep copy; the history is untouched)."""
     out = copy.deepcopy(outcomes)
@@ -67,6 +84,7 @@ def apply_r0(outcomes: dict) -> dict:
         assert out["service"][group][key] == frozen, f"{group}/{key}: the historical value is no longer what the approved change expects"
         out["service"][group][key] = copy.deepcopy(SERVICE_RAISES)
     _stamp_channels(out["api"])
+    _add_pu_verification_state(out["api"])
     return out
 
 
