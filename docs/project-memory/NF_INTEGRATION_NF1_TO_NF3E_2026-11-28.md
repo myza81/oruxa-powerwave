@@ -74,7 +74,8 @@ Skips (9): the eight documented owner-recording skips (4 BEN5K, 4 waveform-measu
 - `Settings.nominal_frequency_manual_override_enabled = False` by default; a deployed build refuses `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED` (`config.py`).
 - `Settings.ben5k_experimental_enabled = False` by default.
 - Frontend `WW_NF_CONSUMERS_MIGRATED = false` (`index.html`).
-- No compose, workflow, script or Dockerfile sets either environment flag; the static gate tests pass in the final backend run.
+- **Manual nominal-frequency gate:** no compose file, workflow, script, Dockerfile or `config.js` sets `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED`; the static gate tests pass in the final backend run.
+- **BEN5K:** off by default in `Settings`. It is enabled in exactly one deployment file, `compose.dev.yaml` (`BEN5K_EXPERIMENTAL_ENABLED: "1"`, the DEV-only overlay, added on main by `781d1fa` for BEN5K owner UAT). That file is **unchanged by this integration** (identical to `885bf8d`); normal and PROD runtime keep BEN5K off. This corrects an earlier draft of this section that said no deployment file set either flag.
 - Both flags are opened only in the throw-away test backend defined in `browser-tests/playwright.config.js`.
 
 ## 8. Files changed
