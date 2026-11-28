@@ -30,7 +30,27 @@ The guard is applied only at the entry of a *new* calculation or assessment, wit
 
 ## 3. Verification
 
-RESULTS_PLACEHOLDER
+All results are for the code commit **`00387aa`** (the final gate candidate; later commits are documentation only).
+
+| Check | Result |
+|---|---|
+| **Failing-first guard tests** (`test_nf3e_consumer_guards.py`) | 15 failed / 4 passed before the implementation; **20 passed** after (compliance execution direct and transitive, readiness blocked member and the endpoint integration, oscillation native and RMS-magnitude and the representation endpoint, phasor, diagram, input-readiness, overcurrent, input-readiness and recorded-input report, valid inputs accepted, frequency restoration lifting the refusal, values unchanged, historical inspection available, one-authority and unguarded-fetcher static guards) |
+| **Static frontend sentence** | passed (`test_frontend_nf3e_staleness.py`) |
+| **Broad focused regression** (every consumer touched: calculated channels, compliance, oscillation, phasor, overcurrent, impedance/distance/sequence, NF-3B/C/D baselines and guards, RMS baselines, per-unit registries, frontend NF/RMS) | 4,360 passed, 3 xfailed, 1 failed: the pinned accessor-importer inventory, updated deliberately (`compliance_series` now takes the accessor for its type), then passing |
+| **Mutation checks of the guards** (24: compliance execution/readiness/router wiring, oscillation entry/representation/router, phasor/overcurrent fetchers and six handlers, public reason value, message, frontend sentence, shared-fetcher guard) | **24 of 24 killed** (23 on the first pass; G3 "readiness never blocks a stale member" survived because only the conversion was unit-tested; the readiness-endpoint integration test was added and G3 was killed on the re-run). Earlier suite: 19 of 19 killed. Scripts and results: `evidence/nf-3e-2026-11-27/` |
+| **Full backend** (`pytest`, 28 min) | **15,217 passed, 405 skipped, 3 xfailed (strict: NF-3F/G/H), 0 failed.** NF-3D tip for reference: 15,109 / 405 / 4 xfailed (+108 tests; the O-10 xfail flipped; skips unchanged) |
+| **Full static frontend** | included in the full backend run (the whole `test_frontend_*` subset and `test_user_facing_copy`): 0 failed |
+| **BEN owner-reference tests** (`--ben-reference-dir`, 8 files) | **284 passed** |
+| **Full browser** (1 worker, default ports, 3.5 h, includes the NF-2 spec and the new NF-3E spec) | **1,697 passed, 167 failed, 17 skipped, 0 flaky, 0 retries** (retries are disabled in the configuration) |
+
+**Browser reconciliation against the unmodified NF-3D tip `65390d3`.** The failures are not caused by NF-3E: they are the NF lineage's pre-existing and environment sets.
+
+* The same tests were run on a `git archive` copy of `65390d3` in the same configuration (49 spec files that contain a failure, 476 tests; the first attempt was invalid because of a carriage return in my file list and a session restart, and was redone). **Every test that fails on the candidate also fails on the baseline: 0 failures only on the candidate.** One test fails on the baseline but passes on the candidate (`event-reconstruction-plot`: overlap, containment, separation) and is a flake on the baseline side. Part 1 (27 files, 213 tests): 212 agree; part 2 (22 files): 104 candidate failures = 104 baseline failures, identical sets.
+* **Causes** (all pre-existing): (a) the NF Playwright configuration opens the server's Manual nominal-frequency gate but not `BEN5K_EXPERIMENTAL_ENABLED` (the PU lineage's configuration has the reverse), so the five `ben5k-*` specs fail for lack of the flag; with a backend started with **both** flags the BEN-area specs give 19 passed / 18 failed / 2 skipped on the candidate and **the identical 19 / 18 / 2 on the baseline** (the remaining failures wait for `#wwUnitPerUnitBtn`, a toolbar control the NF lineage predates); (b) the playback, post-upload-readiness, per-unit, event-reconstruction, waveform toolbar, power-provenance and similar groups, the CSV/Excel preparation rows (`data-issues-*`, `data-preparation-sticky-header`, `sampling-rate-format`), `calculated-channel-preview` ×5, `compliance_readiness:212` and `compliance_measurement` ×2 fail identically on the baseline; they belong to the documented unresolved sets of the NF-3B to NF-3D slices and are fixed on the PU/WUI lineage, which the NF branch does not yet contain.
+* **Not weakened:** no test, configuration or expected value was changed to obtain these results; the dual-flag backend was started outside the configuration, and nothing was committed for it.
+* NF-2 browser spec on the default ports: **40 passed, 1 skipped** (a screenshot test, by design) in the second full run; the first run had one failure (`a declared and an assumed recording carry the preview line`) that passes alone, on the baseline and on re-run: recorded as a first-run flake, not reproduced. The new NF-3E spec: 7 of 7 passed on isolated ports.
+* **Housekeeping:** the browser run rewrote seven tracked evidence screenshots in this worktree; they were restored with `git checkout` and are not part of any commit.
+
 
 ## 4. Known limitations
 
@@ -39,7 +59,7 @@ RESULTS_PLACEHOLDER
 3. The marker is on the Calculated Channels list only (by instruction); there is no sidebar or legend marker.
 4. Power channels keep the fixed 50 Hz and are not assessed (NF-3F); F-1 is unchanged; the mixed-recording first-member rule is unchanged (NF-3G).
 5. A direct API caller that omits `nominal_frequency_basis` creates an explicit channel (never flagged) by design.
-6. The first-time browser failure patterns (flakes) and the pre-existing failure sets are listed with the regression results.
+6. The browser suite on this branch fails 163 tests that fail identically on the unmodified NF-3D tip (section 3); they clear only when the NF lineage is rebased onto the PU/WUI lineage, which is the integration step the owner has deferred.
 
 ## 5. Integration readiness
 
