@@ -8,7 +8,23 @@ Agent governance (2026-11-26, [DEC-218](DECISIONS.md#dec-218--approved-decisions
 approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
 [AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
 
-Last updated: **2026-11-27** — Per-Unit workstream accepted by the owner after DEV UAT (baseline `4885ca2`); integration readiness reviewed, awaiting owner review (below). Earlier engineering handoffs retain their original dates.
+Last updated: **2026-11-28** — NF-1 through NF-3E integrated against accepted main `885bf8d` on `feature/nf-integration` (candidate `ae5dfd9`), verified locally, awaiting owner acceptance (first section below). Earlier engineering handoffs follow.
+
+---
+
+## NF-1 through NF-3E integration against accepted main (2026-11-28)
+
+[LOCAL] **Integration candidate `ae5dfd9`** on `feature/nf-integration` (worktree `.local-data/nf-integration`; created from `885bf8d`): history-preserving merge `e7f39ce` of the frozen `feature/nf-3e-calculated-channel-staleness` (functional `00387aa`, docs `edf18b2`) plus one test-overlay fix `ae5dfd9`. Not pushed, merged or deployed; the frozen NF and PU branches and worktrees are untouched. Record: [NF_INTEGRATION_NF1_TO_NF3E_2026-11-28.md](NF_INTEGRATION_NF1_TO_NF3E_2026-11-28.md).
+
+[FACT] Six textual conflicts (compliance.py, compliance_series.py, compliance_readiness_service.py, playwright.config.js, DECISIONS.md, CURRENT_STATE.md) were reconciled by keeping both workstreams (PU `side_authority` and NF `frequency_access` both threaded; test backend opens the BEN5K and Manual-gate flags; DEC-217 placed before DEC-218/219). The only integration seam: the frozen RMS R0 baseline lacked PU-MIG S5's additive `per_unit_verification_state: null` on three calculated-channel scenarios; recorded as one documented overlay entry (`ae5dfd9`), baseline JSON untouched. The six RMS R0/R1A commits in the NF lineage were approved by the owner.
+
+[FACT] Results on `ae5dfd9`: backend **16,760 passed / 410 skipped / 3 xfailed / 0 failed**; BEN files 1,015 passed with the reference dir; browser **1,882 passed / 9 failed / 9 skipped**. The 9 = the 6 documented CSV/Excel failures + the legend-visibility Grouped/Custom timing flake (reproduces equally on pristine `885bf8d`) + one `waveform-pane-drawer-clearance` (Separate) failure that did not reproduce in 20 further runs. Gates verified closed (`WW_NF_CONSUMERS_MIGRATED = false`; server Manual gate and BEN5K default off; no deploy artefact sets them).
+
+[DECISION] Owner approved on 2026-11-28 (recorded, not started): O-2 (power channels use the effective frequency, V/I must agree, §5.5 vectors), O-9 (oscillation cross-signal agreement-or-`nominal_frequency_mixed`), and one consolidated NF-3F/G/H cycle (commits F, G, H; one full regression). A V/I disagreement is refused with HTTP 400 `nominal_frequency_mixed`. This starts only after the candidate is formally accepted, from a new worktree off the accepted SHA. NF-3I stays separate; O-3 excludes Auto Base evidence.
+
+**Next:** owner review and acceptance of `ae5dfd9`.
+
+Governance compliance (DEC-218): documents consulted are AGENTS.md, CLAUDE.md, the project-memory README, DEC-217/218/219, the NF-3A to NF-3E and PU acceptance records. Established decisions preserved; no existing policy has changed; no unresolved conflict; no deviation from scope (no NF-3F/G/H, gate activation, push, merge or deploy).
 
 ---
 
