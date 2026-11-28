@@ -3,6 +3,8 @@
 **Date:** 2026-11-27 · **Decision base:** [DEC-217](DECISIONS.md), [DEC-218](DECISIONS.md), [NF-3E record](NF_3E_STALE_CALCULATED_CHANNELS_2026-11-27.md), [consumer review](NF_3E_STALE_INPUT_CONSUMER_REVIEW_2026-11-27.md) and the owner's closeout instruction (2026-11-27).
 **Branch:** `feature/nf-3e-calculated-channel-staleness`, worktree `.local-data/nf-3e`. **Not pushed, merged or deployed. NF is not integrated against the pending PU release.**
 
+**Status (owner, 2026-11-28): engineering ACCEPTED and FROZEN.** The accepted functional implementation is frozen at **`00387aa`**; later commits on this branch are documentation only (`f7623f9` final verification, then the acceptance record). Acceptance is **subject to integration verification and owner UAT** (both pending). No further functional change is authorised on this branch; NF-3F, NF-3G and NF-3H have **not** started; the NF gates stay **closed** (`WW_NF_CONSUMERS_MIGRATED = false`, the server Manual gate closed by default and set in no deployment file). **Integration order (owner):** (1) complete the PU release (PR #14); (2) establish the accepted `main` baseline; (3) prepare a *separate* NF integration candidate containing NF-1 through NF-3E; (4) reconcile the actual conflicts; (5) verify combined PU, WUI and NF behaviour; (6) obtain owner acceptance before NF-3F. Not pushed, merged or deployed; this branch and its worktree are preserved.
+
 ## 1. Governing policy (owner decision, 2026-11-27)
 
 > A stale calculated channel remains available for **historical inspection** but shall not be accepted as a valid input for a **new engineering calculation or assessment**.
@@ -41,7 +43,9 @@ All results are for the code commit **`00387aa`** (the final gate candidate; lat
 | **Full backend** (`pytest`, 28 min) | **15,217 passed, 405 skipped, 3 xfailed (strict: NF-3F/G/H), 0 failed.** NF-3D tip for reference: 15,109 / 405 / 4 xfailed (+108 tests; the O-10 xfail flipped; skips unchanged) |
 | **Full static frontend** | included in the full backend run (the whole `test_frontend_*` subset and `test_user_facing_copy`): 0 failed |
 | **BEN owner-reference tests** (`--ben-reference-dir`, 8 files) | **284 passed** |
-| **Full browser** (1 worker, default ports, 3.5 h, includes the NF-2 spec and the new NF-3E spec) | **1,697 passed, 167 failed, 17 skipped, 0 flaky, 0 retries** (retries are disabled in the configuration) |
+| **Full browser** (1 worker, default ports, 3.5 h, includes the NF-2 spec and the new NF-3E spec) | **1,697 passed, 167 failed, 17 skipped, 0 flaky, 0 retries** (retries are disabled in the configuration). **This is not an unconditional pass.** It is accepted only as evidence that no new regression relative to NF-3D was identified (reconciliation below) |
+
+**Count reconciliation (167 versus 163).** The authoritative figure is **167 failed tests** (the Playwright test-level count: 1,697 + 167 + 17 = 1,881). The figure **163** is the number of *distinct* test titles among them: two titles are parameterised and repeat three times each (`ben5k-timezone.spec.js` "upload, recording details, sidebar and waveform retain clock authority" for UTC / America/New_York / Asia/Kuala_Lumpur, and `time-reference-interpretation.spec.js` "interpret once: automatic Waveform alignment..."), so 167 - 4 = 163. The baseline comparison was keyed by file and title, so it reports 163; the baseline's own test-level counts agree with the candidate's where they were taken (22 files: 106 failed on both; 27 files: 61 on the candidate).
 
 **Browser reconciliation against the unmodified NF-3D tip `65390d3`.** The failures are not caused by NF-3E: they are the NF lineage's pre-existing and environment sets.
 
@@ -59,11 +63,11 @@ All results are for the code commit **`00387aa`** (the final gate candidate; lat
 3. The marker is on the Calculated Channels list only (by instruction); there is no sidebar or legend marker.
 4. Power channels keep the fixed 50 Hz and are not assessed (NF-3F); F-1 is unchanged; the mixed-recording first-member rule is unchanged (NF-3G).
 5. A direct API caller that omits `nominal_frequency_basis` creates an explicit channel (never flagged) by design.
-6. The browser suite on this branch fails 163 tests that fail identically on the unmodified NF-3D tip (section 3); they clear only when the NF lineage is rebased onto the PU/WUI lineage, which is the integration step the owner has deferred.
+6. The browser suite on this branch fails 167 tests (163 distinct titles) that fail identically on the unmodified NF-3D tip (section 3); they clear only when the NF lineage is rebased onto the PU/WUI lineage, which is the integration step the owner has deferred.
 
 ## 5. Integration readiness
 
-Not integrated, pushed or deployed. The branch is based on the NF-3D tip `65390d3` (which carries the earlier D5A/RD-1/WUI lineage), not on `main` or the pending PU release `f51a631` (PR #14). Before integration the owner decides the order: the PU release first, then a fresh NF integration baseline with a compatibility check (known conflict areas from the PU readiness record: `DECISIONS.md`, `HANDOFF.md`, `compliance.py`, `compliance_readiness_service.py`, `browser-tests/playwright.config.js`). The gate stays closed (`WW_NF_CONSUMERS_MIGRATED` false; server Manual gate closed by default); nothing here activates it.
+**Integration verification and owner UAT are pending; the branch is frozen at `00387aa` and not to be rebased, rewritten or integrated under this record.** Not integrated, pushed or deployed. The branch is based on the NF-3D tip `65390d3` (which carries the earlier D5A/RD-1/WUI lineage), not on `main` or the pending PU release `f51a631` (PR #14). Before integration the owner decides the order: the PU release first, then a fresh NF integration baseline with a compatibility check (known conflict areas from the PU readiness record: `DECISIONS.md`, `HANDOFF.md`, `compliance.py`, `compliance_readiness_service.py`, `browser-tests/playwright.config.js`). The gate stays closed (`WW_NF_CONSUMERS_MIGRATED` false; server Manual gate closed by default); nothing here activates it.
 
 ## 6. Governance compliance (DEC-218)
 

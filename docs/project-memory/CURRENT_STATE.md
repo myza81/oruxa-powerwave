@@ -9,6 +9,16 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
+## NF-3E — stale calculated channels: accepted and frozen, integration pending (2026-11-28)
+
+[UAT-PENDING] The owner accepted the NF-3E engineering implementation, **frozen at `00387aa`** on `feature/nf-3e-calculated-channel-staleness` (local only), subject to integration verification and owner UAT.
+
+[FACT] A calculated channel's frequency staleness is derived on every request from the central nominal-frequency authority (recording-following RMS channels only; explicit frequencies and power channels are not assessed directly; every dependant inherits). Stored values are never recomputed. A stale channel remains available for historical inspection but is refused as input to a new calculation or assessment: creation and line-to-line (409), compliance execution (409) and readiness (blocked member), oscillation (409), phasor family and overcurrent (`reason_code: stale_calculated_input`). One authority: `services/calculated_channel_staleness.py`. Record: [NF_3E_FINAL_ENGINEERING_POLICY_2026-11-27.md](NF_3E_FINAL_ENGINEERING_POLICY_2026-11-27.md).
+
+[FACT] Verification: backend 15,217 passed, 405 skipped, 3 strict expected failures, 0 failed; 43 mutations killed; 284 BEN owner-reference tests; full browser 1,697 passed / 167 failed (163 distinct titles) / 17 skipped. The browser result is *not* an unconditional pass: every failure also fails on the unmodified NF-3D tip, so no new regression is identified, and the inherited PU/WUI browser failures are not fixed on this branch.
+
+[DECISION] Integration order: complete PU PR #14; establish the accepted `main` baseline; prepare a separate NF integration candidate (NF-1 through NF-3E); reconcile actual conflicts; verify combined PU, WUI and NF behaviour; obtain owner acceptance before NF-3F. NF-3F, NF-3G and NF-3H have not started; the NF gates stay closed (`WW_NF_CONSUMERS_MIGRATED = false`, server Manual gate closed by default). Not pushed, merged or deployed.
+
 ## WUI-001–004 controlled DEV consolidation (2026-11-23)
 
 [UAT] The owner accepted WUI-001 through WUI-004, final UI commit `d513fba`.
