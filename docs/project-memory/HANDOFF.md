@@ -8,7 +8,21 @@ Agent governance (2026-11-26, [DEC-218](DECISIONS.md#dec-218--approved-decisions
 approved decisions are binding until the owner supersedes them, and agents consult the applicable ones before acting; see
 [AGENTS.md](../../AGENTS.md#decision-preservation-and-engineering-governance--mandatory).
 
-Last updated: **2026-11-28** — NF-1 through NF-3E integrated against accepted main `885bf8d` on `feature/nf-integration` (candidate `ae5dfd9`), verified locally, awaiting owner acceptance (first section below). Earlier engineering handoffs follow.
+Last updated: **2026-11-28** — NF-3F/G/H implemented on `feature/nf-3fgh-consolidated` (functional candidate `194d8ba`), verified locally, awaiting owner review (first section below); NF-1..NF-3E integration (`ae5dfd9`) was accepted by the owner. Earlier engineering handoffs follow.
+
+---
+
+## NF-3F / NF-3G / NF-3H — consolidated consumer migration (2026-11-28)
+
+[LOCAL] **Functional candidate `194d8ba`** on `feature/nf-3fgh-consolidated` (worktree `.local-data/nf-3fgh`, created from the accepted integration docs HEAD `c5ebe6d`; functionally identical to `ae5dfd9` at the start). Commits: decision record `ca96723` (DEC-217 Amendment 1), **NF-3F `113fd5e`**, **NF-3G `550a808`**, **NF-3H `194d8ba`**. Not pushed, merged or deployed; `feature/nf-integration` and its worktree are preserved. Record: [NF_3FGH_CONSOLIDATED_MIGRATION_2026-11-28.md](NF_3FGH_CONSOLIDATED_MIGRATION_2026-11-28.md).
+
+[FACT] NF-3F (O-2): power channels take one frequency from `NominalFrequencyAccess.for_sources` (voltage and current must agree; disagreement -> 400 `nominal_frequency_mixed`; unusable -> 400 `invalid_nominal_frequency`), store it with NF-3E provenance and are assessed by the existing staleness authority. NF-3G (O-9): `classify_component` uses the agreed frequency of its members or reports `nominal_frequency_mixed` and compares with nothing; the agreement rule moved to `app/domain/nominal_frequency.py` and is shared with the accessor. NF-3H: the silent 50 Hz defaults of `compute_sliding_phasor`, `evaluate_power_channel`, `evaluate_three_phase_power_channel` are gone; the resolver fallback and the Auto Base default (O-3) stay. No kernel or oscillation mathematics changed. Frozen baselines are untouched; their approved changes are classified, generated manifests (`nf3f/nf3g/nf3h_approved_changes.json` with generators beside them).
+
+[FACT] Results: full backend 16,894 passed / 410 skipped / 0 failed; BEN files 1,015 passed; full browser 1,883 passed / 8 failed / 9 skipped = the documented `ae5dfd9` set (6 CSV/Excel + 2 legend-visibility timing); 23 / 23 mutations killed. Gates verified closed.
+
+**Next:** owner review. Open owner decision: should native-representation oscillation members carry the recording's frequency (changes Auto output)? NF-3I (gate-opening commit, Manual-gate deployment path incl. the `config.py` refusal, Auto Base wording, O-12, UAT) is separately authorised and not started.
+
+Governance compliance (DEC-218): documents consulted are AGENTS.md, CLAUDE.md, the project-memory README, DEC-217/218/219, NF-3A/3B/3C/3E and the NF integration record. Established decisions preserved; the only amendment is DEC-217 Amendment 1 (the owner's O-2/O-9 decisions, recorded as instructed); one owner decision requested (above); no deviation from scope.
 
 ---
 
