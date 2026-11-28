@@ -102,11 +102,62 @@ class TestHistoricalFacts:
         assert t["assumed_with_declared_50"]["phasor_diagram_fault"]["body"]["status"] == "computed"
 
 
+#: The angle of a numerically negligible phasor is not a regression observable. A balanced three-phase set has a zero-sequence voltage that is only
+#: round-off (frozen here: 2.4e-10 on a 100 scale), and the angle of such a phasor is decided by the last bits of its real and imaginary parts, which
+#: differ between platforms (Windows against Linux: 179.9943 against 179.9954 degrees) while the magnitude agrees to far better than the comparison's own
+#: relative resolution (REL = 1e-9 in `_same`). The floor is RELATIVE to the set's positive-sequence magnitude and sits one decade below that resolution.
+NOISE_FLOOR = 1e-10
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _negligible_angles(expected: dict, actual: dict) -> set[str]:
+    """Angle keys of a sequence-component set (`<name>_sequence_angle_deg`) that are not comparable: BOTH the expected and the actual magnitude of
+    that sequence are at or below `NOISE_FLOOR` of the positive-sequence magnitude. A set without a positive-sequence magnitude has no scale, so
+    nothing is skipped."""
+    scales = [d.get("positive_sequence_magnitude") for d in (expected, actual)]
+    if not all(_is_number(v) for v in scales):
+        return set()
+    limit = NOISE_FLOOR * max(abs(v) for v in scales)
+    skipped = set()
+    for key in expected:
+        if not key.endswith("_sequence_angle_deg") or key not in actual:       # a key that appeared or disappeared is always reported
+            continue
+        magnitude_key = key[: -len("_angle_deg")] + "_magnitude"
+        magnitudes = [d.get(magnitude_key) for d in (expected, actual)]
+        if all(_is_number(m) for m in magnitudes) and all(abs(m) <= limit for m in magnitudes):
+            skipped.add(key)
+    return skipped
+
+
+def _same_with_noise_floor(expected, actual, path="") -> list[str]:
+    """`_same` (unchanged tolerances: REL 1e-9, ABS 1e-12), except that the angle of a negligible sequence-component phasor is not compared. The
+    magnitude of every phasor is ALWAYS compared, and so is every angle that is not negligible on both sides."""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        skipped = _negligible_angles(expected, actual)
+        problems: list[str] = []
+        for key in sorted(set(expected) | set(actual)):
+            if key in skipped:
+                continue
+            if key not in expected or key not in actual:
+                problems.append(f"{path}/{key}: {'missing now' if key not in actual else 'new'}")
+            else:
+                problems += _same_with_noise_floor(expected[key], actual[key], f"{path}/{key}")
+        return problems
+    if isinstance(expected, list) and isinstance(actual, list):
+        if len(expected) != len(actual):
+            return [f"{path}: length {len(expected)} -> {len(actual)}"]
+        return [p for i, (a, b) in enumerate(zip(expected, actual)) for p in _same_with_noise_floor(a, b, f"{path}[{i}]")]
+    return _same(expected, actual, path)
+
+
 class TestCurrentBehaviourEqualsHistoryPlusApprovedChanges:
     @pytest.mark.parametrize("group", sorted(H))
     def test_group(self, current, group):
         expected = approved.apply_approved(HISTORICAL, KEY)
-        assert _same(expected[group], current[group], group) == []
+        assert _same_with_noise_floor(expected[group], current[group], group) == []
 
     def test_every_approved_change_still_matches_the_historical_record(self):
         approved.apply_approved(HISTORICAL, KEY)

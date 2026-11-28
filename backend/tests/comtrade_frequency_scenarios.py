@@ -22,7 +22,7 @@ import hashlib
 import re
 import tempfile
 import warnings
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import numpy as np
 
@@ -174,13 +174,42 @@ def build_variants() -> dict[str, str]:
     return out
 
 
-def _normalise_text(text: str, cfg_path: Path) -> str:
-    # `repr()` doubles the backslashes of a Windows path, so replace both spellings.
-    for spelling in (str(cfg_path), str(cfg_path).replace("\\", "\\\\")):
+#: What follows a normalised directory or CFG placeholder. The frozen baselines were generated on Windows, where the path separator after the
+#: placeholder is one backslash (`<DIR>\\e.dat`); that spelling is the CANONICAL one and is kept byte for byte. Every other platform's spelling
+#: (a forward slash, or the doubled backslash a `repr()` produces) is mapped to it, so one baseline serves Windows, Linux and macOS.
+_CANONICAL_SEPARATOR = "\\"
+_PLACEHOLDER_TAIL = re.compile(r"(<DIR>|<CFG>)(?:\\\\|\\|/)")
+
+
+def _path_spellings(path: PurePath) -> list[str]:
+    """Every way the same path can appear in a message: as `str()`, as the doubled-backslash spelling `repr()` writes, as POSIX text, and (for a
+    real path) in its resolved form (macOS `/var` -> `/private/var`, a Windows short name). Longest first, so a longer spelling is never left half
+    replaced by a shorter one."""
+    candidates = [path]
+    if isinstance(path, Path):
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved != path:
+            candidates.append(resolved)
+    forms: list[str] = []
+    for candidate in candidates:
+        text = str(candidate)
+        for spelling in (text, text.replace("\\", "\\\\"), candidate.as_posix()):
+            if spelling and spelling not in forms:
+                forms.append(spelling)
+    return sorted(forms, key=len, reverse=True)
+
+
+def _normalise_text(text: str, cfg_path: PurePath) -> str:
+    """Replace the temporary CFG path and its directory with `<CFG>` and `<DIR>` whatever the platform spelled them like, and spell the separator
+    that follows them canonically. Everything else in the message (file names, error wording, numbers) is left exactly as the parser wrote it."""
+    for spelling in _path_spellings(cfg_path):
         text = text.replace(spelling, "<CFG>")
-    for spelling in (str(cfg_path.parent), str(cfg_path.parent).replace("\\", "\\\\")):
+    for spelling in _path_spellings(cfg_path.parent):
         text = text.replace(spelling, "<DIR>")
-    return text
+    return _PLACEHOLDER_TAIL.sub(lambda m: m.group(1) + _CANONICAL_SEPARATOR, text)
 
 
 def _number(value) -> object:
@@ -190,7 +219,9 @@ def _number(value) -> object:
     return value
 
 
-_TEMP_PATH = re.compile(r"[A-Za-z]:[\\/][^'\"]*?event\.(?:cfg|dat)")
+#: The temporary file the upload endpoint writes (`event.cfg` / `event.dat`), as it appears in an error message: a Windows drive path, or a POSIX
+#: absolute path that starts a quoted token (so an unrelated slash in a sentence is never swallowed).
+_TEMP_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|(?<=['\"\s])/)[^'\"]*?event\.(?:cfg|dat)")
 
 
 def _json_safe(value):
