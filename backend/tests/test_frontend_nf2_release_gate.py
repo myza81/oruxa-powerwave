@@ -2,7 +2,8 @@
 
 Static checks over the shipped frontend files. The behaviour (gate off, gate on, every state) is covered end to end by
 `browser-tests/nf2_recording_details_nominal_frequency.spec.js`; these tests make the *default* impossible to flip by accident:
-no checked-in or generated runtime configuration turns the control on, and nothing but the one gate function reads the flag.
+the checked-in runtime configuration never turns the control on, the container entrypoint emits the flag only for an explicit DEV variable
+(NF-3I; its behaviour is tested in `test_frontend_entrypoint.py`), and nothing but the one gate function reads the flag.
 """
 
 from __future__ import annotations
@@ -25,12 +26,22 @@ def test_the_checked_in_runtime_config_does_not_enable_the_control():
     assert GATE_FLAG not in config and "featureFlags" not in config
 
 
-def test_the_container_entrypoint_cannot_emit_the_flag():
+def test_the_container_entrypoint_emits_the_flag_only_behind_the_explicit_dev_variable():
     scripts = list((FRONTEND / "docker-entrypoint.d").glob("*"))
     assert scripts, "entrypoint scripts not found"
     for script in scripts:
         text = script.read_text(encoding="utf-8")
-        assert GATE_FLAG not in text and "featureFlags" not in text, script.name
+        mentions = GATE_FLAG in text or "featureFlags" in text
+        if script.name != "10-powerwave-config.sh":
+            assert not mentions, script.name
+            continue
+        assert mentions
+        # the emit line sits inside the branch guarded by the parsed variable, and the same script refuses any non-development environment
+        emit = text.index("featureFlags")
+        guard = text.rindex('if [ "$NF_OVERRIDE" -eq 1 ]; then', 0, emit)
+        assert text.index("fi", emit) > emit > guard
+        assert "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED" in text
+        assert '[ "$ENVIRONMENT" != "development" ]' in text and "exit 1" in text
 
 
 def test_the_flag_is_read_in_exactly_one_place_and_only_the_boolean_true_opens_it():
@@ -66,11 +77,15 @@ def test_no_other_part_of_the_page_reads_the_control_state():
     assert names.count("wwRdNfInvalidate") == 3 and names.count("wwRdNfSectionHtml") == 1
 
 
-def test_the_control_says_it_is_a_preview_until_the_consumers_are_migrated():
+def test_the_control_states_what_the_setting_applies_to_now_that_the_consumers_are_migrated():
     block = _nf_block()
-    assert "const WW_NF_CONSUMERS_MIGRATED = false;" in block
-    assert "Preview: calculations do not use this setting yet." in block
-    assert "if (!WW_NF_CONSUMERS_MIGRATED)" in block
+    assert "const WW_NF_CONSUMERS_MIGRATED = true;" in block                       # NF-3I: the calculations honour the setting
+    assert "Not used by automatic per-unit base evidence" in block                  # the O-3 exclusion is stated
+    assert "natively analysed oscillation signals" in block                         # the NF-3C native-oscillation limitation is stated
+    # one helper builds the note and both states (view and editor) use it; the old preview text survives only as the helper's unmigrated branch
+    assert block.count("wwRdNfScopeHtml()") == 3                                    # definition + the two states
+    assert block.count("Preview: calculations do not use this setting yet.") == 1
+    assert "if (!WW_NF_CONSUMERS_MIGRATED)" not in block
 
 
 def test_the_existing_nominal_frequency_readers_of_the_page_are_untouched():

@@ -72,8 +72,9 @@ class Settings:
     # BEN5K_EXPERIMENTAL_ENABLED=1 in the environment. Never frontend-controlled.
     ben5k_experimental_enabled: bool = False
     # NF-3B (NF-001 / DEC-217, owner decision O-1): the SERVER-SIDE release gate for a Manual nominal-frequency override. Closed
-    # (False) by default and in every deployed build; open only through NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED in a local or
-    # isolated test process. While closed the backend refuses to store a Manual value (409), reports and uses the Auto value for
+    # (False) by default; open only through NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED, which is accepted only when ENVIRONMENT=development
+    # (a local process, an isolated test process or the DEV deployment; NF-3I, owner 2026-11-28) and refused anywhere else, PROD included.
+    # While closed the backend refuses to store a Manual value (409), reports and uses the Auto value for
     # every recording, and no engineering consumer can be influenced by a stored override. Never frontend-controlled: the UI
     # flag only shows or hides a control, it is not enforcement.
     nominal_frequency_manual_override_enabled: bool = False
@@ -202,16 +203,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "1", "true", "yes"
     )
 
-    # NF-3B (O-1): enabling the Manual nominal-frequency override is a deliberate act in a local or isolated test process. A deployed
-    # build (production, or any build the deploy workflows started) refuses the value outright rather than ignoring it, so a
-    # copied environment file can never open the gate unnoticed. The separate gate-opening change (NF-3I) is what introduces a
-    # deployment path, and it edits this refusal in the same reviewed commit.
+    # NF-3B (O-1) / NF-3I (O-12): the Manual nominal-frequency override is closed by default and released for DEV only. The variable is
+    # accepted when ENVIRONMENT=development (a local process, an isolated test process, or the DEV deployment, whose overlay sets it
+    # deliberately) and refused outright for any other environment, so a production environment file that carries it can never open the
+    # gate unnoticed. Outside DEV the default stays closed.
     nominal_frequency_manual_override_enabled = env.get(
         "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED", "").strip().lower() in ("1", "true", "yes")
-    if nominal_frequency_manual_override_enabled and deployed:
+    if nominal_frequency_manual_override_enabled and environment != "development":
         raise ConfigurationError(
-            "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED must not be set in a deployed environment "
-            "(the Manual nominal-frequency override has not been released)"
+            "NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED is released for ENVIRONMENT=development only "
+            f"(got ENVIRONMENT={environment!r}); the Manual nominal-frequency override is not released there"
         )
 
     return Settings(

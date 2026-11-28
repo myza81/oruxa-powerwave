@@ -15,6 +15,9 @@ services:
     environment:
       ENVIRONMENT: development
       API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:${BACKEND_PORT:-8200}}
+      # Nominal-frequency Manual override (NF-3I, DEV only): shows the control. The backend below carries the same variable, which is the
+      # enforcement. Neither compose.yaml nor compose.prod.yaml sets it, and both services refuse it unless ENVIRONMENT=development.
+      NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED: "1"
 
     ports:
       - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8201}:80"
@@ -26,6 +29,8 @@ services:
         ${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8201},http://127.0.0.1:${FRONTEND_PORT:-8201}}
       # BEN5K experimental decoder enabled for DEV only (BEN5K Stage 11 ready for owner UAT).
       BEN5K_EXPERIMENTAL_ENABLED: "1"
+      # Nominal-frequency Manual override enabled for DEV only (NF-3I): the server-side gate; the frontend service carries the same variable.
+      NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED: "1"
 
     ports:
       - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8200}:8000"

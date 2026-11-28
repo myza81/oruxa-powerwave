@@ -1556,7 +1556,7 @@
         .ww-rd-nf-input { width: 5.2em; }
         .ww-rd-nf-unit { color: var(--text-dim); }
         .ww-rd-nf-flag { font-size: 0.66rem; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 999px; padding: 1px 7px; }
-        .ww-rd-nf-detail, .ww-rd-nf-preview { font-size: 0.7rem; color: var(--text-dim); }
+        .ww-rd-nf-detail, .ww-rd-nf-preview, .ww-rd-nf-scope { font-size: 0.7rem; color: var(--text-dim); }
         .ww-rd-nf-notice { font-size: 0.7rem; border-left: 2px solid var(--warn); background: color-mix(in srgb, var(--warn) 9%, transparent); padding: 4px 8px; border-radius: 2px; }
         .ww-rd-nf-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
         /* NF-2-CSS-END */
@@ -37333,13 +37333,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // NF-2: recording-level nominal frequency (Recording Details > Recording Info > Nominal frequency).
         // The backend (NF-1 GET/PUT .../sources/{id}/nominal-frequency) is the only authority: this block decides
         // nothing, it renders the server's answer and sends the engineer's choice. It is behind a release gate
-        // (window.POWERWAVE_CONFIG.featureFlags.nominalFrequencyOverride === true; absent by default) because no
-        // engineering calculation reads the override until NF-3. With the gate off the row is the original read-only
-        // row and nothing here runs or is requested.
+        // (window.POWERWAVE_CONFIG.featureFlags.nominalFrequencyOverride === true; absent by default; NF-3I: the DEV deployment
+        // emits it, the container entrypoint refuses it anywhere else). With the gate off the row is the original read-only
+        // row and nothing here runs or is requested. The engineering calculations read the effective value since NF-3C..NF-3H.
         // ============================================================================================
-        const WW_NF_CONSUMERS_MIGRATED = false; // NF-3 flips this when the calculations honour the override
+        const WW_NF_CONSUMERS_MIGRATED = true;  // NF-3I: the calculations honour the override (NF-3C..NF-3H); false restores the preview line
+        // What the setting applies to (owner, O-3 and the NF-3C native-oscillation limitation): said once, under the row, in every state.
+        const WW_NF_SCOPE_TEXT = "Used by this recording's frequency-based calculations and analyses (RMS, power, phasor, overcurrent, compliance, " +
+            "event detection and RMS-based oscillation). Not used by automatic per-unit base evidence or by the nominal comparison for " +
+            "natively analysed oscillation signals.";
         const WW_NF_MIN_HZ = 1;
         const WW_NF_MAX_HZ = 1000;
+
+        function wwRdNfScopeHtml() {
+            return WW_NF_CONSUMERS_MIGRATED
+                ? '<span class="ww-rd-nf-scope" data-ww-nf-notice="scope">' + escapeHtml(WW_NF_SCOPE_TEXT) + '</span>'
+                : '<span class="ww-rd-nf-preview" data-ww-nf-notice="preview">Preview: calculations do not use this setting yet.</span>';
+        }
 
         function wwNfEnabled() {
             const flags = window.POWERWAVE_CONFIG && window.POWERWAVE_CONFIG.featureFlags;
@@ -37623,9 +37633,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '</span>';
                 block = '<div id="wwRdNfError">' + (wwRdNf.error
                     ? '<div class="ww-rd-edit-error" role="alert" data-ww-nf-notice="error">' + escapeHtml(wwRdNf.error) + '</div>' : '') + '</div>';
-                if (!WW_NF_CONSUMERS_MIGRATED) {   // the editor is where a value is typed: it must say so here too
-                    block += '<span class="ww-rd-nf-preview" data-ww-nf-notice="preview">Preview: calculations do not use this setting yet.</span>';
-                }
+                block += wwRdNfScopeHtml();   // the editor is where a value is typed: it must say what the value applies to here too
             } else {
                 const importedText = data.imported_text == null ? "none" : data.imported_text;
                 const shown = data.effective_hz == null
@@ -37652,9 +37660,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (wwRdNf.message) {
                     block += '<div class="ww-rd-edit-error" role="alert" data-ww-nf-notice="error">' + escapeHtml(wwRdNf.message) + '</div>';
                 }
-                if (!WW_NF_CONSUMERS_MIGRATED) {
-                    block += '<span class="ww-rd-nf-preview" data-ww-nf-notice="preview">Preview: calculations do not use this setting yet.</span>';
-                }
+                block += wwRdNfScopeHtml();
             }
             return '<div class="ww-rd-nf"' + attrs + '>' + label + '<div class="ww-rd-nf-cell">' + cell + '</div>' +
                 '<div class="ww-rd-nf-block">' + block + '</div>' + live + '</div>';

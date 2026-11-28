@@ -7,6 +7,11 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("./support/test");
+
+// The statement the page shows under the row once the calculations honour the setting (NF-3I); it must match frontend/index.html.
+const SCOPE = "Used by this recording's frequency-based calculations and analyses (RMS, power, phasor, overcurrent, compliance, " +
+  "event detection and RMS-based oscillation). Not used by automatic per-unit base evidence or by the nominal comparison for " +
+  "natively analysed oscillation signals.";
 const { syntheticComtrade } = require("./support/synthetic_comtrade");
 
 const DEFAULT_CONFIG = fs.readFileSync(path.join(__dirname, "..", "frontend", "config.js"), "utf8");
@@ -111,51 +116,53 @@ test.describe("release gate", () => {
     });
   }
 
-  test("on: the control appears and says calculations do not use it yet", async ({ page, context }) => {
+  test("on: the control appears and states what the setting applies to", async ({ page, context }) => {
     await on(context);
     await seed(page, { lf: "50" });
     await expect(row(page)).toBeVisible();
-    await expect(page.locator('#wwRdNf [data-ww-nf-notice="preview"]')).toHaveText("Preview: calculations do not use this setting yet.");
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="scope"]')).toHaveText(SCOPE);
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="preview"]')).toHaveCount(0);
   });
 });
 
-// The control is a preview until NF-3: in every state, nothing may say or suggest that calculations use the setting.
-test.describe("no implied effect on calculations", () => {
+// NF-3I: the calculations honour the setting, so the page says WHAT it applies to (and what it does not: the owner's O-3 exclusion and the NF-3C
+// native-oscillation limitation) in every state, and no state still calls the control a preview.
+test.describe("the scope statement", () => {
   test.beforeEach(async ({ context }) => { await on(context); });
-  const PREVIEW = "Preview: calculations do not use this setting yet.";
-  const SUGGESTIVE = /used (for|in|by) (the )?calculation|affects? (the )?calculation|frequency-based calculations|will (be )?(use|appl)|applied to (the )?calculation|recalculat/i;
 
-  async function expectHonest(page) {
-    const text = await row(page).innerText();
-    await expect(page.locator('#wwRdNf [data-ww-nf-notice="preview"]')).toHaveText(PREVIEW);
-    expect(text.replace(PREVIEW, "")).not.toMatch(SUGGESTIVE);
-    const hidden = await row(page).evaluate((el) => Array.from(el.querySelectorAll("[title],[aria-label]"))
-      .map((n) => (n.getAttribute("title") || "") + " " + (n.getAttribute("aria-label") || "")).join(" "));
-    expect(hidden).not.toMatch(SUGGESTIVE);
+  async function expectScope(page) {
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="scope"]')).toHaveText(SCOPE);
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="preview"]')).toHaveCount(0);
+    expect(await row(page).innerText()).not.toMatch(/preview/i);
   }
 
-  test("declared, assumed, unusable, editing and Manual all carry the preview line and no suggestive wording", async ({ page }) => {
+  test("declared, assumed, unusable, editing and Manual all carry it", async ({ page }) => {
     await seed(page, { lf: "0" });                                      // unusable
-    await expectHonest(page);
-    await expect(page.locator('#wwRdNf [data-ww-nf-notice="unusable"]')).toContainText("a Manual value can be saved here for later use");
+    await expectScope(page);
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="unusable"]')).toContainText("choose Manual to enter a value for frequency-based calculations");
     await pill(page, "manual").click();                                 // editing
-    await expectHonest(page);
+    await expectScope(page);
     await input(page).fill("60");
     await page.locator('#wwRdNf [data-ww-nf-action="apply"]').click();  // Manual saved
     await expect(value(page)).toHaveText("60 Hz");
-    await expectHonest(page);
+    await expectScope(page);
     await expect(page.locator("#wwRdNfLive")).toHaveText("Manual nominal frequency saved: 60 Hz");
     await pill(page, "auto").click();                                   // back to Auto (unusable again)
     await expect(pill(page, "auto")).toHaveAttribute("aria-checked", "true");
-    await expectHonest(page);
+    await expectScope(page);
   });
 
-  test("a declared and an assumed recording carry the preview line", async ({ page }) => {
+  test("a declared and an assumed recording carry it", async ({ page }) => {
     await seed(page, { lf: "60" });
-    await expectHonest(page);
+    await expectScope(page);
     await seed(page, { lf: "abc" }, "nf2b");
     await expect(page.locator('#wwRdNf [data-ww-nf-flag="assumed"]')).toBeVisible();
-    await expectHonest(page);
+    await expectScope(page);
+  });
+
+  test("it names the automatic per-unit base evidence exclusion", async ({ page }) => {
+    await seed(page, { lf: "50" });
+    await expect(page.locator('#wwRdNf [data-ww-nf-notice="scope"]')).toContainText("Not used by automatic per-unit base evidence");
   });
 });
 

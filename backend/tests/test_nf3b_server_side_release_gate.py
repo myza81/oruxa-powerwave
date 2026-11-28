@@ -1,13 +1,14 @@
 """NF-3B (owner decision O-1) -- the SERVER-SIDE release gate for a Manual nominal-frequency override.
 
-Frontend visibility is not enforcement. The gate is a backend setting, closed by default and in every deployed build:
+Frontend visibility is not enforcement. The gate is a backend setting, closed by default. NF-3I (owner, 2026-11-28) released it for DEV ONLY: the
+variable is accepted when ENVIRONMENT=development and refused for every other environment, and only the DEV overlay (`compose.dev.yaml`) sets it:
 
 * closed: `PUT mode=manual` is refused with 409 `manual_nominal_frequency_disabled` and stores nothing; `PUT mode=auto` and every
   `GET` still work; a stored value cannot reach an engineering consumer; Auto behaviour is exactly what it was;
-* open (a local or isolated test process only, through `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED`): the NF-1 behaviour, with its
-  validation unchanged.
+* open (through `NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED`, in a local process, an isolated test process or the DEV deployment): the NF-1
+  behaviour, with its validation unchanged.
 
-The UI flag (`nominalFrequencyOverride`) is separate and unchanged; `test_frontend_nf2_release_gate.py` keeps it off by default.
+The UI flag (`nominalFrequencyOverride`) is separate; `test_frontend_nf2_release_gate.py` keeps it off by default and the DEV overlay turns it on.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ class TestConfiguration:
         assert load_settings(_env(**{ENV_VAR: ""})).nominal_frequency_manual_override_enabled is False
 
     @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", " Yes "])
-    def test_only_an_explicit_affirmative_opens_it_in_a_local_process(self, value):
+    def test_only_an_explicit_affirmative_opens_it_in_development(self, value):
         assert load_settings(_env(**{ENV_VAR: value})).nominal_frequency_manual_override_enabled is True
 
     @pytest.mark.parametrize("value", ["0", "false", "no", "off", "enabled", "2", "on", "y", "t", "open"])
@@ -54,24 +55,46 @@ class TestConfiguration:
 
     @pytest.mark.parametrize("env", [
         {"ENVIRONMENT": "production", "CORS_ORIGINS": "https://x", "RELAY_REVIEW_SIGNING_KEY": "k" * 32},
-        {"APP_VERSION": "a" * 40, "RELAY_REVIEW_SIGNING_KEY": "k" * 32},                          # a deploy-workflow build (DEV)
+        {"ENVIRONMENT": "production", "CORS_ORIGINS": "https://x", "RELAY_REVIEW_SIGNING_KEY": "k" * 32, "APP_VERSION": "a" * 40},
+        {"ENVIRONMENT": " Production ", "CORS_ORIGINS": "https://x", "RELAY_REVIEW_SIGNING_KEY": "k" * 32},
+        {"ENVIRONMENT": "staging"},
+        {"ENVIRONMENT": "test"},
     ])
-    def test_a_deployed_build_refuses_to_start_with_the_gate_open(self, env):
-        with pytest.raises(ConfigurationError, match="must not be set in a deployed environment"):
+    def test_every_environment_other_than_development_refuses_to_start_with_the_gate_open(self, env):
+        with pytest.raises(ConfigurationError, match="released for ENVIRONMENT=development only"):
             load_settings(_env(**env, **{ENV_VAR: "1"}))
 
     @pytest.mark.parametrize("env", [
-        {"ENVIRONMENT": "production", "CORS_ORIGINS": "https://x", "RELAY_REVIEW_SIGNING_KEY": "k" * 32},
-        {"APP_VERSION": "a" * 40, "RELAY_REVIEW_SIGNING_KEY": "k" * 32},
+        {},                                                                                       # ENVIRONMENT defaults to development
+        {"ENVIRONMENT": "development"},
+        {"ENVIRONMENT": " Development "},
+        {"ENVIRONMENT": "development", "APP_VERSION": "a" * 40, "RELAY_REVIEW_SIGNING_KEY": "k" * 32},   # the DEV deployment (NF-3I)
     ])
-    def test_a_deployed_build_without_the_variable_starts_with_the_gate_closed(self, env):
+    def test_a_development_environment_including_the_dev_deployment_opens_it(self, env):
+        settings = load_settings(_env(**env, **{ENV_VAR: "1"}))
+        assert settings.nominal_frequency_manual_override_enabled is True
+        assert settings.is_production is False
+
+    def test_the_dev_deployment_build_is_a_deployed_build_and_is_still_allowed(self):
+        settings = load_settings(_env(ENVIRONMENT="development", APP_VERSION="a" * 40, RELAY_REVIEW_SIGNING_KEY="k" * 32, **{ENV_VAR: "1"}))
+        assert settings.is_deployed is True and settings.nominal_frequency_manual_override_enabled is True
+
+    @pytest.mark.parametrize("env", [
+        {"ENVIRONMENT": "production", "CORS_ORIGINS": "https://x", "RELAY_REVIEW_SIGNING_KEY": "k" * 32},
+        {"ENVIRONMENT": "development", "APP_VERSION": "a" * 40, "RELAY_REVIEW_SIGNING_KEY": "k" * 32},
+    ])
+    def test_without_the_variable_every_environment_starts_with_the_gate_closed(self, env):
         assert load_settings(_env(**env)).nominal_frequency_manual_override_enabled is False
         assert load_settings(_env(**env, **{ENV_VAR: "0"})).nominal_frequency_manual_override_enabled is False
 
 
-class TestNoDeploymentPathSetsTheVariable:
-    """Prevent accidental enablement in normal DEV/PROD configuration: nothing that builds, configures or deploys the
-    application may mention the variable. (The opening change, NF-3I, edits this test and the refusal above together.)"""
+class TestOnlyTheDevDeploymentSetsTheVariable:
+    """NF-3I: the gate is released for DEV only, and deliberately. Exactly two files may mention the variable: the DEV overlay (which sets it for the
+    backend, the enforcement, and the frontend, which shows the control) and the frontend entrypoint that turns it into the page flag. Nothing
+    else that builds, configures or deploys the application may: not the base compose file, not the PROD overlay, not an env example, a
+    Dockerfile, a workflow or a script."""
+
+    ALLOWED = ["compose.dev.yaml", "frontend/docker-entrypoint.d/10-powerwave-config.sh"]
 
     def _deployment_files(self):
         files = [*ROOT.glob("compose*.yaml"), *ROOT.glob("compose*.yml"), *ROOT.glob(".env*"), *ROOT.glob("Dockerfile*"),
@@ -85,17 +108,30 @@ class TestNoDeploymentPathSetsTheVariable:
         assert {"compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example", "config.js"} <= names
         assert any(f.parent.name == "workflows" for f in self._deployment_files())
 
-    def test_no_deployment_or_configuration_file_mentions_the_gate_variable(self):
-        offenders = [f.relative_to(ROOT).as_posix() for f in self._deployment_files()
-                     if ENV_VAR in f.read_text(encoding="utf-8", errors="ignore")]
-        assert offenders == []
+    def test_only_the_dev_overlay_and_the_entrypoint_mention_the_gate_variable(self):
+        offenders = sorted(f.relative_to(ROOT).as_posix() for f in self._deployment_files()
+                           if ENV_VAR in f.read_text(encoding="utf-8", errors="ignore"))
+        assert offenders == self.ALLOWED
+
+    def test_the_dev_overlay_sets_it_for_the_backend_and_the_frontend_and_nothing_else_is_opened(self):
+        import yaml
+        services = yaml.safe_load((ROOT / "compose.dev.yaml").read_text(encoding="utf-8"))["services"]
+        assert services["backend"]["environment"][ENV_VAR] == "1"
+        assert services["frontend"]["environment"][ENV_VAR] == "1"
+
+    @pytest.mark.parametrize("name", ["compose.yaml", "compose.prod.yaml", ".env.example"])
+    def test_the_base_and_the_prod_files_do_not_carry_it(self, name):
+        assert ENV_VAR not in (ROOT / name).read_text(encoding="utf-8")
+
+    def test_the_checked_in_frontend_config_does_not_carry_the_ui_flag(self):
+        assert "nominalFrequencyOverride" not in (ROOT / "frontend" / "config.js").read_text(encoding="utf-8")
 
     def test_the_backend_reads_the_variable_in_exactly_one_place(self):
         readers = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "backend" / "app").rglob("*.py")
                          if ENV_VAR in p.read_text(encoding="utf-8"))
         assert readers == ["backend/app/config.py"]
 
-    def test_the_frontend_cannot_open_the_server_gate(self):
+    def test_the_frontend_page_cannot_open_the_server_gate(self):
         index = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
         assert ENV_VAR not in index and "manual_override_enabled" not in index
 

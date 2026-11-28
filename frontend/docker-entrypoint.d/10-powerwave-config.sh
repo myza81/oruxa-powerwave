@@ -38,13 +38,31 @@ fi
 # ad-hoc local container never disagree about what "unknown" means.
 : "${APP_VERSION:=local}"
 
-cat > "${CONFIG_DIR}/config.js" <<EOF
-window.POWERWAVE_CONFIG = {
-  apiBaseUrl: "${API_BASE_URL}",
-  environment: "${ENVIRONMENT}",
-  buildVersion: "${APP_VERSION}",
-};
-EOF
+# NF-3I: the Manual nominal-frequency control is shown only when NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED is set to an explicit affirmative
+# (1, true or yes), and only for ENVIRONMENT=development: any other environment that carries it fails the container start (the backend
+# refuses the same variable the same way), so a copied environment file cannot show the control in PROD. Unset, or anything else, emits
+# no flag at all and the page keeps the original read-only row.
+NF_OVERRIDE_RAW="$(printf '%s' "${NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$NF_OVERRIDE_RAW" in
+    1|true|yes) NF_OVERRIDE=1 ;;
+    *)          NF_OVERRIDE=0 ;;
+esac
+if [ "$NF_OVERRIDE" -eq 1 ] && [ "$ENVIRONMENT" != "development" ]; then
+    echo "powerwave: ERROR: NOMINAL_FREQUENCY_MANUAL_OVERRIDE_ENABLED is released for ENVIRONMENT=development only (got ENVIRONMENT=${ENVIRONMENT})." >&2
+    exit 1
+fi
+
+{
+    echo "window.POWERWAVE_CONFIG = {"
+    echo "  apiBaseUrl: \"${API_BASE_URL}\","
+    echo "  environment: \"${ENVIRONMENT}\","
+    echo "  buildVersion: \"${APP_VERSION}\","
+    if [ "$NF_OVERRIDE" -eq 1 ]; then
+        echo "  featureFlags: { nominalFrequencyOverride: true },"
+    fi
+    echo "};"
+} > "${CONFIG_DIR}/config.js"
 
 echo "powerwave: API base URL set to ${API_BASE_URL}"
 echo "powerwave: build version set to ${APP_VERSION}"
+if [ "$NF_OVERRIDE" -eq 1 ]; then echo "powerwave: nominal-frequency Manual override control enabled (DEV)"; fi
