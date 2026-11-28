@@ -3,7 +3,7 @@
 On Linux CI the frozen `zero_sequence_angle_deg` of a balanced set (zero-sequence magnitude 2.4e-10 on a 100 scale) came out as 179.995457043 instead of
 the Windows-frozen 179.994321303: the angle of a phasor that is only round-off is decided by the last bits of its real and imaginary parts. The
 comparison (`_same_with_noise_floor`, test infrastructure only) skips such an angle ONLY when both the expected and the actual magnitude are at or below
-`NOISE_FLOOR` (1e-10) of the positive-sequence magnitude. These tests pin that it still reports a changed magnitude (always compared), a meaningful
+`NOISE_FLOOR` of the positive-sequence magnitude, which is the established relative tolerance of `_same` itself (1e-9). These tests pin that it still reports a changed magnitude (always compared), a meaningful
 angle regression, a one-sided collapse to noise, and that the tolerances of `_same` itself are not relaxed. No frozen data or product code is involved.
 """
 
@@ -13,12 +13,14 @@ import copy
 
 import pytest
 
-from tests.test_nf3b_frozen_baselines import _same
+from tests.test_nf3b_frozen_baselines import REL, _same
 from tests.test_nf3d_pre_migration_baseline import NOISE_FLOOR, _negligible_angles, _same_with_noise_floor
 
 # the numbers observed on the Linux CI runner against the Windows-frozen baseline
 FROZEN_ZERO_ANGLE, LINUX_ZERO_ANGLE = 179.994321303, 179.995457043
 FROZEN_ZERO_MAGNITUDE = 2.38969734065e-10
+# the 4 kHz record: the case that a floor of 1e-10 did NOT cover (zero sequence 3.7e-10 of the positive sequence)
+FS4000_ZERO_MAGNITUDE, FS4000_FROZEN_ANGLE, FS4000_LINUX_ANGLE = 3.71343e-08, 2.19264400541e-05, 2.92352552702e-05
 
 
 def sequences(*, positive=100.0, zero=FROZEN_ZERO_MAGNITUDE, zero_angle=FROZEN_ZERO_ANGLE, negative=1.0e-9, negative_angle=10.0,
@@ -36,8 +38,18 @@ def compare(expected, actual):
 
 
 class TestWhatIsTolerated:
-    def test_the_floor_is_one_decade_below_the_comparisons_own_relative_resolution(self):
-        assert NOISE_FLOOR == 1e-10 and NOISE_FLOOR < 1e-9      # `_same` compares floats with rel_tol = 1e-9
+    def test_the_floor_is_the_comparisons_own_established_relative_tolerance_not_a_new_number(self):
+        assert NOISE_FLOOR == REL == 1e-9                          # `_same` compares floats with rel_tol = 1e-9
+
+    def test_the_4khz_record_observed_on_linux_is_tolerated(self):
+        assert compare(sequences(zero=FS4000_ZERO_MAGNITUDE, zero_angle=FS4000_FROZEN_ANGLE),
+                       sequences(zero=FS4000_ZERO_MAGNITUDE, zero_angle=FS4000_LINUX_ANGLE)) == []
+
+    def test_a_phasor_a_decade_above_the_floor_is_compared(self):
+        problems = compare(sequences(zero=1e-8, zero_angle=1.0), sequences(zero=1e-8, zero_angle=2.0))       # ratio 1e-10 <= floor: skipped
+        assert problems == []
+        problems = compare(sequences(zero=1e-6, zero_angle=1.0), sequences(zero=1e-6, zero_angle=2.0))       # ratio 1e-8 > floor: compared
+        assert any("zero_sequence_angle_deg" in p for p in problems)
 
     def test_the_angle_difference_observed_on_linux_is_tolerated(self):
         assert compare(sequences(), sequences(zero_angle=LINUX_ZERO_ANGLE)) == []

@@ -19,7 +19,7 @@ from app.config import Settings
 from app.main import create_app
 from tests import nf3c_approved_changes as approved
 from tests import nf3d_baseline_scenarios as scenarios
-from tests.test_nf3b_frozen_baselines import _same
+from tests.test_nf3b_frozen_baselines import REL, _same
 
 HISTORICAL = json.loads((Path(__file__).parent / "fixtures" / "nf3d_baselines" / "nf3d_pre_migration_baseline.json").read_text(encoding="utf-8"))
 H = HISTORICAL["outcomes"]
@@ -103,10 +103,12 @@ class TestHistoricalFacts:
 
 
 #: The angle of a numerically negligible phasor is not a regression observable. A balanced three-phase set has a zero-sequence voltage that is only
-#: round-off (frozen here: 2.4e-10 on a 100 scale), and the angle of such a phasor is decided by the last bits of its real and imaginary parts, which
-#: differ between platforms (Windows against Linux: 179.9943 against 179.9954 degrees) while the magnitude agrees to far better than the comparison's own
-#: relative resolution (REL = 1e-9 in `_same`). The floor is RELATIVE to the set's positive-sequence magnitude and sits one decade below that resolution.
-NOISE_FLOOR = 1e-10
+#: round-off (frozen here: 2.4e-10 on a 100 scale, and up to 3.7e-8 for the 4 kHz record), and the angle of such a phasor is decided by the last bits of
+#: its real and imaginary parts, which differ between platforms (Windows against Linux: 179.9943 against 179.9954 degrees) while the magnitude agrees to far
+#: better than the comparison's own relative resolution. The floor IS that resolution: the established relative tolerance of `_same` (`REL`, 1e-9), applied
+#: to the set's positive-sequence magnitude. A phasor smaller than that is zero as far as this comparison can tell, so its angle is undefined. (A floor of
+#: 1e-10 was tried first and was not enough: the 4 kHz record's zero sequence is 3.7e-10 of the positive sequence.)
+NOISE_FLOOR = REL
 
 
 def _is_number(value) -> bool:
